@@ -8,13 +8,15 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/dave/choresy/internal/auth"
 )
 
 type fakeSessionService struct {
-	authenticate func(ctx context.Context, token string) (UserInfo, error)
+	authenticate func(ctx context.Context, token string) (auth.User, error)
 }
 
-func (f *fakeSessionService) Authenticate(ctx context.Context, token string) (UserInfo, error) {
+func (f *fakeSessionService) Authenticate(ctx context.Context, token string) (auth.User, error) {
 	return f.authenticate(ctx, token)
 }
 
@@ -54,28 +56,25 @@ func TestRateLimiterBlocksRequestsAboveLimit(t *testing.T) {
 }
 
 func TestSessionMiddlewareInjectsCurrentUser(t *testing.T) {
-	service := &fakeSessionService{
-		authenticate: func(_ context.Context, token string) (UserInfo, error) {
-			if token == "valid-session" {
-				return UserInfo{ID: 1, Email: "alice@example.com"}, nil
-			}
-			return UserInfo{}, http.ErrNoCookie
-		},
+	svc := auth.NewService(auth.NewMemoryStore())
+	user, session, err := svc.Register(context.Background(), "alice@example.com", "password12345678")
+	if err != nil {
+		t.Fatalf("Register returned error: %v", err)
 	}
 
-	handler := Session(service, "choresy_session")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		user, ok := CurrentUser(r.Context())
+	handler := Session(svc, "choresy_session")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		currentUser, ok := CurrentUser(r.Context())
 		if !ok {
 			t.Fatal("expected current user in context")
 		}
-		if user.Email != "alice@example.com" {
-			t.Fatalf("email = %q", user.Email)
+		if currentUser.Email != user.Email {
+			t.Fatalf("email = %q, want %q", currentUser.Email, user.Email)
 		}
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
-	req.AddCookie(&http.Cookie{Name: "choresy_session", Value: "valid-session"})
+	req.AddCookie(&http.Cookie{Name: "choresy_session", Value: session.ID})
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 

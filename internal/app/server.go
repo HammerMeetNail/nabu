@@ -11,9 +11,11 @@ import (
 	"time"
 
 	"github.com/dave/choresy/internal/audit"
+	"github.com/dave/choresy/internal/auth"
 	"github.com/dave/choresy/internal/config"
 	"github.com/dave/choresy/internal/database"
 	"github.com/dave/choresy/internal/handlers"
+	"github.com/dave/choresy/internal/mail"
 	"github.com/dave/choresy/internal/middleware"
 	webassets "github.com/dave/choresy/web"
 )
@@ -24,10 +26,27 @@ type Server struct {
 
 func NewServer(cfg config.Config) http.Handler {
 	mux := http.NewServeMux()
+	authStore := auth.NewMemoryStore()
+	authService := auth.NewService(authStore)
+	authService.SetAuditLogger(audit.NewStdLogger(log.Default()))
+	authHandler := handlers.NewAuthHandler(authService, "choresy_session")
 	rateLimiter := middleware.NewRateLimiter(20, time.Minute)
 
 	mux.HandleFunc("/health", handlers.Health)
 	mux.HandleFunc("/ready", handlers.Ready)
+
+	mux.HandleFunc("/api/auth/register", method(http.MethodPost, authHandler.Register))
+	mux.HandleFunc("/api/auth/login", method(http.MethodPost, authHandler.Login))
+	mux.HandleFunc("/api/auth/logout", method(http.MethodPost, authHandler.Logout))
+	mux.HandleFunc("/api/me", method(http.MethodGet, authHandler.Me))
+	mux.HandleFunc("/api/auth/email/verification/resend", method(http.MethodPost, authHandler.ResendVerification))
+	mux.HandleFunc("/api/auth/email/verify", method(http.MethodGet, authHandler.VerifyEmail))
+	mux.HandleFunc("/api/auth/magic-link/request", method(http.MethodPost, authHandler.RequestMagicLink))
+	mux.HandleFunc("/api/auth/magic-link/consume", method(http.MethodGet, authHandler.ConsumeMagicLink))
+	mux.HandleFunc("/api/auth/password/forgot", method(http.MethodPost, authHandler.ForgotPassword))
+	mux.HandleFunc("/api/auth/password/reset", method(http.MethodPost, authHandler.ResetPassword))
+	mux.HandleFunc("/api/auth/google/login", method(http.MethodGet, authHandler.GoogleLogin))
+	mux.HandleFunc("/api/auth/google/callback", method(http.MethodGet, authHandler.GoogleCallback))
 
 	staticFS, err := fs.Sub(webassets.Assets, "static")
 	if err != nil {
@@ -50,7 +69,7 @@ func NewServer(cfg config.Config) http.Handler {
 	var handler http.Handler = mux
 	handler = middleware.RequestLogger(nil)(handler)
 	handler = middleware.SecurityHeaders()(handler)
-	handler = middleware.Session(nil, "choresy_session")(handler)
+	handler = middleware.Session(authService, "choresy_session")(handler)
 	handler = middleware.CSRF("choresy_csrf")(handler)
 	handler = rateLimiter.Middleware("/api/auth")(handler)
 
@@ -99,5 +118,26 @@ func method(want string, next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		next(w, r)
+	}
+}
+
+func newMailer(cfg config.Config) mail.Sender {
+	if cfg.SMTPHost != "" && cfg.SMTPFrom != "" {
+		return mail.UnavailableSender{}
+	}
+	return mail.UnavailableSender{}
+}
+
+func newOIDCProvider(cfg config.Config) auth.OIDCProvider {
+	if cfg.GoogleClientID == "" || cfg.GoogleClientSecret == "" {
+		return nil
+	}
+	return &auth.GoogleOIDCProvider{
+		ClientID:     cfg.GoogleClientID,
+		ClientSecret: cfg.GoogleClientSecret,
+		RedirectURL:  strings.TrimRight(cfg.AppBaseURL, "/") + "/api/auth/google/callback",
+		AuthURL:      "https://accounts.google.com/o/oauth2/v2/auth",
+		TokenURL:     "https://oauth2.googleapis.com/token",
+		Issuer:       "https://accounts.google.com",
 	}
 }

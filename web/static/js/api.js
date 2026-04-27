@@ -12,42 +12,23 @@ export async function apiFetch(path, options = {}) {
     headers.set("X-CSRF-Token", csrfToken);
   }
 
-  const method = options.method || "GET";
-  const isStateChanging = ["POST", "PATCH", "PUT", "DELETE"].includes(method);
-
   const response = await fetch(path, {
     ...options,
-    method,
     headers,
   });
 
   let data = null;
   const contentType = response.headers.get("Content-Type");
   if (contentType && contentType.includes("application/json")) {
-    data = await response.json();
+    try {
+      data = await response.json();
+    } catch {}
   }
 
   return { response, data };
 }
 
 export async function apiMe() {
-  return apiFetch("/api/me");
-}
-
-export async function apiLogin(email, password) {
-  return apiFetch("/api/auth/login", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
-}
-
-export async function apiRegister(email, password) {
-  return apiFetch("/api/auth/register", {
-    method: "POST",
-    body: JSON.stringify({ email, password }),
-  });
-}
-
-export async function apiLogout() {
-  return apiFetch("/api/auth/logout", { method: "POST" });
+  const { data } = await apiFetch("/api/me");
+  return data;
 }

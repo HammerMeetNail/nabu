@@ -3,23 +3,27 @@ package middleware
 import (
 	"context"
 	"net/http"
+
+	"github.com/dave/choresy/internal/auth"
 )
 
 type contextKey string
 
-const (
-	userContextKey contextKey = "user"
-)
+const userContextKey contextKey = "user"
 
-func Session(sessionService SessionService, cookieName string) func(http.Handler) http.Handler {
+func Session(authService *auth.Service, cookieName string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if authService == nil {
+				next.ServeHTTP(w, r)
+				return
+			}
 			cookie, err := r.Cookie(cookieName)
 			if err != nil {
 				next.ServeHTTP(w, r)
 				return
 			}
-			user, err := sessionService.Authenticate(r.Context(), cookie.Value)
+			user, err := authService.Authenticate(r.Context(), cookie.Value)
 			if err != nil {
 				next.ServeHTTP(w, r)
 				return
@@ -30,17 +34,8 @@ func Session(sessionService SessionService, cookieName string) func(http.Handler
 	}
 }
 
-type SessionService interface {
-	Authenticate(ctx context.Context, sessionToken string) (UserInfo, error)
-}
-
-type UserInfo struct {
-	ID    int64
-	Email string
-}
-
-func CurrentUser(ctx context.Context) (UserInfo, bool) {
-	user, ok := ctx.Value(userContextKey).(UserInfo)
+func CurrentUser(ctx context.Context) (auth.User, bool) {
+	user, ok := ctx.Value(userContextKey).(auth.User)
 	return user, ok
 }
 
