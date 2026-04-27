@@ -15,6 +15,7 @@ import (
 	"github.com/dave/choresy/internal/config"
 	"github.com/dave/choresy/internal/database"
 	"github.com/dave/choresy/internal/handlers"
+	"github.com/dave/choresy/internal/household"
 	"github.com/dave/choresy/internal/mail"
 	"github.com/dave/choresy/internal/middleware"
 	webassets "github.com/dave/choresy/web"
@@ -30,6 +31,9 @@ func NewServer(cfg config.Config) http.Handler {
 	authService := auth.NewService(authStore)
 	authService.SetAuditLogger(audit.NewStdLogger(log.Default()))
 	authHandler := handlers.NewAuthHandler(authService, "choresy_session")
+	householdStore := household.NewMemoryStore()
+	householdService := household.NewService(householdStore)
+	householdHandler := handlers.NewHouseholdHandler(householdService)
 	rateLimiter := middleware.NewRateLimiter(20, time.Minute)
 
 	mux.HandleFunc("/health", handlers.Health)
@@ -47,6 +51,46 @@ func NewServer(cfg config.Config) http.Handler {
 	mux.HandleFunc("/api/auth/password/reset", method(http.MethodPost, authHandler.ResetPassword))
 	mux.HandleFunc("/api/auth/google/login", method(http.MethodGet, authHandler.GoogleLogin))
 	mux.HandleFunc("/api/auth/google/callback", method(http.MethodGet, authHandler.GoogleCallback))
+
+	mux.HandleFunc("/api/household", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			householdHandler.Get(w, r)
+		case http.MethodPost:
+			householdHandler.Create(w, r)
+		case http.MethodPatch:
+			householdHandler.Update(w, r)
+		default:
+			w.Header().Set("Allow", "GET, POST, PATCH")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	mux.HandleFunc("/api/household/invites", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			householdHandler.ListInvites(w, r)
+		case http.MethodPost:
+			householdHandler.CreateInvite(w, r)
+		default:
+			w.Header().Set("Allow", "GET, POST")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	mux.HandleFunc("/api/household/invites/", method(http.MethodDelete, householdHandler.DeleteInvite))
+	mux.HandleFunc("/api/household/join", method(http.MethodPost, householdHandler.Join))
+	mux.HandleFunc("/api/household/members/", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPatch:
+			householdHandler.UpdateMemberRole(w, r)
+		case http.MethodDelete:
+			householdHandler.RemoveMember(w, r)
+		default:
+			w.Header().Set("Allow", "PATCH, DELETE")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	mux.HandleFunc("/api/household/leave", method(http.MethodPost, householdHandler.Leave))
+	mux.HandleFunc("/api/household/transfer", method(http.MethodPost, householdHandler.Transfer))
 
 	staticFS, err := fs.Sub(webassets.Assets, "static")
 	if err != nil {

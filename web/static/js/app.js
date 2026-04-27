@@ -17,6 +17,7 @@ import {
   renderForgotPasswordView,
   renderResetPasswordView,
 } from "./auth.js";
+import { loadHousehold, createHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, renderHouseholdView } from "./household.js";
 
 let state;
 
@@ -86,9 +87,17 @@ export function render(root) {
 }
 
 function renderTodayView() {
+  if (!state.household) {
+    return `<div class="card mt-3">
+      <h2>Welcome!</h2>
+      <p>${state.user ? `Hi ${escapeHTML(state.user.email)}! ` : ''}Set up your household to get started with Choresy.</p>
+      <div class="mt-2">
+        <button type="button" class="btn btn-primary" data-nav="settings">Set Up Household</button>
+      </div>
+    </div>`;
+  }
   return `<div class="today-view">
     <h2>Today</h2>
-    <p>Welcome, ${escapeHTML(state.user.email)}</p>
     <div class="empty-state">
       <div class="empty-state-icon">🏠</div>
       <div class="empty-state-title">No chores yet</div>
@@ -120,10 +129,11 @@ function renderHistoryView() {
 }
 
 function renderSettingsView() {
-  return `<div class="settings-view">
-    <h2>Settings</h2>
-    <p>Household and account settings.</p>
-  </div>`;
+  const hh = state.household;
+  if (!hh) {
+    return renderHouseholdView(null);
+  }
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user.email)}</p><button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div></div>`;
 }
 
 function updateTabs(route) {
@@ -289,35 +299,51 @@ export async function init() {
   if (!app) return;
 
   document.addEventListener("click", (e) => {
-    const action = e.target.closest("[data-action]")?.dataset?.action;
+    const actionEl = e.target.closest("[data-action]");
+    const action = actionEl?.dataset?.action;
     if (!action) return;
 
     switch (action) {
       case "show-login":
-        e.preventDefault();
-        state.currentRoute = "/";
-        render(app);
-        break;
       case "show-register":
-        e.preventDefault();
-        state.currentRoute = "/register";
-        render(app);
-        break;
       case "show-magic-link":
+      case "show-forgot-password": {
         e.preventDefault();
-        state.currentRoute = "/magic-link";
+        const routes = {
+          "show-login": "/",
+          "show-register": "/register",
+          "show-magic-link": "/magic-link",
+          "show-forgot-password": "/forgot-password",
+        };
+        state.currentRoute = routes[action];
         render(app);
         break;
-      case "show-forgot-password":
-        e.preventDefault();
-        state.currentRoute = "/forgot-password";
-        render(app);
-        break;
+      }
       case "logout":
         e.preventDefault();
         handleLogout().then(() => {
           resetAuthedState(state);
           state.currentRoute = "/";
+          render(app);
+        });
+        break;
+      case "create-invite":
+        e.preventDefault();
+        createInvite().then((data) => {
+          if (data.invite) {
+            showToast("Invite created: " + data.invite.code, "info");
+            render(app);
+          }
+        });
+        break;
+      case "delete-invite":
+        e.preventDefault();
+        deleteInvite(parseInt(actionEl.dataset.inviteId)).then(() => render(app));
+        break;
+      case "leave-household":
+        e.preventDefault();
+        leaveHousehold().then(() => {
+          state.household = null;
           render(app);
         });
         break;
@@ -327,6 +353,9 @@ export async function init() {
     if (nav) {
       e.preventDefault();
       state.currentRoute = `/${nav.dataset.nav}`;
+      if (state.currentRoute === "/settings") {
+        state._loadedHousehold = true;
+      }
       render(app);
     }
   });
@@ -352,8 +381,46 @@ export async function init() {
       case "password-reset":
         doResetPassword(form);
         break;
+      case "create-household":
+        doCreateHousehold(form);
+        break;
+      case "join-household":
+        doJoinHousehold(form);
+        break;
     }
   });
 
+  await loadHouseholdData();
   render(app);
+}
+
+async function loadHouseholdData() {
+  try {
+    const data = await loadHousehold();
+    if (data.household) {
+      state.household = data.household;
+      state.members = data.members;
+      state.invites = data.invites;
+    }
+  } catch {}
+}
+
+async function doCreateHousehold(form) {
+  const name = form.querySelector("#hh-name").value;
+  const data = await createHousehold(name);
+  if (data.household) {
+    state.household = data.household;
+    await loadHouseholdData();
+    render(document.querySelector("#app"));
+  }
+}
+
+async function doJoinHousehold(form) {
+  const code = form.querySelector("#invite-code").value;
+  const data = await joinHousehold(code);
+  if (data.household) {
+    state.household = data.household;
+    await loadHouseholdData();
+    render(document.querySelector("#app"));
+  }
 }
