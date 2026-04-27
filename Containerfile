@@ -1,5 +1,5 @@
 # Build stage
-FROM docker.io/library/golang:1.24-alpine AS builder
+FROM docker.io/library/golang:1.25-alpine AS builder
 
 WORKDIR /build
 
@@ -7,7 +7,7 @@ WORKDIR /build
 RUN apk add --no-cache git ca-certificates
 
 # Copy go mod files first for better caching
-COPY go.mod go.sum* ./
+COPY go.mod go.sum ./
 RUN go mod download
 
 # Copy source code
