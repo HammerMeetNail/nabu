@@ -12,6 +12,7 @@ import (
 
 	"github.com/dave/choresy/internal/audit"
 	"github.com/dave/choresy/internal/auth"
+	"github.com/dave/choresy/internal/chore"
 	"github.com/dave/choresy/internal/config"
 	"github.com/dave/choresy/internal/database"
 	"github.com/dave/choresy/internal/handlers"
@@ -34,6 +35,9 @@ func NewServer(cfg config.Config) http.Handler {
 	householdStore := household.NewMemoryStore()
 	householdService := household.NewService(householdStore)
 	householdHandler := handlers.NewHouseholdHandler(householdService)
+	choreStore := chore.NewMemoryStore()
+	choreService := chore.NewService(choreStore)
+	choreHandler := handlers.NewChoreHandler(choreService)
 	rateLimiter := middleware.NewRateLimiter(20, time.Minute)
 
 	mux.HandleFunc("/health", handlers.Health)
@@ -91,6 +95,32 @@ func NewServer(cfg config.Config) http.Handler {
 	})
 	mux.HandleFunc("/api/household/leave", method(http.MethodPost, householdHandler.Leave))
 	mux.HandleFunc("/api/household/transfer", method(http.MethodPost, householdHandler.Transfer))
+
+	mux.HandleFunc("/api/chores", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			choreHandler.List(w, r)
+		case http.MethodPost:
+			choreHandler.Create(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	mux.HandleFunc("/api/chores/defaults", method(http.MethodGet, choreHandler.GetDefaults))
+	mux.HandleFunc("/api/chores/seed-defaults", method(http.MethodPost, choreHandler.SeedDefaults))
+	mux.HandleFunc("/api/chores/reorder", method(http.MethodPost, choreHandler.Reorder))
+	mux.HandleFunc("/api/chores/{id}", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			choreHandler.Get(w, r)
+		case http.MethodPatch:
+			choreHandler.Update(w, r)
+		case http.MethodDelete:
+			choreHandler.Delete(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
 
 	staticFS, err := fs.Sub(webassets.Assets, "static")
 	if err != nil {

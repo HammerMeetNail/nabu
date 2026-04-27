@@ -1,0 +1,111 @@
+package chore
+
+import (
+	"context"
+	"fmt"
+)
+
+type Service struct {
+	store Store
+}
+
+func NewService(store Store) *Service {
+	return &Service{store: store}
+}
+
+func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int64, name, icon, color, category string) (Chore, error) {
+	if name == "" {
+		return Chore{}, fmt.Errorf("name must not be empty")
+	}
+	if icon == "" {
+		icon = "📋"
+	}
+	if color == "" {
+		color = "#2E86AB"
+	}
+	if category == "" {
+		category = "custom"
+	}
+	return s.store.CreateChore(ctx, Chore{
+		HouseholdID:  householdID,
+		Name:         name,
+		Icon:         icon,
+		Color:        color,
+		Category:     category,
+		IsPredefined: false,
+		CreatedBy:    &userID,
+	})
+}
+
+func (s *Service) ListChores(ctx context.Context, householdID int64) ([]Chore, error) {
+	return s.store.ListChores(ctx, householdID)
+}
+
+func (s *Service) UpdateChore(ctx context.Context, choreID int64, name, icon, color, category string) error {
+	existing, err := s.store.GetChore(ctx, choreID)
+	if err != nil {
+		return err
+	}
+	if name != "" {
+		existing.Name = name
+	}
+	if icon != "" {
+		existing.Icon = icon
+	}
+	if color != "" {
+		existing.Color = color
+	}
+	if category != "" {
+		existing.Category = category
+	}
+	return s.store.UpdateChore(ctx, existing)
+}
+
+func (s *Service) DeleteChore(ctx context.Context, choreID int64) error {
+	chore, err := s.store.GetChore(ctx, choreID)
+	if err != nil {
+		return err
+	}
+	if chore.IsPredefined {
+		return fmt.Errorf("cannot delete predefined chores")
+	}
+	return s.store.DeleteChore(ctx, choreID)
+}
+
+func (s *Service) ReorderChores(ctx context.Context, householdID int64, choreIDs []int64) error {
+	return s.store.ReorderChores(ctx, householdID, choreIDs)
+}
+
+func (s *Service) GetSystemDefaults() []Chore {
+	var result []Chore
+	for _, pc := range PredefinedChores {
+		result = append(result, Chore{
+			Name:         pc.Name,
+			Icon:         pc.Icon,
+			Color:        pc.Color,
+			Category:     pc.Category,
+			IsPredefined: true,
+			SortOrder:    pc.SortOrder,
+		})
+	}
+	return result
+}
+
+func (s *Service) SeedDefaultChores(ctx context.Context, householdID int64) error {
+	return s.store.SeedPredefinedChores(ctx, householdID)
+}
+
+var PredefinedChores = []Chore{
+	{Name: "Feed Cats (Morning)", Icon: "🐱", Color: "#F59E0B", Category: "feeding", SortOrder: 0},
+	{Name: "Feed Cats (Evening)", Icon: "🐱", Color: "#F59E0B", Category: "feeding", SortOrder: 1},
+	{Name: "Feed Baby", Icon: "🍼", Color: "#EC4899", Category: "feeding", SortOrder: 2},
+	{Name: "Change Baby", Icon: "👶", Color: "#8B5CF6", Category: "care", SortOrder: 3},
+	{Name: "Water Plants", Icon: "🌱", Color: "#10B981", Category: "plants", SortOrder: 4},
+	{Name: "Clean Litter Box", Icon: "🧹", Color: "#6366F1", Category: "cleaning", SortOrder: 5},
+	{Name: "Take Out Trash", Icon: "🗑️", Color: "#6B7280", Category: "cleaning", SortOrder: 6},
+	{Name: "Wash Dishes", Icon: "🍽️", Color: "#3B82F6", Category: "cleaning", SortOrder: 7},
+	{Name: "Vacuum", Icon: "🧹", Color: "#06B6D4", Category: "cleaning", SortOrder: 8},
+	{Name: "Laundry", Icon: "👕", Color: "#F97316", Category: "cleaning", SortOrder: 9},
+	{Name: "Walk Dog", Icon: "🐕", Color: "#EF4444", Category: "care", SortOrder: 10},
+	{Name: "Make Bed", Icon: "🛏️", Color: "#14B8A6", Category: "cleaning", SortOrder: 11},
+}
