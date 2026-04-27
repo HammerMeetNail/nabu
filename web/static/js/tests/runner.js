@@ -7,6 +7,7 @@ const dom = new JSDOM("<!doctype html><html><body></body></html>", {
 });
 
 globalThis.document = dom.window.document;
+globalThis.Node = dom.window.Node;
 Object.defineProperty(globalThis, "navigator", {
   value: { onLine: true },
   writable: true,

@@ -15,6 +15,12 @@ export function todayISO(offset) {
   return d.toISOString().split("T")[0];
 }
 
+function shiftDate(iso, offset) {
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + offset);
+  return d.toISOString().split("T")[0];
+}
+
 function fmtDate(iso) {
   const d = new Date(iso + "T00:00:00");
   return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
@@ -69,8 +75,8 @@ export function renderTodayView(state) {
     </button>`;
   }).join("");
 
-  const prev = todayISO(-1);
-  const next = todayISO(1);
+  const prev = shiftDate(date, -1);
+  const next = shiftDate(date, 1);
 
   return `<div class="today-view">
     <div class="date-nav">

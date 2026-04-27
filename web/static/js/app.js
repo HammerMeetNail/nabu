@@ -112,7 +112,7 @@ function renderTodayView() {
   const chores = state.chores || [];
   if (!state.household && state.user) {
     return `<div class="card mt-3"><h2>Welcome!</h2>
-      <p>Hi ${escapeHTML(state.user.email)}! Set up your household to get started.</p>
+      <p>Hi ${escapeHTML(state.user.email || '')}! Set up your household to get started.</p>
       <a class="btn btn-primary mt-2" href="#" data-nav="settings">Set Up Household</a></div>`;
   }
   if (chores.length === 0) {
@@ -126,10 +126,20 @@ function renderTodayView() {
 
 function renderSettingsView() {
   const hh = state.household;
-  if (!hh) {
-    return `<div class="settings-view">${renderHouseholdView(null)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user.email)}</p><button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div></div>`;
+  let statsHTML = '';
+  try {
+    if (state.stats && state.stats.leaderboard) {
+      statsHTML = renderStatsView(state);
+    } else {
+      statsHTML = '<p class="text-center text-secondary">Loading stats...</p>';
+    }
+  } catch {
+    statsHTML = '<p class="text-center text-secondary">Stats unavailable</p>';
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user.email)}</p><button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div>${state.stats ? renderStatsView(state) : '<p class="text-center text-secondary">Loading stats...</p>'}</div>`;
+  if (!hh) {
+    return `<div class="settings-view">${renderHouseholdView(null)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p><button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div></div>`;
+  }
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p><button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div>${statsHTML}</div>`;
 }
 
 async function loadStatsData() {
@@ -216,11 +226,23 @@ async function doLogin(form) {
   if (ok && data.user) {
     state.user = data.user;
     state.currentRoute = "/";
+    await reloadAfterAuth();
     const app = document.querySelector("#app");
     if (app) render(app);
   } else {
     setError("#login-error", data.error || "Invalid email or password");
   }
+}
+
+async function reloadAfterAuth() {
+  try {
+    await loadHouseholdData();
+    if (state.household) {
+      await loadChoreData();
+      await loadTodayData();
+      loadStatsData();
+    }
+  } catch {}
 }
 
 async function doRegister(form) {
@@ -236,6 +258,7 @@ async function doRegister(form) {
   if (ok && data.user) {
     state.user = data.user;
     state.currentRoute = "/";
+    await reloadAfterAuth();
     const app = document.querySelector("#app");
     if (app) render(app);
   } else {
@@ -317,6 +340,19 @@ export async function init() {
 
   document.addEventListener("click", (e) => {
     const actionEl = e.target.closest("[data-action]");
+
+    // data-nav SPA navigation: check first so it works without data-action
+    const navEl = e.target.closest("[data-nav]");
+    if (navEl) {
+      e.preventDefault();
+      state.currentRoute = `/${navEl.dataset.nav}`;
+      if (state.currentRoute === "/settings") {
+        state._loadedHousehold = true;
+      }
+      render(app);
+      return;
+    }
+
     const action = actionEl?.dataset?.action;
     if (!action) return;
 
@@ -361,41 +397,32 @@ export async function init() {
         e.preventDefault();
         leaveHousehold().then(() => {
           state.household = null;
+          state.chores = [];
           render(app);
         });
         break;
       case "log-chore":
         e.preventDefault();
-        const choreId = parseInt(actionEl.dataset.choreId);
-        logChore(choreId, "").then(async () => {
+        logChore(parseInt(actionEl.dataset.choreId), "").then(async () => {
           await loadTodayData();
           render(app);
         });
         break;
       case "undo-chore":
         e.preventDefault();
-        const logId = parseInt(actionEl.dataset.logId);
-        undoLog(logId).then(async () => {
+        undoLog(parseInt(actionEl.dataset.logId)).then(async () => {
           await loadTodayData();
           render(app);
+        }).catch((err) => {
+          console.error('undo-chore failed:', err);
+          loadTodayData().then(() => render(app));
         });
         break;
       case "navigate-day":
         e.preventDefault();
-        const navDate = actionEl.dataset.date;
-        state.todayDate = navDate;
+        state.todayDate = actionEl.dataset.date;
         loadTodayData().then(() => render(app));
         break;
-    }
-
-    const nav = e.target.closest("[data-nav]");
-    if (nav) {
-      e.preventDefault();
-      state.currentRoute = `/${nav.dataset.nav}`;
-      if (state.currentRoute === "/settings") {
-        state._loadedHousehold = true;
-      }
-      render(app);
     }
   });
 
@@ -464,10 +491,8 @@ async function loadTodayData() {
   try {
     const date = state.todayDate || todayISO(0);
     const data = await loadToday(date);
-    if (data.logs) {
-      state.todayLogs = data.logs;
-      state.dailySummary = data.summary;
-    }
+    state.todayLogs = data.logs || [];
+    state.dailySummary = data.summary;
   } catch {}
 }
 
@@ -477,8 +502,35 @@ async function doCreateHousehold(form) {
   if (data.household) {
     state.household = data.household;
     await loadHouseholdData();
+    await seedDefaultChores();
+    await loadChoreData();
+    await loadTodayData();
+    state.currentRoute = "/";
     render(document.querySelector("#app"));
   }
+}
+
+async function seedDefaultChores() {
+  try {
+    await fetch("/api/chores/seed-defaults", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": (() => {
+          const m = document.cookie.match(/(?:^|;\s*)choresy_csrf=([^;]*)/);
+          return m ? m[1] : "";
+        })(),
+      },
+      body: JSON.stringify({
+        names: [
+          "Feed Cats (Morning)", "Feed Cats (Evening)", "Feed Baby",
+          "Change Baby", "Water Plants", "Clean Litter Box",
+          "Take Out Trash", "Wash Dishes", "Vacuum",
+          "Laundry", "Walk Dog", "Make Bed",
+        ],
+      }),
+    });
+  } catch {}
 }
 
 async function doJoinHousehold(form) {
@@ -487,6 +539,9 @@ async function doJoinHousehold(form) {
   if (data.household) {
     state.household = data.household;
     await loadHouseholdData();
+    await loadChoreData();
+    await loadTodayData();
+    state.currentRoute = "/";
     render(document.querySelector("#app"));
   }
 }

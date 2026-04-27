@@ -2,7 +2,23 @@ export function morphInnerHTML(root, html) {
   const template = document.createElement("template");
   template.innerHTML = html;
   const node = template.content.firstChild;
-  if (node) {
+
+  if (!node) {
+    root.replaceChildren();
+    return;
+  }
+
+  if (node.nodeType === Node.ELEMENT_NODE && root.firstElementChild) {
+    const existing = root.firstElementChild;
+    if (existing.nodeName === node.nodeName) {
+      morphAttributes(existing, node);
+      morphChildren(existing, node);
+    } else {
+      root.replaceChild(node.cloneNode(true), existing);
+    }
+  } else if (node.nodeType === Node.ELEMENT_NODE) {
+    root.appendChild(node.cloneNode(true));
+  } else {
     morphChildren(root, node);
   }
 }
