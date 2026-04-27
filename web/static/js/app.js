@@ -19,6 +19,7 @@ import {
 } from "./auth.js";
 import { loadHousehold, createHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, renderHouseholdView } from "./household.js";
 import { loadToday, logChore, undoLog, loadChores, renderTodayView, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
+import { renderStatsView, loadLeaderboard, loadStreaks, loadBreakdown, loadRecap } from "./stats.js";
 
 let state;
 
@@ -75,6 +76,7 @@ export function render(root) {
         html = renderHistoryView();
         break;
       case "/settings":
+      case "/stats":
         html = renderSettingsView();
         break;
       default:
@@ -127,7 +129,24 @@ function renderSettingsView() {
   if (!hh) {
     return renderHouseholdView(null);
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user.email)}</p><button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div></div>`;
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user.email)}</p><button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div><div class="card mt-3" id="stats-section">${state.stats ? renderStatsView(state) : '<p class="text-center text-secondary">Loading stats...</p>'}</div></div>`;
+}
+
+async function loadStatsData() {
+  try {
+    const [lb, st, br, rp] = await Promise.all([
+      loadLeaderboard("week"),
+      loadStreaks(),
+      loadBreakdown(),
+      loadRecap(),
+    ]);
+    state.stats = {
+      leaderboard: lb.leaderboard || [],
+      streaks: st.streaks || {},
+      breakdown: br.breakdown || [],
+      recap: rp.recap || {},
+    };
+  } catch {}
 }
 
 function updateTabs(route) {
@@ -410,6 +429,7 @@ export async function init() {
   if (state.household) {
     await loadChoreData();
     await loadTodayData();
+    loadStatsData();
   }
   render(app);
 }
