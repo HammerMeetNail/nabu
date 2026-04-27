@@ -127,9 +127,9 @@ function renderTodayView() {
 function renderSettingsView() {
   const hh = state.household;
   if (!hh) {
-    return renderHouseholdView(null);
+    return `<div class="settings-view">${renderHouseholdView(null)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user.email)}</p><button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div></div>`;
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user.email)}</p><button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div><div class="card mt-3" id="stats-section">${state.stats ? renderStatsView(state) : '<p class="text-center text-secondary">Loading stats...</p>'}</div></div>`;
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user.email)}</p><button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div>${state.stats ? renderStatsView(state) : '<p class="text-center text-secondary">Loading stats...</p>'}</div>`;
 }
 
 async function loadStatsData() {
@@ -306,12 +306,14 @@ async function consumeMagicLink(token) {
 export async function init() {
   state = createAppState();
 
-  state.user = await loadSession();
+  try {
+    state.user = await loadSession();
+  } catch {
+    state.user = null;
+  }
 
   const app = document.querySelector("#app");
   if (!app) return;
-
-  state.currentRoute = window.location.pathname || "/";
 
   document.addEventListener("click", (e) => {
     const actionEl = e.target.closest("[data-action]");
@@ -427,12 +429,14 @@ export async function init() {
     }
   });
 
-  await loadHouseholdData();
-  if (state.household) {
-    await loadChoreData();
-    await loadTodayData();
-    loadStatsData();
-  }
+  try {
+    await loadHouseholdData();
+    if (state.household) {
+      await loadChoreData();
+      await loadTodayData();
+      loadStatsData();
+    }
+  } catch {}
   render(app);
 }
 
@@ -487,4 +491,12 @@ async function doJoinHousehold(form) {
   }
 }
 
-init();
+function bootstrap() {
+  init().catch(() => {});
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", bootstrap);
+} else {
+  bootstrap();
+}

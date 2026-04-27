@@ -33,6 +33,7 @@ func NewServer(cfg config.Config) http.Handler {
 	authStore := auth.NewMemoryStore()
 	authService := auth.NewService(authStore)
 	authService.SetAuditLogger(audit.NewStdLogger(log.Default()))
+	authService.SetMailer(newMailer(cfg), cfg.AppBaseURL)
 	authHandler := handlers.NewAuthHandler(authService, "choresy_session")
 	householdStore := household.NewMemoryStore()
 	householdService := household.NewService(householdStore)
@@ -215,8 +216,8 @@ func method(want string, next http.HandlerFunc) http.HandlerFunc {
 }
 
 func newMailer(cfg config.Config) mail.Sender {
-	if cfg.SMTPHost != "" && cfg.SMTPFrom != "" {
-		return mail.UnavailableSender{}
+	if cfg.SMTPHost != "" {
+		return mail.NewSMTPSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom)
 	}
 	return mail.UnavailableSender{}
 }
