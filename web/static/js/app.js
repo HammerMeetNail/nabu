@@ -24,7 +24,7 @@ import { renderStatsView, loadLeaderboard, loadStreaks, loadBreakdown, loadRecap
 let state;
 
 export function render(root) {
-  const route = state.currentRoute || "/";
+  const route = state.currentRoute || window.location.pathname || "/";
   let html = "";
 
   if (route.startsWith("/verify-email")) {
