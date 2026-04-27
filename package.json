@@ -1,0 +1,11 @@
+{
+  "name": "choresy",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test web/static/js/tests/runner.js"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.0"
+  }
+}

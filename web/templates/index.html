@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#F4EFE7">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>{{.AppName}}</title>
+    <link rel="manifest" href="/static/manifest.webmanifest">
+    <link rel="stylesheet" href="/static/css/app.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="top-bar" id="top-bar" hidden>
+        <span class="app-title">{{.AppName}}</span>
+        <div class="top-bar-actions">
+          <button type="button" class="icon-button" id="notifications-bell" aria-label="Notifications" hidden>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+              <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+            </svg>
+            <span class="badge" id="notification-badge" hidden></span>
+          </button>
+          <button type="button" class="avatar-circle" id="user-avatar" aria-label="User menu" hidden></button>
+        </div>
+      </header>
+
+      <main id="app" aria-live="polite"></main>
+    </div>
+
+    <nav id="bottom-tabs" hidden aria-label="Main navigation">
+      <a href="/today" class="tab-item" data-nav="today">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9 22 9 12 15 12 15 22"></polyline>
+        </svg>
+        <span>Home</span>
+      </a>
+      <a href="/chores" class="tab-item" data-nav="chores">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"></path>
+          <rect x="9" y="3" width="6" height="4" rx="1"></rect>
+          <path d="M9 14l2 2 4-4"></path>
+        </svg>
+        <span>Chores</span>
+      </a>
+      <a href="/history" class="tab-item" data-nav="history">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+        </svg>
+        <span>History</span>
+      </a>
+      <a href="/settings" class="tab-item" data-nav="settings">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        <span>Settings</span>
+      </a>
+    </nav>
+
+    <footer class="app-footer">
+      <span>{{.AppName}} &copy; 2026</span>
+    </footer>
+
+    <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
+    <script type="module" src="/static/js/app.js"></script>
+  </body>
+</html>

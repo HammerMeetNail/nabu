@@ -1,0 +1,17 @@
+{
+  "name": "Choresy — Household Chore Tracker",
+  "short_name": "Choresy",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F4EFE7",
+  "theme_color": "#19323C",
+  "icons": [
+    {
+      "src": "/static/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

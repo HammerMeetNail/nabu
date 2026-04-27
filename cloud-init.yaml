@@ -1,0 +1,184 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+
+packages:
+  - podman-compose
+  - git
+  - rclone
+  - gnupg
+  - firewalld
+  - curl
+
+users:
+  - name: deploy
+    shell: /bin/bash
+    ssh_authorized_keys:
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIChoresyPlaceholderKey choresy-ci
+
+ssh_pwauth: false
+disable_root: true
+
+mounts:
+  - [/dev/sdb, /mnt/data, ext4, "defaults,nofail", "0", "2"]
+
+write_files:
+  - path: /etc/sudoers.d/deploy
+    permissions: "0440"
+    content: |
+      deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart choresy.service, /usr/bin/systemctl restart cloudflared.service, /usr/bin/systemctl status choresy.service, /usr/bin/systemctl status cloudflared.service, /usr/bin/journalctl -u choresy.service -n 200 --no-pager, /usr/bin/journalctl -u cloudflared.service -n 200 --no-pager
+
+  - path: /etc/sysctl.d/99-unprivileged-ports.conf
+    content: |
+      net.ipv4.ip_unprivileged_port_start=80
+
+  - path: /etc/systemd/system/cloudflared.service
+    content: |
+      [Unit]
+      Description=Cloudflare Tunnel
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      User=deploy
+      ExecStart=/usr/local/bin/cloudflared tunnel run choresy
+      Restart=always
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/systemd/system/choresy-backup.service
+    content: |
+      [Unit]
+      Description=Choresy Database Backup
+      After=network-online.target choresy.service
+      Wants=network-online.target
+
+      [Service]
+      Type=oneshot
+      User=deploy
+      WorkingDirectory=/opt/choresy
+      ExecStart=/opt/choresy/scripts/backup.sh
+
+  - path: /etc/systemd/system/choresy-backup.timer
+    content: |
+      [Unit]
+      Description=Daily backup for Choresy
+
+      [Timer]
+      OnCalendar=*-*-* 03:00:00
+      RandomizedDelaySec=900
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+
+  - path: /etc/systemd/system/choresy-verify-backup.service
+    content: |
+      [Unit]
+      Description=Choresy Backup Verification
+      After=network-online.target choresy-backup.service
+      Wants=network-online.target
+
+      [Service]
+      Type=oneshot
+      User=deploy
+      WorkingDirectory=/opt/choresy
+      ExecStart=/opt/choresy/scripts/verify-backup.sh
+
+  - path: /etc/systemd/system/choresy-verify-backup.timer
+    content: |
+      [Unit]
+      Description=Daily backup verification for Choresy
+
+      [Timer]
+      OnCalendar=*-*-* 04:00:00
+      RandomizedDelaySec=900
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+
+  - path: /etc/systemd/system/choresy.service
+    content: |
+      [Unit]
+      Description=Choresy App
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      User=deploy
+      WorkingDirectory=/opt/choresy
+      ExecStart=/usr/bin/podman-compose up -d
+      ExecStop=/usr/bin/podman-compose down
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /home/deploy/.cloudflared/config.yml
+    owner: deploy:deploy
+    permissions: "0600"
+    content: |
+      tunnel: choresy
+      credentials-file: /home/deploy/.cloudflared/choresy-tunnel.json
+
+      ingress:
+        - hostname: choresy.app
+          service: http://localhost:80
+        - service: http_status:404
+
+  - path: /usr/local/bin/setup-cloudflare-firewall.sh
+    permissions: "0700"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      systemctl enable --now firewalld
+
+      IPS_V4="$(curl -fsSL https://www.cloudflare.com/ips-v4 2>/dev/null || echo "173.245.48.0/20 103.21.244.0/22 103.22.200.0/22 103.31.4.0/22 141.101.64.0/18 108.162.192.0/18 190.93.240.0/20 188.114.96.0/20 197.234.240.0/22 198.41.128.0/17 162.158.0.0/15 104.16.0.0/13 104.24.0.0/14 172.64.0.0/13 131.0.72.0/22")"
+      IPS_V6="$(curl -fsSL https://www.cloudflare.com/ips-v6 2>/dev/null || echo "2400:cb00::/32 2606:4700::/32 2803:f800::/32 2405:b500::/32 2405:8100::/32 2a06:98c0::/29 2c0f:f248::/32")"
+
+      firewall-cmd --permanent --new-zone=cloudflare || true
+      firewall-cmd --permanent --zone=cloudflare --set-target=ACCEPT
+      firewall-cmd --permanent --zone=cloudflare --add-service=http
+      firewall-cmd --permanent --zone=cloudflare --add-service=https
+
+      for ip in $IPS_V4 $IPS_V6; do
+        firewall-cmd --permanent --zone=cloudflare --add-source="$ip"
+      done
+
+      firewall-cmd --permanent --zone=public --remove-service=http || true
+      firewall-cmd --permanent --zone=public --remove-service=https || true
+      firewall-cmd --reload
+
+runcmd:
+  - |
+    if ! blkid /dev/sdb; then
+      mkfs.ext4 /dev/sdb
+    fi
+  - mount -a
+  - mkdir -p /mnt/data/postgres /mnt/data/redis
+  - chown -R deploy:deploy /mnt/data
+  - chmod 700 /mnt/data/postgres /mnt/data/redis
+  - sysctl -p /etc/sysctl.d/99-unprivileged-ports.conf
+  - loginctl enable-linger deploy
+  - systemctl enable --now firewalld
+  - /usr/local/bin/setup-cloudflare-firewall.sh
+  - mkdir -p /opt/choresy
+  - chown deploy:deploy /opt/choresy
+  - |
+    CLOUDFLARED_VERSION="2026.1.2"
+    curl -fsSL "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64" -o /usr/local/bin/cloudflared
+    chmod +x /usr/local/bin/cloudflared
+  - mkdir -p /home/deploy/.cloudflared
+  - chown -R deploy:deploy /home/deploy/.cloudflared
+  - mkdir -p /home/deploy/.config/rclone
+  - chown -R deploy:deploy /home/deploy/.config
+  - systemctl daemon-reload
+  - systemctl enable choresy.service
+  - systemctl enable choresy-backup.timer
+  - systemctl enable choresy-verify-backup.timer
