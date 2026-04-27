@@ -18,6 +18,7 @@ import {
   renderResetPasswordView,
 } from "./auth.js";
 import { loadHousehold, createHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, renderHouseholdView } from "./household.js";
+import { loadToday, logChore, undoLog, loadChores, renderTodayView, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
 
 let state;
 
@@ -86,46 +87,39 @@ export function render(root) {
   updateTopBar();
 }
 
-function renderTodayView() {
-  if (!state.household) {
-    return `<div class="card mt-3">
-      <h2>Welcome!</h2>
-      <p>${state.user ? `Hi ${escapeHTML(state.user.email)}! ` : ''}Set up your household to get started with Choresy.</p>
-      <div class="mt-2">
-        <button type="button" class="btn btn-primary" data-nav="settings">Set Up Household</button>
-      </div>
-    </div>`;
-  }
-  return `<div class="today-view">
-    <h2>Today</h2>
-    <div class="empty-state">
-      <div class="empty-state-icon">🏠</div>
-      <div class="empty-state-title">No chores yet</div>
-      <p>Your household chores will appear here.</p>
-    </div>
-  </div>`;
-}
-
 function renderChoresView() {
-  return `<div class="chores-view">
-    <h2>Chores</h2>
-    <div class="empty-state">
-      <div class="empty-state-icon">📋</div>
-      <div class="empty-state-title">No chores yet</div>
-      <p>Add chores for your household to get started.</p>
-    </div>
-  </div>`;
+  const chores = state.chores || [];
+  if (chores.length === 0) {
+    return `<div class="chores-view"><h2>Chores</h2>
+    <div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-title">No chores yet</div>
+    <p>Use settings to set up your household chores.</p></div></div>`;
+  }
+  const grid = chores.map(c => `<div class="card mb-2" style="border-left:4px solid ${c.color}">
+    <span style="font-size:1.5rem">${c.icon}</span> <strong>${escapeHTML(c.name)}</strong>
+    <span class="text-secondary"> — ${c.category}</span>
+    ${c.isPredefined ? '<span class="role-badge">built-in</span>' : ''}
+  </div>`).join("");
+  return `<div class="chores-view"><h2>Chores</h2><div class="mt-3">${grid}</div></div>`;
 }
 
 function renderHistoryView() {
-  return `<div class="history-view">
-    <h2>History</h2>
-    <div class="empty-state">
-      <div class="empty-state-icon">📊</div>
-      <div class="empty-state-title">No history yet</div>
-      <p>Completed chores will appear here.</p>
-    </div>
-  </div>`;
+  return renderHistoryPage(state);
+}
+
+function renderTodayView() {
+  const chores = state.chores || [];
+  if (!state.household && state.user) {
+    return `<div class="card mt-3"><h2>Welcome!</h2>
+      <p>Hi ${escapeHTML(state.user.email)}! Set up your household to get started.</p>
+      <a class="btn btn-primary mt-2" href="#" data-nav="settings">Set Up Household</a></div>`;
+  }
+  if (chores.length === 0) {
+    return `<div class="today-view"><h2>Today</h2>
+    <div class="empty-state"><div class="empty-state-icon">🏠</div>
+    <div class="empty-state-title">No chores set up yet</div>
+    <p>Add chores via settings or the chores tab.</p></div></div>`;
+  }
+  return renderTodayView(state);
 }
 
 function renderSettingsView() {
@@ -347,6 +341,28 @@ export async function init() {
           render(app);
         });
         break;
+      case "log-chore":
+        e.preventDefault();
+        const choreId = parseInt(actionEl.dataset.choreId);
+        logChore(choreId, "").then(async () => {
+          await loadTodayData();
+          render(app);
+        });
+        break;
+      case "undo-chore":
+        e.preventDefault();
+        const logId = parseInt(actionEl.dataset.logId);
+        undoLog(logId).then(async () => {
+          await loadTodayData();
+          render(app);
+        });
+        break;
+      case "navigate-day":
+        e.preventDefault();
+        const navDate = actionEl.dataset.date;
+        state.todayDate = navDate;
+        loadTodayData().then(() => render(app));
+        break;
     }
 
     const nav = e.target.closest("[data-nav]");
@@ -391,6 +407,10 @@ export async function init() {
   });
 
   await loadHouseholdData();
+  if (state.household) {
+    await loadChoreData();
+    await loadTodayData();
+  }
   render(app);
 }
 
@@ -401,6 +421,26 @@ async function loadHouseholdData() {
       state.household = data.household;
       state.members = data.members;
       state.invites = data.invites;
+    }
+  } catch {}
+}
+
+async function loadChoreData() {
+  try {
+    const data = await loadChores();
+    if (data.chores) {
+      state.chores = data.chores;
+    }
+  } catch {}
+}
+
+async function loadTodayData() {
+  try {
+    const date = state.todayDate || todayISO(0);
+    const data = await loadToday(date);
+    if (data.logs) {
+      state.todayLogs = data.logs;
+      state.dailySummary = data.summary;
     }
   } catch {}
 }
