@@ -5,18 +5,18 @@ import (
 )
 
 type ChoreSchedule struct {
-	ID              int64     `json:"id"`
-	HouseholdID     int64     `json:"householdId"`
-	ChoreID         int64     `json:"choreId"`
-	FrequencyType   string    `json:"frequencyType"`
-	TimesOfDay      []string  `json:"timesOfDay"`
-	DaysOfWeek      []int     `json:"daysOfWeek"`
-	IntervalDays    int       `json:"intervalDays"`
-	TargetCount     int       `json:"targetCount"`
-	IsActive        bool      `json:"isActive"`
-	AssignedUserID  *int64    `json:"assignedUserId"`
-	CreatedAt       time.Time `json:"createdAt"`
-	UpdatedAt       time.Time `json:"updatedAt"`
+	ID             int64     `json:"id"`
+	HouseholdID    int64     `json:"householdId"`
+	ChoreID        int64     `json:"choreId"`
+	FrequencyType  string    `json:"frequencyType"`
+	TimesOfDay     []string  `json:"timesOfDay"`
+	DaysOfWeek     []int     `json:"daysOfWeek"`
+	IntervalDays   int       `json:"intervalDays"`
+	TargetCount    int       `json:"targetCount"`
+	IsActive       bool      `json:"isActive"`
+	AssignedUserID *int64    `json:"assignedUserId"`
+	CreatedAt      time.Time `json:"createdAt"`
+	UpdatedAt      time.Time `json:"updatedAt"`
 }
 
 type Service struct {

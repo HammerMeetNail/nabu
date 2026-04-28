@@ -18,9 +18,9 @@ func NewStatsHandler(service *stats.Service) *StatsHandler {
 }
 
 func (h *StatsHandler) Leaderboard(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.CurrentUser(r.Context())
-	if !ok || user.HouseholdID == nil {
-		writeError(w, http.StatusUnauthorized, "not authenticated")
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
 		return
 	}
 
@@ -49,9 +49,9 @@ func (h *StatsHandler) Leaderboard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *StatsHandler) Streaks(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.CurrentUser(r.Context())
-	if !ok || user.HouseholdID == nil {
-		writeError(w, http.StatusUnauthorized, "not authenticated")
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
 		return
 	}
 
@@ -65,9 +65,9 @@ func (h *StatsHandler) Streaks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *StatsHandler) Heatmap(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.CurrentUser(r.Context())
-	if !ok || user.HouseholdID == nil {
-		writeError(w, http.StatusUnauthorized, "not authenticated")
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
 		return
 	}
 
@@ -99,9 +99,9 @@ func (h *StatsHandler) Heatmap(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *StatsHandler) Breakdown(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.CurrentUser(r.Context())
-	if !ok || user.HouseholdID == nil {
-		writeError(w, http.StatusUnauthorized, "not authenticated")
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
 		return
 	}
 
@@ -133,9 +133,9 @@ func (h *StatsHandler) Breakdown(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *StatsHandler) Recap(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.CurrentUser(r.Context())
-	if !ok || user.HouseholdID == nil {
-		writeError(w, http.StatusUnauthorized, "not authenticated")
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
 		return
 	}
 

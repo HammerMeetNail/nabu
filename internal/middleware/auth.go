@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	"github.com/dave/choresy/internal/auth"
 )
@@ -15,6 +16,10 @@ func Session(authService *auth.Service, cookieName string) func(http.Handler) ht
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if authService == nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+			if shouldSkip(r.URL.Path) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -34,6 +39,13 @@ func Session(authService *auth.Service, cookieName string) func(http.Handler) ht
 	}
 }
 
+func shouldSkip(path string) bool {
+	return strings.HasPrefix(path, "/static/") ||
+		strings.HasPrefix(path, "/service-worker.js") ||
+		path == "/health" ||
+		path == "/ready"
+}
+
 func CurrentUser(ctx context.Context) (auth.User, bool) {
 	user, ok := ctx.Value(userContextKey).(auth.User)
 	return user, ok
@@ -44,6 +56,21 @@ func RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 		_, ok := CurrentUser(r.Context())
 		if !ok {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next(w, r)
+	}
+}
+
+func RequireHousehold(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user, ok := CurrentUser(r.Context())
+		if !ok {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if user.HouseholdID == nil {
+			http.Error(w, "no household", http.StatusBadRequest)
 			return
 		}
 		next(w, r)

@@ -34,10 +34,10 @@ type BusyHour struct {
 }
 
 type WeeklyRecap struct {
-	TotalChores    int              `json:"totalChores"`
-	TopPerformer   *LeaderboardEntry `json:"topPerformer"`
-	MostActiveDay  string           `json:"mostActiveDay"`
-	ByCategory     []CategoryBreakdown `json:"byCategory"`
+	TotalChores   int                 `json:"totalChores"`
+	TopPerformer  *LeaderboardEntry   `json:"topPerformer"`
+	MostActiveDay string              `json:"mostActiveDay"`
+	ByCategory    []CategoryBreakdown `json:"byCategory"`
 }
 
 type Service struct {
@@ -93,7 +93,9 @@ func (s *Service) getLeaderboard(ctx context.Context, householdID int64, start, 
 }
 
 func (s *Service) GetUserStreaks(ctx context.Context, householdID, userID int64) (StreakInfo, error) {
-	logs, err := s.logStore.ListLogsRange(ctx, householdID, time.Time{}, time.Now().UTC().AddDate(0, 0, 1))
+	now := time.Now().UTC()
+	start := now.AddDate(-1, 0, 0)
+	logs, err := s.logStore.ListLogsRange(ctx, householdID, start, now.AddDate(0, 0, 1))
 	if err != nil {
 		return StreakInfo{}, err
 	}
@@ -105,10 +107,10 @@ func (s *Service) GetUserStreaks(ctx context.Context, householdID, userID int64)
 		}
 	}
 
-	now := time.Now().UTC()
+	checkNow := time.Now().UTC()
 	current := 0
 	for i := 0; i < 365; i++ {
-		d := now.AddDate(0, 0, -i).Format("2006-01-02")
+		d := checkNow.AddDate(0, 0, -i).Format("2006-01-02")
 		if daySet[d] {
 			current++
 		} else {
@@ -118,8 +120,8 @@ func (s *Service) GetUserStreaks(ctx context.Context, householdID, userID int64)
 
 	longest := 0
 	streak := 0
-	start := time.Now().UTC().AddDate(-1, 0, 0)
-	for d := start; !d.After(now); d = d.AddDate(0, 0, 1) {
+	streakStart := now.AddDate(-1, 0, 0)
+	for d := streakStart; !d.After(checkNow); d = d.AddDate(0, 0, 1) {
 		if daySet[d.Format("2006-01-02")] {
 			streak++
 			if streak > longest {

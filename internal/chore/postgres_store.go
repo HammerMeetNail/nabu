@@ -58,18 +58,20 @@ func (s *PostgresStore) DeleteChore(ctx context.Context, id int64) error {
 }
 
 func (s *PostgresStore) ReorderChores(ctx context.Context, householdID int64, choreIDs []int64) error {
-	for i, id := range choreIDs {
-		if _, err := s.db.ExecContext(ctx, `UPDATE chores SET sort_order = $1 WHERE id = $2 AND household_id = $3`, i, id, householdID); err != nil {
-			return err
-		}
-	}
-	return nil
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE chores SET sort_order = v.ord
+		FROM (SELECT UNNEST($1::bigint[]) AS id, GENERATE_SERIES(0, $2) AS ord) v
+		WHERE chores.id = v.id AND chores.household_id = $3
+	`, choreIDs, len(choreIDs)-1, householdID)
+	return err
 }
 
 func (s *PostgresStore) SeedPredefinedChores(ctx context.Context, householdID int64) error {
 	for _, pc := range PredefinedChores {
-		s.db.ExecContext(ctx, `INSERT INTO chores (household_id, name, icon, color, sort_order, category, is_predefined) VALUES ($1,$2,$3,$4,$5,$6,TRUE) ON CONFLICT (household_id, name) DO NOTHING`,
-			householdID, pc.Name, pc.Icon, pc.Color, pc.SortOrder, pc.Category)
+		if _, err := s.db.ExecContext(ctx, `INSERT INTO chores (household_id, name, icon, color, sort_order, category, is_predefined) VALUES ($1,$2,$3,$4,$5,$6,TRUE) ON CONFLICT (household_id, name) DO NOTHING`,
+			householdID, pc.Name, pc.Icon, pc.Color, pc.SortOrder, pc.Category); err != nil {
+			return err
+		}
 	}
 	return nil
 }

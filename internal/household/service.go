@@ -181,7 +181,7 @@ func (s *Service) LeaveHousehold(ctx context.Context, userID int64) error {
 		}
 		for _, m := range members {
 			if m.Role == RoleOwner && m.UserID != userID {
-				break
+				return s.store.RemoveMember(ctx, hhID, userID)
 			}
 		}
 		return ErrLastOwner

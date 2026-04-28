@@ -16,11 +16,11 @@ type ChoreLog struct {
 }
 
 type DailySummary struct {
-	Date         string        `json:"date"`
-	TotalChores  int           `json:"totalChores"`
-	ChoresDone   int           `json:"choresDone"`
-	ByUser       map[int64]int `json:"byUser"`
-	ByCategory   map[string]int `json:"byCategory"`
+	Date        string         `json:"date"`
+	TotalChores int            `json:"totalChores"`
+	ChoresDone  int            `json:"choresDone"`
+	ByUser      map[int64]int  `json:"byUser"`
+	ByCategory  map[string]int `json:"byCategory"`
 }
 
 type Store interface {

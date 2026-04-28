@@ -16,12 +16,12 @@ type Notification struct {
 }
 
 type ReminderPreference struct {
-	UserID             int64  `json:"userId"`
-	PushEnabled        bool   `json:"pushEnabled"`
-	EmailEnabled       bool   `json:"emailEnabled"`
-	QuietHoursStart    string `json:"quietHoursStart"`
-	QuietHoursEnd      string `json:"quietHoursEnd"`
-	Timezone           string `json:"timezone"`
+	UserID          int64  `json:"userId"`
+	PushEnabled     bool   `json:"pushEnabled"`
+	EmailEnabled    bool   `json:"emailEnabled"`
+	QuietHoursStart string `json:"quietHoursStart"`
+	QuietHoursEnd   string `json:"quietHoursEnd"`
+	Timezone        string `json:"timezone"`
 }
 
 type Store interface {

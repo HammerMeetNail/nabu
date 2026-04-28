@@ -1,6 +1,7 @@
 import { createAppState, resetAuthedState } from "./state.js";
 import { morphInnerHTML } from "./morph.js";
-import { apiMe } from "./api.js";
+import { apiMe, apiFetch } from "./api.js";
+import { escapeHTML } from "./utils.js";
 import {
   loadSession,
   handleLogin,
@@ -18,7 +19,7 @@ import {
   renderResetPasswordView,
 } from "./auth.js";
 import { loadHousehold, createHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, renderHouseholdView } from "./household.js";
-import { loadToday, logChore, undoLog, loadChores, renderTodayView as renderTodayViewImpl, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
+import { loadToday, logChore, undoLog, loadChores, loadHistory, renderTodayView as renderTodayViewImpl, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
 import { renderStatsView, loadLeaderboard, loadStreaks, loadBreakdown, loadRecap } from "./stats.js";
 
 let state;
@@ -32,7 +33,10 @@ export function render(root) {
     const token = url.searchParams.get("token");
     if (token) {
       html = renderVerifyEmailView(true);
-      verifyEmail(token);
+      if (!state._emailVerified) {
+        state._emailVerified = true;
+        verifyEmail(token);
+      }
     } else {
       html = renderVerifyEmailView(false);
     }
@@ -41,7 +45,10 @@ export function render(root) {
     const token = url.searchParams.get("token");
     if (token) {
       html = renderMagicLinkNoticeView();
-      consumeMagicLink(token);
+      if (!state._magicLinkConsumed) {
+        state._magicLinkConsumed = true;
+        consumeMagicLink(token);
+      }
     } else {
       html = `<div class="auth-card"><p class="text-center">Invalid magic link.</p></div>`;
     }
@@ -199,12 +206,6 @@ function updateTopBar() {
   }
 }
 
-function escapeHTML(str) {
-  const div = document.createElement("div");
-  div.textContent = str;
-  return div.innerHTML;
-}
-
 function showToast(message, type) {
   const container = document.querySelector("#toast-container");
   if (!container) return;
@@ -248,9 +249,11 @@ async function reloadAfterAuth() {
   try {
     await loadHouseholdData();
     if (state.household) {
-      await loadChoreData();
-      await loadTodayData();
-      loadStatsData();
+      await Promise.all([
+        loadChoreData(),
+        loadTodayData(),
+        loadStatsData(),
+      ]);
     }
   } catch {}
 }
@@ -358,6 +361,13 @@ export async function init() {
       state.currentRoute = `/${navEl.dataset.nav}`;
       if (state.currentRoute === "/settings") {
         state._loadedHousehold = true;
+      }
+      if (state.currentRoute === "/history") {
+        loadHistory().then(data => {
+          state.historyLogs = data.logs || [];
+          render(app);
+        });
+        return;
       }
       render(app);
       return;
@@ -469,9 +479,11 @@ export async function init() {
   try {
     await loadHouseholdData();
     if (state.household) {
-      await loadChoreData();
-      await loadTodayData();
-      loadStatsData();
+      await Promise.all([
+        loadChoreData(),
+        loadTodayData(),
+        loadStatsData(),
+      ]);
     }
   } catch {}
   render(app);
@@ -522,24 +534,7 @@ async function doCreateHousehold(form) {
 
 async function seedDefaultChores() {
   try {
-    await fetch("/api/chores/seed-defaults", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CSRF-Token": (() => {
-          const m = document.cookie.match(/(?:^|;\s*)choresy_csrf=([^;]*)/);
-          return m ? m[1] : "";
-        })(),
-      },
-      body: JSON.stringify({
-        names: [
-          "Feed Cats (Morning)", "Feed Cats (Evening)", "Feed Baby",
-          "Change Baby", "Water Plants", "Clean Litter Box",
-          "Take Out Trash", "Wash Dishes", "Vacuum",
-          "Laundry", "Walk Dog", "Make Bed",
-        ],
-      }),
-    });
+    await apiFetch("/api/chores/seed-defaults", { method: "POST" });
   } catch {}
 }
 

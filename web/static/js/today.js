@@ -1,13 +1,6 @@
-import { getCSRFToken } from "./api.js";
+import { apiFetch } from "./api.js";
+import { escapeHTML } from "./utils.js";
 
-function apiFetch(path, options = {}) {
-  const headers = new Headers(options.headers || {});
-  headers.set("Content-Type", "application/json");
-  const csrfToken = getCSRFToken();
-  if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
-  if (!options.method) options.method = "GET";
-  return fetch(path, { ...options, headers }).then(r => r.json());
-}
 
 export function todayISO(offset) {
   const d = new Date();
@@ -28,26 +21,40 @@ function fmtDate(iso) {
 
 export async function loadToday(date) {
   const d = date || todayISO(0);
-  return apiFetch(`/api/logs/today?date=${d}`);
+  const { data } = await apiFetch(`/api/logs/today?date=${d}`);
+  return data;
 }
 
 export async function loadWeek(start) {
-  return apiFetch(`/api/logs/week?start=${start}`);
+  const { data } = await apiFetch(`/api/logs/week?start=${start}`);
+  return data;
+}
+
+export async function loadHistory() {
+  const start = todayISO(0);
+  const d = new Date(start + "T00:00:00");
+  d.setDate(d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1));
+  const weekStart = d.toISOString().split("T")[0];
+  const { data } = await apiFetch(`/api/logs/week?start=${weekStart}`);
+  return data;
 }
 
 export async function logChore(choreId, note) {
-  return apiFetch("/api/logs", {
+  const { data } = await apiFetch("/api/logs", {
     method: "POST",
     body: JSON.stringify({ choreId, note }),
   });
+  return data;
 }
 
 export async function undoLog(logId) {
-  return apiFetch(`/api/logs/${logId}`, { method: "DELETE" });
+  const { data } = await apiFetch(`/api/logs/${logId}`, { method: "DELETE" });
+  return data;
 }
 
 export async function loadChores() {
-  return apiFetch("/api/chores");
+  const { data } = await apiFetch("/api/chores");
+  return data;
 }
 
 export function renderTodayView(state) {
@@ -94,9 +101,21 @@ export function renderTodayView(state) {
 }
 
 export function renderHistoryView(state) {
+  const logs = state.historyLogs || [];
+  if (logs.length === 0) {
+    return `<div class="history-view">
+      <h2>History</h2>
+      <p class="text-secondary">No completed chores yet this week.</p>
+    </div>`;
+  }
+  const items = logs.map(l => `<li class="member-item">
+    <span>${l.completedAt ? new Date(l.completedAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</span>
+    <span>Chore #${l.choreId}</span>
+    ${l.note ? `<span class="text-secondary">${escapeHTML(l.note)}</span>` : ''}
+  </li>`).join("");
   return `<div class="history-view">
     <h2>History</h2>
-    <p class="text-secondary">Completed chores will appear here.</p>
+    <ul class="member-list">${items}</ul>
   </div>`;
 }
 

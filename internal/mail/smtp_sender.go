@@ -9,11 +9,11 @@ import (
 )
 
 type SMTPSender struct {
-	host     string
-	port     string
-	user     string
-	pass     string
-	from     string
+	host string
+	port string
+	user string
+	pass string
+	from string
 }
 
 func NewSMTPSender(host, port, user, pass, from string) *SMTPSender {

@@ -18,9 +18,9 @@ func NewLogHandler(service *log.Service) *LogHandler {
 }
 
 func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.CurrentUser(r.Context())
-	if !ok || user.HouseholdID == nil {
-		writeError(w, http.StatusUnauthorized, "not authenticated")
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
 		return
 	}
 
@@ -43,11 +43,7 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *LogHandler) Delete(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.CurrentUser(r.Context())
-	if !ok {
-		writeError(w, http.StatusUnauthorized, "not authenticated")
-		return
-	}
+	user, _ := middleware.CurrentUser(r.Context())
 
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -65,9 +61,9 @@ func (h *LogHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *LogHandler) Today(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.CurrentUser(r.Context())
-	if !ok || user.HouseholdID == nil {
-		writeError(w, http.StatusUnauthorized, "not authenticated")
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
 		return
 	}
 
@@ -86,7 +82,7 @@ func (h *LogHandler) Today(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	summary, _ := h.service.GetDailySummary(r.Context(), *user.HouseholdID, date)
+	summary := h.service.DailySummaryFromLogs(date, logs)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"logs":    logs,
@@ -96,9 +92,9 @@ func (h *LogHandler) Today(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *LogHandler) Week(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.CurrentUser(r.Context())
-	if !ok || user.HouseholdID == nil {
-		writeError(w, http.StatusUnauthorized, "not authenticated")
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
 		return
 	}
 
@@ -121,9 +117,9 @@ func (h *LogHandler) Week(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *LogHandler) Month(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.CurrentUser(r.Context())
-	if !ok || user.HouseholdID == nil {
-		writeError(w, http.StatusUnauthorized, "not authenticated")
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
 		return
 	}
 

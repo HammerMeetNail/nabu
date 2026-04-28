@@ -17,9 +17,9 @@ func NewChoreHandler(service *chore.Service) *ChoreHandler {
 }
 
 func (h *ChoreHandler) List(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.CurrentUser(r.Context())
-	if !ok || user.HouseholdID == nil {
-		writeError(w, http.StatusUnauthorized, "not authenticated or no household")
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
 		return
 	}
 
@@ -36,9 +36,9 @@ func (h *ChoreHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChoreHandler) Create(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.CurrentUser(r.Context())
-	if !ok || user.HouseholdID == nil {
-		writeError(w, http.StatusUnauthorized, "not authenticated or no household")
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
 		return
 	}
 
@@ -70,27 +70,16 @@ func (h *ChoreHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	c, err := h.service.ListChores(r.Context(), 0)
+	c, err := h.service.GetChore(r.Context(), id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "chore not found")
 		return
 	}
-
-	for _, ch := range c {
-		if ch.ID == id {
-			writeJSON(w, http.StatusOK, map[string]any{"chore": ch})
-			return
-		}
-	}
-	writeError(w, http.StatusNotFound, "chore not found")
+	writeJSON(w, http.StatusOK, map[string]any{"chore": c})
 }
 
 func (h *ChoreHandler) Update(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.CurrentUser(r.Context())
-	if !ok || user.HouseholdID == nil {
-		writeError(w, http.StatusUnauthorized, "not authenticated")
-		return
-	}
+	_, _ = middleware.CurrentUser(r.Context())
 
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -115,7 +104,6 @@ func (h *ChoreHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_ = user
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
@@ -136,9 +124,9 @@ func (h *ChoreHandler) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChoreHandler) Reorder(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.CurrentUser(r.Context())
-	if !ok || user.HouseholdID == nil {
-		writeError(w, http.StatusUnauthorized, "not authenticated")
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
 		return
 	}
 
@@ -164,9 +152,9 @@ func (h *ChoreHandler) GetDefaults(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChoreHandler) SeedDefaults(w http.ResponseWriter, r *http.Request) {
-	user, ok := middleware.CurrentUser(r.Context())
-	if !ok || user.HouseholdID == nil {
-		writeError(w, http.StatusUnauthorized, "not authenticated")
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
 		return
 	}
 

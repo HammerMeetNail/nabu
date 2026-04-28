@@ -8,6 +8,7 @@ import (
 
 	"github.com/dave/choresy/internal/auth"
 	"github.com/dave/choresy/internal/mail"
+	"github.com/dave/choresy/internal/middleware"
 )
 
 func setupAuthHandler(t *testing.T) (*AuthHandler, *auth.Service) {
@@ -16,7 +17,7 @@ func setupAuthHandler(t *testing.T) (*AuthHandler, *auth.Service) {
 	svc := auth.NewService(store)
 	mailer := mail.NewMemorySender()
 	svc.SetMailer(mailer, "http://localhost:8080")
-	handler := NewAuthHandler(svc, "choresy_session")
+	handler := NewAuthHandler(svc, "choresy_session", false)
 	return handler, svc
 }
 
@@ -143,7 +144,8 @@ func TestAuthMe(t *testing.T) {
 	req.AddCookie(&http.Cookie{Name: "choresy_session", Value: session.ID})
 	rec := httptest.NewRecorder()
 
-	handler.Me(rec, req)
+	sessionMW := middleware.Session(svc, "choresy_session")
+	sessionMW(http.HandlerFunc(handler.Me)).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusOK)

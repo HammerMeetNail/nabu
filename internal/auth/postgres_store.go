@@ -3,7 +3,10 @@ package auth
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type PostgresStore struct {
@@ -237,22 +240,6 @@ func (s *PostgresStore) ConsumeAuthToken(ctx context.Context, tokenHash, kind st
 }
 
 func isUniqueViolation(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	return stringsContains(msg, "duplicate key") || stringsContains(msg, "unique constraint") || stringsContains(msg, "UNIQUE constraint failed")
-}
-
-func stringsContains(s, substr string) bool {
-	return len(s) >= len(substr) && indexOf(s, substr) >= 0
-}
-
-func indexOf(s, substr string) int {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
 }

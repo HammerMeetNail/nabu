@@ -1,35 +1,30 @@
 import { getCSRFToken } from "./api.js";
-
-function apiFetch(path) {
-  const csrfToken = getCSRFToken();
-  const headers = { "X-CSRF-Token": csrfToken };
-  return fetch(path, { headers }).then(r => r.json());
-}
-
-function escapeHTML(str) {
-  const div = document.createElement("div");
-  div.textContent = str;
-  return div.innerHTML;
-}
+import { apiFetch } from "./api.js";
+import { escapeHTML } from "./utils.js";
 
 export async function loadLeaderboard(period) {
-  return apiFetch(`/api/stats/leaderboard?period=${period || "week"}`);
+  const { data } = await apiFetch(`/api/stats/leaderboard?period=${period || "week"}`);
+  return data;
 }
 
 export async function loadStreaks() {
-  return apiFetch("/api/stats/streaks");
+  const { data } = await apiFetch("/api/stats/streaks");
+  return data;
 }
 
 export async function loadHeatmap() {
-  return apiFetch("/api/stats/heatmap");
+  const { data } = await apiFetch("/api/stats/heatmap");
+  return data;
 }
 
 export async function loadBreakdown() {
-  return apiFetch("/api/stats/breakdown");
+  const { data } = await apiFetch("/api/stats/breakdown");
+  return data;
 }
 
 export async function loadRecap() {
-  return apiFetch("/api/stats/recap");
+  const { data } = await apiFetch("/api/stats/recap");
+  return data;
 }
 
 export function renderStatsView(state) {
@@ -38,12 +33,22 @@ export function renderStatsView(state) {
   const streaks = stats.streaks || {};
   const breakdown = stats.breakdown || [];
   const recap = stats.recap || {};
+  const members = state.members || [];
+
+  const memberMap = {};
+  members.forEach(m => {
+    memberMap[m.userId] = m;
+  });
 
   const lbItems = leaderboard.map((entry, i) => {
     const medal = i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : "";
+    const member = memberMap[entry.userId];
+    const name = member ? (member.displayName || member.email) : `User ${entry.userId}`;
+    const initial = name.charAt(0).toUpperCase();
+    const color = member ? member.avatarColor : "#19323C";
     return `<li class="member-item">
-      <span class="avatar-circle-sm" style="background:#19323C">${medal || "#"}</span>
-      <span>User ${entry.userId}</span>
+      <span class="avatar-circle-sm" style="background:${color}">${initial}</span>
+      <span>${escapeHTML(name)}</span>
       <span class="text-secondary">${entry.count} chores</span>
     </li>`;
   }).join("") || '<p class="text-secondary text-center">No data yet</p>';

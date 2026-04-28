@@ -71,6 +71,10 @@ func (s *Service) GetDailySummary(ctx context.Context, householdID int64, date t
 	if err != nil {
 		return DailySummary{}, err
 	}
+	return s.DailySummaryFromLogs(date, logs), nil
+}
+
+func (s *Service) DailySummaryFromLogs(date time.Time, logs []ChoreLog) DailySummary {
 	summary := DailySummary{
 		Date:        date.Format("2006-01-02"),
 		TotalChores: len(logs),
@@ -81,7 +85,7 @@ func (s *Service) GetDailySummary(ctx context.Context, householdID int64, date t
 	for _, l := range logs {
 		summary.ByUser[l.UserID]++
 	}
-	return summary, nil
+	return summary
 }
 
 func (s *Service) today() time.Time {

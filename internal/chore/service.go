@@ -41,6 +41,10 @@ func (s *Service) ListChores(ctx context.Context, householdID int64) ([]Chore, e
 	return s.store.ListChores(ctx, householdID)
 }
 
+func (s *Service) GetChore(ctx context.Context, choreID int64) (Chore, error) {
+	return s.store.GetChore(ctx, choreID)
+}
+
 func (s *Service) UpdateChore(ctx context.Context, choreID int64, name, icon, color, category string) error {
 	existing, err := s.store.GetChore(ctx, choreID)
 	if err != nil {

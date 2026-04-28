@@ -19,4 +19,6 @@ export function resetAuthedState(state) {
   state.todayLogs = [];
   state.notifications = [];
   state.unreadNotifications = 0;
+  state.members = [];
+  state.invites = [];
 }

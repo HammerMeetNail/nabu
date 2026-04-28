@@ -3,6 +3,7 @@ package chore
 import (
 	"context"
 	"errors"
+	"sort"
 	"sync"
 	"time"
 )
@@ -142,11 +143,10 @@ func (s *MemoryStore) SeedPredefinedChores(_ context.Context, householdID int64)
 }
 
 func sortChores(chores []Chore) {
-	for i := 0; i < len(chores); i++ {
-		for j := i + 1; j < len(chores); j++ {
-			if chores[i].SortOrder > chores[j].SortOrder || (chores[i].SortOrder == chores[j].SortOrder && chores[i].Name > chores[j].Name) {
-				chores[i], chores[j] = chores[j], chores[i]
-			}
+	sort.Slice(chores, func(i, j int) bool {
+		if chores[i].SortOrder != chores[j].SortOrder {
+			return chores[i].SortOrder < chores[j].SortOrder
 		}
-	}
+		return chores[i].Name < chores[j].Name
+	})
 }

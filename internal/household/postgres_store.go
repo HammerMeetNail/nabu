@@ -107,7 +107,39 @@ func (s *PostgresStore) CreateInvite(ctx context.Context, householdID, createdBy
 	return inv, err
 }
 
-func (s *PostgresStore) GetInviteByCode(ctx context.Context, code string) (Invite, error) { var inv Invite; err := s.db.QueryRowContext(ctx, `SELECT id, household_id, code, created_by, max_uses, used_count, COALESCE(expires_at, 'epoch'::timestamptz), created_at FROM invites WHERE code = $1`, code).Scan(&inv.ID, &inv.HouseholdID, &inv.Code, &inv.CreatedBy, &inv.MaxUses, &inv.UsedCount, &inv.ExpiresAt, &inv.CreatedAt); if err == sql.ErrNoRows { return Invite{}, ErrInviteNotFound }; return inv, err }
-func (s *PostgresStore) GetInvites(ctx context.Context, householdID int64) ([]Invite, error) { rows, err := s.db.QueryContext(ctx, `SELECT id, household_id, code, created_by, max_uses, used_count, expires_at, created_at FROM invites WHERE household_id = $1`, householdID); if err != nil { return nil, err }; defer rows.Close(); var invs []Invite; for rows.Next() { var inv Invite; rows.Scan(&inv.ID, &inv.HouseholdID, &inv.Code, &inv.CreatedBy, &inv.MaxUses, &inv.UsedCount, &inv.ExpiresAt, &inv.CreatedAt); invs = append(invs, inv) }; return invs, rows.Err() }
-func (s *PostgresStore) UseInvite(ctx context.Context, code string) error { _, err := s.db.ExecContext(ctx, `UPDATE invites SET used_count = used_count + 1 WHERE code = $1`, code); return err }
-func (s *PostgresStore) DeleteInvite(ctx context.Context, id int64) error { _, err := s.db.ExecContext(ctx, `DELETE FROM invites WHERE id = $1`, id); return err }
+func (s *PostgresStore) GetInviteByCode(ctx context.Context, code string) (Invite, error) {
+	var inv Invite
+	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, code, created_by, max_uses, used_count, COALESCE(expires_at, 'epoch'::timestamptz), created_at FROM invites WHERE code = $1`, code).
+		Scan(&inv.ID, &inv.HouseholdID, &inv.Code, &inv.CreatedBy, &inv.MaxUses, &inv.UsedCount, &inv.ExpiresAt, &inv.CreatedAt)
+	if err == sql.ErrNoRows {
+		return Invite{}, ErrInviteNotFound
+	}
+	return inv, err
+}
+
+func (s *PostgresStore) GetInvites(ctx context.Context, householdID int64) ([]Invite, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id, household_id, code, created_by, max_uses, used_count, expires_at, created_at FROM invites WHERE household_id = $1`, householdID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var invs []Invite
+	for rows.Next() {
+		var inv Invite
+		if err := rows.Scan(&inv.ID, &inv.HouseholdID, &inv.Code, &inv.CreatedBy, &inv.MaxUses, &inv.UsedCount, &inv.ExpiresAt, &inv.CreatedAt); err != nil {
+			return nil, err
+		}
+		invs = append(invs, inv)
+	}
+	return invs, rows.Err()
+}
+
+func (s *PostgresStore) UseInvite(ctx context.Context, code string) error {
+	_, err := s.db.ExecContext(ctx, `UPDATE invites SET used_count = used_count + 1 WHERE code = $1`, code)
+	return err
+}
+
+func (s *PostgresStore) DeleteInvite(ctx context.Context, id int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM invites WHERE id = $1`, id)
+	return err
+}

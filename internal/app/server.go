@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"database/sql"
 	"html/template"
 	"io"
 	"io/fs"
@@ -29,24 +30,43 @@ type Server struct {
 }
 
 func NewServer(cfg config.Config) http.Handler {
+	return NewServerWithDB(cfg, nil)
+}
+
+func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	mux := http.NewServeMux()
-	authStore := auth.NewMemoryStore()
+
+	var authStore auth.Store
+	var householdStore household.Store
+	var choreStore chore.Store
+	var logStore logsvc.Store
+
+	if db != nil {
+		authStore = auth.NewPostgresStore(db)
+		householdStore = household.NewPostgresStore(db)
+		choreStore = chore.NewPostgresStore(db)
+		logStore = logsvc.NewPostgresStore(db)
+	} else {
+		authStore = auth.NewMemoryStore()
+		householdStore = household.NewMemoryStore()
+		choreStore = chore.NewMemoryStore()
+		logStore = logsvc.NewMemoryStore()
+	}
+
 	authService := auth.NewService(authStore)
 	authService.SetAuditLogger(audit.NewStdLogger(log.Default()))
 	authService.SetMailer(newMailer(cfg), cfg.AppBaseURL)
-	authHandler := handlers.NewAuthHandler(authService, "choresy_session")
-	householdStore := household.NewMemoryStore()
+	authHandler := handlers.NewAuthHandler(authService, "choresy_session", cfg.ServerSecure)
 	householdService := household.NewService(householdStore)
 	householdHandler := handlers.NewHouseholdHandler(householdService, authService)
-	choreStore := chore.NewMemoryStore()
 	choreService := chore.NewService(choreStore)
 	choreHandler := handlers.NewChoreHandler(choreService)
-	logStore := logsvc.NewMemoryStore()
 	logService := logsvc.NewService(logStore)
 	logHandler := handlers.NewLogHandler(logService)
 	statsService := stats.NewService(logStore, &choreStatsAdapter{choreStore})
 	statsHandler := handlers.NewStatsHandler(statsService)
 	rateLimiter := middleware.NewRateLimiter(20, time.Minute)
+	rateLimiter.SetTrustedProxies(cfg.TrustedProxyCIDRs)
 
 	mux.HandleFunc("/health", handlers.Health)
 	mux.HandleFunc("/ready", handlers.Ready)
@@ -104,7 +124,7 @@ func NewServer(cfg config.Config) http.Handler {
 	mux.HandleFunc("/api/household/leave", method(http.MethodPost, householdHandler.Leave))
 	mux.HandleFunc("/api/household/transfer", method(http.MethodPost, householdHandler.Transfer))
 
-	mux.HandleFunc("/api/chores", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/chores", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			choreHandler.List(w, r)
@@ -113,11 +133,11 @@ func NewServer(cfg config.Config) http.Handler {
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
-	})
+	}))
 	mux.HandleFunc("/api/chores/defaults", method(http.MethodGet, choreHandler.GetDefaults))
-	mux.HandleFunc("/api/chores/seed-defaults", method(http.MethodPost, choreHandler.SeedDefaults))
-	mux.HandleFunc("/api/chores/reorder", method(http.MethodPost, choreHandler.Reorder))
-	mux.HandleFunc("/api/chores/{id}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/chores/seed-defaults", method(http.MethodPost, middleware.RequireAuth(choreHandler.SeedDefaults)))
+	mux.HandleFunc("/api/chores/reorder", method(http.MethodPost, middleware.RequireAuth(choreHandler.Reorder)))
+	mux.HandleFunc("/api/chores/{id}", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
 			choreHandler.Get(w, r)
@@ -128,19 +148,19 @@ func NewServer(cfg config.Config) http.Handler {
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
-	})
+	}))
 
-	mux.HandleFunc("/api/logs", method(http.MethodPost, logHandler.Create))
-	mux.HandleFunc("/api/logs/{id}", method(http.MethodDelete, logHandler.Delete))
-	mux.HandleFunc("/api/logs/today", method(http.MethodGet, logHandler.Today))
-	mux.HandleFunc("/api/logs/week", method(http.MethodGet, logHandler.Week))
-	mux.HandleFunc("/api/logs/month", method(http.MethodGet, logHandler.Month))
+	mux.HandleFunc("/api/logs", method(http.MethodPost, middleware.RequireAuth(logHandler.Create)))
+	mux.HandleFunc("/api/logs/{id}", method(http.MethodDelete, middleware.RequireAuth(logHandler.Delete)))
+	mux.HandleFunc("/api/logs/today", method(http.MethodGet, middleware.RequireAuth(logHandler.Today)))
+	mux.HandleFunc("/api/logs/week", method(http.MethodGet, middleware.RequireAuth(logHandler.Week)))
+	mux.HandleFunc("/api/logs/month", method(http.MethodGet, middleware.RequireAuth(logHandler.Month)))
 
-	mux.HandleFunc("/api/stats/leaderboard", method(http.MethodGet, statsHandler.Leaderboard))
-	mux.HandleFunc("/api/stats/streaks", method(http.MethodGet, statsHandler.Streaks))
-	mux.HandleFunc("/api/stats/heatmap", method(http.MethodGet, statsHandler.Heatmap))
-	mux.HandleFunc("/api/stats/breakdown", method(http.MethodGet, statsHandler.Breakdown))
-	mux.HandleFunc("/api/stats/recap", method(http.MethodGet, statsHandler.Recap))
+	mux.HandleFunc("/api/stats/leaderboard", method(http.MethodGet, middleware.RequireAuth(statsHandler.Leaderboard)))
+	mux.HandleFunc("/api/stats/streaks", method(http.MethodGet, middleware.RequireAuth(statsHandler.Streaks)))
+	mux.HandleFunc("/api/stats/heatmap", method(http.MethodGet, middleware.RequireAuth(statsHandler.Heatmap)))
+	mux.HandleFunc("/api/stats/breakdown", method(http.MethodGet, middleware.RequireAuth(statsHandler.Breakdown)))
+	mux.HandleFunc("/api/stats/recap", method(http.MethodGet, middleware.RequireAuth(statsHandler.Recap)))
 
 	staticFS, err := fs.Sub(webassets.Assets, "static")
 	if err != nil {
@@ -185,21 +205,22 @@ func BuildServer(ctx context.Context, cfg config.Config) (http.Handler, io.Close
 		return nil, nil, err
 	}
 
-	return NewServer(cfg), db, nil
+	return NewServerWithDB(cfg, db), db, nil
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.handler.ServeHTTP(w, r)
 }
 
+var indexTmpl = template.Must(template.ParseFS(webassets.Assets, "templates/index.html"))
+
 func renderIndex(w http.ResponseWriter, cfg config.Config) {
-	tmpl := template.Must(template.ParseFS(webassets.Assets, "templates/index.html"))
 	data := struct {
 		AppName string
 	}{
 		AppName: "Choresy",
 	}
-	if err := tmpl.Execute(w, data); err != nil {
+	if err := indexTmpl.Execute(w, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
@@ -237,7 +258,7 @@ func newOIDCProvider(cfg config.Config) auth.OIDCProvider {
 }
 
 type choreStatsAdapter struct {
-	store *chore.MemoryStore
+	store chore.Store
 }
 
 func (a *choreStatsAdapter) GetChore(ctx context.Context, id int64) (stats.ChoreInfo, error) {

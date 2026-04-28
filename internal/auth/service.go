@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
 	"errors"
 	"fmt"
@@ -442,7 +443,8 @@ func randomToken(numBytes int) string {
 }
 
 func hashToken(token string) string {
-	return base64.RawURLEncoding.EncodeToString([]byte(token))
+	h := sha256.Sum256([]byte(token))
+	return base64.RawURLEncoding.EncodeToString(h[:])
 }
 
 func emailVerificationTemplate(baseURL, token string) string {

@@ -4,15 +4,17 @@ import (
 	"net/http"
 
 	"github.com/dave/choresy/internal/auth"
+	"github.com/dave/choresy/internal/middleware"
 )
 
 type AuthHandler struct {
 	authService *auth.Service
 	cookieName  string
+	secure      bool
 }
 
-func NewAuthHandler(authService *auth.Service, cookieName string) *AuthHandler {
-	return &AuthHandler{authService: authService, cookieName: cookieName}
+func NewAuthHandler(authService *auth.Service, cookieName string, secure bool) *AuthHandler {
+	return &AuthHandler{authService: authService, cookieName: cookieName, secure: secure}
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
@@ -74,18 +76,11 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie(h.cookieName)
-	if err != nil {
+	user, ok := middleware.CurrentUser(r.Context())
+	if !ok {
 		writeJSON(w, http.StatusOK, map[string]any{"user": nil})
 		return
 	}
-
-	user, err := h.authService.Authenticate(r.Context(), cookie.Value)
-	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"user": nil})
-		return
-	}
-
 	writeJSON(w, http.StatusOK, map[string]any{"user": user})
 }
 
@@ -221,6 +216,13 @@ func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *AuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
+	state := r.URL.Query().Get("state")
+	expectedState := h.getOIDCCookie(r, "choresy_oidc_state")
+	if state == "" || state != expectedState {
+		writeError(w, http.StatusBadRequest, "invalid state parameter")
+		return
+	}
+
 	code := r.URL.Query().Get("code")
 	if code == "" {
 		writeError(w, http.StatusBadRequest, "missing authorization code")
@@ -253,6 +255,7 @@ func (h *AuthHandler) SetSessionCookie(w http.ResponseWriter, sessionID string) 
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
+		Secure:   h.secure,
 		MaxAge:   30 * 24 * 60 * 60,
 	})
 }
@@ -274,6 +277,7 @@ func (h *AuthHandler) setOIDCCookie(w http.ResponseWriter, name, value string, m
 		Path:     "/api/auth/google",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
+		Secure:   h.secure,
 		MaxAge:   maxAge,
 	})
 }
