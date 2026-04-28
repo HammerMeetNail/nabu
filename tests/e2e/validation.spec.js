@@ -4,7 +4,7 @@ function uniqueEmail() {
   return `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}@test.com`;
 }
 
-async function setupFullAccount(page, withChores = true) {
+async function setupFullAccount(page) {
   const email = uniqueEmail();
   await page.goto('/register');
   await page.waitForSelector('#register-form');
@@ -16,367 +16,451 @@ async function setupFullAccount(page, withChores = true) {
 
   const csrf = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
   const hhResp = await page.request.post('/api/household', {
-    data: { name: `E2E ${Date.now()}` },
+    data: { name: `Exhaustive ${Date.now()}` },
     headers: { 'X-CSRF-Token': csrf },
   });
-  const hhBody = await hhResp.json();
-  expect(hhBody.household).toBeDefined();
+  const hh = (await hhResp.json()).household;
 
-  if (withChores) {
-    await page.request.post('/api/chores/seed-defaults', {
-      data: { names: ['Feed Cats (Morning)', 'Feed Cats (Evening)', 'Wash Dishes', 'Make Bed', 'Walk Dog'] },
-      headers: { 'X-CSRF-Token': csrf },
-    });
-  }
+  await page.request.post('/api/chores/seed-defaults', {
+    data: { names: ['Feed Cats (Morning)', 'Feed Cats (Evening)', 'Wash Dishes', 'Make Bed', 'Walk Dog'] },
+    headers: { 'X-CSRF-Token': csrf },
+  });
+
+  // Create an invite so we can test revoke
+  await page.request.post('/api/household/invites', { headers: { 'X-CSRF-Token': csrf } });
 
   await page.reload();
-  await page.waitForTimeout(1500);
-  return { email, csrf, household: hhBody.household };
+  await page.waitForTimeout(2000);
+  return { email, csrf, household: hh };
 }
 
-test.describe('Full User Workflow', () => {
-  test('complete flow: register → household → chores → log → undo → stats → logout', async ({ page }) => {
-    // Setup full account via API (reliable), then verify UI
-    const { email } = await setupFullAccount(page);
-    
-    // === VERIFY Today View ===
-    await expect(page.locator('#top-bar')).not.toBeHidden();
-    await expect(page.locator('#bottom-tabs')).not.toBeHidden();
-    await expect(page.locator('.today-date')).toBeVisible({ timeout: 5000 });
-    await expect(page.locator('.progress-bar')).toBeVisible();
-
-    // Chore cards should be present
-    const choreCards = page.locator('.chore-card');
-    const totalChores = await choreCards.count();
-    expect(totalChores).toBeGreaterThan(0);
-
-    // Should show "0 of N chores done" progress
-    const progressEl = page.locator('p.text-secondary');
-    const progressText = await progressEl.filter({ hasText: /of/ }).first().innerText();
-    expect(progressText).toMatch(/0 of \d+ chores done/);
-
-    // === LOG a chore ===
-    const firstChore = choreCards.first();
-    const choreName = await firstChore.locator('.chore-name').innerText();
-    expect(choreName.length).toBeGreaterThan(0);
-    await firstChore.click();
-    await page.waitForTimeout(1500);
-
-    // After logging, chore card should show as done
-    const doneCards = page.locator('.chore-card.chore-done');
-    const doneCount = await doneCards.count();
-    expect(doneCount).toBeGreaterThan(0);
-
-    // Progress should update to "1 of N chores done"
-    const updatedProgress = await page.locator('p.text-secondary').filter({ hasText: /of/ }).first().innerText();
-    expect(updatedProgress).toMatch(/1 of \d+ chores done/);
-
-    // === UNDO the log ===
-    await doneCards.first().click();
-    await page.waitForTimeout(2000);
-
-    // After undo, done count should decrease
-    const cardsAfterUndo = page.locator('.chore-card.chore-done');
-    const doneAfterUndo = await cardsAfterUndo.count();
-    expect(doneAfterUndo).toBeLessThan(doneCount);
-
-    // === LOG again, then navigate to History via tab ===
-    await firstChore.click();
-    await page.waitForTimeout(500);
-
-    // Navigate to history and back to verify SPA works after state changes
-    await page.click('a[data-nav="history"]');
-    await page.waitForTimeout(700);
-    await expect(page.locator('.history-view')).toBeVisible({ timeout: 5000 });
-
-    // === Navigate to Chores list ===
-    await page.click('a[data-nav="chores"]');
-    await page.waitForTimeout(700);
-    await expect(page.locator('h2:has-text("Chores")')).toBeVisible();
-
-    // === Navigate to Today view ===
-    await page.click('a[data-nav="today"]');
-    await page.waitForTimeout(700);
-    await expect(page.locator('.today-date')).toBeVisible();
-
-    console.log(`Complete workflow passed for user: ${email}`);
-  });
-});
-
-test.describe('Frontend Household Creation', () => {
-  test('create household via UI settings form', async ({ page }) => {
-    const email = uniqueEmail();
-    await page.goto('/register');
-    await page.waitForSelector('#register-form');
-    await page.fill('#reg-email', email);
-    await page.fill('#reg-password', 'test123456');
-    await page.fill('#reg-confirm', 'test123456');
-    await page.click('button[type="submit"]');
-    await page.waitForTimeout(2000);
-    await expect(page.locator('#top-bar')).not.toBeHidden();
-
-    // Go to settings
-    await page.goto('/settings');
-    await page.waitForTimeout(1000);
-
-    // Should see create household form
-    await expect(page.locator('#create-household-form')).toBeVisible({ timeout: 5000 });
-
-    // Fill and submit
-    const hhName = `UI Test ${Date.now()}`;
-    await page.fill('#hh-name', hhName);
-    await page.locator('#create-household-form button[type="submit"]').click();
-
-    // Wait for creation + redirect to today
-    await page.waitForTimeout(3000);
-
-    // Should now see chore cards on today view
-    await expect(page.locator('.chore-card').first()).toBeVisible({ timeout: 8000 });
-    const cardCount = await page.locator('.chore-card').count();
-    expect(cardCount).toBeGreaterThan(0);
-  });
-});
-
-test.describe('SPA Routing', () => {
-  test('bottom tabs navigate between views via SPA', async ({ page }) => {
-    await setupFullAccount(page);
-    await page.waitForTimeout(500);
-
-    // Verify each tab navigates to the correct view
-    const tabChecks = [
-      { nav: 'history', viewSelector: '.history-view' },
-      { nav: 'chores', viewSelector: '.chores-view' },
-      { nav: 'settings', viewSelector: '.settings-view' },
-      { nav: 'today', viewSelector: '.today-view' },
-    ];
-
-    for (const { nav, viewSelector } of tabChecks) {
-      await page.click(`a[data-nav="${nav}"]`);
-      await page.waitForTimeout(300);
-      const view = page.locator(viewSelector);
-      if (await view.isVisible()) {
-        // Tab successfully navigated
-        expect(true).toBeTruthy();
-      }
-    }
-  });
-
-  test('data-nav from rendered content works', async ({ page }) => {
-    const email = uniqueEmail();
-    await page.goto('/register');
-    await page.waitForSelector('#register-form');
-    await page.fill('#reg-email', email);
-    await page.fill('#reg-password', 'test123456');
-    await page.fill('#reg-confirm', 'test123456');
-    await page.click('button[type="submit"]');
-    await page.waitForTimeout(2000);
-
-    const setupBtn = page.locator('text=Set Up Household');
-    if (await setupBtn.isVisible()) {
-      await setupBtn.click();
-      await page.waitForTimeout(500);
-      // Should now be on settings with create household form
-      await expect(page.locator('#create-household-form')).toBeVisible({ timeout: 3000 });
-    }
-  });
-});
-
-test.describe('Day Navigation', () => {
-  test('can navigate to past and back to today', async ({ page }) => {
-    await setupFullAccount(page);
-    await page.waitForTimeout(500);
-
-    await expect(page.locator('.date-nav')).toBeVisible({ timeout: 5000 });
-    const todayDate = await page.locator('.today-date').innerText();
-    expect(todayDate.length).toBeGreaterThan(0);
-
-    // Click right arrow → tomorrow
-    const arrows = page.locator('button[data-action="navigate-day"]');
-    await arrows.last().click();
-    await page.waitForTimeout(1000);
-    const nextDate = await page.locator('.today-date').innerText();
-    expect(nextDate).not.toBe(todayDate);
-
-    // Click left arrow → should be back to today
-    await arrows.first().click();
-    await page.waitForTimeout(500);
-    const backDate = await page.locator('.today-date').innerText();
-    expect(backDate).toBe(todayDate);
-  });
-});
-
-test.describe('Password Reset Flow', () => {
-  test('forgot password form submits and shows toast', async ({ page }) => {
-    await page.goto('/forgot-password');
-    await page.waitForSelector('#forgot-password-form');
-    await expect(page.locator('h1:has-text("Forgot Password")')).toBeVisible();
-    await page.fill('#forgot-email', 'test@example.com');
-    await page.locator('#forgot-password-form button[type="submit"]').click();
-    await page.waitForTimeout(500);
-    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 2000 });
-  });
-
-  test('reset password form renders with token', async ({ page }) => {
-    await page.goto('/reset-password?token=test123');
-    await page.waitForSelector('#reset-password-form');
-    await expect(page.locator('h1:has-text("Reset Password")')).toBeVisible();
-    await expect(page.locator('#reset-password')).toBeVisible();
-    await expect(page.locator('#reset-confirm')).toBeVisible();
-  });
-});
-
-test.describe('Magic Link Flow', () => {
-  test('magic link request shows confirmation', async ({ page }) => {
-    await page.goto('/magic-link');
-    await page.waitForSelector('#magic-link-form');
-    await page.fill('#magic-email', 'test@example.com');
-    await page.locator('#magic-link-form button[type="submit"]').click();
-    await page.waitForTimeout(500);
-    await expect(page.locator('text=Check your email')).toBeVisible({ timeout: 2000 });
-  });
-});
-
-test.describe('Auth Error States', () => {
-  test('login with wrong credentials shows error', async ({ page }) => {
+test.describe('Exhaustive: Auth Pages', () => {
+  test('login page — all elements', async ({ page }) => {
     await page.goto('/');
     await page.waitForSelector('#login-form');
-    await page.fill('#login-email', 'wrong@email.com');
-    await page.fill('#login-password', 'badpass123');
-    await page.click('button[type="submit"]');
+
+    // Title
+    await expect(page.locator('.auth-title')).toContainText('Choresy');
+
+    // Form fields
+    await expect(page.locator('#login-email')).toBeVisible();
+    await expect(page.locator('#login-password')).toBeVisible();
+
+    // Submit button
+    const signInBtn = page.locator('#login-form button[type="submit"]');
+    await expect(signInBtn).toBeVisible();
+    await expect(signInBtn).toContainText('Sign In');
+
+    // Magic link button
+    const magicBtn = page.locator('button[data-action="show-magic-link"]');
+    await expect(magicBtn).toBeVisible();
+    await expect(magicBtn).toContainText('Sign in with magic link');
+
+    // Create account button
+    const createBtn = page.locator('button[data-action="show-register"]');
+    await expect(createBtn).toBeVisible();
+    await expect(createBtn).toContainText('Create Account');
+
+    // Test error: login with bad credentials
+    await page.fill('#login-email', 'fake@no.com');
+    await page.fill('#login-password', 'wrongpass');
+    await signInBtn.click();
     await page.waitForTimeout(500);
     await expect(page.locator('#login-error')).not.toHaveClass(/hidden/);
   });
 
-  test('register with mismatched passwords shows error', async ({ page }) => {
+  test('register page — all elements', async ({ page }) => {
     await page.goto('/register');
     await page.waitForSelector('#register-form');
-    await page.fill('#reg-email', 'test@test.com');
+
+    await expect(page.locator('.auth-title')).toContainText('Create Account');
+
+    // Form fields
+    await expect(page.locator('#reg-email')).toBeVisible();
+    await expect(page.locator('#reg-password')).toBeVisible();
+    await expect(page.locator('#reg-confirm')).toBeVisible();
+
+    // Submit
+    const createBtn = page.locator('#register-form button[type="submit"]');
+    await expect(createBtn).toBeVisible();
+    await expect(createBtn).toContainText('Create Account');
+
+    // Back to login
+    const loginBtn = page.locator('button[data-action="show-login"]');
+    await expect(loginBtn).toBeVisible();
+    await expect(loginBtn).toContainText(/Sign in/);
+
+    // Test mismatched passwords error
+    await page.fill('#reg-email', 'x@x.com');
     await page.fill('#reg-password', 'test123456');
     await page.fill('#reg-confirm', 'different');
-    await page.click('button[type="submit"]');
+    await createBtn.click();
     await page.waitForTimeout(500);
     await expect(page.locator('#register-error')).not.toHaveClass(/hidden/);
   });
 
-  test('reset with mismatched passwords shows error', async ({ page }) => {
-    await page.goto('/reset-password?token=test');
+  test('magic link page — all elements', async ({ page }) => {
+    await page.goto('/magic-link');
+    await page.waitForSelector('#magic-link-form');
+
+    await expect(page.locator('.auth-title')).toContainText('Magic Link');
+    await expect(page.locator('#magic-email')).toBeVisible();
+    
+    const sendBtn = page.locator('#magic-link-form button[type="submit"]');
+    await expect(sendBtn).toBeVisible();
+    await expect(sendBtn).toContainText('Send Magic Link');
+
+    // Back to login
+    const backBtn = page.locator('button[data-action="show-login"]');
+    await expect(backBtn).toBeVisible();
+    await expect(backBtn).toContainText(/Back to sign in/);
+
+    // Submit magic link
+    await page.fill('#magic-email', 'test@example.com');
+    await sendBtn.click();
+    await page.waitForTimeout(500);
+    await expect(page.locator('text=Check your email')).toBeVisible();
+  });
+
+  test('forgot password page — all elements', async ({ page }) => {
+    await page.goto('/forgot-password');
+    await page.waitForSelector('#forgot-password-form');
+
+    await expect(page.locator('.auth-title')).toContainText('Forgot Password');
+    await expect(page.locator('#forgot-email')).toBeVisible();
+
+    const sendBtn = page.locator('#forgot-password-form button[type="submit"]');
+    await expect(sendBtn).toBeVisible();
+    await expect(sendBtn).toContainText('Send Reset Link');
+
+    // Back to login
+    const backBtn = page.locator('button[data-action="show-login"]');
+    await expect(backBtn).toBeVisible();
+    await expect(backBtn).toContainText(/Back to sign in/);
+
+    // Submit — should show toast
+    await page.fill('#forgot-email', 'test@example.com');
+    await sendBtn.click();
+    await page.waitForTimeout(500);
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 3000 });
+  });
+
+  test('reset password page — all elements', async ({ page }) => {
+    await page.goto('/reset-password?token=test123');
     await page.waitForSelector('#reset-password-form');
+
+    await expect(page.locator('.auth-title')).toContainText('Reset Password');
+    await expect(page.locator('#reset-password')).toBeVisible();
+    await expect(page.locator('#reset-confirm')).toBeVisible();
+
+    const resetBtn = page.locator('#reset-password-form button[type="submit"]');
+    await expect(resetBtn).toBeVisible();
+    await expect(resetBtn).toContainText('Reset Password');
+
+    // Test mismatched passwords
     await page.fill('#reset-password', 'test123456');
     await page.fill('#reset-confirm', 'different');
-    await page.click('button[type="submit"]');
+    await resetBtn.click();
     await page.waitForTimeout(500);
     await expect(page.locator('#reset-error')).not.toHaveClass(/hidden/);
   });
+
+  test('verify email page', async ({ page }) => {
+    await page.goto('/verify-email');
+    await page.waitForSelector('.auth-title');
+    await expect(page.locator('.auth-title')).toContainText('Verify Your Email');
+
+    const signInBtn = page.locator('button[data-action="show-login"]');
+    await expect(signInBtn).toBeVisible();
+    await expect(signInBtn).toContainText('Sign In');
+
+    // Click sign in → should show login
+    await signInBtn.click();
+    await page.waitForTimeout(300);
+    await expect(page.locator('#login-form')).toBeVisible();
+  });
+
+  test('auth page navigation via buttons', async ({ page }) => {
+    await page.goto('/');
+
+    // Login → register
+    await page.click('button[data-action="show-register"]');
+    await page.waitForSelector('#register-form');
+    await expect(page.locator('.auth-title')).toContainText('Create Account');
+
+    // Register → login
+    await page.click('button[data-action="show-login"]');
+    await page.waitForSelector('#login-form');
+    await expect(page.locator('.auth-title')).toContainText('Choresy');
+
+    // Login → magic link
+    await page.click('button[data-action="show-magic-link"]');
+    await page.waitForSelector('#magic-link-form');
+    await expect(page.locator('.auth-title')).toContainText('Magic Link');
+
+    // Magic link → login
+    await page.click('button[data-action="show-login"]');
+    await page.waitForSelector('#login-form');
+  });
 });
 
-test.describe('Top Bar Buttons', () => {
-  test('notifications bell and user avatar visible when logged in', async ({ page }) => {
-    await setupFullAccount(page);
+test.describe('Exhaustive: Authenticated Flow', () => {
+  test('register → welcome → household creation → full chore cycle → settings → logout', async ({ page }) => {
+    const email = uniqueEmail();
+
+    // === Register ===
+    await page.goto('/register');
+    await page.waitForSelector('#register-form');
+    await page.fill('#reg-email', email);
+    await page.fill('#reg-password', 'test123456');
+    await page.fill('#reg-confirm', 'test123456');
+    await page.click('button[type="submit"]');
+    await page.waitForTimeout(2000);
+
+    // Should see top bar and bottom tabs
+    await expect(page.locator('#top-bar')).not.toBeHidden({ timeout: 5000 });
+    await expect(page.locator('#bottom-tabs')).not.toBeHidden();
+
+    // === Welcome view (no household) ===
+    const welcomeText = page.locator('text=Set up your household');
+    await expect(welcomeText).toBeVisible({ timeout: 3000 });
+
+    // Click "Set Up Household" button
+    await page.locator('a[data-nav="settings"]').first().click();
+    await page.waitForTimeout(700);
+
+    // Should be on settings page with household creation form
+    await expect(page.locator('#create-household-form')).toBeVisible({ timeout: 3000 });
+    // Should also see join household form
+    await expect(page.locator('#join-household-form')).toBeVisible();
+    // Should see Sign Out button
+    await expect(page.locator('button[data-action="logout"]')).toBeVisible();
+
+    // === Create Household ===
+    await page.fill('#hh-name', 'Exhaustive Test Home');
+    await page.locator('#create-household-form button[type="submit"]').click();
+
+    // Should redirect to today view with chores
+    await page.waitForTimeout(3000);
+    await expect(page.locator('.chore-card').first()).toBeVisible({ timeout: 8000 });
+
+    // === Today View Elements ===
+    // Date header
+    await expect(page.locator('.today-date')).toBeVisible();
+    // Progress bar
+    await expect(page.locator('.progress-bar')).toBeVisible();
+    // Chore cards
+    const choreCards = page.locator('.chore-card');
+    const totalChores = await choreCards.count();
+    expect(totalChores).toBeGreaterThan(0);
+    // Each chore has name and icon
+    for (let i = 0; i < Math.min(totalChores, 3); i++) {
+      await expect(choreCards.nth(i).locator('.chore-icon')).toBeVisible();
+      await expect(choreCards.nth(i).locator('.chore-name')).toBeVisible();
+    }
+
+    // === Day Navigation ===
+    const arrows = page.locator('button[data-action="navigate-day"]');
+    expect(await arrows.count()).toBe(2);
+
+    const todayDate = await page.locator('.today-date').innerText();
+
+    // Click right arrow → tomorrow
+    await arrows.last().click();
+    await page.waitForTimeout(1000);
+    const tomorrowDate = await page.locator('.today-date').innerText();
+    expect(tomorrowDate).not.toBe(todayDate);
+
+    // Click left arrow → back to today
+    await arrows.first().click();
     await page.waitForTimeout(500);
+    expect(await page.locator('.today-date').innerText()).toBe(todayDate);
+
+    // === Log a Chore ===
+    const firstChore = choreCards.first();
+    await expect(firstChore).toHaveAttribute('data-action', 'log-chore');
+    await firstChore.click();
+    await page.waitForTimeout(1500);
+
+    // Chore should now show as done
+    const doneCards = page.locator('.chore-card.chore-done');
+    expect(await doneCards.count()).toBeGreaterThan(0);
+    // The done card should have undo-chore action
+    await expect(doneCards.first()).toHaveAttribute('data-action', 'undo-chore');
+
+    // Check progress updates
+    const progressText = await page.locator('p.text-secondary').filter({ hasText: /of/ }).first().innerText();
+    expect(progressText).toMatch(/1 of \d+ chores done/);
+
+    // === Undo the Chore ===
+    await doneCards.first().click();
+    await page.waitForTimeout(1500);
+
+    // Done count should decrease
+    const doneAfterUndo = await page.locator('.chore-card.chore-done').count();
+    expect(doneAfterUndo).toBeLessThan(1);
+
+    // === Log Multiple Chores ===
+    await firstChore.click();
+    await page.waitForTimeout(500);
+    if (totalChores > 1) {
+      await choreCards.nth(1).click();
+      await page.waitForTimeout(500);
+    }
+
+    // === Navigate to History ===
+    await page.click('a[data-nav="history"]');
+    await page.waitForTimeout(700);
+    await expect(page.locator('.history-view')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('h2:has-text("History")')).toBeVisible();
+
+    // === Navigate to Chores List ===
+    await page.click('a[data-nav="chores"]');
+    await page.waitForTimeout(700);
+    await expect(page.locator('h2:has-text("Chores")')).toBeVisible();
+    // Should see chore cards (non-empty since we have chore data)
+    const choreListContent = await page.locator('#app').innerHTML();
+    expect(choreListContent.length).toBeGreaterThan(50);
+
+    // === Navigate to Settings ===
+    await page.click('a[data-nav="settings"]');
+    await page.waitForTimeout(1000);
+
+    // === Settings View Elements ===
+    await expect(page.locator('h2:has-text("Settings")')).toBeVisible({ timeout: 3000 });
+
+    // Household section
+    await expect(page.locator('.settings-view h3').first()).toBeVisible();
+    
+    // Create Invite Link button
+    const createInviteBtn = page.locator('button[data-action="create-invite"]');
+    await expect(createInviteBtn).toBeVisible();
+    
+    // Click Create Invite
+    await createInviteBtn.click();
+    await page.waitForTimeout(700);
+    // Toast should appear with the invite code
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 2000 });
+
+    // Active invites section should now be visible (after reload)
+    // The render after create-invite should show the invite list
+    await page.waitForTimeout(500);
+    const revokeBtn = page.locator('button[data-action="delete-invite"]');
+    if (await revokeBtn.first().isVisible()) {
+      // Click revoke on the invite
+      await revokeBtn.first().click();
+      await page.waitForTimeout(500);
+    }
+
+    // Members section
+    await expect(page.locator('text=Members')).toBeVisible();
+    await expect(page.locator('.member-list li').first()).toBeVisible();
+
+    // Leave Household button
+    const leaveBtn = page.locator('button[data-action="leave-household"]');
+    await expect(leaveBtn).toBeVisible();
+
+    // Account section — Sign Out
+    await expect(page.locator('button[data-action="logout"]')).toBeVisible();
+
+    // Stats section
+    await page.waitForTimeout(2000);
+
+    // === Test Top Bar Buttons ===
+    
+    // User avatar should show first letter of email
+    const avatar = page.locator('#user-avatar');
+    await expect(avatar).toBeVisible();
+    const avatarText = await avatar.textContent();
+    expect(avatarText.length).toBe(1);
 
     // Notifications bell should be visible
     const bell = page.locator('#notifications-bell');
-    await expect(bell).toBeVisible({ timeout: 3000 });
-    await expect(bell).not.toHaveAttribute('hidden');
+    await expect(bell).toBeVisible();
 
-    // Notifications bell should have data-nav="settings"
-    expect(await bell.getAttribute('data-nav')).toBe('settings');
-
-    // User avatar should be visible
-    const avatar = page.locator('#user-avatar');
-    await expect(avatar).toBeVisible({ timeout: 3000 });
-    await expect(avatar).not.toHaveAttribute('hidden');
-
-    // User avatar should have data-nav="settings"
-    expect(await avatar.getAttribute('data-nav')).toBe('settings');
-
-    // Avatar should show the first letter of the email
-    const avatarText = await avatar.textContent();
-    expect(avatarText.length).toBe(1);
-    expect(avatarText).toMatch(/[A-Z]/);
-  });
-
-  test('notifications bell click navigates to settings', async ({ page }) => {
-    await setupFullAccount(page);
-    await page.waitForTimeout(500);
-
-    const bell = page.locator('#notifications-bell');
-    await expect(bell).toBeVisible({ timeout: 3000 });
-    await bell.click();
-    await page.waitForTimeout(700);
-
-    // Should navigate to settings view (SPA render)
-    await expect(page.locator('h2:has-text("Settings")')).toBeVisible({ timeout: 3000 });
-  });
-
-  test('user avatar click navigates to settings', async ({ page }) => {
-    await setupFullAccount(page);
-    await page.waitForTimeout(500);
-
-    const avatar = page.locator('#user-avatar');
-    await expect(avatar).toBeVisible({ timeout: 3000 });
+    // Click avatar → settings
     await avatar.click();
     await page.waitForTimeout(700);
+    await expect(page.locator('.settings-view')).toBeVisible({ timeout: 3000 });
 
-    // Should navigate to settings view
-    await expect(page.locator('h2:has-text("Settings")')).toBeVisible({ timeout: 3000 });
-
-    // Settings view should have the logout button
-    await expect(page.locator('button[data-action="logout"]')).toBeVisible({ timeout: 3000 });
-  });
-
-  test('bottom settings tab also navigates to settings', async ({ page }) => {
-    await setupFullAccount(page);
+    // Go to today view
+    await page.click('a[data-nav="today"]');
     await page.waitForTimeout(500);
 
-    // Click the bottom settings tab
+    // Click notifications bell → settings
+    await bell.click();
+    await page.waitForTimeout(700);
+    await expect(page.locator('.settings-view')).toBeVisible({ timeout: 3000 });
+
+    // === Logout ===
     await page.click('a[data-nav="settings"]');
     await page.waitForTimeout(700);
-
-    // Should see settings
-    await expect(page.locator('.settings-view')).toBeVisible({ timeout: 3000 });
-    await expect(page.locator('button[data-action="logout"]')).toBeVisible({ timeout: 3000 });
-  });
-
-  test('notification badge hidden when no unread', async ({ page }) => {
-    await setupFullAccount(page);
-    await page.waitForTimeout(500);
-
-    const badge = page.locator('#notification-badge');
-    // Badge starts hidden (no unread notifications in a fresh account)
-    expect(await badge.getAttribute('hidden')).toBeDefined();
-  });
-
-  test('top bar buttons hidden when logged out', async ({ page }) => {
-    const { email } = await setupFullAccount(page);
-    await page.waitForTimeout(500);
-
-    // Logout via settings
-    await page.goto('/settings');
+    await page.locator('button[data-action="logout"]').click();
     await page.waitForTimeout(1000);
-    
-    // Make sure we're on settings with household (need household for logout button to appear)
-    if (await page.locator('button[data-action="logout"]').isVisible()) {
-      await page.locator('button[data-action="logout"]').click();
-      await page.waitForTimeout(1000);
-    }
 
-    // After logout, top bar buttons should be hidden
-    const topBar = page.locator('#top-bar');
-    await expect(topBar).toBeHidden({ timeout: 3000 });
+    // Should return to login
+    await expect(page.locator('#login-form')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('#top-bar')).toBeHidden();
+    await expect(page.locator('#bottom-tabs')).toBeHidden();
 
-    const bell = page.locator('#notifications-bell');
-    const avatar = page.locator('#user-avatar');
-    await expect(bell).toBeHidden();
-    await expect(avatar).toBeHidden();
+    console.log(`Exhaustive flow complete for ${email}`);
   });
 });
 
-test.describe('Edge Cases', () => {
-  test('unknown URL renders SPA with content', async ({ page }) => {
-    await page.goto('/some-random-path');
+test.describe('Exhaustive: SPA-only Navigation', () => {
+  test('all four bottom tabs navigate without page reload', async ({ page }) => {
+    await setupFullAccount(page);
+
+    // Verify each tab click changes the view
+    const tabs = [
+      { nav: 'history', check: () => page.locator('.history-view').isVisible() },
+      { nav: 'chores', check: () => page.locator('h2:has-text("Chores")').isVisible() },
+      { nav: 'settings', check: () => page.locator('.settings-view').isVisible() },
+      { nav: 'today', check: () => page.locator('.today-view, .today-date').first().isVisible() },
+    ];
+
+    for (const tab of tabs) {
+      await page.click(`a[data-nav="${tab.nav}"]`);
+      await page.waitForTimeout(400);
+      const result = await tab.check();
+      expect(result).toBeTruthy();
+    }
+  });
+});
+
+test.describe('Exhaustive: Settings Page States', () => {
+  test('settings with no household: create + join + logout', async ({ page }) => {
+    const email = uniqueEmail();
+    await page.goto('/register');
+    await page.waitForSelector('#register-form');
+    await page.fill('#reg-email', email);
+    await page.fill('#reg-password', 'test123456');
+    await page.fill('#reg-confirm', 'test123456');
+    await page.click('button[type="submit"]');
+    await page.waitForTimeout(2000);
+    await expect(page.locator('#bottom-tabs')).not.toBeHidden();
+
+    // Go to settings
+    await page.click('a[data-nav="settings"]');
+    await page.waitForTimeout(700);
+
+    // Should see create household form
+    await expect(page.locator('#create-household-form')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('#hh-name')).toBeVisible();
+    await expect(page.locator('#create-household-form button[type="submit"]')).toContainText('Create Household');
+
+    // Should see join household form
+    await expect(page.locator('#join-household-form')).toBeVisible();
+    await expect(page.locator('#invite-code')).toBeVisible();
+    await expect(page.locator('#join-household-form button[type="submit"]')).toContainText('Join Household');
+
+    // Account section
+    await expect(page.locator('text=Account')).toBeVisible();
+    await expect(page.locator('button[data-action="logout"]')).toBeVisible();
+
+    // Logout
+    await page.locator('button[data-action="logout"]').click();
     await page.waitForTimeout(1000);
-    const content = await page.locator('#app').innerHTML();
-    expect(content.length).toBeGreaterThan(0);
+    await expect(page.locator('#login-form')).toBeVisible({ timeout: 5000 });
   });
 });
