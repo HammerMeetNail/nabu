@@ -16,6 +16,8 @@ This file provides guidance to an LLM when working with code in this repository.
 | Rebuild stack | `make local-fresh` |
 | Seed test user | `make seed` |
 | E2E tests | `make e2e` |
+| E2E in browser (headed) | `make e2e-watch` |
+| E2E debug mode (step-through) | `make e2e-debug` |
 | Go coverage | `make coverage` |
 | Lint Go | `make lint` |
 
