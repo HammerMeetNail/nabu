@@ -109,7 +109,7 @@ export function renderHistoryView(state) {
     </div>`;
   }
   const items = logs.map(l => `<li class="member-item">
-    <span>${l.completedAt ? new Date(l.completedAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}</span>
+    <span>${l.completedAt ? new Date(l.completedAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : ''}</span>
     <span>Chore #${l.choreId}</span>
     ${l.note ? `<span class="text-secondary">${escapeHTML(l.note)}</span>` : ''}
   </li>`).join("");
@@ -119,8 +119,4 @@ export function renderHistoryView(state) {
   </div>`;
 }
 
-function escapeHTML(str) {
-  const div = document.createElement("div");
-  div.textContent = str;
-  return div.innerHTML;
-}
+
