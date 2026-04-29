@@ -337,8 +337,8 @@ test.describe('Pick-chore Bottom Sheet', () => {
     await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
     await page.waitForTimeout(400);
 
-    await expect(page.locator('.sheet-chore-item')).toHaveCount(12);
-    await expect(page.locator('.sheet-chore-item').first()).toContainText('Feed Cats (Morning)');
+    await expect(page.locator('.sheet-chore-item')).toHaveCount(11);
+    await expect(page.locator('.sheet-chore-item').first()).toContainText('Feed Cats');
   });
 
   test('Cancel button closes the sheet', async ({ page }) => {
@@ -416,7 +416,7 @@ test.describe('Pick-chore Bottom Sheet', () => {
     await expect(page.locator('[data-period="anytime"] .chore-card')).toHaveCount(initialCount - 1);
   });
 
-  test('already-scheduled chores are excluded from the sheet list', async ({ page }) => {
+  test('already-scheduled chores remain in the sheet list so they can be added again', async ({ page }) => {
     await setupWithChores(page);
 
     // Open morning sheet and capture the name of the first item before scheduling
@@ -426,26 +426,26 @@ test.describe('Pick-chore Bottom Sheet', () => {
     await page.locator('.sheet-chore-item').first().click();
     await page.waitForTimeout(1500);
 
-    // Open the morning sheet again — the scheduled chore should no longer appear
+    // Open the morning sheet again — the previously scheduled chore should still appear
     await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
     await page.waitForTimeout(400);
 
     const items = page.locator('.sheet-chore-item');
     const count = await items.count();
-    // 11 of 12 chores remain (one was scheduled)
+    // All 11 chores remain (repeatable chores are never removed)
     expect(count).toBe(11);
-    // The scheduled chore should not be in the list
+    // The scheduled chore is still present
     const names = await page.locator('.sheet-chore-item .chore-name').allInnerTexts();
-    expect(names).not.toContain(firstName);
+    expect(names).toContain(firstName);
 
     // Clean up
     await page.locator('.bottom-sheet button[data-action="close-sheet"]').click();
   });
 
-  test('shows empty message when all chores are already scheduled', async ({ page }) => {
+  test('sheet always shows all chores even when every chore has a schedule', async ({ page }) => {
     const { csrf } = await setupWithChores(page);
 
-    // Schedule every chore in morning via the API so the sheet will be empty
+    // Schedule every chore in morning via the API
     const { chores } = await (await page.request.get('/api/chores')).json();
     for (const chore of chores) {
       await page.request.post('/api/schedules', {
@@ -457,12 +457,13 @@ test.describe('Pick-chore Bottom Sheet', () => {
     await page.reload();
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
-    // Open the morning sheet — all chores are scheduled so it should show empty state
+    // Open the morning sheet — all chores should still be visible
     await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
     await page.waitForTimeout(400);
 
-    await expect(page.locator('.sheet-empty')).toBeVisible();
-    await expect(page.locator('.sheet-empty')).toContainText('already scheduled');
+    await expect(page.locator('.sheet-chore-item')).toHaveCount(chores.length);
+    // The old "all chores scheduled" empty-state message should not appear
+    await expect(page.locator('.sheet-empty')).toHaveCount(0);
 
     await page.locator('.bottom-sheet button[data-action="close-sheet"]').click();
   });

@@ -141,17 +141,19 @@ function fmtTime(hhmm) {
 
 /**
  * Renders the "pick a chore" bottom sheet.
+ * All household chores are always shown so a chore can be added multiple times
+ * (e.g. feeding the cat morning and evening both need the same chore).
+ * An inline form at the bottom lets the user create a brand-new chore on the
+ * fly and have it immediately scheduled for this slot.
+ *
  * @param {object[]} chores     All household chores
  * @param {object}   slot       { date: "YYYY-MM-DD", timePeriod: "morning", hour: 8 }
- * @param {object[]} schedules  Already-scheduled chores for this slot
+ * @param {object[]} _schedules Unused (kept for call-site compatibility)
  */
-export function renderPickChoreSheet(chores, slot, schedules) {
-  const scheduledIds = new Set((schedules || []).map(s => s.choreId));
-  const available = chores.filter(c => !scheduledIds.has(c.id));
-
-  const items = available.length === 0
-    ? `<p class="sheet-empty">All chores are already scheduled for this time.</p>`
-    : available.map(c => `
+export function renderPickChoreSheet(chores, slot, _schedules) {
+  const items = chores.length === 0
+    ? `<p class="sheet-empty">No chores set up yet — create one below.</p>`
+    : chores.map(c => `
         <button type="button"
           class="sheet-chore-item"
           data-action="schedule-chore-here"
@@ -172,7 +174,18 @@ export function renderPickChoreSheet(chores, slot, schedules) {
       <div class="sheet-handle" aria-hidden="true"></div>
       <h2 class="sheet-title">${title}</h2>
       <div class="sheet-chore-list">${items}</div>
-      <button type="button" class="btn btn-ghost btn-full" data-action="close-sheet">
+      <form data-action="new-chore-from-sheet" class="sheet-new-chore-form">
+        <input type="hidden" name="timePeriod" value="${escapeHTML(slot.timePeriod || "anytime")}" />
+        <input type="hidden" name="date" value="${escapeHTML(slot.date || "")}" />
+        <input type="hidden" name="specificHour" value="${slot.hour ?? ""}" />
+        <p class="sheet-section-label">Create new chore</p>
+        <div class="sheet-new-chore-row">
+          <input type="text" name="choreName" class="text-input sheet-new-chore-input"
+            placeholder="Chore name…" autocomplete="off" />
+          <button type="submit" class="btn btn-primary sheet-new-chore-btn" aria-label="Create and add chore">+</button>
+        </div>
+      </form>
+      <button type="button" class="btn btn-ghost btn-full sheet-cancel-btn" data-action="close-sheet">
         Cancel
       </button>
     </div>`;

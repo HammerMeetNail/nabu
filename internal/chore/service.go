@@ -100,16 +100,15 @@ func (s *Service) SeedDefaultChores(ctx context.Context, householdID int64) erro
 }
 
 var PredefinedChores = []Chore{
-	{Name: "Feed Cats (Morning)", Icon: "🐱", Color: "#F59E0B", Category: "feeding", SortOrder: 0},
-	{Name: "Feed Cats (Evening)", Icon: "🐱", Color: "#F59E0B", Category: "feeding", SortOrder: 1},
-	{Name: "Feed Baby", Icon: "🍼", Color: "#EC4899", Category: "feeding", SortOrder: 2},
-	{Name: "Change Baby", Icon: "👶", Color: "#8B5CF6", Category: "care", SortOrder: 3},
-	{Name: "Water Plants", Icon: "🌱", Color: "#10B981", Category: "plants", SortOrder: 4},
-	{Name: "Clean Litter Box", Icon: "🧹", Color: "#6366F1", Category: "cleaning", SortOrder: 5},
-	{Name: "Take Out Trash", Icon: "🗑️", Color: "#6B7280", Category: "cleaning", SortOrder: 6},
-	{Name: "Wash Dishes", Icon: "🍽️", Color: "#3B82F6", Category: "cleaning", SortOrder: 7},
-	{Name: "Vacuum", Icon: "🧹", Color: "#06B6D4", Category: "cleaning", SortOrder: 8},
-	{Name: "Laundry", Icon: "👕", Color: "#F97316", Category: "cleaning", SortOrder: 9},
-	{Name: "Walk Dog", Icon: "🐕", Color: "#EF4444", Category: "care", SortOrder: 10},
-	{Name: "Make Bed", Icon: "🛏️", Color: "#14B8A6", Category: "cleaning", SortOrder: 11},
+	{Name: "Feed Cats",        Icon: "🐱", Color: "#F59E0B", Category: "feeding",  SortOrder: 0},
+	{Name: "Feed Baby",        Icon: "🍼", Color: "#EC4899", Category: "feeding",  SortOrder: 1},
+	{Name: "Change Baby",      Icon: "👶", Color: "#8B5CF6", Category: "care",     SortOrder: 2},
+	{Name: "Water Plants",     Icon: "🌱", Color: "#10B981", Category: "plants",   SortOrder: 3},
+	{Name: "Clean Litter Box", Icon: "🧹", Color: "#6366F1", Category: "cleaning", SortOrder: 4},
+	{Name: "Take Out Trash",   Icon: "🗑️", Color: "#6B7280", Category: "cleaning", SortOrder: 5},
+	{Name: "Wash Dishes",      Icon: "🍽️", Color: "#3B82F6", Category: "cleaning", SortOrder: 6},
+	{Name: "Vacuum",           Icon: "🧹", Color: "#06B6D4", Category: "cleaning", SortOrder: 7},
+	{Name: "Laundry",          Icon: "👕", Color: "#F97316", Category: "cleaning", SortOrder: 8},
+	{Name: "Walk Dog",         Icon: "🐕", Color: "#EF4444", Category: "care",     SortOrder: 9},
+	{Name: "Make Bed",         Icon: "🛏️", Color: "#14B8A6", Category: "cleaning", SortOrder: 10},
 }

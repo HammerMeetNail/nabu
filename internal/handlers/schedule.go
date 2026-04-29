@@ -3,6 +3,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
@@ -109,7 +110,10 @@ func (h *ScheduleHandler) Create(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"schedule": created})
 }
 
-// Update replaces a schedule entry.
+// Update partially updates a schedule entry.
+// Only fields present in the JSON body are modified; all others are preserved
+// from the existing record.  This prevents implicit zero-value overwrites (e.g.
+// isActive being reset to false when only timePeriod is being changed).
 // PATCH /api/schedules/{id}
 func (h *ScheduleHandler) Update(w http.ResponseWriter, r *http.Request) {
 	user, _ := middleware.CurrentUser(r.Context())
@@ -135,22 +139,45 @@ func (h *ScheduleHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req schedule.ChoreSchedule
-	if err := readJSON(r, &req); err != nil {
+	// Decode as a raw map so we can distinguish "field not sent" from "field
+	// sent as zero/false/null".  Only keys present in the payload are applied.
+	var raw map[string]json.RawMessage
+	if err := readJSON(r, &raw); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+
+	// Start from the existing record; patch only what was provided.
+	req := existing
 	req.ID = id
 	req.HouseholdID = *user.HouseholdID
-	// Preserve fields not in the request
-	if req.ChoreID == 0 {
-		req.ChoreID = existing.ChoreID
+
+	if v, ok := raw["choreId"]; ok {
+		_ = json.Unmarshal(v, &req.ChoreID)
 	}
-	if req.TimePeriod == "" {
-		req.TimePeriod = existing.TimePeriod
+	if v, ok := raw["timePeriod"]; ok {
+		var s string
+		if json.Unmarshal(v, &s) == nil {
+			req.TimePeriod = schedule.TimePeriod(s)
+		}
 	}
-	if req.FrequencyType == "" {
-		req.FrequencyType = existing.FrequencyType
+	if v, ok := raw["specificTime"]; ok {
+		_ = json.Unmarshal(v, &req.SpecificTime)
+	}
+	if v, ok := raw["frequencyType"]; ok {
+		_ = json.Unmarshal(v, &req.FrequencyType)
+	}
+	if v, ok := raw["isActive"]; ok {
+		_ = json.Unmarshal(v, &req.IsActive)
+	}
+	if v, ok := raw["daysOfWeek"]; ok {
+		_ = json.Unmarshal(v, &req.DaysOfWeek)
+	}
+	if v, ok := raw["intervalDays"]; ok {
+		_ = json.Unmarshal(v, &req.IntervalDays)
+	}
+	if v, ok := raw["dayOfMonth"]; ok {
+		_ = json.Unmarshal(v, &req.DayOfMonth)
 	}
 
 	updated, err := h.store.Update(r.Context(), req)

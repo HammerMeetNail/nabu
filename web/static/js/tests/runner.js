@@ -224,6 +224,8 @@ describe("Schedule: renderPickChoreSheet", () => {
   });
 
   it("excludes already-scheduled chores", async () => {
+    // Behaviour change: all chores are always shown so they can be added
+    // multiple times (e.g. feed cat morning AND evening).
     const { renderPickChoreSheet } = await import("../schedule.js");
     const chores = [
       { id: 1, icon: "🐱", name: "Feed cats", category: "Pets" },
@@ -231,14 +233,17 @@ describe("Schedule: renderPickChoreSheet", () => {
     ];
     const existing = [{ choreId: 1 }];
     const html = renderPickChoreSheet(chores, { timePeriod: "morning" }, existing);
-    assert.ok(!html.includes("Feed cats"));
+    // Both chores must still be present — scheduling one does not remove it
+    assert.ok(html.includes("Feed cats"));
     assert.ok(html.includes("Water plants"));
   });
 
   it("shows empty message when all scheduled", async () => {
+    // Behaviour change: the sheet now always shows all chores (repeatable).
+    // The "empty" state only appears when the household has zero chores at all.
     const { renderPickChoreSheet } = await import("../schedule.js");
-    const chores = [{ id: 1, icon: "🐱", name: "Feed cats", category: "Pets" }];
-    const html = renderPickChoreSheet(chores, { timePeriod: "morning" }, [{ choreId: 1 }]);
+    // With an empty chores array the empty message should appear
+    const html = renderPickChoreSheet([], { timePeriod: "morning" }, [{ choreId: 1 }]);
     assert.ok(html.includes("sheet-empty"));
   });
 });

@@ -546,6 +546,9 @@ export async function init() {
       case "join-household":
         doJoinHousehold(form);
         break;
+      case "new-chore-from-sheet":
+        doCreateChoreFromSheet(form);
+        break;
     }
   });
 
@@ -696,6 +699,40 @@ async function doJoinHousehold(form) {
     await loadTodayData();
     state.currentRoute = "/";
     render(document.querySelector("#app"));
+  }
+}
+
+async function doCreateChoreFromSheet(form) {
+  const name      = form.querySelector('[name="choreName"]').value.trim();
+  const timePeriod = form.querySelector('[name="timePeriod"]').value;
+  const rawHour   = form.querySelector('[name="specificHour"]').value;
+  if (!name) return;
+
+  try {
+    const { data: choreData } = await apiFetch("/api/chores", {
+      method: "POST",
+      body: JSON.stringify({ name }),
+    });
+    const newChore = choreData?.chore;
+    if (!newChore) { showToast("Failed to create chore", "error"); return; }
+
+    const specificTime = rawHour ? `${String(rawHour).padStart(2, "0")}:00` : null;
+    await createSchedule({
+      choreId:       newChore.id,
+      timePeriod,
+      specificTime,
+      frequencyType: "daily",
+      isActive:      true,
+    });
+
+    await loadChoreData();
+    state.schedules = await loadSchedules();
+    state.activeSheet     = null;
+    state.activeSheetData = {};
+    const app = document.querySelector("#app");
+    if (app) render(app);
+  } catch {
+    showToast("Failed to create chore", "error");
   }
 }
 
