@@ -32,12 +32,12 @@ e2e:
 e2e-watch: local
 	@echo "Running E2E tests in watch mode (headed browser)..."
 	@CHROMIUM_PATH="$$(find $(HOME)/.cache/ms-playwright -name chrome -type f -path '*/chrome-linux/*' 2>/dev/null | head -1)" \
-	npx playwright test --project=chromium --headed --reporter=list
+	pnpm exec playwright test --project=chromium --headed --reporter=list
 
 e2e-debug: local
 	@echo "Running E2E tests in debug mode (headed, paused on each step)..."
 	@CHROMIUM_PATH="$$(find $(HOME)/.cache/ms-playwright -name chrome -type f -path '*/chrome-linux/*' 2>/dev/null | head -1)" \
-	npx playwright test --project=chromium --headed --debug --reporter=list
+	pnpm exec playwright test --project=chromium --headed --debug --reporter=list
 
 backup:
 	sh ./scripts/backup.sh

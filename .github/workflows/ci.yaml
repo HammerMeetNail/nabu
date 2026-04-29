@@ -42,7 +42,7 @@ jobs:
         with:
           node-version: "22"
       - name: Install dependencies
-        run: npm install
+        run: pnpm install
       - name: JS tests
         run: node --test web/static/js/tests/runner.js
 
