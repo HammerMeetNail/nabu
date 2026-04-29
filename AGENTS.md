@@ -27,7 +27,7 @@ CI runs `go vet ./...` for lint (not golangci-lint). `make lint` uses golangci-l
 
 ## Prerequisites
 
-- **Go 1.25+** (CI uses 1.24 in build job, but `go.mod` declares 1.25).
+- **Go 1.25+** (CI uses 1.25 to match `go.mod`).
 - **JS tests require `pnpm install` first** for `jsdom` (dev dependency). Tests use Node's built-in test runner (`node --test`), not Jest or Mocha.
 - **E2E tests require `pnpm exec playwright install chromium`** to download the browser binary.
 - **Podman Compose** for local stack (`make local`). Docker Compose may work but is untested.
