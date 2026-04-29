@@ -19,8 +19,10 @@ import {
   renderResetPasswordView,
 } from "./auth.js";
 import { loadHousehold, createHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, renderHouseholdView } from "./household.js";
-import { loadToday, logChore, undoLog, loadChores, loadHistory, renderTodayView as renderTodayViewImpl, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
+import { loadToday, loadWeek, logChore, undoLog, loadChores, loadHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
 import { renderStatsView, loadOverview } from "./stats.js";
+import { renderDayView, renderWeekView } from "./calendar.js";
+import { loadSchedules, createSchedule, updateSchedule, renderPickChoreSheet } from "./schedule.js";
 
 let state;
 
@@ -128,7 +130,23 @@ function renderTodayView() {
     <div class="empty-state-title">No chores set up yet</div>
     <p>Add chores via settings or the chores tab.</p></div></div>`;
   }
-  return renderTodayViewImpl(state);
+  const mainView = state.calendarView === "week"
+    ? renderWeekView(state)
+    : renderDayView(state);
+
+  if (state.activeSheet === "pick-chore") {
+    const sheetHTML = renderPickChoreSheet(
+      state.chores,
+      state.activeSheetData || {},
+      state.schedules || []
+    );
+    return `<div class="sheet-overlay-wrapper">
+      ${mainView}
+      <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+      ${sheetHTML}
+    </div>`;
+  }
+  return mainView;
 }
 
 function renderSettingsView() {
@@ -437,8 +455,66 @@ export async function init() {
         break;
       case "navigate-day":
         e.preventDefault();
+        state.calendarDate = actionEl.dataset.date;
         state.todayDate = actionEl.dataset.date;
         loadTodayData().then(() => render(app));
+        break;
+
+      case "switch-view":
+        e.preventDefault();
+        state.calendarView = actionEl.dataset.view;
+        if (state.calendarView === "week") {
+          loadWeekData().then(() => render(app));
+        } else {
+          loadTodayData().then(() => render(app));
+        }
+        break;
+
+      case "navigate-week":
+        e.preventDefault();
+        state.calendarDate = actionEl.dataset.date;
+        loadWeekData().then(() => render(app));
+        break;
+
+      case "open-pick-chore-sheet":
+        e.preventDefault();
+        state.activeSheet = "pick-chore";
+        state.activeSheetData = {
+          date:       actionEl.dataset.date,
+          timePeriod: actionEl.dataset.timePeriod,
+          hour:       actionEl.dataset.hour ? parseInt(actionEl.dataset.hour, 10) : null,
+        };
+        render(app);
+        break;
+
+      case "schedule-chore-here": {
+        e.preventDefault();
+        const choreId    = parseInt(actionEl.dataset.choreId, 10);
+        const timePeriod = actionEl.dataset.timePeriod;
+        const rawHour    = actionEl.dataset.specificHour;
+        const specificTime = rawHour
+          ? `${String(rawHour).padStart(2, "0")}:00`
+          : null;
+        createSchedule({
+          choreId,
+          timePeriod,
+          specificTime,
+          frequencyType: "daily",
+          isActive: true,
+        }).then(async () => {
+          state.activeSheet = null;
+          state.activeSheetData = {};
+          state.schedules = await loadSchedules();
+          render(app);
+        }).catch(() => showToast("Failed to schedule chore", "error"));
+        break;
+      }
+
+      case "close-sheet":
+        e.preventDefault();
+        state.activeSheet = null;
+        state.activeSheetData = {};
+        render(app);
         break;
     }
   });
@@ -483,6 +559,61 @@ export async function init() {
       ]);
     }
   } catch {}
+
+  // ── Drag and drop ──────────────────────────────────────────────────────────
+  document.addEventListener("dragstart", e => {
+    const card = e.target.closest("[data-drag-chore-id]");
+    if (!card) return;
+    e.dataTransfer.setData("text/plain", JSON.stringify({
+      choreId:    parseInt(card.dataset.dragChoreId,    10),
+      scheduleId: parseInt(card.dataset.dragScheduleId, 10) || null,
+    }));
+    card.classList.add("dragging");
+  });
+
+  document.addEventListener("dragend", e => {
+    e.target.closest("[data-drag-chore-id]")?.classList.remove("dragging");
+  });
+
+  document.addEventListener("dragover", e => {
+    const cell = e.target.closest("[data-drop-period], [data-drop-hour]");
+    if (cell) { e.preventDefault(); cell.classList.add("drop-target"); }
+  });
+
+  document.addEventListener("dragleave", e => {
+    e.target.closest(".drop-target")?.classList.remove("drop-target");
+  });
+
+  document.addEventListener("drop", async e => {
+    const cell = e.target.closest("[data-drop-period], [data-drop-hour]");
+    if (!cell) return;
+    e.preventDefault();
+    cell.classList.remove("drop-target");
+    let payload;
+    try { payload = JSON.parse(e.dataTransfer.getData("text/plain")); }
+    catch { return; }
+    const { choreId, scheduleId } = payload;
+    const newPeriod = cell.dataset.dropPeriod || cell.dataset.timePeriod || "anytime";
+    const newHour   = cell.dataset.dropHour != null
+      ? `${String(cell.dataset.dropHour).padStart(2, "0")}:00`
+      : null;
+    try {
+      if (scheduleId) {
+        await updateSchedule(scheduleId, { timePeriod: newPeriod, specificTime: newHour });
+      } else {
+        await createSchedule({
+          choreId,
+          timePeriod:    newPeriod,
+          specificTime:  newHour,
+          frequencyType: "daily",
+          isActive:      true,
+        });
+      }
+      state.schedules = await loadSchedules();
+      render(app);
+    } catch { showToast("Failed to move chore", "error"); }
+  });
+
   render(app);
 }
 
@@ -508,10 +639,30 @@ async function loadChoreData() {
 
 async function loadTodayData() {
   try {
-    const date = state.todayDate || todayISO(0);
-    const data = await loadToday(date);
-    state.todayLogs = data.logs || [];
-    state.dailySummary = data.summary;
+    const date = state.calendarDate || state.todayDate || todayISO(0);
+    const [todayResult, scheduleList] = await Promise.all([
+      loadToday(date),
+      loadSchedules(),
+    ]);
+    state.todayLogs = todayResult.logs || [];
+    state.dailySummary = todayResult.summary;
+    state.schedules = scheduleList;
+  } catch {}
+}
+
+async function loadWeekData() {
+  try {
+    const date = state.calendarDate || todayISO(0);
+    const d = new Date(date + "T00:00:00");
+    const day = d.getDay();
+    d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+    const weekStart = d.toISOString().split("T")[0];
+    const [weekResult, scheduleList] = await Promise.all([
+      loadWeek(weekStart),
+      loadSchedules(),
+    ]);
+    state.weekLogs = weekResult.logs || [];
+    state.schedules = scheduleList;
   } catch {}
 }
 

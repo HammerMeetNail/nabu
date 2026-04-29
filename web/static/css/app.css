@@ -632,3 +632,432 @@ input:focus, select:focus, textarea:focus {
   font-weight: 600;
   color: var(--text-secondary);
 }
+
+/* ─── Calendar: shared nav ─────────────────────────────────────────────────── */
+
+.cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.cal-date {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+  flex: 1;
+}
+
+/* ─── View tabs (Day / Week) ───────────────────────────────────────────────── */
+
+.view-tabs {
+  display: flex;
+  gap: 4px;
+  background: var(--bg);
+  border-radius: var(--radius-pill);
+  padding: 3px;
+  margin-bottom: 12px;
+  align-self: flex-start;
+}
+
+.view-tab {
+  flex: 1;
+  padding: 6px 20px;
+  border-radius: var(--radius-pill);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  background: transparent;
+  transition: background 0.15s, color 0.15s;
+  min-height: 36px;
+}
+
+.view-tab--active {
+  background: var(--surface);
+  color: var(--primary);
+  font-weight: 600;
+  box-shadow: var(--shadow);
+}
+
+/* ─── Progress label ───────────────────────────────────────────────────────── */
+
+.progress-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-align: center;
+  margin: 6px 0 12px;
+}
+
+/* ─── Day View ─────────────────────────────────────────────────────────────── */
+
+.day-view {
+  display: flex;
+  flex-direction: column;
+}
+
+.period-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.period-section {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  padding: 12px;
+  box-shadow: var(--shadow);
+}
+
+.period-heading {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.period-icon {
+  font-size: 18px;
+}
+
+.period-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.period-cards.drop-target,
+.week-cell.drop-target {
+  outline: 2px dashed var(--primary);
+  outline-offset: 2px;
+  background: rgba(46,134,171,0.06);
+}
+
+/* New done-state class used by calendar.js (mirrors legacy chore-done) */
+.chore-card.chore-card--done {
+  opacity: 0.5;
+}
+
+.chore-time {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.chore-assignee {
+  font-size: 14px;
+}
+
+/* Add-chore slot button inside a period */
+.add-chore-slot {
+  min-height: 64px;
+  border: 2px dashed var(--border);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.add-chore-slot:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+/* Drag states */
+.dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+/* ─── Week View ────────────────────────────────────────────────────────────── */
+
+.week-view {
+  display: flex;
+  flex-direction: column;
+}
+
+.week-grid-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+}
+
+.week-grid {
+  min-width: 520px;
+  background: var(--surface);
+}
+
+.week-header-row {
+  display: grid;
+  grid-template-columns: 52px repeat(7, 1fr);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 10;
+}
+
+.hour-label-spacer {
+  border-right: 1px solid var(--border);
+}
+
+.week-col-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 6px 4px;
+  border-right: 1px solid var(--border);
+}
+
+.week-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.hour-row {
+  display: grid;
+  grid-template-columns: 52px repeat(7, 1fr);
+  min-height: 48px;
+  border-bottom: 1px solid var(--border);
+}
+
+/* Named period colour bands */
+.hour-row--morning   { background: rgba(255, 200, 100, 0.06); }
+.hour-row--afternoon { background: rgba(255, 160,  60, 0.06); }
+.hour-row--evening   { background: rgba(100, 120, 200, 0.08); }
+.hour-row--night     { background: rgba( 30,  30,  80, 0.05); }
+
+.hour-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 6px 4px 0 6px;
+  border-right: 1px solid var(--border);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.week-cell {
+  border-right: 1px solid var(--border);
+  padding: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+  min-height: 48px;
+}
+
+.week-cell--anytime {
+  min-height: 52px;
+}
+
+.week-cell-empty {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.week-chore-card {
+  width: 100%;
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 11px;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  min-height: 36px;
+  position: relative;
+}
+
+.week-chore-card .chore-name {
+  font-size: 11px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Anytime section below week grid */
+.anytime-week-section {
+  margin-top: 12px;
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  padding: 12px;
+  box-shadow: var(--shadow);
+}
+
+.anytime-grid {
+  min-width: 0;
+  box-shadow: none;
+}
+
+.anytime-row {
+  display: grid;
+  grid-template-columns: 52px repeat(7, 1fr);
+  border-bottom: 1px solid var(--border);
+  min-height: 52px;
+}
+
+.anytime-row:last-child {
+  border-bottom: none;
+}
+
+/* ─── Bottom Sheet ─────────────────────────────────────────────────────────── */
+
+.sheet-overlay-wrapper {
+  position: relative;
+}
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 300;
+  cursor: pointer;
+}
+
+.bottom-sheet {
+  position: fixed;
+  bottom: calc(64px + var(--safe-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
+  background: var(--surface);
+  border-radius: 20px 20px 0 0;
+  padding: 16px 16px calc(16px + var(--safe-bottom));
+  z-index: 310;
+  box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.18);
+  max-height: 75dvh;
+  overflow-y: auto;
+}
+
+.sheet-handle {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  margin: 0 auto 16px;
+}
+
+.sheet-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 16px;
+  text-align: center;
+}
+
+.sheet-empty {
+  text-align: center;
+  color: var(--text-secondary);
+  padding: 24px 0;
+  font-size: 14px;
+}
+
+.sheet-chore-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.sheet-chore-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-card);
+  background: var(--bg);
+  text-align: left;
+  min-height: 56px;
+  width: 100%;
+  transition: background 0.15s;
+}
+
+.sheet-chore-item:hover,
+.sheet-chore-item:active {
+  background: var(--border);
+}
+
+.sheet-chore-item .chore-icon { font-size: 24px; }
+.sheet-chore-item .chore-name { font-weight: 600; font-size: 15px; flex: 1; }
+.sheet-chore-item .chore-category {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.btn-full { width: 100%; }
+
+/* ─── Recurrence Picker ────────────────────────────────────────────────────── */
+
+.recurrence-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.field-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.select-input,
+.text-input {
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-size: 16px;
+  color: var(--text);
+}
+
+.day-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.day-pill {
+  padding: 6px 12px;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-secondary);
+  min-height: 36px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.day-pill--on {
+  background: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+@media (min-width: 600px) {
+  .period-cards {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  }
+
+  .week-grid,
+  .week-grid-wrapper {
+    min-width: 0;
+  }
+}

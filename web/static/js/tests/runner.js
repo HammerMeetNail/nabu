@@ -26,14 +26,22 @@ describe("State", () => {
     assert.equal(state.user, null);
     assert.equal(state.networkOnline, true);
     assert.deepEqual(state.chores, []);
+    assert.deepEqual(state.schedules, []);
+    assert.equal(state.calendarView, "day");
+    assert.equal(state.calendarDate, null);
   });
 
   it("resets authed state", async () => {
     const { createAppState, resetAuthedState } = await import("../state.js");
     const state = createAppState();
     state.user = { email: "test@example.com" };
+    state.schedules = [{ id: 1 }];
+    state.calendarView = "week";
     resetAuthedState(state);
     assert.equal(state.user, null);
+    assert.deepEqual(state.schedules, []);
+    assert.equal(state.calendarView, "day");
+    assert.equal(state.calendarDate, null);
   });
 });
 
@@ -112,3 +120,259 @@ describe("Auth Views", () => {
     assert.ok(html.includes("Email Verified"));
   });
 });
+
+// ─── Schedule helpers ─────────────────────────────────────────────────────────
+
+describe("Schedule: hourToPeriod", () => {
+  it("maps early morning hours to morning", async () => {
+    const { hourToPeriod } = await import("../schedule.js");
+    assert.equal(hourToPeriod(5),  "morning");
+    assert.equal(hourToPeriod(11), "morning");
+  });
+
+  it("maps afternoon hours", async () => {
+    const { hourToPeriod } = await import("../schedule.js");
+    assert.equal(hourToPeriod(12), "afternoon");
+    assert.equal(hourToPeriod(16), "afternoon");
+  });
+
+  it("maps evening hours", async () => {
+    const { hourToPeriod } = await import("../schedule.js");
+    assert.equal(hourToPeriod(17), "evening");
+    assert.equal(hourToPeriod(20), "evening");
+  });
+
+  it("maps night hours (wraps midnight)", async () => {
+    const { hourToPeriod } = await import("../schedule.js");
+    assert.equal(hourToPeriod(21), "night");
+    assert.equal(hourToPeriod(23), "night");
+    assert.equal(hourToPeriod(0),  "night");
+    assert.equal(hourToPeriod(4),  "night");
+  });
+});
+
+describe("Schedule: timeToPeriod", () => {
+  it("converts HH:MM strings to period", async () => {
+    const { timeToPeriod } = await import("../schedule.js");
+    assert.equal(timeToPeriod("08:30"), "morning");
+    assert.equal(timeToPeriod("14:00"), "afternoon");
+    assert.equal(timeToPeriod("18:45"), "evening");
+    assert.equal(timeToPeriod("22:00"), "night");
+  });
+
+  it("falls back to anytime for empty/null", async () => {
+    const { timeToPeriod } = await import("../schedule.js");
+    assert.equal(timeToPeriod(""),    "anytime");
+    assert.equal(timeToPeriod(null),  "anytime");
+    assert.equal(timeToPeriod(undefined), "anytime");
+  });
+});
+
+describe("Schedule: recurrenceSummary", () => {
+  it("returns not-scheduled for null", async () => {
+    const { recurrenceSummary } = await import("../schedule.js");
+    assert.equal(recurrenceSummary(null), "Not scheduled");
+  });
+
+  it("daily with period", async () => {
+    const { recurrenceSummary } = await import("../schedule.js");
+    const s = recurrenceSummary({ frequencyType: "daily", timePeriod: "morning" });
+    assert.ok(s.includes("Every day"));
+    assert.ok(s.includes("Morning"));
+  });
+
+  it("weekly with specific days", async () => {
+    const { recurrenceSummary } = await import("../schedule.js");
+    const s = recurrenceSummary({ frequencyType: "weekly", daysOfWeek: [1, 3, 5], timePeriod: "anytime" });
+    assert.ok(s.includes("Mon"));
+    assert.ok(s.includes("Wed"));
+    assert.ok(s.includes("Fri"));
+  });
+
+  it("every_n_days", async () => {
+    const { recurrenceSummary } = await import("../schedule.js");
+    const s = recurrenceSummary({ frequencyType: "every_n_days", intervalDays: 3, timePeriod: "anytime" });
+    assert.ok(s.includes("3 days"));
+  });
+
+  it("monthly_by_date", async () => {
+    const { recurrenceSummary } = await import("../schedule.js");
+    const s = recurrenceSummary({ frequencyType: "monthly_by_date", dayOfMonth: 15, timePeriod: "anytime" });
+    assert.ok(s.includes("15th"));
+  });
+
+  it("shows specific time instead of period", async () => {
+    const { recurrenceSummary } = await import("../schedule.js");
+    const s = recurrenceSummary({ frequencyType: "daily", timePeriod: "morning", specificTime: "08:00" });
+    assert.ok(s.includes("8:00 AM"));
+    // period label should NOT appear when specificTime is set
+    assert.ok(!s.includes("Morning"));
+  });
+});
+
+describe("Schedule: renderPickChoreSheet", () => {
+  it("lists available chores", async () => {
+    const { renderPickChoreSheet } = await import("../schedule.js");
+    const chores = [
+      { id: 1, icon: "🐱", name: "Feed cats", category: "Pets" },
+      { id: 2, icon: "🌿", name: "Water plants", category: "Garden" },
+    ];
+    const html = renderPickChoreSheet(chores, { date: "2026-04-28", timePeriod: "morning" }, []);
+    assert.ok(html.includes("Feed cats"));
+    assert.ok(html.includes("Water plants"));
+    assert.ok(html.includes("schedule-chore-here"));
+  });
+
+  it("excludes already-scheduled chores", async () => {
+    const { renderPickChoreSheet } = await import("../schedule.js");
+    const chores = [
+      { id: 1, icon: "🐱", name: "Feed cats", category: "Pets" },
+      { id: 2, icon: "🌿", name: "Water plants", category: "Garden" },
+    ];
+    const existing = [{ choreId: 1 }];
+    const html = renderPickChoreSheet(chores, { timePeriod: "morning" }, existing);
+    assert.ok(!html.includes("Feed cats"));
+    assert.ok(html.includes("Water plants"));
+  });
+
+  it("shows empty message when all scheduled", async () => {
+    const { renderPickChoreSheet } = await import("../schedule.js");
+    const chores = [{ id: 1, icon: "🐱", name: "Feed cats", category: "Pets" }];
+    const html = renderPickChoreSheet(chores, { timePeriod: "morning" }, [{ choreId: 1 }]);
+    assert.ok(html.includes("sheet-empty"));
+  });
+});
+
+// ─── Calendar helpers ─────────────────────────────────────────────────────────
+
+describe("Calendar: shiftISO", () => {
+  it("shifts forward by days", async () => {
+    const { shiftISO } = await import("../calendar.js");
+    assert.equal(shiftISO("2026-04-28", 1),  "2026-04-29");
+    assert.equal(shiftISO("2026-04-28", 7),  "2026-05-05");
+    assert.equal(shiftISO("2026-04-28", -1), "2026-04-27");
+  });
+
+  it("handles month boundaries", async () => {
+    const { shiftISO } = await import("../calendar.js");
+    assert.equal(shiftISO("2026-01-31", 1),  "2026-02-01");
+    assert.equal(shiftISO("2026-03-01", -1), "2026-02-28");
+  });
+});
+
+describe("Calendar: isActiveForDayJS", () => {
+  it("daily schedule is always active", async () => {
+    const { isActiveForDayJS } = await import("../calendar.js");
+    const sch = { isActive: true, frequencyType: "daily" };
+    assert.equal(isActiveForDayJS(sch, "2026-04-28"), true);
+    assert.equal(isActiveForDayJS(sch, "2026-01-01"), true);
+  });
+
+  it("inactive schedule returns false", async () => {
+    const { isActiveForDayJS } = await import("../calendar.js");
+    const sch = { isActive: false, frequencyType: "daily" };
+    assert.equal(isActiveForDayJS(sch, "2026-04-28"), false);
+  });
+
+  it("weekly schedule matches correct days", async () => {
+    const { isActiveForDayJS } = await import("../calendar.js");
+    // 2026-04-27 = Monday (day 1), 2026-04-28 = Tuesday (day 2)
+    const sch = { isActive: true, frequencyType: "weekly", daysOfWeek: [1, 3] };
+    assert.equal(isActiveForDayJS(sch, "2026-04-27"), true);  // Monday
+    assert.equal(isActiveForDayJS(sch, "2026-04-28"), false); // Tuesday
+    assert.equal(isActiveForDayJS(sch, "2026-04-29"), true);  // Wednesday
+  });
+
+  it("every_n_days schedule", async () => {
+    const { isActiveForDayJS } = await import("../calendar.js");
+    const sch = {
+      isActive: true,
+      frequencyType: "every_n_days",
+      intervalDays: 3,
+      createdAt: "2026-04-01T00:00:00Z",
+    };
+    assert.equal(isActiveForDayJS(sch, "2026-04-01"), true);
+    assert.equal(isActiveForDayJS(sch, "2026-04-02"), false);
+    assert.equal(isActiveForDayJS(sch, "2026-04-04"), true);
+  });
+
+  it("monthly_by_date schedule", async () => {
+    const { isActiveForDayJS } = await import("../calendar.js");
+    const sch = { isActive: true, frequencyType: "monthly_by_date", dayOfMonth: 15 };
+    assert.equal(isActiveForDayJS(sch, "2026-04-15"), true);
+    assert.equal(isActiveForDayJS(sch, "2026-04-16"), false);
+    assert.equal(isActiveForDayJS(sch, "2026-05-15"), true);
+  });
+
+  it("monthly_by_weekday — 2nd Monday", async () => {
+    const { isActiveForDayJS } = await import("../calendar.js");
+    const sch = {
+      isActive: true,
+      frequencyType: "monthly_by_weekday",
+      monthWeekday: { week: 2, day: 1 }, // 2nd Monday
+    };
+    // April 2026: Mondays are 6,13,20,27. 2nd Monday = Apr 13.
+    assert.equal(isActiveForDayJS(sch, "2026-04-13"), true);
+    assert.equal(isActiveForDayJS(sch, "2026-04-06"), false);
+    assert.equal(isActiveForDayJS(sch, "2026-04-20"), false);
+  });
+
+  it("yearly schedule", async () => {
+    const { isActiveForDayJS } = await import("../calendar.js");
+    const sch = { isActive: true, frequencyType: "yearly", dayOfMonth: 28, monthOfYear: 4 };
+    assert.equal(isActiveForDayJS(sch, "2026-04-28"), true);
+    assert.equal(isActiveForDayJS(sch, "2026-04-29"), false);
+    assert.equal(isActiveForDayJS(sch, "2027-04-28"), true);
+  });
+
+  it("respects recurrenceEnd", async () => {
+    const { isActiveForDayJS } = await import("../calendar.js");
+    const sch = { isActive: true, frequencyType: "daily", recurrenceEnd: "2026-04-30" };
+    assert.equal(isActiveForDayJS(sch, "2026-04-28"), true);
+    assert.equal(isActiveForDayJS(sch, "2026-05-01"), false);
+  });
+});
+
+describe("Calendar: renderDayView", () => {
+  it("renders period sections", async () => {
+    const { renderDayView } = await import("../calendar.js");
+    const state = {
+      calendarDate: "2026-04-28",
+      chores: [{ id: 1, icon: "🐱", name: "Feed cats", color: "#aabbcc", category: "Pets" }],
+      schedules: [{ id: 1, choreId: 1, timePeriod: "morning", isActive: true, frequencyType: "daily" }],
+      todayLogs: [],
+    };
+    const html = renderDayView(state);
+    assert.ok(html.includes("Morning"));
+    assert.ok(html.includes("Feed cats"));
+    assert.ok(html.includes("data-view=\"day\""));
+  });
+
+  it("marks completed chore as done", async () => {
+    const { renderDayView } = await import("../calendar.js");
+    const state = {
+      calendarDate: "2026-04-28",
+      chores: [{ id: 1, icon: "🐱", name: "Feed cats", color: "#aabbcc", category: "Pets" }],
+      schedules: [{ id: 1, choreId: 1, timePeriod: "morning", isActive: true, frequencyType: "daily" }],
+      todayLogs: [{ id: 99, choreId: 1, completedAt: "2026-04-28T09:00:00Z" }],
+    };
+    const html = renderDayView(state);
+    assert.ok(html.includes("chore-card--done"));
+    assert.ok(html.includes("undo-chore"));
+  });
+
+  it("places unscheduled chores in anytime", async () => {
+    const { renderDayView } = await import("../calendar.js");
+    const state = {
+      calendarDate: "2026-04-28",
+      chores: [{ id: 1, icon: "🐱", name: "Feed cats", color: "#aabbcc", category: "Pets" }],
+      schedules: [],
+      todayLogs: [],
+    };
+    const html = renderDayView(state);
+    // Card should appear inside the Anytime section
+    assert.ok(html.includes("Anytime"));
+    assert.ok(html.includes("Feed cats"));
+  });
+});
+

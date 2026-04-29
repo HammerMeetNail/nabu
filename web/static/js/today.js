@@ -1,5 +1,6 @@
 import { apiFetch } from "./api.js";
 import { escapeHTML } from "./utils.js";
+import { loadSchedulesForDate } from "./schedule.js";
 
 
 export function todayISO(offset) {
@@ -55,6 +56,19 @@ export async function undoLog(logId) {
 export async function loadChores() {
   const { data } = await apiFetch("/api/chores");
   return data;
+}
+
+/**
+ * Loads today's logs AND today's active schedules in parallel.
+ * Returns a merged object suitable for passing into renderDayView.
+ */
+export async function loadTodayWithSchedules(state) {
+  const date = state.calendarDate || state.todayDate || todayISO(0);
+  const [todayData, schedules] = await Promise.all([
+    loadToday(date),
+    loadSchedulesForDate(date),
+  ]);
+  return { ...todayData, schedules };
 }
 
 export function renderTodayView(state) {

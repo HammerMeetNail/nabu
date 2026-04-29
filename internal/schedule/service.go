@@ -1,108 +1,126 @@
+// internal/schedule/service.go
+
 package schedule
 
-import (
-	"time"
+import "time"
+
+// TimePeriod represents a named block of the day.
+type TimePeriod string
+
+const (
+	PeriodMorning   TimePeriod = "morning"   // 05:00-11:59
+	PeriodAfternoon TimePeriod = "afternoon" // 12:00-16:59
+	PeriodEvening   TimePeriod = "evening"   // 17:00-20:59
+	PeriodNight     TimePeriod = "night"     // 21:00-04:59
+	PeriodAnytime   TimePeriod = "anytime"   // no constraint
 )
 
+// MonthWeekday encodes "Nth weekday of the month", e.g. 3rd Monday.
+type MonthWeekday struct {
+	Week int `json:"week"` // 1-5
+	Day  int `json:"day"`  // 0=Sunday … 6=Saturday
+}
+
+// ChoreSchedule is the canonical schedule record.
 type ChoreSchedule struct {
-	ID             int64     `json:"id"`
-	HouseholdID    int64     `json:"householdId"`
-	ChoreID        int64     `json:"choreId"`
-	FrequencyType  string    `json:"frequencyType"`
-	TimesOfDay     []string  `json:"timesOfDay"`
-	DaysOfWeek     []int     `json:"daysOfWeek"`
-	IntervalDays   int       `json:"intervalDays"`
-	TargetCount    int       `json:"targetCount"`
-	IsActive       bool      `json:"isActive"`
-	AssignedUserID *int64    `json:"assignedUserId"`
-	CreatedAt      time.Time `json:"createdAt"`
-	UpdatedAt      time.Time `json:"updatedAt"`
+	ID             int64         `json:"id"`
+	HouseholdID    int64         `json:"householdId"`
+	ChoreID        int64         `json:"choreId"`
+	FrequencyType  string        `json:"frequencyType"`
+	TimePeriod     TimePeriod    `json:"timePeriod"`
+	SpecificTime   string        `json:"specificTime,omitempty"` // "HH:MM", optional
+	TimesOfDay     []string      `json:"timesOfDay"`             // legacy; kept for compat
+	DaysOfWeek     []int         `json:"daysOfWeek"`
+	IntervalDays   int           `json:"intervalDays"`
+	DayOfMonth     int           `json:"dayOfMonth,omitempty"`
+	MonthWeekday   *MonthWeekday `json:"monthWeekday,omitempty"`
+	MonthOfYear    int           `json:"monthOfYear,omitempty"`
+	RecurrenceEnd  *time.Time    `json:"recurrenceEnd,omitempty"`
+	TargetCount    int           `json:"targetCount"`
+	IsActive       bool          `json:"isActive"`
+	AssignedUserID *int64        `json:"assignedUserId"`
+	CreatedAt      time.Time     `json:"createdAt"`
+	UpdatedAt      time.Time     `json:"updatedAt"`
 }
 
-type Service struct {
-}
+// Service holds schedule business logic.
+type Service struct{}
 
+// NewService creates a new Service.
 func NewService() *Service {
 	return &Service{}
 }
 
-func (s *Service) IsSlotActive(schedule ChoreSchedule, now time.Time) bool {
-	if !schedule.IsActive {
+// IsActiveForDay returns true if the schedule should show a chore card on the
+// given calendar date. It does NOT check the time of day — that is handled by
+// the UI bucketing logic.
+func (s *Service) IsActiveForDay(sch ChoreSchedule, date time.Time) bool {
+	if !sch.IsActive {
 		return false
 	}
-	weekday := now.Weekday()
-	switch schedule.FrequencyType {
-	case "weekly":
-		for _, d := range schedule.DaysOfWeek {
-			if d == int(weekday) {
-				for _, t := range schedule.TimesOfDay {
-					if matchesTime(t, now) {
-						return true
-					}
-				}
-			}
-		}
+	if sch.RecurrenceEnd != nil && date.After(*sch.RecurrenceEnd) {
 		return false
+	}
+
+	d := date.Truncate(24 * time.Hour)
+
+	switch sch.FrequencyType {
 	case "daily":
-		for _, t := range schedule.TimesOfDay {
-			if matchesTime(t, now) {
+		return true
+
+	case "weekly":
+		wd := int(d.Weekday())
+		for _, allowed := range sch.DaysOfWeek {
+			if wd == allowed {
 				return true
 			}
 		}
 		return false
+
+	case "every_n_days":
+		if sch.IntervalDays <= 0 {
+			return false
+		}
+		origin := sch.CreatedAt.Truncate(24 * time.Hour)
+		diff := int(d.Sub(origin).Hours() / 24)
+		return diff >= 0 && diff%sch.IntervalDays == 0
+
+	case "monthly_by_date":
+		return d.Day() == sch.DayOfMonth
+
+	case "monthly_by_weekday":
+		if sch.MonthWeekday == nil {
+			return false
+		}
+		return isNthWeekdayOfMonth(d, sch.MonthWeekday.Week, sch.MonthWeekday.Day)
+
+	case "yearly":
+		return d.Day() == sch.DayOfMonth && int(d.Month()) == sch.MonthOfYear
+
 	default:
-		for _, t := range schedule.TimesOfDay {
-			if matchesTime(t, now) {
-				return true
-			}
-		}
 		return false
 	}
 }
 
-func (s *Service) GetTodaysSlots(schedules []ChoreSchedule) []int64 {
-	var choreIDs []int64
-	now := time.Now()
+// isNthWeekdayOfMonth returns true if t is the Nth occurrence of the given
+// weekday (0=Sun…6=Sat) in its month.
+func isNthWeekdayOfMonth(t time.Time, week, weekday int) bool {
+	count := 0
+	for d := 1; d <= t.Day(); d++ {
+		if int(time.Date(t.Year(), t.Month(), d, 0, 0, 0, 0, t.Location()).Weekday()) == weekday {
+			count++
+		}
+	}
+	return int(t.Weekday()) == weekday && count == week
+}
+
+// GetSchedulesForDate filters a slice of schedules to those active on date.
+func (s *Service) GetSchedulesForDate(schedules []ChoreSchedule, date time.Time) []ChoreSchedule {
+	var out []ChoreSchedule
 	for _, sch := range schedules {
-		if s.IsSlotActive(sch, now) {
-			choreIDs = append(choreIDs, sch.ChoreID)
+		if s.IsActiveForDay(sch, date) {
+			out = append(out, sch)
 		}
 	}
-	return choreIDs
-}
-
-func matchesTime(timeStr string, now time.Time) bool {
-	h, m := 0, 0
-	if _, err := fmtSscanf(timeStr, "%d:%d", &h, &m); err != nil {
-		return false
-	}
-	return now.Hour() == h && now.Minute() >= m-1 && now.Minute() <= m+1
-}
-
-func fmtSscanf(s, format string, a ...any) (int, error) {
-	var i, j int
-	for k, arg := range a {
-		if j >= len(format) {
-			break
-		}
-		if format[j] != '%' {
-			j++
-			k--
-			continue
-		}
-		_ = k
-		if p, ok := arg.(*int); ok {
-			n := 0
-			for i < len(s) && s[i] >= '0' && s[i] <= '9' {
-				n = n*10 + int(s[i]-'0')
-				i++
-			}
-			*p = n
-		}
-		if i < len(s) && j+1 < len(format) && s[i] == format[j+1] {
-			i++
-			j += 2
-		}
-	}
-	return len(a), nil
+	return out
 }

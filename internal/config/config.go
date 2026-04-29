@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -20,6 +21,7 @@ type Config struct {
 	GoogleClientID     string
 	GoogleClientSecret string
 	TrustedProxyCIDRs  string
+	RateLimitAuthMax   int
 }
 
 func Load() (Config, error) {
@@ -37,6 +39,7 @@ func Load() (Config, error) {
 		GoogleClientID:     getenv("GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret: getenv("GOOGLE_CLIENT_SECRET", ""),
 		TrustedProxyCIDRs:  getenv("TRUSTED_PROXY_CIDRS", ""),
+		RateLimitAuthMax:   getenvInt("RATE_LIMIT_AUTH_MAX", 20),
 	}
 
 	if cfg.Port == "" {
@@ -60,6 +63,15 @@ func (c Config) IsProduction() bool {
 func getenv(key, fallback string) string {
 	if value := os.Getenv(key); value != "" {
 		return value
+	}
+	return fallback
+}
+
+func getenvInt(key string, fallback int) int {
+	if value := os.Getenv(key); value != "" {
+		if n, err := strconv.Atoi(value); err == nil && n > 0 {
+			return n
+		}
 	}
 	return fallback
 }

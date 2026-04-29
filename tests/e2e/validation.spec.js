@@ -244,11 +244,15 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     await page.waitForTimeout(3000);
     await expect(page.locator('.chore-card').first()).toBeVisible({ timeout: 8000 });
 
-    // === Today View Elements ===
-    // Date header
-    await expect(page.locator('.today-date')).toBeVisible();
+    // === Day View Elements ===
+    // Date header (new calendar view uses .cal-date)
+    await expect(page.locator('.cal-date')).toBeVisible();
+    // View tabs (Day / Week)
+    await expect(page.locator('.view-tab').first()).toBeVisible();
     // Progress bar
     await expect(page.locator('.progress-bar')).toBeVisible();
+    // Progress label
+    await expect(page.locator('.progress-label')).toBeVisible();
     // Chore cards
     const choreCards = page.locator('.chore-card');
     const totalChores = await choreCards.count();
@@ -263,18 +267,18 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     const arrows = page.locator('button[data-action="navigate-day"]');
     expect(await arrows.count()).toBe(2);
 
-    const todayDate = await page.locator('.today-date').innerText();
+    const todayDate = await page.locator('.cal-date').innerText();
 
     // Click right arrow → tomorrow
     await arrows.last().click();
     await page.waitForTimeout(1000);
-    const tomorrowDate = await page.locator('.today-date').innerText();
+    const tomorrowDate = await page.locator('.cal-date').innerText();
     expect(tomorrowDate).not.toBe(todayDate);
 
     // Click left arrow → back to today
     await arrows.first().click();
     await page.waitForTimeout(500);
-    expect(await page.locator('.today-date').innerText()).toBe(todayDate);
+    expect(await page.locator('.cal-date').innerText()).toBe(todayDate);
 
     // === Log a Chore ===
     const firstChore = choreCards.first();
@@ -282,22 +286,22 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     await firstChore.click();
     await page.waitForTimeout(1500);
 
-    // Chore should now show as done
-    const doneCards = page.locator('.chore-card.chore-done');
+    // Chore should now show as done (new class is chore-card--done)
+    const doneCards = page.locator('.chore-card.chore-card--done');
     expect(await doneCards.count()).toBeGreaterThan(0);
     // The done card should have undo-chore action
     await expect(doneCards.first()).toHaveAttribute('data-action', 'undo-chore');
 
-    // Check progress updates
-    const progressText = await page.locator('p.text-secondary').filter({ hasText: /of/ }).first().innerText();
-    expect(progressText).toMatch(/1 of \d+ chores done/);
+    // Check progress label updates (format: "1 of N done")
+    const progressText = await page.locator('.progress-label').innerText();
+    expect(progressText).toMatch(/1 of \d+ done/);
 
     // === Undo the Chore ===
     await doneCards.first().click();
     await page.waitForTimeout(1500);
 
     // Done count should decrease
-    const doneAfterUndo = await page.locator('.chore-card.chore-done').count();
+    const doneAfterUndo = await page.locator('.chore-card.chore-card--done').count();
     expect(doneAfterUndo).toBeLessThan(1);
 
     // === Log Multiple Chores ===
@@ -416,7 +420,7 @@ test.describe('Exhaustive: SPA-only Navigation', () => {
       { nav: 'history', check: () => page.locator('.history-view').isVisible() },
       { nav: 'chores', check: () => page.locator('h2:has-text("Chores")').isVisible() },
       { nav: 'settings', check: () => page.locator('.settings-view').isVisible() },
-      { nav: 'today', check: () => page.locator('.today-view, .today-date').first().isVisible() },
+      { nav: 'today', check: () => page.locator('.day-view, .week-view').first().isVisible() },
     ];
 
     for (const tab of tabs) {

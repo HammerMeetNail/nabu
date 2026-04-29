@@ -18,6 +18,7 @@ import (
 	"github.com/dave/choresy/internal/database"
 	"github.com/dave/choresy/internal/handlers"
 	"github.com/dave/choresy/internal/household"
+	"github.com/dave/choresy/internal/schedule"
 	logsvc "github.com/dave/choresy/internal/log"
 	"github.com/dave/choresy/internal/mail"
 	"github.com/dave/choresy/internal/middleware"
@@ -65,7 +66,17 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	logHandler := handlers.NewLogHandler(logService)
 	statsService := stats.NewService(logStore, &choreStatsAdapter{choreStore})
 	statsHandler := handlers.NewStatsHandler(statsService)
-	rateLimiter := middleware.NewRateLimiter(20, time.Minute)
+
+	var scheduleStore schedule.Store
+	if db != nil {
+		scheduleStore = schedule.NewPostgresStore(db)
+	} else {
+		scheduleStore = schedule.NewMemoryStore()
+	}
+	scheduleService := schedule.NewService()
+	scheduleHandler := handlers.NewScheduleHandler(scheduleStore, scheduleService)
+
+	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitAuthMax, time.Minute)
 	rateLimiter.SetTrustedProxies(cfg.TrustedProxyCIDRs)
 
 	mux.HandleFunc("/health", handlers.Health)
@@ -162,6 +173,28 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	mux.HandleFunc("/api/stats/breakdown", method(http.MethodGet, middleware.RequireAuth(statsHandler.Breakdown)))
 	mux.HandleFunc("/api/stats/recap", method(http.MethodGet, middleware.RequireAuth(statsHandler.Recap)))
 	mux.HandleFunc("/api/stats/overview", method(http.MethodGet, middleware.RequireAuth(statsHandler.Overview)))
+
+	mux.HandleFunc("/api/schedules", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			scheduleHandler.List(w, r)
+		case http.MethodPost:
+			scheduleHandler.Create(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+	mux.HandleFunc("/api/schedules/for-date", method(http.MethodGet, middleware.RequireAuth(scheduleHandler.ForDate)))
+	mux.HandleFunc("/api/schedules/{id}", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPatch:
+			scheduleHandler.Update(w, r)
+		case http.MethodDelete:
+			scheduleHandler.Delete(w, r)
+		default:
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
 
 	staticFS, err := fs.Sub(webassets.Assets, "static")
 	if err != nil {

@@ -9,6 +9,12 @@ export function createAppState() {
     household: null,
     notifications: [],
     unreadNotifications: 0,
+    schedules: [],
+    calendarView: "day",
+    calendarDate: null,    // null = use today
+    weekLogs: [],
+    activeSheet: null,
+    activeSheetData: {},
   };
 }
 
@@ -21,4 +27,10 @@ export function resetAuthedState(state) {
   state.unreadNotifications = 0;
   state.members = [];
   state.invites = [];
+  state.schedules = [];
+  state.calendarView = "day";
+  state.calendarDate = null;
+  state.weekLogs = [];
+  state.activeSheet = null;
+  state.activeSheetData = {};
 }
