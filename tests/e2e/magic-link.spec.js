@@ -3,21 +3,6 @@ import { test, expect } from "@playwright/test";
 const BASE = "http://localhost:8080";
 const MAILPIT = "http://localhost:8025";
 
-async function mailpitAvailable() {
-  try {
-    const res = await fetch(`${MAILPIT}/api/v1/messages`);
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
-
-test.beforeAll(async () => {
-  if (!(await mailpitAvailable())) {
-    test.skip(true, "Mailpit not available; skipping magic link tests");
-  }
-});
-
 async function waitForMagicLinkToken(request, subject) {
   for (let attempt = 0; attempt < 15; attempt++) {
     await new Promise(r => setTimeout(r, 1000));

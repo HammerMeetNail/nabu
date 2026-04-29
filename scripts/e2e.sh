@@ -4,8 +4,8 @@ set -e
 
 echo "=== E2E: Starting stack ==="
 if [ "${CI}" = "true" ]; then
-  # CI: run app with in-memory stores (no Docker needed)
-  go run ./cmd/server &
+  # CI: run app with in-memory stores, Mailpit as service container
+  SMTP_HOST=localhost SMTP_PORT=1025 go run ./cmd/server &
   APP_PID=$!
   trap "kill ${APP_PID} 2>/dev/null" EXIT
 else

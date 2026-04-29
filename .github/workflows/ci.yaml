@@ -51,6 +51,12 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     needs: [test-go, test-js]
+    services:
+      mailpit:
+        image: axllent/mailpit:v1.27
+        ports:
+          - 1025:1025
+          - 8025:8025
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
