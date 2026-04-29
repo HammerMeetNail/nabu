@@ -89,6 +89,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          file: Containerfile
           platforms: ${{ matrix.platform }}
           push: ${{ startsWith(github.ref, 'refs/tags/v') }}
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}

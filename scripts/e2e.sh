@@ -3,7 +3,11 @@
 set -e
 
 echo "=== E2E: Starting stack ==="
-podman compose up -d --build
+if command -v podman > /dev/null 2>&1; then
+  podman compose up -d --build
+else
+  docker compose up -d --build
+fi
 ./scripts/wait-for-stack.sh
 
 echo "=== E2E: Running Playwright tests ==="
