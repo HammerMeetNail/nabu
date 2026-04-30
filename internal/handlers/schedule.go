@@ -162,7 +162,11 @@ func (h *ScheduleHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if v, ok := raw["specificTime"]; ok {
-		_ = json.Unmarshal(v, &req.SpecificTime)
+		if string(v) == "null" {
+			req.SpecificTime = ""
+		} else {
+			_ = json.Unmarshal(v, &req.SpecificTime)
+		}
 	}
 	if v, ok := raw["frequencyType"]; ok {
 		_ = json.Unmarshal(v, &req.FrequencyType)

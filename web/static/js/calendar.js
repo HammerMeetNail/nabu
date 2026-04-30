@@ -1,12 +1,11 @@
 // web/static/js/calendar.js
 
 import { escapeHTML }     from "./utils.js";
-import { PERIODS, timeToPeriod, recurrenceSummary } from "./schedule.js";
 import { todayISO }       from "./today.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-// Hours shown in the week view grid, 0-23.
+// Hours shown in the day and week view grids, 0-23.
 export const GRID_HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 function fmtHour(h) {
@@ -23,7 +22,8 @@ function fmtShortDate(iso) {
 // ─── Day View ─────────────────────────────────────────────────────────────────
 
 /**
- * Renders the full day view (time-bucketed chore cards + anytime section).
+ * Renders the full day view: 24 hourly rows (drag-and-droppable) plus an
+ * "Anytime" section below for chores with no specific time set.
  *
  * @param {object}   state
  * @param {object[]} state.chores          All household chores
@@ -41,30 +41,70 @@ export function renderDayView(state) {
   const logMap = {};
   logs.forEach(l => { logMap[l.choreId] = l; });
 
-  // Bucket by schedule — a chore can appear in multiple periods if it has
-  // multiple schedules (e.g. "morning" + "afternoon").
-  const buckets = {};
-  PERIODS.forEach(p => { buckets[p.id] = []; });
-
-  const scheduledChoreIds = new Set();
+  // Track chores that have a specific-time schedule (used to find "anytime" chores)
+  const timeScheduledChoreIds = new Set();
   schedules.forEach(sch => {
-    const chore = chores.find(c => c.id === sch.choreId);
-    if (!chore) return;
-    const period = sch.timePeriod || "anytime";
-    buckets[period].push({ chore, sch });
-    scheduledChoreIds.add(chore.id);
+    if (sch.specificTime) timeScheduledChoreIds.add(sch.choreId);
   });
 
-  // Chores with no schedule at all fall into Anytime
-  chores.forEach(chore => {
-    if (!scheduledChoreIds.has(chore.id)) {
-      buckets["anytime"].push({ chore, sch: null });
-    }
-  });
+  // Build rows: one per hour 0-23.
+  // Only schedules with a specificTime appear in the hourly grid.
+  const rows = GRID_HOURS.map(hour => {
+    const choreCells = schedules
+      .filter(sch => {
+        if (!sch.specificTime) return false;
+        const schHour = parseInt(sch.specificTime.split(":")[0], 10);
+        return schHour === hour;
+      })
+      .map(sch => {
+        const chore = chores.find(c => c.id === sch.choreId);
+        if (!chore) return "";
+        return renderChoreCard(chore, sch, logMap[chore.id], date);
+      }).join("");
 
-  const sections = PERIODS.map(period =>
-    renderPeriodSection(period, buckets[period.id], logMap, date)
-  ).join("");
+    return `<div class="day-hour-row" data-hour="${hour}">
+      <button type="button" class="hour-label"
+        data-action="open-pick-chore-sheet"
+        data-date="${date}"
+        data-hour="${hour}">${fmtHour(hour)}</button>
+      <div class="day-hour-cell"
+        data-drop-hour="${hour}"
+        data-drop-date="${date}"
+        data-action="open-pick-chore-sheet"
+        data-date="${date}"
+        data-hour="${hour}">
+        ${choreCells}
+      </div>
+    </div>`;
+  }).join("");
+
+  // "Anytime" section: schedules without a specificTime + wholly unscheduled chores.
+  const noTimeSchedules = schedules.filter(s => !s.specificTime);
+  const allScheduledChoreIds = new Set([
+    ...timeScheduledChoreIds,
+    ...noTimeSchedules.map(s => s.choreId),
+  ]);
+  const unscheduledChores = chores.filter(c => !allScheduledChoreIds.has(c.id));
+
+  const anytimeItems = [
+    ...noTimeSchedules.map(sch => {
+      const chore = chores.find(c => c.id === sch.choreId);
+      return chore ? { chore, sch } : null;
+    }).filter(Boolean),
+    ...unscheduledChores.map(chore => ({ chore, sch: null })),
+  ];
+
+  const anytimeSection = anytimeItems.length > 0 ? `
+    <div class="day-anytime-section">
+      <h3 class="section-heading">Anytime</h3>
+      <div class="day-anytime-cards"
+        data-drop-period="anytime"
+        data-drop-date="${date}">
+        ${anytimeItems.map(({ chore, sch }) =>
+          renderChoreCard(chore, sch, logMap[chore.id], date)
+        ).join("")}
+      </div>
+    </div>` : "";
 
   const done  = logs.length;
   const total = chores.length;
@@ -90,40 +130,11 @@ export function renderDayView(state) {
         <div class="progress-fill" style="width:${pct}%"></div>
       </div>
       <p class="progress-label">${done} of ${total} done</p>
-      <div class="period-sections">${sections}</div>
-    </div>`;
-}
-
-function renderPeriodSection(period, items, logMap, date) {
-  const cards = items.map(({ chore, sch }) =>
-    renderChoreCard(chore, sch, logMap[chore.id], date)
-  ).join("");
-
-  // Tap-to-add button for non-anytime sections
-  const addBtn = period.id !== "anytime"
-    ? `<button type="button"
-         class="add-chore-slot"
-         data-action="open-pick-chore-sheet"
-         data-time-period="${period.id}"
-         data-date="${date}"
-         aria-label="Add chore to ${period.label}">
-         + Add chore
-       </button>`
-    : "";
-
-  return `
-    <section class="period-section" data-period="${period.id}">
-      <h3 class="period-heading">
-        <span class="period-icon" aria-hidden="true">${period.icon}</span>
-        ${period.label}
-      </h3>
-      <div class="period-cards"
-        data-drop-period="${period.id}"
-        data-drop-date="${date}">
-        ${cards}
-        ${addBtn}
+      <div class="day-hour-grid-wrapper">
+        <div class="day-hour-grid">${rows}</div>
       </div>
-    </section>`;
+      ${anytimeSection}
+    </div>`;
 }
 
 function renderChoreCard(chore, sch, log, date) {
@@ -159,7 +170,7 @@ function renderChoreCard(chore, sch, log, date) {
 // ─── Week View ────────────────────────────────────────────────────────────────
 
 /**
- * Renders the week view: 7 day columns × 24 hour rows with named period bands.
+ * Renders the week view: 7 day columns × 24 hour rows.
  *
  * @param {object}   state
  * @param {object[]} state.chores
@@ -188,18 +199,12 @@ export function renderWeekView(state) {
 
   // Build rows: one per hour.
   // Only schedules with a specificTime are shown in the hourly grid.
-  // Schedules with only a timePeriod (no specificTime) are shown in the
-  // period sections below the grid so they don't all pile up at startHour.
   const rows = GRID_HOURS.map(hour => {
-    const periodId  = hourToPeriodDirect(hour);
-    const bandClass = `hour-row--${periodId}`;
-
     const cells = days.map(iso => {
       const choreCells = schedules
         .filter(sch => {
           if (!isActiveForDayJS(sch, iso)) return false;
-          if (sch.timePeriod === "anytime") return false;
-          if (!sch.specificTime) return false; // period-only → shown below grid
+          if (!sch.specificTime) return false;
           const schHour = parseInt(sch.specificTime.split(":")[0], 10);
           return schHour === hour;
         })
@@ -214,7 +219,6 @@ export function renderWeekView(state) {
         data-drop-date="${iso}"
         data-drop-hour="${hour}"
         data-action-empty="open-pick-chore-sheet"
-        data-time-period="${periodId}"
         data-date="${iso}"
         data-hour="${hour}">
         ${choreCells || `<span class="week-cell-empty" aria-hidden="true"></span>`}
@@ -223,19 +227,13 @@ export function renderWeekView(state) {
 
     const hourLabel = `<div class="hour-label">${fmtHour(hour)}</div>`;
 
-    return `<div class="hour-row ${bandClass}" data-hour="${hour}">
+    return `<div class="hour-row" data-hour="${hour}">
       ${hourLabel}${cells}
     </div>`;
   }).join("");
 
-  // Period sections below the grid: schedules with timePeriod but no specificTime.
-  const periodOnlySchedules = schedules.filter(s =>
-    s.timePeriod && s.timePeriod !== "anytime" && !s.specificTime
-  );
-  const periodSection = renderPeriodWeekSection(periodOnlySchedules, chores, days, logMap);
-
-  // "Anytime" section below the grid
-  const anytimeSchedules = schedules.filter(s => s.timePeriod === "anytime");
+  // "Anytime" section below the grid: schedules with no specificTime.
+  const anytimeSchedules = schedules.filter(s => !s.specificTime);
   const anytimeSection = renderAnytimeWeekSection(anytimeSchedules, chores, days, logMap);
 
   const prevWeek = shiftISO(weekStart, -7);
@@ -263,7 +261,6 @@ export function renderWeekView(state) {
           <div class="week-body">${rows}</div>
         </div>
       </div>
-      ${periodSection}
       ${anytimeSection}
     </div>`;
 }
@@ -306,50 +303,9 @@ function renderAnytimeWeekSection(anytimeSchedules, chores, days, logMap) {
   }).join("");
 
   return `<div class="anytime-week-section">
-    <h3 class="period-heading">📋 Anytime</h3>
+    <h3 class="section-heading">📋 Anytime</h3>
     <div class="week-grid anytime-grid">${rows}</div>
   </div>`;
-}
-
-/**
- * Renders below-grid period bands for schedules that have a timePeriod but
- * no specificTime.  Groups by period so morning / afternoon / etc. each get
- * their own labelled row (mirrors how renderAnytimeWeekSection works).
- */
-function renderPeriodWeekSection(periodSchedules, chores, days, logMap) {
-  if (periodSchedules.length === 0) return "";
-
-  // Group schedules by their timePeriod, preserving PERIODS display order.
-  const groups = {};
-  PERIODS.forEach(p => { groups[p.id] = []; });
-  periodSchedules.forEach(sch => {
-    const pid = sch.timePeriod || "anytime";
-    if (groups[pid]) groups[pid].push(sch);
-  });
-
-  const sections = PERIODS.filter(p => p.id !== "anytime" && groups[p.id].length > 0).map(period => {
-    const rows = groups[period.id].map(sch => {
-      const chore = chores.find(c => c.id === sch.choreId);
-      if (!chore) return "";
-      const cells = days.map(iso => {
-        const log = logMap[`${chore.id}-${iso}`];
-        return `<div class="week-cell week-cell--anytime">
-          ${renderWeekChoreCard(chore, sch, log, iso)}
-        </div>`;
-      }).join("");
-      return `<div class="anytime-row">
-        <div class="hour-label">${period.icon}</div>
-        ${cells}
-      </div>`;
-    }).join("");
-
-    return `<div class="period-week-section">
-      <h3 class="period-heading">${period.icon} ${period.label}</h3>
-      <div class="week-grid anytime-grid">${rows}</div>
-    </div>`;
-  }).join("");
-
-  return sections;
 }
 
 // ─── Utility functions ────────────────────────────────────────────────────────
@@ -385,13 +341,6 @@ function fmtTime12(hhmm) {
   const [h, m] = hhmm.split(":").map(Number);
   const ampm = h >= 12 ? "PM" : "AM";
   return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${ampm}`;
-}
-
-function hourToPeriodDirect(hour) {
-  if (hour >= 5  && hour <= 11) return "morning";
-  if (hour >= 12 && hour <= 16) return "afternoon";
-  if (hour >= 17 && hour <= 20) return "evening";
-  return "night";
 }
 
 /**

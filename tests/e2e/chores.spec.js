@@ -101,14 +101,14 @@ test.describe('Pick-chore sheet: repeatable chores', () => {
     await setupWithChores(page);
 
     // Schedule the first chore
-    await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
+    await page.locator('.day-hour-row[data-hour="8"] .hour-label').click();
     await page.waitForTimeout(400);
     const totalBefore = await page.locator('.sheet-chore-item').count();
     await page.locator('.sheet-chore-item').first().click();
     await page.waitForTimeout(1500);
 
     // Open the sheet again — all chores must still be available
-    await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
+    await page.locator('.day-hour-row[data-hour="8"] .hour-label').click();
     await page.waitForTimeout(400);
     const totalAfter = await page.locator('.sheet-chore-item').count();
 
@@ -142,7 +142,7 @@ test.describe('Pick-chore sheet: repeatable chores', () => {
   test('sheet "Create & add chore" form is visible', async ({ page }) => {
     await setupWithChores(page);
 
-    await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
+    await page.locator('.day-hour-row[data-hour="8"] .hour-label').click();
     await page.waitForTimeout(400);
 
     await expect(page.locator('.sheet-new-chore-form')).toBeVisible();
@@ -155,7 +155,7 @@ test.describe('Pick-chore sheet: repeatable chores', () => {
 
     const countBefore = (await (await page.request.get('/api/chores')).json()).chores.length;
 
-    await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
+    await page.locator('.day-hour-row[data-hour="8"] .hour-label').click();
     await page.waitForTimeout(400);
 
     const choreName = `Test Chore ${Date.now()}`;
@@ -175,7 +175,7 @@ test.describe('Pick-chore sheet: repeatable chores', () => {
   test('new chore created from sheet is scheduled for the correct period', async ({ page }) => {
     await setupWithChores(page);
 
-    await page.locator('[data-period="evening"] button[data-action="open-pick-chore-sheet"]').click();
+    await page.locator('.day-hour-row[data-hour="18"] .hour-label').click();
     await page.waitForTimeout(400);
 
     const choreName = `Evening Chore ${Date.now()}`;
@@ -183,7 +183,7 @@ test.describe('Pick-chore sheet: repeatable chores', () => {
     await page.locator('.sheet-new-chore-form button[type="submit"]').click();
     await page.waitForTimeout(2000);
 
-    // The new chore's schedule should be in the evening period
+    // The new chore's schedule should have specificTime 18:00
     const schedules = (await (await page.request.get('/api/schedules')).json()).schedules;
     const { chores } = await (await page.request.get('/api/chores')).json();
     const newChore = chores.find(c => c.name === choreName);
@@ -191,13 +191,14 @@ test.describe('Pick-chore sheet: repeatable chores', () => {
 
     const sch = schedules.find(s => s.choreId === newChore.id);
     expect(sch).toBeDefined();
-    expect(sch.timePeriod).toBe('evening');
+    expect(sch.specificTime).toBe('18:00');
+    expect(sch.timePeriod).toBe('anytime');
   });
 
   test('new chore created from sheet appears in the day view', async ({ page }) => {
     await setupWithChores(page);
 
-    await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
+    await page.locator('.day-hour-row[data-hour="8"] .hour-label').click();
     await page.waitForTimeout(400);
 
     const choreName = `Custom Morning Chore ${Date.now()}`;
@@ -205,9 +206,9 @@ test.describe('Pick-chore sheet: repeatable chores', () => {
     await page.locator('.sheet-new-chore-form button[type="submit"]').click();
     await page.waitForTimeout(2000);
 
-    // Chore card should appear in the morning section
-    const morningCards = page.locator('[data-period="morning"] .chore-card');
-    const names = await morningCards.locator('.chore-name').allInnerTexts();
+    // Chore card should appear in the 8 AM row
+    const hourCards = page.locator('[data-drop-hour="8"] .chore-card');
+    const names = await hourCards.locator('.chore-name').allInnerTexts();
     expect(names).toContain(choreName);
   });
 
@@ -215,7 +216,7 @@ test.describe('Pick-chore sheet: repeatable chores', () => {
     await setupWithChores(page);
     const countBefore = (await (await page.request.get('/api/chores')).json()).chores.length;
 
-    await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
+    await page.locator('.day-hour-row[data-hour="8"] .hour-label').click();
     await page.waitForTimeout(400);
 
     // Leave input empty and submit

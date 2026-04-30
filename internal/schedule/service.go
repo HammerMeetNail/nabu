@@ -4,15 +4,11 @@ package schedule
 
 import "time"
 
-// TimePeriod represents a named block of the day.
+// TimePeriod represents when a chore is scheduled.
 type TimePeriod string
 
 const (
-	PeriodMorning   TimePeriod = "morning"   // 05:00-11:59
-	PeriodAfternoon TimePeriod = "afternoon" // 12:00-16:59
-	PeriodEvening   TimePeriod = "evening"   // 17:00-20:59
-	PeriodNight     TimePeriod = "night"     // 21:00-04:59
-	PeriodAnytime   TimePeriod = "anytime"   // no constraint
+	PeriodAnytime TimePeriod = "anytime"
 )
 
 // MonthWeekday encodes "Nth weekday of the month", e.g. 3rd Monday.
