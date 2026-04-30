@@ -889,6 +889,8 @@ input:focus, select:focus, textarea:focus {
   gap: 2px;
   cursor: pointer;
   min-height: 48px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .week-cell.drop-target {
