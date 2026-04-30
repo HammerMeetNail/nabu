@@ -2,7 +2,10 @@
 
 package schedule
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // TimePeriod represents when a chore is scheduled.
 type TimePeriod string
@@ -10,6 +13,35 @@ type TimePeriod string
 const (
 	PeriodAnytime TimePeriod = "anytime"
 )
+
+// DateOnly is a time.Time that marshals/unmarshals as a plain YYYY-MM-DD string.
+// This keeps the JSON API surface clean (no RFC-3339 timezone noise for dates).
+type DateOnly struct {
+	time.Time
+}
+
+func (d DateOnly) MarshalJSON() ([]byte, error) {
+	if d.Time.IsZero() {
+		return []byte("null"), nil
+	}
+	return json.Marshal(d.Time.UTC().Format("2006-01-02"))
+}
+
+func (d *DateOnly) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		return nil
+	}
+	var s string
+	if err := json.Unmarshal(data, &s); err != nil {
+		return err
+	}
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return err
+	}
+	d.Time = t
+	return nil
+}
 
 // MonthWeekday encodes "Nth weekday of the month", e.g. 3rd Monday.
 type MonthWeekday struct {
@@ -32,6 +64,7 @@ type ChoreSchedule struct {
 	MonthWeekday   *MonthWeekday `json:"monthWeekday,omitempty"`
 	MonthOfYear    int           `json:"monthOfYear,omitempty"`
 	RecurrenceEnd  *time.Time    `json:"recurrenceEnd,omitempty"`
+	StartDate      *DateOnly     `json:"startDate,omitempty"` // for "once" frequency
 	TargetCount    int           `json:"targetCount"`
 	IsActive       bool          `json:"isActive"`
 	AssignedUserID *int64        `json:"assignedUserId"`
@@ -61,6 +94,13 @@ func (s *Service) IsActiveForDay(sch ChoreSchedule, date time.Time) bool {
 	d := date.Truncate(24 * time.Hour)
 
 	switch sch.FrequencyType {
+	case "once":
+		if sch.StartDate == nil {
+			return false
+		}
+		sd := sch.StartDate.Time.UTC().Truncate(24 * time.Hour)
+		return d.Equal(sd)
+
 	case "daily":
 		return true
 

@@ -41,16 +41,13 @@ export function renderDayView(state) {
   const logMap = {};
   logs.forEach(l => { logMap[l.choreId] = l; });
 
-  // Track chores that have a specific-time schedule (used to find "anytime" chores)
-  const timeScheduledChoreIds = new Set();
-  schedules.forEach(sch => {
-    if (sch.specificTime) timeScheduledChoreIds.add(sch.choreId);
-  });
+  // Filter to schedules active on the viewed date (respects "once", "weekly", etc.)
+  const activeSchedules = schedules.filter(sch => isActiveForDayJS(sch, date));
 
   // Build rows: one per hour 0-23.
   // Only schedules with a specificTime appear in the hourly grid.
   const rows = GRID_HOURS.map(hour => {
-    const choreCells = schedules
+    const choreCells = activeSchedules
       .filter(sch => {
         if (!sch.specificTime) return false;
         const schHour = parseInt(sch.specificTime.split(":")[0], 10);
@@ -78,8 +75,14 @@ export function renderDayView(state) {
     </div>`;
   }).join("");
 
-  // "Anytime" section: schedules without a specificTime + wholly unscheduled chores.
-  const noTimeSchedules = schedules.filter(s => !s.specificTime);
+  // "Anytime" section: active schedules without a specificTime + wholly unscheduled chores.
+  // Use activeSchedules so "once" chores for other days don't appear here.
+  const timeScheduledChoreIds = new Set();
+  activeSchedules.forEach(sch => {
+    if (sch.specificTime) timeScheduledChoreIds.add(sch.choreId);
+  });
+
+  const noTimeSchedules = activeSchedules.filter(s => !s.specificTime);
   const allScheduledChoreIds = new Set([
     ...timeScheduledChoreIds,
     ...noTimeSchedules.map(s => s.choreId),
@@ -159,6 +162,7 @@ function renderChoreCard(chore, sch, log, date, compact = false) {
       data-action="${action}"
       data-chore-id="${chore.id}"
       data-log-id="${logId}"
+      data-date="${date}"
       draggable="true"
       data-drag-chore-id="${chore.id}"
       data-drag-schedule-id="${sch?.id || ""}"
@@ -277,6 +281,7 @@ function renderWeekChoreCard(chore, sch, log, iso) {
     data-action="${action}"
     data-chore-id="${chore.id}"
     data-log-id="${log?.id || ""}"
+    data-date="${iso}"
     draggable="true"
     data-drag-chore-id="${chore.id}"
     data-drag-schedule-id="${sch?.id || ""}"
@@ -358,6 +363,9 @@ export function isActiveForDayJS(sch, isoDate) {
   }
   const wd = d.getDay(); // 0=Sun
   switch (sch.frequencyType) {
+    case "once":
+      // startDate is serialized as "YYYY-MM-DD" from the DateOnly backend type
+      return !!sch.startDate && isoDate === sch.startDate.slice(0, 10);
     case "daily":
       return true;
     case "weekly":

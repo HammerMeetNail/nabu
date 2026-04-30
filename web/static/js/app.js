@@ -24,6 +24,54 @@ import { renderStatsView, loadOverview } from "./stats.js";
 import { renderDayView, renderWeekView } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderEditScheduleSheet } from "./schedule.js";
 
+/**
+ * Reads the current frequency settings from a bottom sheet's freq <select>
+ * and weekday pills, returning a partial schedule payload.
+ *
+ * @param {string} prefix  "sheet" | "edit-sheet"
+ * @param {string} date    ISO date string used as startDate for "once"
+ */
+function readSheetFreq(prefix, date) {
+  const sel = document.querySelector(`#${prefix}-freq`);
+  if (!sel) return {};
+  const freqVal  = sel.value;
+  const selOpt   = sel.options[sel.selectedIndex];
+  const payload  = { frequencyType: freqVal };
+
+  switch (freqVal) {
+    case "once":
+      payload.startDate = date || null;
+      break;
+    case "every_n_days": {
+      const intervalInput = document.querySelector(`#${prefix}-interval`);
+      payload.intervalDays = Math.max(2, parseInt(intervalInput?.value || "2", 10));
+      break;
+    }
+    case "weekly": {
+      // Read which day pills are currently toggled on.
+      const sheet   = sel.closest(".bottom-sheet");
+      const pills   = sheet ? [...sheet.querySelectorAll(".day-pill--on")] : [];
+      payload.daysOfWeek = pills.map(p => parseInt(p.dataset.day, 10));
+      if (payload.daysOfWeek.length === 0) {
+        // Fall back to the option's data attribute (set at render time).
+        const raw = selOpt?.dataset?.daysOfWeek;
+        try { payload.daysOfWeek = raw ? JSON.parse(raw) : []; } catch { payload.daysOfWeek = []; }
+      }
+      break;
+    }
+    case "monthly_by_date":
+      payload.dayOfMonth = parseInt(selOpt?.dataset?.dayOfMonth || "1", 10);
+      break;
+    case "yearly":
+      payload.dayOfMonth   = parseInt(selOpt?.dataset?.dayOfMonth   || "1",  10);
+      payload.monthOfYear  = parseInt(selOpt?.dataset?.monthOfYear  || "1",  10);
+      break;
+    default:
+      break;
+  }
+  return payload;
+}
+
 let state;
 
 export function render(root) {
@@ -96,6 +144,20 @@ export function render(root) {
   morphInnerHTML(root, html);
   updateTabs(route);
   updateTopBar();
+
+  // Auto-scroll the day-hour-grid-wrapper to show the current time when it is
+  // first rendered (scrollTop === 0).  This prevents the grid from always
+  // starting at midnight — an hour that is rarely relevant — and ensures that
+  // cards in the 9 AM–3 PM range are visible without manual scrolling.
+  const wrapper = root.querySelector(".day-hour-grid-wrapper");
+  if (wrapper && wrapper.scrollTop === 0) {
+    const h = new Date().getHours();
+    const ROW_HEIGHT = 48; // must match CSS .day-hour-row height
+    // Show 2 rows before the current hour; clamp between 7 AM and 11 AM so
+    // that mid-morning and noon chores are always in the visible area without
+    // requiring the user to scroll.
+    wrapper.scrollTop = Math.min(Math.max(7, h - 2), 11) * ROW_HEIGHT;
+  }
 }
 
 function renderChoresView() {
@@ -151,7 +213,7 @@ function renderTodayView() {
     const chore = (state.chores || []).find(c => c.id === choreId);
     const sch   = (state.schedules || []).find(s => s.id === scheduleId);
     if (chore && sch) {
-      const sheetHTML = renderEditScheduleSheet(chore, sch);
+      const sheetHTML = renderEditScheduleSheet(chore, sch, state.calendarDate);
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
@@ -381,15 +443,20 @@ export async function init() {
 
   let longPressTimer    = null;
   let longPressJustFired = false;
+  let pressStartX = 0;
+  let pressStartY = 0;
 
   document.addEventListener("click", (e) => {
+    // Always prevent default for nav links so a long-press residual click
+    // never causes a full-page navigation via the href attribute.
+    const navEl = e.target.closest("[data-nav]");
+    if (navEl) e.preventDefault();
+
     if (longPressJustFired) { longPressJustFired = false; return; }
     const actionEl = e.target.closest("[data-action]");
 
     // data-nav SPA navigation: check first so it works without data-action
-    const navEl = e.target.closest("[data-nav]");
     if (navEl) {
-      e.preventDefault();
       state.currentRoute = `/${navEl.dataset.nav}`;
       if (state.currentRoute === "/settings") {
         state._loadedHousehold = true;
@@ -407,6 +474,14 @@ export async function init() {
 
     const action = actionEl?.dataset?.action;
     if (!action) return;
+
+    // ── Weekday pill: toggle on/off ─────────────────────────────────────────
+    if (action === "toggle-day") {
+      actionEl.classList.toggle("day-pill--on");
+      actionEl.setAttribute("aria-pressed",
+        String(actionEl.classList.contains("day-pill--on")));
+      return;
+    }
 
     switch (action) {
       case "show-login":
@@ -455,19 +530,19 @@ export async function init() {
         break;
       case "log-chore":
         e.preventDefault();
-        logChore(parseInt(actionEl.dataset.choreId), "").then(async () => {
-          await loadTodayData();
+        logChore(parseInt(actionEl.dataset.choreId), "", actionEl.dataset.date || "").then(async () => {
+          await (state.calendarView === "week" ? loadWeekData() : loadTodayData());
           render(app);
         });
         break;
       case "undo-chore":
         e.preventDefault();
         undoLog(parseInt(actionEl.dataset.logId)).then(async () => {
-          await loadTodayData();
+          await (state.calendarView === "week" ? loadWeekData() : loadTodayData());
           render(app);
         }).catch((err) => {
           console.error('undo-chore failed:', err);
-          loadTodayData().then(() => render(app));
+          (state.calendarView === "week" ? loadWeekData() : loadTodayData()).then(() => render(app));
         });
         break;
       case "navigate-day":
@@ -506,14 +581,16 @@ export async function init() {
       case "schedule-chore-here": {
         e.preventDefault();
         const choreId      = parseInt(actionEl.dataset.choreId, 10);
+        const slotDate     = actionEl.dataset.date || state.activeSheetData?.date || null;
         const timeInput    = document.querySelector("#sheet-time");
         const specificTime = timeInput?.value || null;
+        const freqPayload  = readSheetFreq("sheet", slotDate);
         createSchedule({
           choreId,
           timePeriod:    "anytime",
           specificTime,
-          frequencyType: "daily",
           isActive:      true,
+          ...freqPayload,
         }).then(async () => {
           state.activeSheet = null;
           state.activeSheetData = {};
@@ -535,7 +612,8 @@ export async function init() {
         const scheduleId   = parseInt(actionEl.dataset.scheduleId, 10);
         const timeInput    = document.querySelector("#edit-sheet-time");
         const specificTime = timeInput?.value || null;
-        updateSchedule(scheduleId, { specificTime })
+        const freqPayload  = readSheetFreq("edit-sheet", state.calendarDate);
+        updateSchedule(scheduleId, { specificTime, ...freqPayload })
           .then(async () => {
             state.activeSheet     = null;
             state.activeSheetData = {};
@@ -558,6 +636,33 @@ export async function init() {
         break;
       }
     }
+  });
+
+  // ── Frequency selector: show/hide weekday pill row ─────────────────────────
+  // Uses "change" (not "click") because <select> fires "change" on selection.
+  document.addEventListener("change", (e) => {
+    const actionEl = e.target.closest("[data-action]");
+    if (actionEl?.dataset?.action === "change-frequency") {
+      const sheet   = actionEl.closest(".bottom-sheet");
+      const freqVal = actionEl.value;
+      const wkRow   = sheet?.querySelector(".sheet-weekday-row");
+      const intvRow = sheet?.querySelector(".sheet-interval-row");
+      if (wkRow)   wkRow.hidden   = (freqVal !== "weekly");
+      if (intvRow) intvRow.hidden = (freqVal !== "every_n_days");
+    }
+  });
+
+  // Keep the "Every N days" option label in sync as the user edits the interval.
+  document.addEventListener("input", (e) => {
+    const input = e.target;
+    if (!input.classList.contains("interval-input")) return;
+    const sheet = input.closest(".bottom-sheet");
+    const sel   = sheet?.querySelector("[data-action='change-frequency']");
+    if (!sel) return;
+    const opt = sel.options[sel.selectedIndex];
+    if (opt?.value !== "every_n_days") return;
+    const n = Math.max(2, parseInt(input.value || "2", 10));
+    opt.textContent = `Every ${n} days`;
   });
 
   document.addEventListener("submit", (e) => {
@@ -657,12 +762,15 @@ export async function init() {
           specificTime: newHour,
         });
       } else {
-        // Unscheduled chore dragged into a slot — create a new schedule.
+        // Unscheduled chore dragged into a slot — create a new "once" schedule
+        // for the drop target's date (shown on that specific day only).
+        const dropDate = cell.dataset.dropDate || state.calendarDate || null;
         await createSchedule({
           choreId,
           timePeriod:    newPeriod,
           specificTime:  newHour,
-          frequencyType: "daily",
+          frequencyType: "once",
+          startDate:     dropDate,
           isActive:      true,
         });
       }
@@ -683,6 +791,7 @@ export async function init() {
 
   function cancelPress() {
     clearTimeout(longPressTimer);
+    longPressTimer = null;
     document.querySelectorAll(".chore-card--pressing")
       .forEach(el => el.classList.remove("chore-card--pressing"));
   }
@@ -690,6 +799,8 @@ export async function init() {
   document.addEventListener("mousedown", e => {
     const card = e.target.closest("[data-drag-chore-id]");
     if (!card) return;
+    pressStartX = e.clientX;
+    pressStartY = e.clientY;
     card.classList.add("chore-card--pressing");
     longPressTimer = setTimeout(() => {
       longPressJustFired = true;
@@ -697,12 +808,34 @@ export async function init() {
       openEditSheet(card);
     }, 500);
   });
-  document.addEventListener("mouseup",    cancelPress);
-  document.addEventListener("mouseleave", cancelPress, true);
+  // Cancel on actual cursor movement (>8px) — but NOT on DOM-triggered mouseleave
+  // events that fire when morphInnerHTML removes elements from under the cursor.
+  document.addEventListener("mousemove", e => {
+    if (!longPressTimer) return;
+    const dx = e.clientX - pressStartX;
+    const dy = e.clientY - pressStartY;
+    if (Math.hypot(dx, dy) > 8) cancelPress();
+  });
+  document.addEventListener("mouseup", e => {
+    cancelPress();
+    if (longPressJustFired) {
+      // The DOM changed during the long-press (backdrop appeared), so the
+      // browser may not synthesize a click event at all (mousedown target ≠
+      // mouseup target).  If no click fires, longPressJustFired would stay
+      // true forever and block the next intentional click (e.g. the save
+      // button in the edit sheet).  Reset it after a short delay so any
+      // genuinely synthesized residual click is still swallowed, but the
+      // next real user click is never blocked.
+      setTimeout(() => { longPressJustFired = false; }, 50);
+    }
+  });
 
   document.addEventListener("touchstart", e => {
     const card = e.target.closest("[data-drag-chore-id]");
     if (!card) return;
+    const t = e.touches[0];
+    pressStartX = t.clientX;
+    pressStartY = t.clientY;
     card.classList.add("chore-card--pressing");
     longPressTimer = setTimeout(() => {
       longPressJustFired = true;
@@ -710,8 +843,19 @@ export async function init() {
       openEditSheet(card);
     }, 500);
   }, { passive: true });
-  document.addEventListener("touchend",  cancelPress);
-  document.addEventListener("touchmove", cancelPress, { passive: true });
+  document.addEventListener("touchend", e => {
+    cancelPress();
+    if (longPressJustFired) {
+      setTimeout(() => { longPressJustFired = false; }, 50);
+    }
+  });
+  document.addEventListener("touchmove", e => {
+    if (!longPressTimer) return;
+    const t = e.touches[0];
+    const dx = t.clientX - pressStartX;
+    const dy = t.clientY - pressStartY;
+    if (Math.hypot(dx, dy) > 8) cancelPress();
+  }, { passive: true });
 
   render(app);
 }
@@ -812,12 +956,14 @@ async function doCreateChoreFromSheet(form) {
 
     const timeInput    = document.querySelector("#sheet-time");
     const specificTime = timeInput?.value || null;
+    const slotDate     = form.querySelector('[name="date"]')?.value || state.activeSheetData?.date || null;
+    const freqPayload  = readSheetFreq("sheet", slotDate);
     await createSchedule({
       choreId:       newChore.id,
       timePeriod:    "anytime",
       specificTime,
-      frequencyType: "daily",
       isActive:      true,
+      ...freqPayload,
     });
 
     await loadChoreData();

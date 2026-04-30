@@ -97,7 +97,7 @@ func (h *ScheduleHandler) Create(w http.ResponseWriter, r *http.Request) {
 		req.TimePeriod = schedule.PeriodAnytime
 	}
 	if req.FrequencyType == "" {
-		req.FrequencyType = "daily"
+		req.FrequencyType = "once"
 	}
 	req.HouseholdID = *user.HouseholdID
 	req.IsActive = true
@@ -182,6 +182,19 @@ func (h *ScheduleHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 	if v, ok := raw["dayOfMonth"]; ok {
 		_ = json.Unmarshal(v, &req.DayOfMonth)
+	}
+	if v, ok := raw["monthOfYear"]; ok {
+		_ = json.Unmarshal(v, &req.MonthOfYear)
+	}
+	if v, ok := raw["startDate"]; ok {
+		if string(v) == "null" {
+			req.StartDate = nil
+		} else {
+			var d schedule.DateOnly
+			if json.Unmarshal(v, &d) == nil {
+				req.StartDate = &d
+			}
+		}
 	}
 
 	updated, err := h.store.Update(r.Context(), req)

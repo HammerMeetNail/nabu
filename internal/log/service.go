@@ -20,9 +20,18 @@ func NewService(store Store) *Service {
 	}
 }
 
-func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int64, note string) (ChoreLog, error) {
-	today := s.today()
-	existing, _ := s.store.FindLog(ctx, householdID, choreID, today)
+func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int64, note string, date *time.Time) (ChoreLog, error) {
+	var day time.Time
+	var completedAt time.Time
+	if date != nil {
+		day = time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
+		// Use noon UTC so the timestamp falls clearly within the requested day.
+		completedAt = time.Date(date.Year(), date.Month(), date.Day(), 12, 0, 0, 0, time.UTC)
+	} else {
+		day = s.today()
+		completedAt = s.now()
+	}
+	existing, _ := s.store.FindLog(ctx, householdID, choreID, day)
 	if existing != nil {
 		return *existing, nil
 	}
@@ -31,7 +40,7 @@ func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int
 		HouseholdID: householdID,
 		UserID:      userID,
 		ChoreID:     choreID,
-		CompletedAt: s.now(),
+		CompletedAt: completedAt,
 		Note:        note,
 	})
 }

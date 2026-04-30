@@ -290,6 +290,20 @@ describe("Calendar: isActiveForDayJS", () => {
     assert.equal(isActiveForDayJS(sch, "2026-04-28"), true);
     assert.equal(isActiveForDayJS(sch, "2026-05-01"), false);
   });
+
+  it("once schedule is active only on its startDate", async () => {
+    const { isActiveForDayJS } = await import("../calendar.js");
+    const sch = { isActive: true, frequencyType: "once", startDate: "2026-04-30" };
+    assert.equal(isActiveForDayJS(sch, "2026-04-30"), true);   // matches exactly
+    assert.equal(isActiveForDayJS(sch, "2026-04-29"), false);  // day before
+    assert.equal(isActiveForDayJS(sch, "2026-05-01"), false);  // day after
+  });
+
+  it("once schedule with no startDate returns false", async () => {
+    const { isActiveForDayJS } = await import("../calendar.js");
+    const sch = { isActive: true, frequencyType: "once" };
+    assert.equal(isActiveForDayJS(sch, "2026-04-30"), false);
+  });
 });
 
 describe("Calendar: renderDayView", () => {

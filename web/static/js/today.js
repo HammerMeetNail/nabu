@@ -40,10 +40,12 @@ export async function loadHistory() {
   return data;
 }
 
-export async function logChore(choreId, note) {
+export async function logChore(choreId, note, date = "") {
+  const body = { choreId, note };
+  if (date) body.date = date;
   const { data } = await apiFetch("/api/logs", {
     method: "POST",
-    body: JSON.stringify({ choreId, note }),
+    body: JSON.stringify(body),
   });
   return data;
 }

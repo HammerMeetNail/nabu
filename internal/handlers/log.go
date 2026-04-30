@@ -27,13 +27,24 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ChoreID int64  `json:"choreId"`
 		Note    string `json:"note"`
+		Date    string `json:"date"` // optional ISO date "YYYY-MM-DD"; defaults to today
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	entry, err := h.service.LogChore(r.Context(), *user.HouseholdID, user.ID, req.ChoreID, req.Note)
+	var logDate *time.Time
+	if req.Date != "" {
+		t, err := time.Parse("2006-01-02", req.Date)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid date format, expected YYYY-MM-DD")
+			return
+		}
+		logDate = &t
+	}
+
+	entry, err := h.service.LogChore(r.Context(), *user.HouseholdID, user.ID, req.ChoreID, req.Note, logDate)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return

@@ -38,6 +38,7 @@ export async function deleteSchedule(id) {
 // ─── Recurrence helpers ───────────────────────────────────────────────────────
 
 export const FREQ_LABELS = {
+  once:               "Does not repeat",
   daily:              "Every day",
   weekly:             "Weekly",
   every_n_days:       "Every N days",
@@ -46,7 +47,9 @@ export const FREQ_LABELS = {
   yearly:             "Every year",
 };
 
-const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const DAY_NAMES  = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTH_NAMES = ["Jan","Feb","Mar","Apr","May","Jun",
+                     "Jul","Aug","Sep","Oct","Nov","Dec"];
 
 /**
  * Returns a human-readable summary of the recurrence rule.
@@ -57,6 +60,9 @@ export function recurrenceSummary(sch) {
 
   let freq = "";
   switch (sch.frequencyType) {
+    case "once":
+      freq = sch.startDate ? `Once on ${fmtDateShort(sch.startDate)}` : "Once";
+      break;
     case "daily":
       freq = "Every day";
       break;
@@ -103,10 +109,110 @@ function fmtTime(hhmm) {
   return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
 }
 
+function fmtDateShort(isoDate) {
+  // isoDate is "YYYY-MM-DD"
+  const d = new Date(isoDate.slice(0, 10) + "T00:00:00");
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
 function fmtHour(h) {
   if (h === 0)  return "12 AM";
   if (h === 12) return "12 PM";
   return h < 12 ? `${h} AM` : `${h - 12} PM`;
+}
+
+// ─── Frequency selector ───────────────────────────────────────────────────────
+
+/**
+ * Renders a compact Google-Calendar-style "Repeat" selector for use inside
+ * bottom sheets.
+ *
+ * Smart defaults are derived from `date` (YYYY-MM-DD).  When editing an
+ * existing schedule, pass `sch` so the current frequency is pre-selected and
+ * the options reflect its stored values.
+ *
+ * @param {string} date   ISO date string "YYYY-MM-DD" (slot date / viewed date)
+ * @param {object} sch    Existing schedule object or null for new
+ * @param {string} prefix DOM id prefix: "sheet" or "edit-sheet"
+ */
+export function renderFreqSelect(date, sch, prefix) {
+  const d = date ? new Date(date.slice(0, 10) + "T00:00:00") : new Date();
+  const slotWeekday  = d.getDay();
+  const slotDom      = d.getDate();
+  const slotMoy      = d.getMonth() + 1;
+
+  const ft = sch?.frequencyType || "once";
+
+  // For each frequency type, prefer existing sch values when editing, otherwise
+  // fall back to smart defaults from the slot date.
+  const wkDay   = (ft === "weekly"             && sch?.daysOfWeek?.length) ? sch.daysOfWeek[0] : slotWeekday;
+  const dom     = (["monthly_by_date","yearly"].includes(ft) && sch?.dayOfMonth) ? sch.dayOfMonth : slotDom;
+  const moy     = (ft === "yearly"             && sch?.monthOfYear) ? sch.monthOfYear : slotMoy;
+  const interval = (ft === "every_n_days" && sch?.intervalDays > 1) ? sch.intervalDays : 2;
+
+  const options = [
+    {
+      value: "once",
+      label: "Does not repeat",
+      extra: "",
+    },
+    {
+      value: "daily",
+      label: "Every day",
+      extra: "",
+    },
+    {
+      value: "every_n_days",
+      label: `Every ${interval} days`,
+      extra: `data-interval-days="${interval}"`,
+    },
+    {
+      value: "weekly",
+      label: `Every week on ${DAY_NAMES[wkDay]}`,
+      extra: `data-days-of-week="[${wkDay}]"`,
+    },
+    {
+      value: "monthly_by_date",
+      label: `Monthly on the ${ordinal(dom)}`,
+      extra: `data-day-of-month="${dom}"`,
+    },
+    {
+      value: "yearly",
+      label: `Annually on ${MONTH_NAMES[moy - 1]} ${dom}`,
+      extra: `data-day-of-month="${dom}" data-month-of-year="${moy}"`,
+    },
+  ].map(({ value, label, extra }) =>
+    `<option value="${value}" ${ft === value ? "selected" : ""} ${extra}>${escapeHTML(label)}</option>`
+  ).join("");
+
+  // Day-of-week pills (shown only when "weekly" is selected).
+  const dayPills = DAY_NAMES.map((name, i) => `
+    <button type="button"
+      class="day-pill ${i === wkDay ? "day-pill--on" : ""}"
+      data-action="toggle-day"
+      data-day="${i}"
+      aria-pressed="${i === wkDay}"
+      aria-label="${name}">${name}</button>`).join("");
+
+  return `
+    <div class="sheet-freq-row">
+      <label for="${prefix}-freq" class="field-label">Repeat</label>
+      <select id="${prefix}-freq" class="select-input" data-action="change-frequency">
+        ${options}
+      </select>
+    </div>
+    <div id="${prefix}-weekday-row" class="sheet-weekday-row" ${ft !== "weekly" ? "hidden" : ""}>
+      <p class="field-label">On these days</p>
+      <div class="day-pills" id="${prefix}-day-pills">${dayPills}</div>
+    </div>
+    <div id="${prefix}-interval-row" class="sheet-interval-row" ${ft !== "every_n_days" ? "hidden" : ""}>
+      <label for="${prefix}-interval" class="field-label">Every</label>
+      <div class="interval-input-group">
+        <input type="number" id="${prefix}-interval" class="text-input interval-input"
+               min="2" max="365" value="${interval}" inputmode="numeric">
+        <span class="interval-unit">days</span>
+      </div>
+    </div>`;
 }
 
 // ─── Render: bottom sheet — pick a chore for a time slot ─────────────────────
@@ -146,6 +252,8 @@ export function renderPickChoreSheet(chores, slot, _schedules) {
     ? `Add to ${fmtHour(slot.hour)}`
     : "Add Chore";
 
+  const freqHTML = renderFreqSelect(slot.date || null, null, "sheet");
+
   return `
     <div class="bottom-sheet" role="dialog" aria-modal="true" aria-label="${title}">
       <div class="sheet-handle" aria-hidden="true"></div>
@@ -155,6 +263,7 @@ export function renderPickChoreSheet(chores, slot, _schedules) {
         <input type="time" id="sheet-time" class="text-input sheet-time-input"
           step="900" value="${defaultTime}" />
       </div>
+      ${freqHTML}
       <div class="sheet-chore-list">${items}</div>
       <form data-action="new-chore-from-sheet" class="sheet-new-chore-form">
         <input type="hidden" name="timePeriod" value="anytime" />
@@ -178,11 +287,15 @@ export function renderPickChoreSheet(chores, slot, _schedules) {
  * Renders the "edit schedule" bottom sheet opened by long-pressing a chore card.
  *
  * @param {object} chore  The chore object { id, icon, name, … }
- * @param {object} sch    The schedule object { id, specificTime, … }
+ * @param {object} sch    The schedule object { id, specificTime, frequencyType, … }
+ * @param {string} date   The currently-viewed date (YYYY-MM-DD), used as default
+ *                        for "once" startDate if the user switches to it.
  */
-export function renderEditScheduleSheet(chore, sch) {
+export function renderEditScheduleSheet(chore, sch, date) {
   const currentTime = sch?.specificTime || "";
   const scheduleId  = sch?.id ?? "";
+  const freqHTML    = renderFreqSelect(sch?.startDate || date || null, sch, "edit-sheet");
+
   return `
     <div class="bottom-sheet" role="dialog" aria-modal="true" aria-label="Edit ${escapeHTML(chore.name)}">
       <div class="sheet-handle" aria-hidden="true"></div>
@@ -192,6 +305,7 @@ export function renderEditScheduleSheet(chore, sch) {
         <input type="time" id="edit-sheet-time" class="text-input sheet-time-input"
           step="900" value="${escapeHTML(currentTime)}" />
       </div>
+      ${freqHTML}
       <button type="button" class="btn btn-primary btn-full"
         data-action="save-schedule-edit"
         data-schedule-id="${scheduleId}">

@@ -23,7 +23,7 @@ const scheduleColumns = `
     id, household_id, chore_id, frequency_type,
     time_period, specific_time, times_of_day, days_of_week,
     interval_days, day_of_month, month_weekday, month_of_year,
-    recurrence_end_date, target_count, is_active, assigned_to_user_id,
+    recurrence_end_date, start_date, target_count, is_active, assigned_to_user_id,
     created_at, updated_at`
 
 type rowScanner interface {
@@ -35,12 +35,13 @@ func (s *PostgresStore) scan(row rowScanner) (ChoreSchedule, error) {
 	var timesRaw, daysRaw, mwRaw []byte
 	var specificTime sql.NullString
 	var endDate sql.NullTime
+	var startDate sql.NullTime
 
 	err := row.Scan(
 		&sch.ID, &sch.HouseholdID, &sch.ChoreID, &sch.FrequencyType,
 		&sch.TimePeriod, &specificTime, &timesRaw, &daysRaw,
 		&sch.IntervalDays, &sch.DayOfMonth, &mwRaw, &sch.MonthOfYear,
-		&endDate, &sch.TargetCount, &sch.IsActive, &sch.AssignedUserID,
+		&endDate, &startDate, &sch.TargetCount, &sch.IsActive, &sch.AssignedUserID,
 		&sch.CreatedAt, &sch.UpdatedAt,
 	)
 	if err != nil {
@@ -52,6 +53,9 @@ func (s *PostgresStore) scan(row rowScanner) (ChoreSchedule, error) {
 	if endDate.Valid {
 		t := endDate.Time
 		sch.RecurrenceEnd = &t
+	}
+	if startDate.Valid {
+		sch.StartDate = &DateOnly{Time: startDate.Time}
 	}
 	if len(timesRaw) > 0 {
 		_ = json.Unmarshal(timesRaw, &sch.TimesOfDay)
@@ -71,19 +75,24 @@ func (s *PostgresStore) Create(ctx context.Context, sch ChoreSchedule) (ChoreSch
 	mwRaw := marshalJSONOrNull(sch.MonthWeekday)
 	now := time.Now().UTC()
 
+	var startDateParam interface{}
+	if sch.StartDate != nil && !sch.StartDate.IsZero() {
+		startDateParam = sch.StartDate.Time.UTC().Format("2006-01-02")
+	}
+
 	row := s.db.QueryRowContext(ctx, `
 		INSERT INTO chore_schedules
 		    (household_id, chore_id, frequency_type,
 		     time_period, specific_time, times_of_day, days_of_week,
 		     interval_days, day_of_month, month_weekday, month_of_year,
-		     recurrence_end_date, target_count, is_active, assigned_to_user_id,
+		     recurrence_end_date, start_date, target_count, is_active, assigned_to_user_id,
 		     created_at, updated_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
 		RETURNING `+scheduleColumns,
 		sch.HouseholdID, sch.ChoreID, sch.FrequencyType,
 		sch.TimePeriod, nullString(sch.SpecificTime), timesRaw, daysRaw,
 		sch.IntervalDays, sch.DayOfMonth, mwRaw, sch.MonthOfYear,
-		sch.RecurrenceEnd, sch.TargetCount, sch.IsActive, sch.AssignedUserID,
+		sch.RecurrenceEnd, startDateParam, sch.TargetCount, sch.IsActive, sch.AssignedUserID,
 		now, now,
 	)
 	return s.scan(row)
@@ -119,19 +128,24 @@ func (s *PostgresStore) Update(ctx context.Context, sch ChoreSchedule) (ChoreSch
 	mwRaw := marshalJSONOrNull(sch.MonthWeekday)
 	timesRaw := marshalJSONOrEmpty(sch.TimesOfDay)
 
+	var startDateParam interface{}
+	if sch.StartDate != nil && !sch.StartDate.IsZero() {
+		startDateParam = sch.StartDate.Time.UTC().Format("2006-01-02")
+	}
+
 	row := s.db.QueryRowContext(ctx, `
 		UPDATE chore_schedules SET
 		    frequency_type=$1, time_period=$2, specific_time=$3,
 		    times_of_day=$4, days_of_week=$5, interval_days=$6,
 		    day_of_month=$7, month_weekday=$8, month_of_year=$9,
-		    recurrence_end_date=$10, target_count=$11, is_active=$12,
-		    assigned_to_user_id=$13, updated_at=$14
-		WHERE id=$15
+		    recurrence_end_date=$10, start_date=$11, target_count=$12, is_active=$13,
+		    assigned_to_user_id=$14, updated_at=$15
+		WHERE id=$16
 		RETURNING `+scheduleColumns,
 		sch.FrequencyType, sch.TimePeriod, nullString(sch.SpecificTime),
 		timesRaw, daysRaw, sch.IntervalDays,
 		sch.DayOfMonth, mwRaw, sch.MonthOfYear,
-		sch.RecurrenceEnd, sch.TargetCount, sch.IsActive, sch.AssignedUserID,
+		sch.RecurrenceEnd, startDateParam, sch.TargetCount, sch.IsActive, sch.AssignedUserID,
 		time.Now().UTC(), sch.ID,
 	)
 	return s.scan(row)

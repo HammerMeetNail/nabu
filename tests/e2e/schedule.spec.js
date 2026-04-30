@@ -559,6 +559,66 @@ test.describe('Chore Logging: Day View', () => {
   });
 });
 
+// ─── Chore Logging: Week View ──────────────────────────────────────────────────
+
+test.describe('Chore Logging: Week View', () => {
+  test('clicking an unlogged week-view card marks it as done', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    // Create a daily schedule so it appears in any week.
+    const choreId = (await (await page.request.get('/api/chores')).json()).chores[0].id;
+    await page.request.post('/api/schedules', {
+      data: { choreId, timePeriod: 'anytime', frequencyType: 'daily', isActive: true },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+
+    await page.reload();
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
+    // Switch to week view.
+    await page.locator('[data-action="switch-view"][data-view="week"]').click();
+    await page.waitForTimeout(500);
+
+    const card = page.locator('.week-chore-card').first();
+    await expect(card).toBeVisible();
+    await expect(card).toHaveAttribute('data-action', 'log-chore');
+
+    await card.click();
+    await page.waitForTimeout(1000);
+
+    // Card must now show as done without requiring a view switch.
+    await expect(card).toHaveClass(/chore-card--done/);
+    await expect(card).toHaveAttribute('data-action', 'undo-chore');
+  });
+
+  test('clicking a done week-view card undoes it', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    const choreId = (await (await page.request.get('/api/chores')).json()).chores[0].id;
+    await page.request.post('/api/schedules', {
+      data: { choreId, timePeriod: 'anytime', frequencyType: 'daily', isActive: true },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+
+    await page.reload();
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
+    await page.locator('[data-action="switch-view"][data-view="week"]').click();
+    await page.waitForTimeout(500);
+
+    const card = page.locator('.week-chore-card').first();
+    await card.click();
+    await page.waitForTimeout(1000);
+    await expect(card).toHaveClass(/chore-card--done/);
+
+    // Undo.
+    await card.click();
+    await page.waitForTimeout(1000);
+    await expect(card).not.toHaveClass(/chore-card--done/);
+    await expect(card).toHaveAttribute('data-action', 'log-chore');
+  });
+});
+
 // ─── Drag and Drop: Day View ──────────────────────────────────────────────────
 
 test.describe('Drag and Drop: Day View', () => {
@@ -1200,5 +1260,433 @@ test.describe('Week View: Clicking a cell opens pick-chore sheet', () => {
 
     await expect(page.locator('.bottom-sheet')).toBeVisible();
     await expect(page.locator('#sheet-time')).toHaveValue('11:00');
+  });
+});
+
+// ─── Frequency selector in bottom sheets ─────────────────────────────────────
+
+test.describe('Frequency selector: pick-chore sheet', () => {
+  test('sheet contains a frequency select defaulting to "once"', async ({ page }) => {
+    await setupWithChores(page);
+
+    await page.locator('[data-drop-hour="8"]').click();
+    await page.waitForTimeout(400);
+
+    // The freq <select> must be visible with "once" pre-selected.
+    const sel = page.locator('#sheet-freq');
+    await expect(sel).toBeVisible();
+    await expect(sel).toHaveValue('once');
+  });
+
+  test('weekday pill row is hidden when "once" is selected', async ({ page }) => {
+    await setupWithChores(page);
+
+    await page.locator('[data-drop-hour="8"]').click();
+    await page.waitForTimeout(400);
+
+    // Row must be present in the DOM but hidden via the "hidden" attribute.
+    const wkRow = page.locator('#sheet-weekday-row');
+    await expect(wkRow).toBeHidden();
+  });
+
+  test('selecting "weekly" reveals the weekday pill row', async ({ page }) => {
+    await setupWithChores(page);
+
+    await page.locator('[data-drop-hour="8"]').click();
+    await page.waitForTimeout(400);
+
+    await page.locator('#sheet-freq').selectOption('weekly');
+
+    const wkRow = page.locator('#sheet-weekday-row');
+    await expect(wkRow).toBeVisible();
+    // Seven day pills should be present.
+    await expect(page.locator('#sheet-weekday-row .day-pill')).toHaveCount(7);
+  });
+
+  test('switching back from "weekly" to another option hides the pill row', async ({ page }) => {
+    await setupWithChores(page);
+
+    await page.locator('[data-drop-hour="8"]').click();
+    await page.waitForTimeout(400);
+
+    await page.locator('#sheet-freq').selectOption('weekly');
+    await expect(page.locator('#sheet-weekday-row')).toBeVisible();
+
+    await page.locator('#sheet-freq').selectOption('daily');
+    await expect(page.locator('#sheet-weekday-row')).toBeHidden();
+  });
+
+  test('scheduling via UI creates a "once" schedule with startDate = today', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    // Get today's ISO date from the server perspective (use the cal-date heading).
+    const calDateText = await page.locator('.cal-date').innerText();
+    // The heading is like "Thursday, April 30" — derive today's ISO date from the
+    // data-date on the next-day navigation button instead (reliable machine-readable).
+    const nextBtn = page.locator('[data-action="navigate-day"]').last();
+    const nextDate = await nextBtn.getAttribute('data-date'); // "YYYY-MM-DD" of tomorrow
+    const tomorrow = nextDate;
+    const [y, m, d] = tomorrow.split('-').map(Number);
+    const todayDate = new Date(y, m - 1, d - 1);
+    const todayISO = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
+
+    // Open hour-8 sheet and pick the first chore (freq defaults to "once").
+    await page.locator('[data-drop-hour="8"]').click();
+    await page.waitForTimeout(400);
+    await page.locator('.sheet-chore-item').first().click();
+    await page.waitForTimeout(1500);
+
+    // Fetch the created schedule from the API.
+    const { schedules } = await (await page.request.get('/api/schedules')).json();
+    const sch = schedules.find(s => s.specificTime === '08:00');
+    expect(sch).toBeDefined();
+    expect(sch.frequencyType).toBe('once');
+    expect(sch.startDate).toBe(todayISO);
+  });
+
+  test('"once" schedule only appears on its startDate, not adjacent days', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    // Derive today's ISO date from the navigation button.
+    const nextBtn = page.locator('[data-action="navigate-day"]').last();
+    const tomorrow = await nextBtn.getAttribute('data-date');
+    const [y, m, d] = tomorrow.split('-').map(Number);
+    const todayDate = new Date(y, m - 1, d - 1);
+    const todayISO = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
+
+    const choreId = (await (await page.request.get('/api/chores')).json()).chores[0].id;
+
+    // Create a "once" schedule for today at 10:00 via the API.
+    await page.request.post('/api/schedules', {
+      data: {
+        choreId,
+        timePeriod: 'anytime',
+        specificTime: '10:00',
+        frequencyType: 'once',
+        startDate: todayISO,
+        isActive: true,
+      },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+
+    await page.reload();
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
+    // Card must appear in the 10 AM row today.
+    await expect(page.locator('.day-hour-row[data-hour="10"] .chore-card')).toHaveCount(1);
+
+    // Navigate to tomorrow — card must NOT appear.
+    await page.locator('[data-action="navigate-day"]').last().click();
+    await page.waitForTimeout(800);
+    await expect(page.locator('.day-hour-row[data-hour="10"] .chore-card')).toHaveCount(0);
+
+    // Navigate back to today — card must reappear.
+    await page.locator('[data-action="navigate-day"]').first().click();
+    await page.waitForTimeout(800);
+    await expect(page.locator('.day-hour-row[data-hour="10"] .chore-card')).toHaveCount(1);
+  });
+
+  test('scheduling with "weekly" frequency creates a weekly schedule', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    await page.locator('[data-drop-hour="9"]').click();
+    await page.waitForTimeout(400);
+
+    // Switch freq to "weekly".
+    await page.locator('#sheet-freq').selectOption('weekly');
+    await expect(page.locator('#sheet-weekday-row')).toBeVisible();
+
+    await page.locator('.sheet-chore-item').first().click();
+    await page.waitForTimeout(1500);
+
+    const { schedules } = await (await page.request.get('/api/schedules')).json();
+    const sch = schedules.find(s => s.specificTime === '09:00');
+    expect(sch).toBeDefined();
+    expect(sch.frequencyType).toBe('weekly');
+    expect(Array.isArray(sch.daysOfWeek)).toBe(true);
+    expect(sch.daysOfWeek.length).toBeGreaterThan(0);
+  });
+});
+
+// ─── Frequency selector: edit-schedule sheet ─────────────────────────────────
+
+test.describe('Frequency selector: edit-schedule sheet', () => {
+  test('edit sheet shows #edit-sheet-freq pre-populated from the schedule', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    const choreId = (await (await page.request.get('/api/chores')).json()).chores[0].id;
+
+    // Create a weekly schedule so we can verify the edit sheet reflects it.
+    await page.request.post('/api/schedules', {
+      data: {
+        choreId,
+        timePeriod: 'anytime',
+        specificTime: '11:00',
+        frequencyType: 'weekly',
+        daysOfWeek: [1, 3],
+        isActive: true,
+      },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+
+    await page.reload();
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
+    // The card is in the 11 AM row only on Mon/Wed.  We may or may not be on one
+    // of those days.  Use the API directly to find the current displayed date and
+    // navigate to the next Monday if needed — or simply look for the card at all.
+    // For simplicity just check if the card is visible; if not, skip the long-press
+    // part since the schedule might not be active today.
+    // Instead, we'll just check the API schedule record to confirm frequencyType,
+    // and verify the edit sheet select is populated correctly by opening it via API
+    // then using the long-press path only when the card exists.
+
+    // Easier: navigate to a Monday if today is not one.
+    // We check the current date and advance until we hit day-of-week 1 (Monday).
+    const nextBtn = page.locator('[data-action="navigate-day"]').last();
+    let attempts = 0;
+    while (attempts < 7) {
+      const nextDate = await nextBtn.getAttribute('data-date');
+      const dayOfWeek = new Date(nextDate + 'T00:00:00').getDay(); // 0=Sun
+      // If today is Monday (day before tomorrow is Sunday... wait let me recalculate)
+      // tomorrow's day-1 = today's day of week
+      const todayDOW = (dayOfWeek + 6) % 7; // convert Sun=0→6, Mon=1→0 is wrong...
+      // Actually: if nextDate is tomorrow, today is new Date(nextDate)-1day
+      const todayDOWRaw = new Date(nextDate + 'T00:00:00').getDay();
+      // todayDOWRaw is tomorrow's DOW; today = (todayDOWRaw - 1 + 7) % 7
+      const todayActual = (todayDOWRaw - 1 + 7) % 7; // 0=Sun, 1=Mon...
+      if (todayActual === 1 || todayActual === 3) break; // Mon or Wed
+      await page.locator('[data-action="navigate-day"]').last().click();
+      await page.waitForTimeout(500);
+      attempts++;
+    }
+
+    const card = page.locator('.day-hour-row[data-hour="11"] .chore-card').first();
+    await expect(card).toBeVisible({ timeout: 5000 });
+    await card.scrollIntoViewIfNeeded();
+
+    // Long-press to open edit sheet.
+    const box = await card.boundingBox();
+    if (!box) throw new Error('card has no bounding box');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(600);
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+
+    await expect(page.locator('#edit-sheet-freq')).toBeVisible();
+    await expect(page.locator('#edit-sheet-freq')).toHaveValue('weekly');
+    await expect(page.locator('#edit-sheet-weekday-row')).toBeVisible();
+  });
+
+  test('changing frequency in edit sheet and saving persists the new type', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    const choreId = (await (await page.request.get('/api/chores')).json()).chores[0].id;
+
+    // Create a daily schedule so it's always visible regardless of today's DOW.
+    const { schedule: created } = await (await page.request.post('/api/schedules', {
+      data: {
+        choreId,
+        timePeriod: 'anytime',
+        specificTime: '12:00',
+        frequencyType: 'daily',
+        isActive: true,
+      },
+      headers: { 'X-CSRF-Token': csrf },
+    })).json();
+
+    await page.reload();
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
+    const card = page.locator('.day-hour-row[data-hour="12"] .chore-card').first();
+    await expect(card).toBeVisible();
+    await card.scrollIntoViewIfNeeded();
+
+    // Long-press.
+    const box = await card.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(600);
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+
+    await expect(page.locator('#edit-sheet-freq')).toBeVisible();
+    // Edit sheet should show the existing "daily" frequency.
+    await expect(page.locator('#edit-sheet-freq')).toHaveValue('daily');
+
+    // Change to "once".
+    await page.locator('#edit-sheet-freq').selectOption('once');
+    await page.locator('[data-action="save-schedule-edit"]').click();
+    await page.waitForTimeout(1500);
+
+    // Verify via API that the schedule was updated.
+    const { schedules } = await (await page.request.get('/api/schedules')).json();
+    const updated = schedules.find(s => s.id === created.id);
+    expect(updated).toBeDefined();
+    expect(updated.frequencyType).toBe('once');
+  });
+});
+
+// ─── Drag-and-drop creates "once" schedule ────────────────────────────────────
+
+test.describe('Drag-and-drop: default "once" frequency', () => {
+  test('dragging an unscheduled chore into an hour row creates a "once" schedule', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    // Derive today's ISO date.
+    const nextBtn = page.locator('[data-action="navigate-day"]').last();
+    const tomorrow = await nextBtn.getAttribute('data-date');
+    const [y, m, d] = tomorrow.split('-').map(Number);
+    const todayDate = new Date(y, m - 1, d - 1);
+    const todayISO = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
+
+    // All chores start in the Anytime section (no schedules).
+    const anytimeCard = page.locator('.day-anytime-section .chore-card').first();
+    await expect(anytimeCard).toBeVisible();
+
+    const dropTarget = page.locator('[data-drop-hour="7"]');
+    await htmlDragDrop(page, anytimeCard, dropTarget);
+    await page.waitForTimeout(1500);
+
+    // Card should have moved into the 7 AM row.
+    await expect(page.locator('.day-hour-row[data-hour="7"] .chore-card')).toHaveCount(1);
+
+    // The API schedule must be "once" with startDate = today.
+    const { schedules } = await (await page.request.get('/api/schedules')).json();
+    const sch = schedules.find(s => s.specificTime === '07:00');
+    expect(sch).toBeDefined();
+    expect(sch.frequencyType).toBe('once');
+    expect(sch.startDate).toBe(todayISO);
+  });
+});
+
+// ─── Frequency selector: every_n_days ─────────────────────────────────────────
+
+test.describe('Frequency selector: every_n_days', () => {
+  test('pick-chore sheet contains "Every N days" option', async ({ page }) => {
+    await setupWithChores(page);
+
+    // Click an hour slot to open the pick-chore sheet.
+    await page.locator('[data-drop-hour="8"]').click();
+    await page.waitForTimeout(400);
+    await expect(page.locator('#sheet-freq')).toBeVisible();
+
+    // The "every_n_days" option must exist.
+    const options = await page.locator('#sheet-freq option').allTextContents();
+    expect(options.some(t => /every.*days/i.test(t))).toBe(true);
+  });
+
+  test('selecting "every_n_days" reveals the interval input row', async ({ page }) => {
+    await setupWithChores(page);
+
+    await page.locator('[data-drop-hour="8"]').click();
+    await page.waitForTimeout(400);
+    await expect(page.locator('#sheet-freq')).toBeVisible();
+
+    // Interval row should be hidden initially (default is "once").
+    await expect(page.locator('#sheet-interval-row')).toBeHidden();
+
+    // Selecting every_n_days should reveal it.
+    await page.locator('#sheet-freq').selectOption('every_n_days');
+    await expect(page.locator('#sheet-interval-row')).toBeVisible();
+
+    // Switching back to "once" should hide it again.
+    await page.locator('#sheet-freq').selectOption('once');
+    await expect(page.locator('#sheet-interval-row')).toBeHidden();
+  });
+
+  test('scheduling via UI with every_n_days creates schedule with correct intervalDays', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+    const chores = (await (await page.request.get('/api/chores')).json()).chores;
+    const chore = chores[0];
+
+    // Open pick-chore sheet for hour 8.
+    await page.locator('[data-drop-hour="8"]').click();
+    await page.waitForTimeout(400);
+    await expect(page.locator('#sheet-freq')).toBeVisible();
+
+    // Select "every_n_days" and set interval to 3.
+    await page.locator('#sheet-freq').selectOption('every_n_days');
+    await expect(page.locator('#sheet-interval')).toBeVisible();
+    await page.locator('#sheet-interval').fill('3');
+
+    // Pick the first chore.
+    await page.locator(`[data-action="schedule-chore-here"][data-chore-id="${chore.id}"]`).click();
+    await page.waitForTimeout(1500);
+
+    // Verify via API.
+    const { schedules } = await (await page.request.get('/api/schedules')).json();
+    const sch = schedules.find(s => s.choreId === chore.id && s.specificTime === '08:00');
+    expect(sch).toBeDefined();
+    expect(sch.frequencyType).toBe('every_n_days');
+    expect(sch.intervalDays).toBe(3);
+  });
+
+  test('interval input label updates as user types', async ({ page }) => {
+    await setupWithChores(page);
+
+    await page.locator('[data-drop-hour="8"]').click();
+    await page.waitForTimeout(400);
+    await expect(page.locator('#sheet-freq')).toBeVisible();
+
+    await page.locator('#sheet-freq').selectOption('every_n_days');
+    await page.locator('#sheet-interval').fill('7');
+
+    // The selected option text should update to "Every 7 days".
+    const selectedText = await page.locator('#sheet-freq').evaluate(
+      sel => sel.options[sel.selectedIndex].textContent.trim()
+    );
+    expect(selectedText).toBe('Every 7 days');
+  });
+
+  test('edit sheet shows every_n_days pre-populated and can be saved', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    const choreId = (await (await page.request.get('/api/chores')).json()).chores[0].id;
+
+    // Create an every_n_days=3 schedule at noon so it's always visible.
+    const { schedule: created } = await (await page.request.post('/api/schedules', {
+      data: {
+        choreId,
+        timePeriod: 'anytime',
+        specificTime: '12:00',
+        frequencyType: 'every_n_days',
+        intervalDays: 3,
+        isActive: true,
+      },
+      headers: { 'X-CSRF-Token': csrf },
+    })).json();
+
+    await page.reload();
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
+    const card = page.locator('.day-hour-row[data-hour="12"] .chore-card').first();
+    await expect(card).toBeVisible();
+    await card.scrollIntoViewIfNeeded();
+
+    // Long-press to open edit sheet.
+    const box = await card.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(600);
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+
+    await expect(page.locator('#edit-sheet-freq')).toBeVisible();
+    await expect(page.locator('#edit-sheet-freq')).toHaveValue('every_n_days');
+    await expect(page.locator('#edit-sheet-interval-row')).toBeVisible();
+    await expect(page.locator('#edit-sheet-interval')).toHaveValue('3');
+
+    // Change interval to 5 and save.
+    await page.locator('#edit-sheet-interval').fill('5');
+    await page.locator('[data-action="save-schedule-edit"]').click();
+    await page.waitForTimeout(1500);
+
+    const { schedules } = await (await page.request.get('/api/schedules')).json();
+    const updated = schedules.find(s => s.id === created.id);
+    expect(updated).toBeDefined();
+    expect(updated.frequencyType).toBe('every_n_days');
+    expect(updated.intervalDays).toBe(5);
   });
 });
