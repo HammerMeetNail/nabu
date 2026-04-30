@@ -494,6 +494,12 @@ input:focus, select:focus, textarea:focus {
 
 .chore-card:active { transform: scale(0.97); }
 
+.chore-card--pressing {
+  transform: scale(0.93);
+  opacity: 0.75;
+  transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
 .chore-card.chore-done {
   opacity: 0.5;
 }
@@ -698,41 +704,56 @@ input:focus, select:focus, textarea:focus {
   flex-direction: column;
 }
 
-.period-sections {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
+.day-hour-grid-wrapper {
+  overflow-y: auto;
+  max-height: 60vh;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+  background: var(--surface);
 }
 
-.period-section {
+.day-hour-grid {
+  display: flex;
+  flex-direction: column;
+}
+
+.day-hour-row {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  min-height: 48px;
+  border-bottom: 1px solid var(--border);
+}
+
+.day-hour-cell {
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  cursor: pointer;
+  min-height: 48px;
+}
+
+.day-hour-cell.drop-target {
+  outline: 2px dashed var(--primary);
+  outline-offset: -2px;
+  background: rgba(46,134,171,0.06);
+}
+
+.day-anytime-section {
+  margin-top: 12px;
   background: var(--surface);
   border-radius: var(--radius-card);
   padding: 12px;
   box-shadow: var(--shadow);
 }
 
-.period-heading {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 10px;
-}
-
-.period-icon {
-  font-size: 18px;
-}
-
-.period-cards {
+.day-anytime-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   gap: 10px;
 }
 
-.period-cards.drop-target,
-.week-cell.drop-target {
+.day-anytime-cards.drop-target {
   outline: 2px dashed var(--primary);
   outline-offset: 2px;
   background: rgba(46,134,171,0.06);
@@ -750,26 +771,6 @@ input:focus, select:focus, textarea:focus {
 
 .chore-assignee {
   font-size: 14px;
-}
-
-/* Add-chore slot button inside a period */
-.add-chore-slot {
-  min-height: 64px;
-  border: 2px dashed var(--border);
-  border-radius: 12px;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 13px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s;
-}
-
-.add-chore-slot:hover {
-  border-color: var(--primary);
-  color: var(--primary);
 }
 
 /* Drag states */
@@ -832,12 +833,6 @@ input:focus, select:focus, textarea:focus {
   border-bottom: 1px solid var(--border);
 }
 
-/* Named period colour bands */
-.hour-row--morning   { background: rgba(255, 200, 100, 0.06); }
-.hour-row--afternoon { background: rgba(255, 160,  60, 0.06); }
-.hour-row--evening   { background: rgba(100, 120, 200, 0.08); }
-.hour-row--night     { background: rgba( 30,  30,  80, 0.05); }
-
 .hour-label {
   font-size: 11px;
   color: var(--text-secondary);
@@ -845,6 +840,16 @@ input:focus, select:focus, textarea:focus {
   border-right: 1px solid var(--border);
   white-space: nowrap;
   flex-shrink: 0;
+  background: none;
+  border-top: none;
+  border-bottom: none;
+  border-left: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  line-height: inherit;
+  display: block;
+  width: auto;
 }
 
 .week-cell {
@@ -855,6 +860,12 @@ input:focus, select:focus, textarea:focus {
   gap: 2px;
   cursor: pointer;
   min-height: 48px;
+}
+
+.week-cell.drop-target {
+  outline: 2px dashed var(--primary);
+  outline-offset: -2px;
+  background: rgba(46,134,171,0.06);
 }
 
 .week-cell--anytime {
@@ -895,6 +906,16 @@ input:focus, select:focus, textarea:focus {
   border-radius: var(--radius-card);
   padding: 12px;
   box-shadow: var(--shadow);
+}
+
+.section-heading {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
 }
 
 .anytime-grid {
@@ -964,6 +985,23 @@ input:focus, select:focus, textarea:focus {
   color: var(--text-secondary);
   padding: 24px 0;
   font-size: 14px;
+}
+
+.sheet-time-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sheet-time-row .field-label {
+  margin: 0;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.sheet-time-input {
+  max-width: 140px;
 }
 
 .sheet-chore-list {

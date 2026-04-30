@@ -22,7 +22,7 @@ import { loadHousehold, createHousehold, joinHousehold, createInvite, deleteInvi
 import { loadToday, loadWeek, logChore, undoLog, loadChores, loadHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
 import { renderStatsView, loadOverview } from "./stats.js";
 import { renderDayView, renderWeekView } from "./calendar.js";
-import { loadSchedules, createSchedule, updateSchedule, renderPickChoreSheet } from "./schedule.js";
+import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderEditScheduleSheet } from "./schedule.js";
 
 let state;
 
@@ -145,6 +145,19 @@ function renderTodayView() {
       <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
       ${sheetHTML}
     </div>`;
+  }
+  if (state.activeSheet === "edit-schedule") {
+    const { choreId, scheduleId } = state.activeSheetData || {};
+    const chore = (state.chores || []).find(c => c.id === choreId);
+    const sch   = (state.schedules || []).find(s => s.id === scheduleId);
+    if (chore && sch) {
+      const sheetHTML = renderEditScheduleSheet(chore, sch);
+      return `<div class="sheet-overlay-wrapper">
+        ${mainView}
+        <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+        ${sheetHTML}
+      </div>`;
+    }
   }
   return mainView;
 }
@@ -366,7 +379,11 @@ export async function init() {
   const app = document.querySelector("#app");
   if (!app) return;
 
+  let longPressTimer    = null;
+  let longPressJustFired = false;
+
   document.addEventListener("click", (e) => {
+    if (longPressJustFired) { longPressJustFired = false; return; }
     const actionEl = e.target.closest("[data-action]");
 
     // data-nav SPA navigation: check first so it works without data-action
@@ -480,27 +497,23 @@ export async function init() {
         e.preventDefault();
         state.activeSheet = "pick-chore";
         state.activeSheetData = {
-          date:       actionEl.dataset.date,
-          timePeriod: actionEl.dataset.timePeriod,
-          hour:       actionEl.dataset.hour ? parseInt(actionEl.dataset.hour, 10) : null,
+          date: actionEl.dataset.date,
+          hour: actionEl.dataset.hour ? parseInt(actionEl.dataset.hour, 10) : null,
         };
         render(app);
         break;
 
       case "schedule-chore-here": {
         e.preventDefault();
-        const choreId    = parseInt(actionEl.dataset.choreId, 10);
-        const timePeriod = actionEl.dataset.timePeriod;
-        const rawHour    = actionEl.dataset.specificHour;
-        const specificTime = rawHour
-          ? `${String(rawHour).padStart(2, "0")}:00`
-          : null;
+        const choreId      = parseInt(actionEl.dataset.choreId, 10);
+        const timeInput    = document.querySelector("#sheet-time");
+        const specificTime = timeInput?.value || null;
         createSchedule({
           choreId,
-          timePeriod,
+          timePeriod:    "anytime",
           specificTime,
           frequencyType: "daily",
-          isActive: true,
+          isActive:      true,
         }).then(async () => {
           state.activeSheet = null;
           state.activeSheetData = {};
@@ -516,6 +529,34 @@ export async function init() {
         state.activeSheetData = {};
         render(app);
         break;
+
+      case "save-schedule-edit": {
+        e.preventDefault();
+        const scheduleId   = parseInt(actionEl.dataset.scheduleId, 10);
+        const timeInput    = document.querySelector("#edit-sheet-time");
+        const specificTime = timeInput?.value || null;
+        updateSchedule(scheduleId, { specificTime })
+          .then(async () => {
+            state.activeSheet     = null;
+            state.activeSheetData = {};
+            state.schedules = await loadSchedules();
+            render(app);
+          }).catch(() => showToast("Failed to update schedule", "error"));
+        break;
+      }
+
+      case "delete-schedule": {
+        e.preventDefault();
+        const scheduleId = parseInt(actionEl.dataset.scheduleId, 10);
+        deleteSchedule(scheduleId)
+          .then(async () => {
+            state.activeSheet     = null;
+            state.activeSheetData = {};
+            state.schedules = await loadSchedules();
+            render(app);
+          }).catch(() => showToast("Failed to remove schedule", "error"));
+        break;
+      }
     }
   });
 
@@ -565,6 +606,7 @@ export async function init() {
 
   // ── Drag and drop ──────────────────────────────────────────────────────────
   document.addEventListener("dragstart", e => {
+    clearTimeout(longPressTimer);
     const card = e.target.closest("[data-drag-chore-id]");
     if (!card) return;
     e.dataTransfer.setData("text/plain", JSON.stringify({
@@ -596,7 +638,7 @@ export async function init() {
     try { payload = JSON.parse(e.dataTransfer.getData("text/plain")); }
     catch { return; }
     const { choreId, scheduleId } = payload;
-    const newPeriod = cell.dataset.dropPeriod || cell.dataset.timePeriod || "anytime";
+    const newPeriod = cell.dataset.dropPeriod || "anytime";
     const newHour   = cell.dataset.dropHour != null
       ? `${String(cell.dataset.dropHour).padStart(2, "0")}:00`
       : null;
@@ -622,6 +664,48 @@ export async function init() {
       render(app);
     } catch { showToast("Failed to schedule chore", "error"); }
   });
+
+  // ── Long-press to edit a scheduled chore ──────────────────────────────────
+  function openEditSheet(card) {
+    const choreId    = parseInt(card.dataset.dragChoreId, 10);
+    const scheduleId = card.dataset.dragScheduleId;
+    if (!scheduleId) return;
+    state.activeSheet     = "edit-schedule";
+    state.activeSheetData = { choreId, scheduleId: parseInt(scheduleId, 10) };
+    render(app);
+  }
+
+  function cancelPress() {
+    clearTimeout(longPressTimer);
+    document.querySelectorAll(".chore-card--pressing")
+      .forEach(el => el.classList.remove("chore-card--pressing"));
+  }
+
+  document.addEventListener("mousedown", e => {
+    const card = e.target.closest("[data-drag-chore-id]");
+    if (!card) return;
+    card.classList.add("chore-card--pressing");
+    longPressTimer = setTimeout(() => {
+      longPressJustFired = true;
+      card.classList.remove("chore-card--pressing");
+      openEditSheet(card);
+    }, 500);
+  });
+  document.addEventListener("mouseup",    cancelPress);
+  document.addEventListener("mouseleave", cancelPress, true);
+
+  document.addEventListener("touchstart", e => {
+    const card = e.target.closest("[data-drag-chore-id]");
+    if (!card) return;
+    card.classList.add("chore-card--pressing");
+    longPressTimer = setTimeout(() => {
+      longPressJustFired = true;
+      card.classList.remove("chore-card--pressing");
+      openEditSheet(card);
+    }, 500);
+  }, { passive: true });
+  document.addEventListener("touchend",  cancelPress);
+  document.addEventListener("touchmove", cancelPress, { passive: true });
 
   render(app);
 }
@@ -710,8 +794,6 @@ async function doJoinHousehold(form) {
 
 async function doCreateChoreFromSheet(form) {
   const name      = form.querySelector('[name="choreName"]').value.trim();
-  const timePeriod = form.querySelector('[name="timePeriod"]').value;
-  const rawHour   = form.querySelector('[name="specificHour"]').value;
   if (!name) return;
 
   try {
@@ -722,10 +804,11 @@ async function doCreateChoreFromSheet(form) {
     const newChore = choreData?.chore;
     if (!newChore) { showToast("Failed to create chore", "error"); return; }
 
-    const specificTime = rawHour ? `${String(rawHour).padStart(2, "0")}:00` : null;
+    const timeInput    = document.querySelector("#sheet-time");
+    const specificTime = timeInput?.value || null;
     await createSchedule({
       choreId:       newChore.id,
-      timePeriod,
+      timePeriod:    "anytime",
       specificTime,
       frequencyType: "daily",
       isActive:      true,

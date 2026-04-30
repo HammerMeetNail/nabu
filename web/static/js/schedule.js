@@ -3,38 +3,6 @@
 import { apiFetch } from "./api.js";
 import { escapeHTML } from "./utils.js";
 
-// ─── Time period definitions ──────────────────────────────────────────────────
-
-export const PERIODS = [
-  { id: "morning",   icon: "🌅", label: "Morning",   startHour: 5,  endHour: 11 },
-  { id: "afternoon", icon: "☀️",  label: "Afternoon", startHour: 12, endHour: 16 },
-  { id: "evening",   icon: "🌆", label: "Evening",   startHour: 17, endHour: 20 },
-  { id: "night",     icon: "🌙", label: "Night",     startHour: 21, endHour: 4  },
-  { id: "anytime",   icon: "📋", label: "Anytime",   startHour: 0,  endHour: 23 },
-];
-
-/**
- * Returns the period id that contains the given hour (0-23).
- * Night wraps around midnight, so hours 21-23 and 0-4 both map to "night".
- */
-export function hourToPeriod(hour) {
-  if (hour >= 5  && hour <= 11) return "morning";
-  if (hour >= 12 && hour <= 16) return "afternoon";
-  if (hour >= 17 && hour <= 20) return "evening";
-  if (hour >= 21 || hour <= 4)  return "night";
-  return "anytime";
-}
-
-/**
- * Given a specific_time string ("HH:MM"), returns the period id.
- * Falls back to "anytime" if unparseable.
- */
-export function timeToPeriod(timeStr) {
-  if (!timeStr) return "anytime";
-  const [h] = timeStr.split(":").map(Number);
-  return Number.isFinite(h) ? hourToPeriod(h) : "anytime";
-}
-
 // ─── API calls ────────────────────────────────────────────────────────────────
 
 export async function loadSchedules() {
@@ -82,12 +50,10 @@ const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /**
  * Returns a human-readable summary of the recurrence rule.
- * e.g. "Every Mon, Wed, Fri • Morning"
+ * e.g. "Every Mon, Wed, Fri • 8:00 AM"
  */
 export function recurrenceSummary(sch) {
   if (!sch || !sch.frequencyType) return "Not scheduled";
-  const period = PERIODS.find(p => p.id === (sch.timePeriod || "anytime"));
-  const periodLabel = period ? `${period.icon} ${period.label}` : "";
 
   let freq = "";
   switch (sch.frequencyType) {
@@ -120,7 +86,7 @@ export function recurrenceSummary(sch) {
   if (sch.specificTime) {
     return `${freq} • ${fmtTime(sch.specificTime)}`;
   }
-  return periodLabel ? `${freq} • ${periodLabel}` : freq;
+  return freq;
 }
 
 function ordinal(n) {
@@ -137,20 +103,31 @@ function fmtTime(hhmm) {
   return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
 }
 
+function fmtHour(h) {
+  if (h === 0)  return "12 AM";
+  if (h === 12) return "12 PM";
+  return h < 12 ? `${h} AM` : `${h - 12} PM`;
+}
+
 // ─── Render: bottom sheet — pick a chore for a time slot ─────────────────────
 
 /**
  * Renders the "pick a chore" bottom sheet.
  * All household chores are always shown so a chore can be added multiple times
- * (e.g. feeding the cat morning and evening both need the same chore).
+ * (e.g. feeding the cat at 8 AM and 6 PM both need the same chore).
  * An inline form at the bottom lets the user create a brand-new chore on the
  * fly and have it immediately scheduled for this slot.
  *
  * @param {object[]} chores     All household chores
- * @param {object}   slot       { date: "YYYY-MM-DD", timePeriod: "morning", hour: 8 }
+ * @param {object}   slot       { date: "YYYY-MM-DD", hour: 8 }
  * @param {object[]} _schedules Unused (kept for call-site compatibility)
  */
 export function renderPickChoreSheet(chores, slot, _schedules) {
+  // Default time: top of the tapped hour, or empty for "anytime"
+  const defaultTime = slot.hour != null
+    ? `${String(slot.hour).padStart(2, "0")}:00`
+    : "";
+
   const items = chores.length === 0
     ? `<p class="sheet-empty">No chores set up yet — create one below.</p>`
     : chores.map(c => `
@@ -158,26 +135,30 @@ export function renderPickChoreSheet(chores, slot, _schedules) {
           class="sheet-chore-item"
           data-action="schedule-chore-here"
           data-chore-id="${c.id}"
-          data-time-period="${escapeHTML(slot.timePeriod || "anytime")}"
-          data-date="${escapeHTML(slot.date || "")}"
-          data-specific-hour="${slot.hour ?? ""}">
+          data-time-period="anytime"
+          data-date="${escapeHTML(slot.date || "")}">
           <span class="chore-icon">${c.icon}</span>
           <span class="chore-name">${escapeHTML(c.name)}</span>
           <span class="chore-category">${escapeHTML(c.category)}</span>
         </button>`).join("");
 
-  const period = PERIODS.find(p => p.id === (slot.timePeriod || "anytime"));
-  const title  = period ? `${period.icon} Add to ${period.label}` : "Add Chore";
+  const title = slot.hour != null
+    ? `Add to ${fmtHour(slot.hour)}`
+    : "Add Chore";
 
   return `
     <div class="bottom-sheet" role="dialog" aria-modal="true" aria-label="${title}">
       <div class="sheet-handle" aria-hidden="true"></div>
       <h2 class="sheet-title">${title}</h2>
+      <div class="sheet-time-row">
+        <label for="sheet-time" class="field-label">Time</label>
+        <input type="time" id="sheet-time" class="text-input sheet-time-input"
+          step="900" value="${defaultTime}" />
+      </div>
       <div class="sheet-chore-list">${items}</div>
       <form data-action="new-chore-from-sheet" class="sheet-new-chore-form">
-        <input type="hidden" name="timePeriod" value="${escapeHTML(slot.timePeriod || "anytime")}" />
+        <input type="hidden" name="timePeriod" value="anytime" />
         <input type="hidden" name="date" value="${escapeHTML(slot.date || "")}" />
-        <input type="hidden" name="specificHour" value="${slot.hour ?? ""}" />
         <p class="sheet-section-label">Create new chore</p>
         <div class="sheet-new-chore-row">
           <input type="text" name="choreName" class="text-input sheet-new-chore-input"
@@ -185,6 +166,42 @@ export function renderPickChoreSheet(chores, slot, _schedules) {
           <button type="submit" class="btn btn-primary sheet-new-chore-btn" aria-label="Create and add chore">+</button>
         </div>
       </form>
+      <button type="button" class="btn btn-ghost btn-full sheet-cancel-btn" data-action="close-sheet">
+        Cancel
+      </button>
+    </div>`;
+}
+
+// ─── Render: edit-schedule bottom sheet ──────────────────────────────────────
+
+/**
+ * Renders the "edit schedule" bottom sheet opened by long-pressing a chore card.
+ *
+ * @param {object} chore  The chore object { id, icon, name, … }
+ * @param {object} sch    The schedule object { id, specificTime, … }
+ */
+export function renderEditScheduleSheet(chore, sch) {
+  const currentTime = sch?.specificTime || "";
+  const scheduleId  = sch?.id ?? "";
+  return `
+    <div class="bottom-sheet" role="dialog" aria-modal="true" aria-label="Edit ${escapeHTML(chore.name)}">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <h2 class="sheet-title">${chore.icon} ${escapeHTML(chore.name)}</h2>
+      <div class="sheet-time-row">
+        <label for="edit-sheet-time" class="field-label">Time</label>
+        <input type="time" id="edit-sheet-time" class="text-input sheet-time-input"
+          step="900" value="${escapeHTML(currentTime)}" />
+      </div>
+      <button type="button" class="btn btn-primary btn-full"
+        data-action="save-schedule-edit"
+        data-schedule-id="${scheduleId}">
+        Save
+      </button>
+      <button type="button" class="btn btn-danger btn-full mt-2"
+        data-action="delete-schedule"
+        data-schedule-id="${scheduleId}">
+        Remove from schedule
+      </button>
       <button type="button" class="btn btn-ghost btn-full sheet-cancel-btn" data-action="close-sheet">
         Cancel
       </button>
@@ -215,12 +232,6 @@ export function renderRecurrencePicker(sch) {
       ${name}
     </button>`).join("");
 
-  const periodOptions = PERIODS.filter(p => p.id !== "anytime").map(p =>
-    `<option value="${p.id}" ${sch?.timePeriod === p.id ? "selected" : ""}>
-      ${p.icon} ${p.label}
-    </option>`
-  ).join("");
-
   return `
     <div class="recurrence-picker">
       <label class="field-label" for="freq-select">Repeats</label>
@@ -244,14 +255,6 @@ export function renderRecurrencePicker(sch) {
         <input id="dom-input" type="number" min="1" max="31"
           class="text-input" value="${sch?.dayOfMonth || 1}" />
       </div>
-
-      <label class="field-label" for="period-select">Time of day</label>
-      <select id="period-select" class="select-input" data-action="change-period">
-        <option value="anytime" ${(!sch?.timePeriod || sch?.timePeriod === "anytime") ? "selected" : ""}>
-          📋 Anytime
-        </option>
-        ${periodOptions}
-      </select>
 
       <div id="specific-time-row">
         <label class="field-label" for="specific-time">Specific time (optional)</label>

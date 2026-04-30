@@ -93,50 +93,45 @@ test.describe('Day View: Structure', () => {
     await expect(label).toContainText(/of \d+ done/);
   });
 
-  test('renders all five period sections', async ({ page }) => {
+  test('renders 24 hourly rows', async ({ page }) => {
     await setupWithChores(page);
 
-    for (const period of ['morning', 'afternoon', 'evening', 'night', 'anytime']) {
-      await expect(page.locator(`[data-period="${period}"]`)).toBeVisible();
-    }
+    const rows = page.locator('.day-hour-row');
+    await expect(rows).toHaveCount(24);
   });
 
-  test('each period section has a heading with icon', async ({ page }) => {
+  test('each hourly row has a time label', async ({ page }) => {
     await setupWithChores(page);
 
-    const headings = page.locator('.period-heading');
-    const count = await headings.count();
-    expect(count).toBe(5); // morning, afternoon, evening, night, anytime
-    for (let i = 0; i < count; i++) {
-      await expect(headings.nth(i).locator('.period-icon')).toBeVisible();
-    }
+    // Spot-check a few known labels
+    const grid = page.locator('.day-hour-grid');
+    await expect(grid).toContainText('12 AM');
+    await expect(grid).toContainText('12 PM');
+    await expect(grid).toContainText('8 AM');
   });
 
-  test('non-anytime periods show an "Add chore" slot button', async ({ page }) => {
+  test('each hourly row has a clickable drop zone', async ({ page }) => {
     await setupWithChores(page);
 
-    for (const period of ['morning', 'afternoon', 'evening', 'night']) {
-      const addBtn = page.locator(
-        `[data-period="${period}"] button[data-action="open-pick-chore-sheet"]`
-      );
-      await expect(addBtn).toBeVisible();
-      await expect(addBtn).toContainText('Add chore');
-    }
+    const cells = page.locator('.day-hour-cell');
+    await expect(cells).toHaveCount(24);
+    // Each cell is a drop target
+    const firstCell = cells.first();
+    await expect(firstCell).toHaveAttribute('data-drop-hour');
+    await expect(firstCell).toHaveAttribute('data-action', 'open-pick-chore-sheet');
   });
 
-  test('anytime period does NOT have an "Add chore" slot button', async ({ page }) => {
+  test('unscheduled chores appear in the Anytime section', async ({ page }) => {
     await setupWithChores(page);
 
-    const addBtn = page.locator(
-      '[data-period="anytime"] button[data-action="open-pick-chore-sheet"]'
-    );
-    await expect(addBtn).toHaveCount(0);
+    // All chores start unscheduled — they should be in the anytime section
+    await expect(page.locator('.day-anytime-section')).toBeVisible();
+    await expect(page.locator('.day-anytime-section .chore-card').first()).toBeVisible();
   });
 
   test('chore cards are draggable', async ({ page }) => {
     await setupWithChores(page);
 
-    // All chores start in the anytime bucket (no schedule yet).
     const cards = page.locator('[data-drag-chore-id]');
     const count  = await cards.count();
     expect(count).toBeGreaterThan(0);
@@ -220,7 +215,7 @@ test.describe('View Tabs: Day / Week switching', () => {
     await page.waitForTimeout(800);
 
     await expect(page.locator('.day-view')).toBeVisible();
-    await expect(page.locator('.period-sections')).toBeVisible();
+    await expect(page.locator('.day-hour-grid')).toBeVisible();
   });
 
   test('day tab becomes active again after switching back', async ({ page }) => {
@@ -297,15 +292,14 @@ test.describe('Week View: Structure', () => {
     expect(await page.locator('.cal-date').innerText()).toBe(orig);
   });
 
-  test('hour rows carry period band class names', async ({ page }) => {
+  test('renders 24 hour rows in the week grid', async ({ page }) => {
     await setupWithChores(page);
 
     await page.locator('.view-tab[data-view="week"]').click();
     await page.waitForTimeout(800);
 
-    for (const band of ['hour-row--morning', 'hour-row--afternoon', 'hour-row--evening', 'hour-row--night']) {
-      await expect(page.locator(`.${band}`).first()).toBeVisible();
-    }
+    const rows = page.locator('.hour-row');
+    await expect(rows).toHaveCount(24);
   });
 
   test('week-grid scrollable wrapper is present', async ({ page }) => {
@@ -321,20 +315,20 @@ test.describe('Week View: Structure', () => {
 // ─── Pick-chore Bottom Sheet ──────────────────────────────────────────────────
 
 test.describe('Pick-chore Bottom Sheet', () => {
-  test('clicking Add chore in a period opens the sheet', async ({ page }) => {
+  test('clicking an hour cell opens the sheet', async ({ page }) => {
     await setupWithChores(page);
 
-    await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
+    await page.locator('[data-drop-hour="8"]').click();
     await page.waitForTimeout(400);
 
     await expect(page.locator('.bottom-sheet')).toBeVisible();
-    await expect(page.locator('.sheet-title')).toContainText('Morning');
+    await expect(page.locator('.sheet-title')).toContainText('8 AM');
   });
 
   test('sheet lists all household chores', async ({ page }) => {
     await setupWithChores(page);
 
-    await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
+    await page.locator('[data-drop-hour="8"]').click();
     await page.waitForTimeout(400);
 
     await expect(page.locator('.sheet-chore-item')).toHaveCount(11);
@@ -344,7 +338,7 @@ test.describe('Pick-chore Bottom Sheet', () => {
   test('Cancel button closes the sheet', async ({ page }) => {
     await setupWithChores(page);
 
-    await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
+    await page.locator('[data-drop-hour="8"]').click();
     await page.waitForTimeout(400);
 
     await page.locator('.bottom-sheet button[data-action="close-sheet"]').click();
@@ -356,7 +350,7 @@ test.describe('Pick-chore Bottom Sheet', () => {
   test('clicking the backdrop closes the sheet', async ({ page }) => {
     await setupWithChores(page);
 
-    await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
+    await page.locator('[data-drop-hour="8"]').click();
     await page.waitForTimeout(400);
 
     await page.locator('.sheet-backdrop').click({ force: true });
@@ -368,7 +362,7 @@ test.describe('Pick-chore Bottom Sheet', () => {
   test('sheet is rendered as a dialog with aria-modal', async ({ page }) => {
     await setupWithChores(page);
 
-    await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
+    await page.locator('[data-drop-hour="8"]').click();
     await page.waitForTimeout(400);
 
     const sheet = page.locator('.bottom-sheet');
@@ -376,21 +370,25 @@ test.describe('Pick-chore Bottom Sheet', () => {
     await expect(sheet).toHaveAttribute('aria-modal', 'true');
   });
 
-  test('each sheet chore item has schedule-chore-here action with correct time-period', async ({ page }) => {
+  test('each sheet chore item has schedule-chore-here action, and sheet shows time input', async ({ page }) => {
     await setupWithChores(page);
 
-    await page.locator('[data-period="evening"] button[data-action="open-pick-chore-sheet"]').click();
+    await page.locator('[data-drop-hour="18"]').click();
     await page.waitForTimeout(400);
 
     const item = page.locator('.sheet-chore-item').first();
     await expect(item).toHaveAttribute('data-action', 'schedule-chore-here');
-    await expect(item).toHaveAttribute('data-time-period', 'evening');
+
+    // Time input should be pre-filled with 18:00
+    const timeInput = page.locator('#sheet-time');
+    await expect(timeInput).toBeVisible();
+    await expect(timeInput).toHaveValue('18:00');
   });
 
   test('picking a chore from the sheet closes the sheet', async ({ page }) => {
     await setupWithChores(page);
 
-    await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
+    await page.locator('[data-drop-hour="8"]').click();
     await page.waitForTimeout(400);
     await page.locator('.sheet-chore-item').first().click();
     await page.waitForTimeout(1500);
@@ -398,36 +396,36 @@ test.describe('Pick-chore Bottom Sheet', () => {
     await expect(page.locator('.bottom-sheet')).toHaveCount(0);
   });
 
-  test('after scheduling, chore card appears in the target period section', async ({ page }) => {
+  test('after scheduling, chore card appears in the target hour row', async ({ page }) => {
     await setupWithChores(page);
 
     // Before: all chores start in anytime (no schedules yet)
-    const initialCount = await page.locator('[data-period="anytime"] .chore-card').count();
+    const initialCount = await page.locator('.day-anytime-section .chore-card').count();
     expect(initialCount).toBeGreaterThan(0);
 
-    // Schedule first chore in morning via the sheet
-    await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
+    // Schedule first chore at 8 AM via the sheet
+    await page.locator('[data-drop-hour="8"]').click();
     await page.waitForTimeout(400);
     await page.locator('.sheet-chore-item').first().click();
     await page.waitForTimeout(1500);
 
-    // After: chore should be in morning, anytime drops by one
-    await expect(page.locator('[data-period="morning"] .chore-card')).toHaveCount(1);
-    await expect(page.locator('[data-period="anytime"] .chore-card')).toHaveCount(initialCount - 1);
+    // After: chore should be in the 8 AM row; anytime drops by one
+    await expect(page.locator('[data-drop-hour="8"] .chore-card')).toHaveCount(1);
+    await expect(page.locator('.day-anytime-section .chore-card')).toHaveCount(initialCount - 1);
   });
 
   test('already-scheduled chores remain in the sheet list so they can be added again', async ({ page }) => {
     await setupWithChores(page);
 
-    // Open morning sheet and capture the name of the first item before scheduling
-    await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
+    // Open hour-8 sheet and capture the name of the first item before scheduling
+    await page.locator('[data-drop-hour="8"]').click();
     await page.waitForTimeout(400);
     const firstName = await page.locator('.sheet-chore-item').first().locator('.chore-name').innerText();
     await page.locator('.sheet-chore-item').first().click();
     await page.waitForTimeout(1500);
 
-    // Open the morning sheet again — the previously scheduled chore should still appear
-    await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
+    // Open hour-8 sheet again — the previously scheduled chore should still appear
+    await page.locator('.day-hour-row[data-hour="8"] .hour-label').click();
     await page.waitForTimeout(400);
 
     const items = page.locator('.sheet-chore-item');
@@ -445,11 +443,11 @@ test.describe('Pick-chore Bottom Sheet', () => {
   test('sheet always shows all chores even when every chore has a schedule', async ({ page }) => {
     const { csrf } = await setupWithChores(page);
 
-    // Schedule every chore in morning via the API
+    // Schedule every chore at 8 AM via the API
     const { chores } = await (await page.request.get('/api/chores')).json();
     for (const chore of chores) {
       await page.request.post('/api/schedules', {
-        data: { choreId: chore.id, timePeriod: 'morning', frequencyType: 'daily', isActive: true },
+        data: { choreId: chore.id, timePeriod: 'anytime', specificTime: '08:00', frequencyType: 'daily', isActive: true },
         headers: { 'X-CSRF-Token': csrf },
       });
     }
@@ -457,8 +455,8 @@ test.describe('Pick-chore Bottom Sheet', () => {
     await page.reload();
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
-    // Open the morning sheet — all chores should still be visible
-    await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
+    // Open the 8 AM sheet — all chores should still be visible
+    await page.locator('.day-hour-row[data-hour="8"] .hour-label').click();
     await page.waitForTimeout(400);
 
     await expect(page.locator('.sheet-chore-item')).toHaveCount(chores.length);
@@ -466,6 +464,31 @@ test.describe('Pick-chore Bottom Sheet', () => {
     await expect(page.locator('.sheet-empty')).toHaveCount(0);
 
     await page.locator('.bottom-sheet button[data-action="close-sheet"]').click();
+  });
+
+  test('hour-label opens sheet even when the row already contains a chore card', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    // Pre-schedule a chore at 9 AM so the row is occupied
+    const choreId = (await (await page.request.get('/api/chores')).json()).chores[0].id;
+    await page.request.post('/api/schedules', {
+      data: { choreId, timePeriod: 'anytime', specificTime: '09:00', frequencyType: 'daily', isActive: true },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+
+    await page.reload();
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
+    // The 9 AM row now has a chore card — clicking the cell centre would hit the
+    // card's log-chore action instead.  The .hour-label button must still open
+    // the pick-chore sheet regardless.
+    await expect(page.locator('[data-drop-hour="9"] .chore-card')).toHaveCount(1);
+
+    await page.locator('.day-hour-row[data-hour="9"] .hour-label').click();
+    await page.waitForTimeout(400);
+
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
+    await expect(page.locator('.sheet-title')).toContainText('9 AM');
   });
 });
 
@@ -539,22 +562,22 @@ test.describe('Chore Logging: Day View', () => {
 // ─── Drag and Drop: Day View ──────────────────────────────────────────────────
 
 test.describe('Drag and Drop: Day View', () => {
-  test('dragging a chore to a period drop-zone moves it there', async ({ page }) => {
+  test('dragging a chore to an hour row moves it there', async ({ page }) => {
     await setupWithChores(page);
 
     // Count how many chores start in anytime before drag
-    const initialCount = await page.locator('[data-period="anytime"] .chore-card').count();
+    const initialCount = await page.locator('.day-anytime-section .chore-card').count();
     expect(initialCount).toBeGreaterThan(0);
 
     const card = page.locator('[data-drag-chore-id]').first();
-    const afternoonZone = page.locator('[data-drop-period="afternoon"]');
+    const hourCell = page.locator('[data-drop-hour="14"]');
 
-    await htmlDragDrop(page, card, afternoonZone);
+    await htmlDragDrop(page, card, hourCell);
     await page.waitForTimeout(1500);
 
-    // Chore should now be in afternoon; anytime count drops by one
-    await expect(page.locator('[data-period="afternoon"] .chore-card')).toHaveCount(1);
-    await expect(page.locator('[data-period="anytime"] .chore-card')).toHaveCount(initialCount - 1);
+    // Chore should now be in the 2 PM row; anytime count drops by one
+    await expect(page.locator('[data-drop-hour="14"] .chore-card')).toHaveCount(1);
+    await expect(page.locator('.day-anytime-section .chore-card')).toHaveCount(initialCount - 1);
   });
 
   test('dragging preserves the chore name after move', async ({ page }) => {
@@ -563,57 +586,82 @@ test.describe('Drag and Drop: Day View', () => {
     const card = page.locator('[data-drag-chore-id]').first();
     // Capture the name before dragging
     const choreName = await card.locator('.chore-name').innerText();
-    const morningZone = page.locator('[data-drop-period="morning"]');
+    const hourCell = page.locator('[data-drop-hour="8"]');
 
-    await htmlDragDrop(page, card, morningZone);
+    await htmlDragDrop(page, card, hourCell);
     await page.waitForTimeout(1500);
 
-    await expect(page.locator('[data-period="morning"] .chore-name').first()).toContainText(choreName);
+    await expect(page.locator('[data-drop-hour="8"] .chore-name').first()).toContainText(choreName);
   });
 
-  test('dragging a scheduled chore between periods updates the schedule', async ({ page }) => {
+  test('dragging a scheduled chore between hour rows updates the schedule', async ({ page }) => {
     await setupWithChores(page);
 
-    // First schedule the chore in morning via the sheet
-    await page.locator('[data-period="morning"] button[data-action="open-pick-chore-sheet"]').click();
+    // First schedule the chore at 8 AM via the sheet
+    await page.locator('[data-drop-hour="8"]').click();
     await page.waitForTimeout(400);
     await page.locator('.sheet-chore-item').first().click();
     await page.waitForTimeout(1500);
 
-    await expect(page.locator('[data-period="morning"] .chore-card')).toHaveCount(1);
+    await expect(page.locator('[data-drop-hour="8"] .chore-card')).toHaveCount(1);
 
-    // Drag from morning to evening
-    const card       = page.locator('[data-period="morning"] [data-drag-chore-id]').first();
-    const eveningZone = page.locator('[data-drop-period="evening"]');
+    // Drag from 8 AM to 6 PM
+    const card     = page.locator('[data-drop-hour="8"] [data-drag-chore-id]').first();
+    const target18 = page.locator('[data-drop-hour="18"]');
 
-    await htmlDragDrop(page, card, eveningZone);
+    await htmlDragDrop(page, card, target18);
     await page.waitForTimeout(1500);
 
-    await expect(page.locator('[data-period="evening"] .chore-card')).toHaveCount(1);
-    await expect(page.locator('[data-period="morning"] .chore-card')).toHaveCount(0);
+    await expect(page.locator('[data-drop-hour="18"] .chore-card')).toHaveCount(1);
+    await expect(page.locator('[data-drop-hour="8"] .chore-card')).toHaveCount(0);
   });
 
-  test('dragging a chore to night period works', async ({ page }) => {
-    await setupWithChores(page);
+  test('dragging a chore to the anytime section clears its specific time', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
 
-    const card      = page.locator('[data-drag-chore-id]').first();
-    const nightZone = page.locator('[data-drop-period="night"]');
+    // Schedule a chore at 10 AM via the API
+    const choreResp = await page.request.get('/api/chores');
+    const choreId   = (await choreResp.json()).chores[0].id;
 
-    await htmlDragDrop(page, card, nightZone);
+    const createResp = await page.request.post('/api/schedules', {
+      data: { choreId, timePeriod: 'anytime', specificTime: '10:00', frequencyType: 'daily', isActive: true },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    const scheduleId = (await createResp.json()).schedule.id;
+
+    await page.reload();
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
+    // The card should be in the 10 AM row
+    await expect(page.locator('[data-drop-hour="10"] .chore-card')).toHaveCount(1);
+
+    // Drag to anytime zone
+    const card        = page.locator('[data-drop-hour="10"] [data-drag-chore-id]').first();
+    const anytimeZone = page.locator('.day-anytime-cards');
+
+    await htmlDragDrop(page, card, anytimeZone);
     await page.waitForTimeout(1500);
 
-    await expect(page.locator('[data-period="night"] .chore-card')).toHaveCount(1);
+    // UI: card moved out of the 10 AM row and into the anytime section
+    await expect(page.locator('.day-anytime-section .chore-card').first()).toBeVisible();
+    await expect(page.locator('[data-drop-hour="10"] .chore-card')).toHaveCount(0);
+
+    // API: specificTime must be null — the PATCH handler must handle JSON null
+    // correctly (json.Unmarshal(null, &stringVar) is a no-op in Go without
+    // the explicit null check added in internal/handlers/schedule.go).
+    const schedules = (await (await page.request.get('/api/schedules')).json()).schedules;
+    const updated   = schedules.find(s => s.id === scheduleId);
+    expect(updated).toBeDefined();
+    expect(updated.specificTime ?? null).toBeNull();
   });
 });
 
 // ─── Week View: Anytime Section ───────────────────────────────────────────────
 
 test.describe('Week View: Anytime Section', () => {
-  test('anytime section appears when a schedule has timePeriod=anytime', async ({ page }) => {
+  test('anytime section appears when a schedule has no specificTime', async ({ page }) => {
     const { csrf } = await setupWithChores(page);
 
-    // The chore is already in anytime bucket (no schedule).
-    // Explicitly create an anytime schedule via the API.
     const choreResp = await page.request.get('/api/chores');
     const choreData = await choreResp.json();
     const choreId   = choreData.chores[0].id;
@@ -628,19 +676,19 @@ test.describe('Week View: Anytime Section', () => {
     await page.waitForTimeout(1000);
 
     await expect(page.locator('.anytime-week-section')).toBeVisible();
-    await expect(page.locator('.anytime-week-section .period-heading')).toContainText('Anytime');
+    await expect(page.locator('.anytime-week-section .section-heading')).toContainText('Anytime');
   });
 
-  test('anytime section is absent when no anytime schedules exist', async ({ page }) => {
+  test('anytime section is absent when all schedules have a specificTime', async ({ page }) => {
     const { csrf } = await setupWithChores(page);
 
-    // Schedule the chore specifically in morning (not anytime)
     const choreResp = await page.request.get('/api/chores');
     const choreData = await choreResp.json();
     const choreId   = choreData.chores[0].id;
 
+    // Schedule with a specificTime — goes into the grid, not anytime section
     await page.request.post('/api/schedules', {
-      data: { choreId, timePeriod: 'morning', frequencyType: 'daily', isActive: true },
+      data: { choreId, timePeriod: 'anytime', specificTime: '08:00', frequencyType: 'daily', isActive: true },
       headers: { 'X-CSRF-Token': csrf },
     });
 
@@ -672,14 +720,14 @@ test.describe('Schedule API', () => {
     const choreId   = (await choreResp.json()).chores[0].id;
 
     const resp = await page.request.post('/api/schedules', {
-      data: { choreId, timePeriod: 'morning', frequencyType: 'daily', isActive: true },
+      data: { choreId, timePeriod: 'anytime', specificTime: '08:00', frequencyType: 'daily', isActive: true },
       headers: { 'X-CSRF-Token': csrf },
     });
     expect(resp.status()).toBe(201);
     const data = await resp.json();
     expect(data.schedule).toBeDefined();
     expect(data.schedule.choreId).toBe(choreId);
-    expect(data.schedule.timePeriod).toBe('morning');
+    expect(data.schedule.specificTime).toBe('08:00');
     expect(data.schedule.frequencyType).toBe('daily');
   });
 
@@ -690,7 +738,7 @@ test.describe('Schedule API', () => {
     const choreId   = (await choreResp.json()).chores[0].id;
 
     await page.request.post('/api/schedules', {
-      data: { choreId, timePeriod: 'evening', frequencyType: 'daily', isActive: true },
+      data: { choreId, timePeriod: 'anytime', specificTime: '18:00', frequencyType: 'daily', isActive: true },
       headers: { 'X-CSRF-Token': csrf },
     });
 
@@ -698,28 +746,7 @@ test.describe('Schedule API', () => {
     const list     = (await listResp.json()).schedules;
     expect(list.length).toBe(1);
     expect(list[0].choreId).toBe(choreId);
-    expect(list[0].timePeriod).toBe('evening');
-  });
-
-  test('PATCH /api/schedules/:id updates timePeriod', async ({ page }) => {
-    const { csrf } = await setupWithChores(page);
-
-    const choreResp = await page.request.get('/api/chores');
-    const choreId   = (await choreResp.json()).chores[0].id;
-
-    const createResp = await page.request.post('/api/schedules', {
-      data: { choreId, timePeriod: 'morning', frequencyType: 'daily', isActive: true },
-      headers: { 'X-CSRF-Token': csrf },
-    });
-    const scheduleId = (await createResp.json()).schedule.id;
-
-    const patchResp = await page.request.patch(`/api/schedules/${scheduleId}`, {
-      data: { timePeriod: 'night' },
-      headers: { 'X-CSRF-Token': csrf },
-    });
-    expect(patchResp.status()).toBe(200);
-    const updated = (await patchResp.json()).schedule;
-    expect(updated.timePeriod).toBe('night');
+    expect(list[0].specificTime).toBe('18:00');
   });
 
   test('PATCH /api/schedules/:id updates specificTime', async ({ page }) => {
@@ -729,13 +756,34 @@ test.describe('Schedule API', () => {
     const choreId   = (await choreResp.json()).chores[0].id;
 
     const createResp = await page.request.post('/api/schedules', {
-      data: { choreId, timePeriod: 'morning', frequencyType: 'daily', isActive: true },
+      data: { choreId, timePeriod: 'anytime', specificTime: '08:00', frequencyType: 'daily', isActive: true },
       headers: { 'X-CSRF-Token': csrf },
     });
     const scheduleId = (await createResp.json()).schedule.id;
 
     const patchResp = await page.request.patch(`/api/schedules/${scheduleId}`, {
-      data: { timePeriod: 'morning', specificTime: '08:30' },
+      data: { specificTime: '21:00' },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    expect(patchResp.status()).toBe(200);
+    const updated = (await patchResp.json()).schedule;
+    expect(updated.specificTime).toBe('21:00');
+  });
+
+  test('PATCH /api/schedules/:id updates timePeriod', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    const choreResp = await page.request.get('/api/chores');
+    const choreId   = (await choreResp.json()).chores[0].id;
+
+    const createResp = await page.request.post('/api/schedules', {
+      data: { choreId, timePeriod: 'anytime', frequencyType: 'daily', isActive: true },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    const scheduleId = (await createResp.json()).schedule.id;
+
+    const patchResp = await page.request.patch(`/api/schedules/${scheduleId}`, {
+      data: { specificTime: '08:30' },
       headers: { 'X-CSRF-Token': csrf },
     });
     expect(patchResp.status()).toBe(200);
@@ -750,7 +798,7 @@ test.describe('Schedule API', () => {
     const choreId   = (await choreResp.json()).chores[0].id;
 
     const createResp = await page.request.post('/api/schedules', {
-      data: { choreId, timePeriod: 'morning', frequencyType: 'daily', isActive: true },
+      data: { choreId, timePeriod: 'anytime', frequencyType: 'daily', isActive: true },
       headers: { 'X-CSRF-Token': csrf },
     });
     const scheduleId = (await createResp.json()).schedule.id;
@@ -774,7 +822,7 @@ test.describe('Schedule API', () => {
     const choreId   = (await choreResp.json()).chores[0].id;
 
     await page.request.post('/api/schedules', {
-      data: { choreId, timePeriod: 'morning', frequencyType: 'daily', isActive: true },
+      data: { choreId, timePeriod: 'anytime', frequencyType: 'daily', isActive: true },
       headers: { 'X-CSRF-Token': csrf },
     });
 
@@ -792,7 +840,7 @@ test.describe('Schedule API', () => {
     const { csrf } = await setupWithChores(page);
 
     const resp = await page.request.post('/api/schedules', {
-      data: { timePeriod: 'morning', frequencyType: 'daily' },
+      data: { timePeriod: 'anytime', frequencyType: 'daily' },
       headers: { 'X-CSRF-Token': csrf },
     });
     expect(resp.status()).toBe(400);
@@ -802,7 +850,7 @@ test.describe('Schedule API', () => {
     const { csrf } = await setupWithChores(page);
 
     const resp = await page.request.patch('/api/schedules/999999', {
-      data: { timePeriod: 'night' },
+      data: { specificTime: '09:00' },
       headers: { 'X-CSRF-Token': csrf },
     });
     expect(resp.status()).toBe(404);
@@ -829,7 +877,7 @@ test.describe('Schedule API: recurrence types', () => {
     const resp = await page.request.post('/api/schedules', {
       data: {
         choreId,
-        timePeriod: 'morning',
+        timePeriod: 'anytime',
         frequencyType: 'weekly',
         daysOfWeek: [1, 3, 5], // Mon, Wed, Fri
         isActive: true,
@@ -873,16 +921,16 @@ test.describe('Schedule API: recurrence types', () => {
 // ─── Week View: Scheduled Chores Appear in Correct Cells ─────────────────────
 
 test.describe('Week View: Scheduled chores appear in grid cells', () => {
-  test('a daily morning schedule renders a card in the 5 AM hour row', async ({ page }) => {
+  test('a daily schedule with specificTime 05:00 renders a card in the 5 AM hour row', async ({ page }) => {
     const { csrf } = await setupWithChores(page);
 
     const choreId = (await (await page.request.get('/api/chores')).json()).chores[0].id;
 
-    // Specifically schedule at 05:00 (first morning hour shown in grid)
+    // Specifically schedule at 05:00
     await page.request.post('/api/schedules', {
       data: {
         choreId,
-        timePeriod: 'morning',
+        timePeriod: 'anytime',
         specificTime: '05:00',
         frequencyType: 'daily',
         isActive: true,
@@ -898,5 +946,121 @@ test.describe('Week View: Scheduled chores appear in grid cells', () => {
     const row = page.locator('.hour-row[data-hour="5"]');
     await expect(row).toBeVisible();
     await expect(row.locator('.week-chore-card')).toHaveCount(7); // one per day of week (daily)
+  });
+});
+
+// ─── Long-press edit/delete for scheduled chores ─────────────────────────────
+
+test.describe('Long-press edit sheet', () => {
+  /**
+   * Simulate a long-press (500 ms hold) on a chore card by dispatching
+   * mousedown, waiting, then mouseup.  This matches the 500 ms threshold in
+   * app.js.
+   *
+   * Playwright's low-level mouse API does NOT auto-fire a `click` event after
+   * mouse.up() (unlike locator.click()).  The app uses a `longPressJustFired`
+   * guard to suppress the residual browser-native click that follows a real
+   * long-press.  We therefore dispatch one synthetic click explicitly after
+   * mouse.up() so the guard is consumed before we interact with the sheet.
+   */
+  async function longPress(page, locator) {
+    await locator.scrollIntoViewIfNeeded();
+    const box = await locator.boundingBox();
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.waitForTimeout(650); // slightly over the 500 ms threshold
+    await page.mouse.up();
+    // Consume the longPressJustFired guard with a synthetic click so subsequent
+    // clicks on sheet buttons are not suppressed.
+    await page.evaluate(([cx, cy]) => {
+      const el = document.elementFromPoint(cx, cy);
+      if (el) el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    }, [x, y]);
+    await page.waitForTimeout(50);
+  }
+
+  test('long-pressing a scheduled chore card opens the edit sheet', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    const choreId = (await (await page.request.get('/api/chores')).json()).chores[0].id;
+
+    // Create a schedule with a known time
+    await page.request.post('/api/schedules', {
+      data: { choreId, timePeriod: 'anytime', specificTime: '09:00', frequencyType: 'daily', isActive: true },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+
+    await page.reload();
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
+    // The card should be in the 9 AM row
+    const card = page.locator('.day-hour-row[data-hour="9"] .chore-card').first();
+    await expect(card).toBeVisible();
+
+    await longPress(page, card);
+
+    // Edit sheet should appear
+    await expect(page.locator('[data-action="save-schedule-edit"]')).toBeVisible();
+    await expect(page.locator('[data-action="delete-schedule"]')).toBeVisible();
+    await expect(page.locator('#edit-sheet-time')).toHaveValue('09:00');
+  });
+
+  test('saving a new time from the edit sheet updates the card position', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    const choreId = (await (await page.request.get('/api/chores')).json()).chores[0].id;
+
+    await page.request.post('/api/schedules', {
+      data: { choreId, timePeriod: 'anytime', specificTime: '08:00', frequencyType: 'daily', isActive: true },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+
+    await page.reload();
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
+    const card = page.locator('.day-hour-row[data-hour="8"] .chore-card').first();
+    await expect(card).toBeVisible();
+
+    await longPress(page, card);
+    await expect(page.locator('#edit-sheet-time')).toBeVisible();
+
+    // Change the time to 14:00
+    await page.fill('#edit-sheet-time', '14:00');
+    await page.locator('[data-action="save-schedule-edit"]').click();
+
+    // Sheet should close
+    await expect(page.locator('[data-action="save-schedule-edit"]')).not.toBeVisible();
+
+    // Card should now appear in the 14:00 row, not the 8:00 row
+    await expect(page.locator('.day-hour-row[data-hour="14"] .chore-card')).toBeVisible();
+    await expect(page.locator('.day-hour-row[data-hour="8"] .chore-card')).not.toBeVisible();
+  });
+
+  test('deleting a schedule from the edit sheet removes the card from the view', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    const choreId = (await (await page.request.get('/api/chores')).json()).chores[0].id;
+
+    await page.request.post('/api/schedules', {
+      data: { choreId, timePeriod: 'anytime', specificTime: '10:00', frequencyType: 'daily', isActive: true },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+
+    await page.reload();
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
+    const card = page.locator('.day-hour-row[data-hour="10"] .chore-card').first();
+    await expect(card).toBeVisible();
+
+    await longPress(page, card);
+    await expect(page.locator('[data-action="delete-schedule"]')).toBeVisible();
+
+    await page.locator('[data-action="delete-schedule"]').click();
+
+    // Sheet should close and card should disappear from the 10 AM row
+    await expect(page.locator('[data-action="delete-schedule"]')).not.toBeVisible();
+    await expect(page.locator('.day-hour-row[data-hour="10"] .chore-card')).not.toBeVisible();
   });
 });
