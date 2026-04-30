@@ -201,17 +201,16 @@ func (s *PostgresStore) DeleteUserSessions(ctx context.Context, userID int64) er
 func (s *PostgresStore) CreateAuthToken(ctx context.Context, userID *int64, email, tokenHash, kind string, expiresAt time.Time) (AuthToken, error) {
 	var token AuthToken
 	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO auth_tokens (user_id, token_hash, kind, expires_at, created_at)
-		VALUES ($1, $2, $3, $4, NOW())
-		RETURNING id, user_id, token_hash, kind, expires_at, created_at
-	`, userID, tokenHash, kind, expiresAt).Scan(
-		&token.ID, &token.UserID, &token.TokenHash, &token.Kind,
+		INSERT INTO auth_tokens (user_id, email, token_hash, kind, expires_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, NOW())
+		RETURNING id, user_id, email, token_hash, kind, expires_at, created_at
+	`, userID, email, tokenHash, kind, expiresAt).Scan(
+		&token.ID, &token.UserID, &token.Email, &token.TokenHash, &token.Kind,
 		&token.ExpiresAt, &token.CreatedAt,
 	)
 	if err != nil {
 		return AuthToken{}, err
 	}
-	token.Email = email
 	return token, nil
 }
 
@@ -222,9 +221,9 @@ func (s *PostgresStore) ConsumeAuthToken(ctx context.Context, tokenHash, kind st
 		UPDATE auth_tokens
 		SET consumed_at = NOW()
 		WHERE token_hash = $1 AND kind = $2 AND consumed_at IS NULL AND expires_at > NOW()
-		RETURNING id, user_id, token_hash, kind, expires_at, consumed_at, created_at
+		RETURNING id, user_id, email, token_hash, kind, expires_at, consumed_at, created_at
 	`, tokenHash, kind).Scan(
-		&token.ID, &token.UserID, &token.TokenHash, &token.Kind,
+		&token.ID, &token.UserID, &token.Email, &token.TokenHash, &token.Kind,
 		&token.ExpiresAt, &consumedAt, &token.CreatedAt,
 	)
 	if err != nil {
