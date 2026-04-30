@@ -59,7 +59,7 @@ export function renderDayView(state) {
       .map(sch => {
         const chore = chores.find(c => c.id === sch.choreId);
         if (!chore) return "";
-        return renderChoreCard(chore, sch, logMap[chore.id], date);
+        return renderChoreCard(chore, sch, logMap[chore.id], date, true);
       }).join("");
 
     return `<div class="day-hour-row" data-hour="${hour}">
@@ -137,12 +137,15 @@ export function renderDayView(state) {
     </div>`;
 }
 
-function renderChoreCard(chore, sch, log, date) {
-  const done      = !!log;
-  const doneClass = done ? "chore-card--done" : "";
-  const action    = done ? "undo-chore" : "log-chore";
-  const logId     = log ? log.id : "";
-  const timeLabel = sch?.specificTime
+function renderChoreCard(chore, sch, log, date, compact = false) {
+  const done        = !!log;
+  const doneClass   = done ? "chore-card--done" : "";
+  const compactClass = compact ? "chore-card--compact" : "";
+  const action      = done ? "undo-chore" : "log-chore";
+  const logId       = log ? log.id : "";
+  // Time label only shown in full-size (anytime) cards — the hour row itself
+  // already indicates the time, so showing it again in compact chips is noise.
+  const timeLabel = (!compact && sch?.specificTime)
     ? `<span class="chore-time">${fmtTime12(sch.specificTime)}</span>`
     : "";
   const assignee  = sch?.assignedUserId
@@ -151,7 +154,7 @@ function renderChoreCard(chore, sch, log, date) {
 
   return `
     <button type="button"
-      class="chore-card ${doneClass}"
+      class="chore-card ${compactClass} ${doneClass}"
       style="border-left: 4px solid ${escapeHTML(chore.color)}"
       data-action="${action}"
       data-chore-id="${chore.id}"
@@ -218,10 +221,10 @@ export function renderWeekView(state) {
       return `<div class="week-cell"
         data-drop-date="${iso}"
         data-drop-hour="${hour}"
-        data-action-empty="open-pick-chore-sheet"
+        data-action="open-pick-chore-sheet"
         data-date="${iso}"
         data-hour="${hour}">
-        ${choreCells || `<span class="week-cell-empty" aria-hidden="true"></span>`}
+        ${choreCells}
       </div>`;
     }).join("");
 

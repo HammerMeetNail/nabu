@@ -727,7 +727,9 @@ input:focus, select:focus, textarea:focus {
 .day-hour-cell {
   padding: 4px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-content: flex-start;
   gap: 4px;
   cursor: pointer;
   min-height: 48px;
@@ -762,6 +764,33 @@ input:focus, select:focus, textarea:focus {
 /* New done-state class used by calendar.js (mirrors legacy chore-done) */
 .chore-card.chore-card--done {
   opacity: 0.5;
+}
+
+/* Compact "chip" variant used inside hour-row cells in the day view.
+   Cards wrap horizontally so multiple can share a row without overlapping. */
+.chore-card.chore-card--compact {
+  flex-direction: row;
+  min-height: 36px;
+  border-radius: 18px;
+  padding: 5px 10px;
+  text-align: left;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  max-width: 200px;
+}
+
+.chore-card.chore-card--compact .chore-icon {
+  font-size: 15px;
+}
+
+.chore-card.chore-card--compact .chore-name {
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
 }
 
 .chore-time {
@@ -870,12 +899,6 @@ input:focus, select:focus, textarea:focus {
 
 .week-cell--anytime {
   min-height: 52px;
-}
-
-.week-cell-empty {
-  display: block;
-  width: 100%;
-  height: 100%;
 }
 
 .week-chore-card {

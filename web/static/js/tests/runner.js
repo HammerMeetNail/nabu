@@ -333,5 +333,46 @@ describe("Calendar: renderDayView", () => {
     assert.ok(html.includes("Anytime"));
     assert.ok(html.includes("Feed cats"));
   });
+
+  it("uses compact chip cards inside hour rows", async () => {
+    const { renderDayView } = await import("../calendar.js");
+    const state = {
+      calendarDate: "2026-04-28",
+      chores: [{ id: 1, icon: "🐱", name: "Feed cats", color: "#aabbcc", category: "Pets" }],
+      schedules: [{ id: 1, choreId: 1, timePeriod: "anytime", specificTime: "08:00", isActive: true, frequencyType: "daily" }],
+      todayLogs: [],
+    };
+    const html = renderDayView(state);
+    // Hour-row card should be compact
+    assert.ok(html.includes("chore-card--compact"));
+    // Full-size cards in anytime section should NOT be compact
+    const anytimeIdx = html.indexOf("day-anytime-section");
+    const compactIdx = html.indexOf("chore-card--compact");
+    // compact card appears before anytime section (it's in the hour row)
+    assert.ok(compactIdx < anytimeIdx || anytimeIdx === -1);
+  });
+
+  it("two chores at the same hour both render as compact chips", async () => {
+    const { renderDayView } = await import("../calendar.js");
+    const state = {
+      calendarDate: "2026-04-28",
+      chores: [
+        { id: 1, icon: "🐱", name: "Feed cats",  color: "#aabbcc", category: "Pets" },
+        { id: 2, icon: "🐶", name: "Walk dog",   color: "#ccaabb", category: "Pets" },
+      ],
+      schedules: [
+        { id: 1, choreId: 1, timePeriod: "anytime", specificTime: "08:00", isActive: true, frequencyType: "daily" },
+        { id: 2, choreId: 2, timePeriod: "anytime", specificTime: "08:00", isActive: true, frequencyType: "daily" },
+      ],
+      todayLogs: [],
+    };
+    const html = renderDayView(state);
+    // Both chore names appear
+    assert.ok(html.includes("Feed cats"));
+    assert.ok(html.includes("Walk dog"));
+    // Two compact cards rendered
+    const matches = html.match(/chore-card--compact/g);
+    assert.equal(matches?.length, 2);
+  });
 });
 

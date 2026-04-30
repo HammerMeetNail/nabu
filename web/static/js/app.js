@@ -626,7 +626,13 @@ export async function init() {
   });
 
   document.addEventListener("dragleave", e => {
-    e.target.closest(".drop-target")?.classList.remove("drop-target");
+    const cell = e.target.closest(".drop-target");
+    if (!cell) return;
+    // Only remove when the cursor truly leaves the cell, not when it moves
+    // into a child element (dragleave bubbles from children to the cell).
+    if (!cell.contains(e.relatedTarget)) {
+      cell.classList.remove("drop-target");
+    }
   });
 
   document.addEventListener("drop", async e => {
