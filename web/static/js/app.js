@@ -602,8 +602,14 @@ export async function init() {
       : null;
     try {
       if (scheduleId) {
-        await updateSchedule(scheduleId, { timePeriod: newPeriod, specificTime: newHour });
+        // Move an existing schedule to the new time slot (PATCH preserves all
+        // other fields including isActive, frequencyType, etc.).
+        await updateSchedule(scheduleId, {
+          timePeriod:   newPeriod,
+          specificTime: newHour,
+        });
       } else {
+        // Unscheduled chore dragged into a slot — create a new schedule.
         await createSchedule({
           choreId,
           timePeriod:    newPeriod,
@@ -614,7 +620,7 @@ export async function init() {
       }
       state.schedules = await loadSchedules();
       render(app);
-    } catch { showToast("Failed to move chore", "error"); }
+    } catch { showToast("Failed to schedule chore", "error"); }
   });
 
   render(app);

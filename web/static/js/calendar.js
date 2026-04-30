@@ -41,18 +41,25 @@ export function renderDayView(state) {
   const logMap = {};
   logs.forEach(l => { logMap[l.choreId] = l; });
 
-  // Build a lookup: choreId → schedule
-  const scheduleMap = {};
-  schedules.forEach(s => { scheduleMap[s.choreId] = s; });
-
-  // Bucket chores by period
+  // Bucket by schedule — a chore can appear in multiple periods if it has
+  // multiple schedules (e.g. "morning" + "afternoon").
   const buckets = {};
   PERIODS.forEach(p => { buckets[p.id] = []; });
 
-  chores.forEach(chore => {
-    const sch = scheduleMap[chore.id];
-    const period = sch ? (sch.timePeriod || "anytime") : "anytime";
+  const scheduledChoreIds = new Set();
+  schedules.forEach(sch => {
+    const chore = chores.find(c => c.id === sch.choreId);
+    if (!chore) return;
+    const period = sch.timePeriod || "anytime";
     buckets[period].push({ chore, sch });
+    scheduledChoreIds.add(chore.id);
+  });
+
+  // Chores with no schedule at all fall into Anytime
+  chores.forEach(chore => {
+    if (!scheduledChoreIds.has(chore.id)) {
+      buckets["anytime"].push({ chore, sch: null });
+    }
   });
 
   const sections = PERIODS.map(period =>
@@ -179,7 +186,10 @@ export function renderWeekView(state) {
     `<div class="week-col-header">${fmtShortDate(iso)}</div>`
   ).join("");
 
-  // Build rows: one per hour
+  // Build rows: one per hour.
+  // Only schedules with a specificTime are shown in the hourly grid.
+  // Schedules with only a timePeriod (no specificTime) are shown in the
+  // period sections below the grid so they don't all pile up at startHour.
   const rows = GRID_HOURS.map(hour => {
     const periodId  = hourToPeriodDirect(hour);
     const bandClass = `hour-row--${periodId}`;
@@ -189,9 +199,8 @@ export function renderWeekView(state) {
         .filter(sch => {
           if (!isActiveForDayJS(sch, iso)) return false;
           if (sch.timePeriod === "anytime") return false;
-          const schHour = sch.specificTime
-            ? parseInt(sch.specificTime.split(":")[0], 10)
-            : (PERIODS.find(p => p.id === sch.timePeriod)?.startHour ?? -1);
+          if (!sch.specificTime) return false; // period-only → shown below grid
+          const schHour = parseInt(sch.specificTime.split(":")[0], 10);
           return schHour === hour;
         })
         .map(sch => {
@@ -218,6 +227,12 @@ export function renderWeekView(state) {
       ${hourLabel}${cells}
     </div>`;
   }).join("");
+
+  // Period sections below the grid: schedules with timePeriod but no specificTime.
+  const periodOnlySchedules = schedules.filter(s =>
+    s.timePeriod && s.timePeriod !== "anytime" && !s.specificTime
+  );
+  const periodSection = renderPeriodWeekSection(periodOnlySchedules, chores, days, logMap);
 
   // "Anytime" section below the grid
   const anytimeSchedules = schedules.filter(s => s.timePeriod === "anytime");
@@ -248,6 +263,7 @@ export function renderWeekView(state) {
           <div class="week-body">${rows}</div>
         </div>
       </div>
+      ${periodSection}
       ${anytimeSection}
     </div>`;
 }
@@ -293,6 +309,47 @@ function renderAnytimeWeekSection(anytimeSchedules, chores, days, logMap) {
     <h3 class="period-heading">📋 Anytime</h3>
     <div class="week-grid anytime-grid">${rows}</div>
   </div>`;
+}
+
+/**
+ * Renders below-grid period bands for schedules that have a timePeriod but
+ * no specificTime.  Groups by period so morning / afternoon / etc. each get
+ * their own labelled row (mirrors how renderAnytimeWeekSection works).
+ */
+function renderPeriodWeekSection(periodSchedules, chores, days, logMap) {
+  if (periodSchedules.length === 0) return "";
+
+  // Group schedules by their timePeriod, preserving PERIODS display order.
+  const groups = {};
+  PERIODS.forEach(p => { groups[p.id] = []; });
+  periodSchedules.forEach(sch => {
+    const pid = sch.timePeriod || "anytime";
+    if (groups[pid]) groups[pid].push(sch);
+  });
+
+  const sections = PERIODS.filter(p => p.id !== "anytime" && groups[p.id].length > 0).map(period => {
+    const rows = groups[period.id].map(sch => {
+      const chore = chores.find(c => c.id === sch.choreId);
+      if (!chore) return "";
+      const cells = days.map(iso => {
+        const log = logMap[`${chore.id}-${iso}`];
+        return `<div class="week-cell week-cell--anytime">
+          ${renderWeekChoreCard(chore, sch, log, iso)}
+        </div>`;
+      }).join("");
+      return `<div class="anytime-row">
+        <div class="hour-label">${period.icon}</div>
+        ${cells}
+      </div>`;
+    }).join("");
+
+    return `<div class="period-week-section">
+      <h3 class="period-heading">${period.icon} ${period.label}</h3>
+      <div class="week-grid anytime-grid">${rows}</div>
+    </div>`;
+  }).join("");
+
+  return sections;
 }
 
 // ─── Utility functions ────────────────────────────────────────────────────────
