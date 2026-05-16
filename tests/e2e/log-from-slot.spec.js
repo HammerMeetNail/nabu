@@ -1,9 +1,9 @@
 // tests/e2e/log-from-slot.spec.js
 // Regression tests for: logging a chore from a specific time slot should
-// display the completed chore in that hour row, not the Anytime section.
+// display the completed chore in that hour row.
 //
 // Bug: when a user opened the 2 PM pick-chore sheet, long-pressed a chore, and
-// chose "Log", the chore appeared in Anytime instead of the 2 PM row because:
+// chose "Log", the chore appeared in the wrong place because:
 //   1. slotHour was never forwarded to the API
 //   2. The calendar only placed chores via schedules, ignoring slotHour on logs
 
@@ -74,10 +74,6 @@ test.describe('Log from time slot', () => {
   test('long-pressing a chore in the 2 PM sheet and logging it places the card in the 2 PM row', async ({ page }) => {
     await setupWithChores(page);
 
-    // All 11 default chores start unscheduled — they live in the Anytime section.
-    const anytimeBefore = await page.locator('.day-anytime-section .chore-card').count();
-    expect(anytimeBefore).toBeGreaterThan(0);
-
     // Open the 2 PM (hour 14) pick-chore sheet.
     await page.locator('[data-drop-hour="14"]').click();
     await page.waitForTimeout(400);
@@ -101,14 +97,6 @@ test.describe('Log from time slot', () => {
     await expect(slotCards).toHaveCount(1);
     await expect(slotCards.first()).toHaveClass(/chore-card--done/);
     await expect(slotCards.first().locator('.chore-name')).toContainText(choreName);
-
-    // The chore must NOT be in the Anytime section any more.
-    const anytimeAfter = await page.locator('.day-anytime-section .chore-card').count();
-    expect(anytimeAfter).toBe(anytimeBefore - 1);
-
-    // Double-check the specific chore name is absent from Anytime cards.
-    const anytimeNames = await page.locator('.day-anytime-section .chore-name').allInnerTexts();
-    expect(anytimeNames).not.toContain(choreName);
   });
 
   test('POST /api/logs with hour field stores slotHour in the response', async ({ page }) => {
@@ -127,27 +115,33 @@ test.describe('Log from time slot', () => {
     expect(body.log.slotHour).toBe(14);
   });
 
-  test('logging without a slot hour still shows the chore in the Anytime section', async ({ page }) => {
-    // Ensure the fix did not regress the default (no-slot) logging behaviour.
-    await setupWithChores(page);
+  test('POST /api/logs without hour field returns slotHour as null', async ({ page }) => {
+    // Regression: logging without a slot hour must not set slotHour, so the
+    // chore does not end up pinned to a phantom hour row in the calendar.
+    const { csrf } = await setupWithChores(page);
 
-    const anytimeBefore = await page.locator('.day-anytime-section .chore-card').count();
-    expect(anytimeBefore).toBeGreaterThan(0);
+    const choreId = (await (await page.request.get('/api/chores')).json()).chores[0].id;
 
-    // Tap the first anytime chore to log it (no slot context → slotHour is null).
-    const card = page.locator('.day-anytime-section .chore-card').first();
-    const choreName = await card.locator('.chore-name').innerText();
-    await card.click();
-    await page.waitForTimeout(1000);
+    const resp = await page.request.post('/api/logs', {
+      data: { choreId, note: '', indicators: [] }, // no hour field
+      headers: { 'X-CSRF-Token': csrf },
+    });
 
-    // The chore should still be in Anytime (as done) — not in any hour row.
-    await expect(page.locator('.day-anytime-section .chore-card')).toHaveCount(anytimeBefore);
-    const doneCard = page.locator('.day-anytime-section .chore-card--done');
-    await expect(doneCard).toHaveCount(1);
-    await expect(doneCard.locator('.chore-name')).toContainText(choreName);
+    expect(resp.status()).toBe(201);
+    const body = await resp.json();
+    expect(body.log).toBeDefined();
+    // slotHour is omitted from the response (Go omitempty) when null,
+    // so accept either null or undefined (both mean "no slot set").
+    expect(body.log.slotHour ?? null).toBeNull();
+
+    // Reload and confirm the chore does not appear in any hour row
+    // (it has no schedule and no slotHour, so the calendar does not show it).
+    await page.reload();
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+    await expect(page.locator('.day-hour-grid .chore-card')).toHaveCount(0);
   });
 
-  test('logging from hour 9 slot places the card in the 9 AM row, not 2 PM or Anytime', async ({ page }) => {
+  test('logging from hour 9 slot places the card in the 9 AM row, not 2 PM', async ({ page }) => {
     await setupWithChores(page);
 
     // Open the 9 AM pick-chore sheet and long-press → log the first item.
@@ -167,8 +161,7 @@ test.describe('Log from time slot', () => {
     await expect(page.locator('[data-drop-hour="9"] .chore-card--done')).toHaveCount(1);
     await expect(page.locator('[data-drop-hour="14"] .chore-card')).toHaveCount(0);
 
-    // Must not be in Anytime.
-    const anytimeNames = await page.locator('.day-anytime-section .chore-name').allInnerTexts();
-    expect(anytimeNames).not.toContain(choreName);
+    // The chore name should be visible in hour 9.
+    await expect(page.locator('[data-drop-hour="9"] .chore-name').first()).toContainText(choreName);
   });
 });

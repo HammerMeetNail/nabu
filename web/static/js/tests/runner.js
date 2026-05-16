@@ -312,7 +312,7 @@ describe("Calendar: renderDayView", () => {
     const state = {
       calendarDate: "2026-04-28",
       chores: [{ id: 1, icon: "🐱", name: "Feed cats", color: "#aabbcc", category: "Pets" }],
-      schedules: [{ id: 1, choreId: 1, timePeriod: "anytime", isActive: true, frequencyType: "daily" }],
+      schedules: [{ id: 1, choreId: 1, timePeriod: "anytime", specificTime: "08:00", isActive: true, frequencyType: "daily" }],
       todayLogs: [],
     };
     const html = renderDayView(state);
@@ -326,7 +326,7 @@ describe("Calendar: renderDayView", () => {
     const state = {
       calendarDate: "2026-04-28",
       chores: [{ id: 1, icon: "🐱", name: "Feed cats", color: "#aabbcc", category: "Pets" }],
-      schedules: [{ id: 1, choreId: 1, timePeriod: "anytime", isActive: true, frequencyType: "daily" }],
+      schedules: [{ id: 1, choreId: 1, timePeriod: "anytime", specificTime: "08:00", isActive: true, frequencyType: "daily" }],
       todayLogs: [{ id: 99, choreId: 1, completedAt: "2026-04-28T09:00:00Z" }],
     };
     const html = renderDayView(state);
@@ -334,7 +334,7 @@ describe("Calendar: renderDayView", () => {
     assert.ok(html.includes("view-log"));
   });
 
-  it("places unscheduled chores in anytime", async () => {
+  it("unscheduled chores are not shown in the day view", async () => {
     const { renderDayView } = await import("../calendar.js");
     const state = {
       calendarDate: "2026-04-28",
@@ -343,9 +343,9 @@ describe("Calendar: renderDayView", () => {
       todayLogs: [],
     };
     const html = renderDayView(state);
-    // Card should appear inside the Anytime section
-    assert.ok(html.includes("Anytime"));
-    assert.ok(html.includes("Feed cats"));
+    // Without a schedule or slot log, unscheduled chores are not rendered
+    assert.ok(!html.includes("day-anytime-section"));
+    assert.ok(!html.includes("Feed cats"));
   });
 
   it("uses compact chip cards inside hour rows", async () => {
@@ -359,11 +359,8 @@ describe("Calendar: renderDayView", () => {
     const html = renderDayView(state);
     // Hour-row card should be compact
     assert.ok(html.includes("chore-card--compact"));
-    // Full-size cards in anytime section should NOT be compact
-    const anytimeIdx = html.indexOf("day-anytime-section");
-    const compactIdx = html.indexOf("chore-card--compact");
-    // compact card appears before anytime section (it's in the hour row)
-    assert.ok(compactIdx < anytimeIdx || anytimeIdx === -1);
+    // No anytime section in the day view
+    assert.ok(!html.includes("day-anytime-section"));
   });
 
   it("two chores at the same hour both render as compact chips", async () => {

@@ -22,8 +22,9 @@ function fmtShortDate(iso) {
 // ─── Day View ─────────────────────────────────────────────────────────────────
 
 /**
- * Renders the full day view: 24 hourly rows (drag-and-droppable) plus an
- * "Anytime" section below for chores with no specific time set.
+ * Renders the full day view: 24 hourly rows (drag-and-droppable).
+ * Scheduled chores appear in their designated hour rows.  Unscheduled chores
+ * (and logs without a slotHour) are not displayed.
  *
  * @param {object}   state
  * @param {object[]} state.chores          All household chores
@@ -40,12 +41,6 @@ export function renderDayView(state) {
   // Build a lookup: choreId → log (if completed today)
   const logMap = {};
   logs.forEach(l => { logMap[l.choreId] = l; });
-
-  // Chores that were logged from a specific time slot (slotHour set).
-  // These are displayed in their slot row rather than the Anytime section.
-  const slotLoggedChoreIds = new Set(
-    logs.filter(l => l.slotHour != null).map(l => l.choreId)
-  );
 
   // Filter to schedules active on the viewed date (respects "once", "weekly", etc.)
   const activeSchedules = schedules.filter(sch => isActiveForDayJS(sch, date));
@@ -93,44 +88,6 @@ export function renderDayView(state) {
     </div>`;
   }).join("");
 
-  // "Anytime" section: active schedules without a specificTime + wholly unscheduled
-  // chores — but exclude any chore already shown in a timed slot via a slot log.
-  const timeScheduledChoreIds = new Set();
-  activeSchedules.forEach(sch => {
-    if (sch.specificTime) timeScheduledChoreIds.add(sch.choreId);
-  });
-
-  const noTimeSchedules = activeSchedules.filter(s => !s.specificTime);
-  const allScheduledChoreIds = new Set([
-    ...timeScheduledChoreIds,
-    ...noTimeSchedules.map(s => s.choreId),
-  ]);
-  const unscheduledChores = chores.filter(c => !allScheduledChoreIds.has(c.id));
-
-  const anytimeItems = [
-    ...noTimeSchedules
-      .filter(s => !slotLoggedChoreIds.has(s.choreId))
-      .map(sch => {
-        const chore = chores.find(c => c.id === sch.choreId);
-        return chore ? { chore, sch } : null;
-      }).filter(Boolean),
-    ...unscheduledChores
-      .filter(c => !slotLoggedChoreIds.has(c.id))
-      .map(chore => ({ chore, sch: null })),
-  ];
-
-  const anytimeSection = anytimeItems.length > 0 ? `
-    <div class="day-anytime-section">
-      <h3 class="section-heading">Anytime</h3>
-      <div class="day-anytime-cards"
-        data-drop-period="anytime"
-        data-drop-date="${date}">
-        ${anytimeItems.map(({ chore, sch }) =>
-          renderChoreCard(chore, sch, logMap[chore.id], date)
-        ).join("")}
-      </div>
-    </div>` : "";
-
   const done  = logs.length;
   const total = chores.length;
   const pct   = total ? Math.round((done / total) * 100) : 0;
@@ -158,7 +115,6 @@ export function renderDayView(state) {
       <div class="day-hour-grid-wrapper">
         <div class="day-hour-grid">${rows}</div>
       </div>
-      ${anytimeSection}
     </div>`;
 }
 
@@ -272,10 +228,6 @@ export function renderWeekView(state) {
     </div>`;
   }).join("");
 
-  // "Anytime" section below the grid: schedules with no specificTime.
-  const anytimeSchedules = schedules.filter(s => !s.specificTime);
-  const anytimeSection = renderAnytimeWeekSection(anytimeSchedules, chores, days, logMap);
-
   const prevWeek = shiftISO(weekStart, -7);
   const nextWeek = shiftISO(weekStart, 7);
 
@@ -301,7 +253,6 @@ export function renderWeekView(state) {
           <div class="week-body">${rows}</div>
         </div>
       </div>
-      ${anytimeSection}
     </div>`;
 }
 
@@ -334,29 +285,6 @@ function renderWeekChoreCard(chore, sch, log, iso) {
       ${done ? '<span class="check-overlay" aria-hidden="true">✓</span>' : ""}
     </button>
     ${pencil}
-  </div>`;
-}
-
-function renderAnytimeWeekSection(anytimeSchedules, chores, days, logMap) {
-  if (anytimeSchedules.length === 0) return "";
-  const rows = anytimeSchedules.map(sch => {
-    const chore = chores.find(c => c.id === sch.choreId);
-    if (!chore) return "";
-    const cells = days.map(iso => {
-      const log = logMap[`${chore.id}-${iso}`];
-      return `<div class="week-cell week-cell--anytime">
-        ${renderWeekChoreCard(chore, sch, log, iso)}
-      </div>`;
-    }).join("");
-    return `<div class="anytime-row">
-      <div class="hour-label">📋</div>
-      ${cells}
-    </div>`;
-  }).join("");
-
-  return `<div class="anytime-week-section">
-    <h3 class="section-heading">📋 Anytime</h3>
-    <div class="week-grid anytime-grid">${rows}</div>
   </div>`;
 }
 

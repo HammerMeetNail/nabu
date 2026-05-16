@@ -742,26 +742,6 @@ input:focus, select:focus, textarea:focus {
   background: rgba(46,134,171,0.06);
 }
 
-.day-anytime-section {
-  margin-top: 12px;
-  background: var(--cal-bg);
-  border-radius: var(--radius-card);
-  padding: 12px;
-  box-shadow: var(--shadow);
-}
-
-.day-anytime-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
-  gap: 10px;
-}
-
-.day-anytime-cards.drop-target {
-  outline: 2px dashed var(--primary);
-  outline-offset: 2px;
-  background: rgba(46,134,171,0.06);
-}
-
 /* New done-state class used by calendar.js (mirrors legacy chore-done) */
 .chore-card.chore-card--done {
   opacity: 0.5;
@@ -900,10 +880,6 @@ input:focus, select:focus, textarea:focus {
   background: rgba(46,134,171,0.06);
 }
 
-.week-cell--anytime {
-  min-height: 52px;
-}
-
 .week-chore-card {
   width: 100%;
   border-radius: 6px;
@@ -925,15 +901,6 @@ input:focus, select:focus, textarea:focus {
   text-overflow: ellipsis;
 }
 
-/* Anytime section below week grid */
-.anytime-week-section {
-  margin-top: 12px;
-  background: var(--cal-bg);
-  border-radius: var(--radius-card);
-  padding: 12px;
-  box-shadow: var(--shadow);
-}
-
 .section-heading {
   font-size: 14px;
   font-weight: 600;
@@ -942,22 +909,6 @@ input:focus, select:focus, textarea:focus {
   align-items: center;
   gap: 6px;
   margin-bottom: 10px;
-}
-
-.anytime-grid {
-  min-width: 0;
-  box-shadow: none;
-}
-
-.anytime-row {
-  display: grid;
-  grid-template-columns: 52px repeat(7, 1fr);
-  border-bottom: 1px solid var(--border);
-  min-height: 52px;
-}
-
-.anytime-row:last-child {
-  border-bottom: none;
 }
 
 /* ─── Chore card wrapper (calendar views only) ─────────────────────────────── */
@@ -969,24 +920,20 @@ input:focus, select:focus, textarea:focus {
   display: contents; /* let the card itself be the grid/flex item by default */
 }
 
-/* In hour rows and anytime sections the wrapper becomes the grid item. */
+/* In hour rows the wrapper becomes the grid item. */
 .day-hour-row .chore-card-wrap,
-.day-anytime-cards .chore-card-wrap,
-.week-cell .chore-card-wrap,
-.anytime-row .chore-card-wrap {
+.week-cell .chore-card-wrap {
   display: block;
   position: relative;
 }
 
 /* Hide pencil in week-view cells — cells are ~35–55 px wide, too narrow for
    the 24 px button without overlapping the card and intercepting taps. */
-.week-cell .chore-card-edit-btn,
-.anytime-row .chore-card-edit-btn {
+.week-cell .chore-card-edit-btn {
   display: none;
 }
 
-.day-hour-row .chore-card-wrap .chore-card,
-.day-anytime-cards .chore-card-wrap .chore-card {
+.day-hour-row .chore-card-wrap .chore-card {
   width: 100%;
 }
 
@@ -1029,8 +976,7 @@ input:focus, select:focus, textarea:focus {
    contexts where cells are wide enough. Week-view cells (~55 px) are too
    narrow; the pencil would overlap the card centre and intercept taps. */
 @media (hover: none) {
-  .day-hour-row .chore-card-edit-btn,
-  .day-anytime-cards .chore-card-edit-btn {
+  .day-hour-row .chore-card-edit-btn {
     opacity: 1;
     pointer-events: auto;
   }

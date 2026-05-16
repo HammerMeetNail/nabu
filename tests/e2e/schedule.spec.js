@@ -121,14 +121,6 @@ test.describe('Day View: Structure', () => {
     await expect(firstCell).toHaveAttribute('data-action', 'open-pick-chore-sheet');
   });
 
-  test('unscheduled chores appear in the Anytime section', async ({ page }) => {
-    await setupWithChores(page);
-
-    // All chores start unscheduled — they should be in the anytime section
-    await expect(page.locator('.day-anytime-section')).toBeVisible();
-    await expect(page.locator('.day-anytime-section .chore-card').first()).toBeVisible();
-  });
-
   test('chore cards are draggable', async ({ page }) => {
     await setupWithChores(page);
 
@@ -399,19 +391,14 @@ test.describe('Pick-chore Bottom Sheet', () => {
   test('after scheduling, chore card appears in the target hour row', async ({ page }) => {
     await setupWithChores(page);
 
-    // Before: all chores start in anytime (no schedules yet)
-    const initialCount = await page.locator('.day-anytime-section .chore-card').count();
-    expect(initialCount).toBeGreaterThan(0);
-
     // Schedule first chore at 8 AM via the sheet
     await page.locator('[data-drop-hour="8"]').click();
     await page.waitForTimeout(400);
     await page.locator('.sheet-chore-item').first().click();
     await page.waitForTimeout(1500);
 
-    // After: chore should be in the 8 AM row; anytime drops by one
+    // After: chore should be in the 8 AM row
     await expect(page.locator('[data-drop-hour="8"] .chore-card')).toHaveCount(1);
-    await expect(page.locator('.day-anytime-section .chore-card')).toHaveCount(initialCount - 1);
   });
 
   test('already-scheduled chores remain in the sheet list so they can be added again', async ({ page }) => {
@@ -635,33 +622,43 @@ test.describe('Drag and Drop: Day View', () => {
   test('dragging a chore to an hour row moves it there', async ({ page }) => {
     await setupWithChores(page);
 
-    // Count how many chores start in anytime before drag
-    const initialCount = await page.locator('.day-anytime-section .chore-card').count();
-    expect(initialCount).toBeGreaterThan(0);
+    // Schedule the first chore at 8 AM so it appears as a draggable card
+    await page.locator('[data-drop-hour="8"]').click();
+    await page.waitForTimeout(400);
+    await page.locator('.sheet-chore-item').first().click();
+    await page.waitForTimeout(1500);
 
-    const card = page.locator('[data-drag-chore-id]').first();
+    await expect(page.locator('[data-drop-hour="8"] .chore-card')).toHaveCount(1);
+
+    const card = page.locator('[data-drop-hour="8"] [data-drag-chore-id]').first();
     const hourCell = page.locator('[data-drop-hour="14"]');
 
     await htmlDragDrop(page, card, hourCell);
     await page.waitForTimeout(1500);
 
-    // Chore should now be in the 2 PM row; anytime count drops by one
+    // Chore should now be in the 2 PM row, not 8 AM
     await expect(page.locator('[data-drop-hour="14"] .chore-card')).toHaveCount(1);
-    await expect(page.locator('.day-anytime-section .chore-card')).toHaveCount(initialCount - 1);
+    await expect(page.locator('[data-drop-hour="8"] .chore-card')).toHaveCount(0);
   });
 
   test('dragging preserves the chore name after move', async ({ page }) => {
     await setupWithChores(page);
 
-    const card = page.locator('[data-drag-chore-id]').first();
-    // Capture the name before dragging
-    const choreName = await card.locator('.chore-name').innerText();
-    const hourCell = page.locator('[data-drop-hour="8"]');
+    // Schedule a chore at 8 AM so it appears as a draggable card
+    await page.locator('[data-drop-hour="8"]').click();
+    await page.waitForTimeout(400);
+    const choreItem = page.locator('.sheet-chore-item').first();
+    const choreName = await choreItem.locator('.chore-name').innerText();
+    await choreItem.click();
+    await page.waitForTimeout(1500);
+
+    const card = page.locator('[data-drop-hour="8"] [data-drag-chore-id]').first();
+    const hourCell = page.locator('[data-drop-hour="14"]');
 
     await htmlDragDrop(page, card, hourCell);
     await page.waitForTimeout(1500);
 
-    await expect(page.locator('[data-drop-hour="8"] .chore-name').first()).toContainText(choreName);
+    await expect(page.locator('[data-drop-hour="14"] .chore-name').first()).toContainText(choreName);
   });
 
   test('dragging a scheduled chore between hour rows updates the schedule', async ({ page }) => {
@@ -686,87 +683,6 @@ test.describe('Drag and Drop: Day View', () => {
     await expect(page.locator('[data-drop-hour="8"] .chore-card')).toHaveCount(0);
   });
 
-  test('dragging a chore to the anytime section clears its specific time', async ({ page }) => {
-    const { csrf } = await setupWithChores(page);
-
-    // Schedule a chore at 10 AM via the API
-    const choreResp = await page.request.get('/api/chores');
-    const choreId   = (await choreResp.json()).chores[0].id;
-
-    const createResp = await page.request.post('/api/schedules', {
-      data: { choreId, timePeriod: 'anytime', specificTime: '10:00', frequencyType: 'daily', isActive: true },
-      headers: { 'X-CSRF-Token': csrf },
-    });
-    const scheduleId = (await createResp.json()).schedule.id;
-
-    await page.reload();
-    await page.waitForSelector('.cal-date', { timeout: 15000 });
-
-    // The card should be in the 10 AM row
-    await expect(page.locator('[data-drop-hour="10"] .chore-card')).toHaveCount(1);
-
-    // Drag to anytime zone
-    const card        = page.locator('[data-drop-hour="10"] [data-drag-chore-id]').first();
-    const anytimeZone = page.locator('.day-anytime-cards');
-
-    await htmlDragDrop(page, card, anytimeZone);
-    await page.waitForTimeout(1500);
-
-    // UI: card moved out of the 10 AM row and into the anytime section
-    await expect(page.locator('.day-anytime-section .chore-card').first()).toBeVisible();
-    await expect(page.locator('[data-drop-hour="10"] .chore-card')).toHaveCount(0);
-
-    // API: specificTime must be null — the PATCH handler must handle JSON null
-    // correctly (json.Unmarshal(null, &stringVar) is a no-op in Go without
-    // the explicit null check added in internal/handlers/schedule.go).
-    const schedules = (await (await page.request.get('/api/schedules')).json()).schedules;
-    const updated   = schedules.find(s => s.id === scheduleId);
-    expect(updated).toBeDefined();
-    expect(updated.specificTime ?? null).toBeNull();
-  });
-});
-
-// ─── Week View: Anytime Section ───────────────────────────────────────────────
-
-test.describe('Week View: Anytime Section', () => {
-  test('anytime section appears when a schedule has no specificTime', async ({ page }) => {
-    const { csrf } = await setupWithChores(page);
-
-    const choreResp = await page.request.get('/api/chores');
-    const choreData = await choreResp.json();
-    const choreId   = choreData.chores[0].id;
-
-    await page.request.post('/api/schedules', {
-      data: { choreId, timePeriod: 'anytime', frequencyType: 'daily', isActive: true },
-      headers: { 'X-CSRF-Token': csrf },
-    });
-
-    // Switch to week view
-    await page.locator('.view-tab[data-view="week"]').click();
-    await page.waitForTimeout(1000);
-
-    await expect(page.locator('.anytime-week-section')).toBeVisible();
-    await expect(page.locator('.anytime-week-section .section-heading')).toContainText('Anytime');
-  });
-
-  test('anytime section is absent when all schedules have a specificTime', async ({ page }) => {
-    const { csrf } = await setupWithChores(page);
-
-    const choreResp = await page.request.get('/api/chores');
-    const choreData = await choreResp.json();
-    const choreId   = choreData.chores[0].id;
-
-    // Schedule with a specificTime — goes into the grid, not anytime section
-    await page.request.post('/api/schedules', {
-      data: { choreId, timePeriod: 'anytime', specificTime: '08:00', frequencyType: 'daily', isActive: true },
-      headers: { 'X-CSRF-Token': csrf },
-    });
-
-    await page.locator('.view-tab[data-view="week"]').click();
-    await page.waitForTimeout(1000);
-
-    await expect(page.locator('.anytime-week-section')).toHaveCount(0);
-  });
 });
 
 // ─── Schedule API ─────────────────────────────────────────────────────────────
