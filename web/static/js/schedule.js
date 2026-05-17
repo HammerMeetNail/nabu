@@ -239,10 +239,13 @@ export function renderPickChoreSheet(chores, slot, _schedules) {
     : chores.map(c => `
         <button type="button"
           class="sheet-chore-item"
+          draggable="true"
           data-action="schedule-chore-here"
           data-chore-id="${c.id}"
+          data-reorder-chore-id="${c.id}"
           data-time-period="anytime"
           data-date="${escapeHTML(slot.date || "")}">
+          <span class="drag-handle" aria-hidden="true">⠿</span>
           <span class="chore-icon">${c.icon}</span>
           <span class="chore-name">${escapeHTML(c.name)}</span>
           <span class="chore-category">${escapeHTML(c.category)}</span>
@@ -408,9 +411,12 @@ export function renderQuickLogSheet(chores, date) {
     : chores.map(c => `
         <button type="button"
           class="sheet-chore-item"
+          draggable="true"
           data-action="quick-log-chore"
           data-chore-id="${c.id}"
+          data-reorder-chore-id="${c.id}"
           data-date="${escapeHTML(date)}">
+          <span class="drag-handle" aria-hidden="true">⠿</span>
           <span class="chore-icon">${c.icon}</span>
           <span class="chore-name">${escapeHTML(c.name)}</span>
         </button>`).join("");

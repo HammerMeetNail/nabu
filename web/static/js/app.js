@@ -23,6 +23,7 @@ import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHist
 import { renderStatsView, loadOverview } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
+import { loadPreferences, saveChoreOrder, sortChoresByOrder } from "./preferences.js";
 
 /**
  * Reads the current frequency settings from a bottom sheet's freq <select>
@@ -161,7 +162,7 @@ export function render(root) {
     if (savedScroll > 0) {
       // Restore the position the user was at before this re-render.
       wrapper.scrollTop = savedScroll;
-    } else if (savedScroll === -1 || wrapper.scrollTop === 0) {
+    } else if (savedScroll === -1) {
       // First render (no prior wrapper): scroll to current hour.
       const h = new Date().getHours();
       const ROW_HEIGHT = 48; // must match CSS .day-hour-row height
@@ -213,7 +214,7 @@ function renderTodayView() {
 
   if (state.activeSheet === "pick-chore") {
     const sheetHTML = renderPickChoreSheet(
-      state.chores,
+      sortChoresByOrder(state.chores, state.choreOrder),
       state.activeSheetData || {},
       state.schedules || []
     );
@@ -257,7 +258,7 @@ function renderTodayView() {
   }
   if (state.activeSheet === "quick-log") {
     const date = state.activeSheetData?.date || "";
-    const sheetHTML = renderQuickLogSheet(state.chores || [], date);
+    const sheetHTML = renderQuickLogSheet(sortChoresByOrder(state.chores, state.choreOrder), date);
     return `<div class="sheet-overlay-wrapper">
       ${mainView}
       ${fab}
@@ -381,7 +382,7 @@ async function doLogin(form) {
 
 async function reloadAfterAuth() {
   try {
-    await loadHouseholdData();
+    await Promise.all([loadHouseholdData(), loadPreferences(state)]);
     if (state.household) {
       await Promise.all([
         loadChoreData(),
@@ -820,7 +821,7 @@ export async function init() {
   });
 
   try {
-    await loadHouseholdData();
+    await Promise.all([loadHouseholdData(), loadPreferences(state)]);
     if (state.household) {
       await Promise.all([
         loadChoreData(),
@@ -833,6 +834,17 @@ export async function init() {
   // ── Drag and drop ──────────────────────────────────────────────────────────
   document.addEventListener("dragstart", e => {
     clearTimeout(longPressTimer);
+    // Sheet chore reorder drag — must check before calendar card drag because
+    // sheet items have [data-reorder-chore-id] but not [data-drag-chore-id].
+    const reorderItem = e.target.closest("[data-reorder-chore-id]");
+    if (reorderItem) {
+      const choreId = parseInt(reorderItem.dataset.reorderChoreId, 10);
+      e.dataTransfer.setData("text/plain", JSON.stringify({ reorderChoreId: choreId }));
+      e.dataTransfer.effectAllowed = "move";
+      reorderItem.classList.add("sheet-chore-item--dragging");
+      return;
+    }
+    // Calendar card drag.
     const card = e.target.closest("[data-drag-chore-id]");
     if (!card) return;
     e.dataTransfer.setData("text/plain", JSON.stringify({
@@ -844,24 +856,76 @@ export async function init() {
 
   document.addEventListener("dragend", e => {
     e.target.closest("[data-drag-chore-id]")?.classList.remove("dragging");
+    e.target.closest("[data-reorder-chore-id]")?.classList.remove("sheet-chore-item--dragging");
+    document.querySelectorAll(".sheet-chore-item--drag-over-top, .sheet-chore-item--drag-over-bottom")
+      .forEach(el => el.classList.remove("sheet-chore-item--drag-over-top", "sheet-chore-item--drag-over-bottom"));
   });
 
   document.addEventListener("dragover", e => {
     const cell = e.target.closest("[data-drop-period], [data-drop-hour]");
     if (cell) { e.preventDefault(); cell.classList.add("drop-target"); }
+    // Sheet chore reorder: show insert position indicator.
+    const item = e.target.closest("[data-reorder-chore-id]");
+    if (item) {
+      e.preventDefault();
+      const rect = item.getBoundingClientRect();
+      const half = rect.top + rect.height / 2;
+      // Clear indicators on all siblings, then set the right one on this item.
+      item.closest(".sheet-chore-list")
+        ?.querySelectorAll("[data-reorder-chore-id]")
+        .forEach(el => el.classList.remove("sheet-chore-item--drag-over-top", "sheet-chore-item--drag-over-bottom"));
+      item.classList.add(e.clientY < half
+        ? "sheet-chore-item--drag-over-top"
+        : "sheet-chore-item--drag-over-bottom");
+    }
   });
 
   document.addEventListener("dragleave", e => {
     const cell = e.target.closest(".drop-target");
-    if (!cell) return;
-    // Only remove when the cursor truly leaves the cell, not when it moves
-    // into a child element (dragleave bubbles from children to the cell).
-    if (!cell.contains(e.relatedTarget)) {
-      cell.classList.remove("drop-target");
+    if (cell) {
+      // Only remove when the cursor truly leaves the cell, not when it moves
+      // into a child element (dragleave bubbles from children to the cell).
+      if (!cell.contains(e.relatedTarget)) {
+        cell.classList.remove("drop-target");
+      }
+    }
+    // Sheet chore reorder: remove indicator when leaving the item.
+    const item = e.target.closest("[data-reorder-chore-id]");
+    if (item && !item.contains(e.relatedTarget)) {
+      item.classList.remove("sheet-chore-item--drag-over-top", "sheet-chore-item--drag-over-bottom");
     }
   });
 
   document.addEventListener("drop", async e => {
+    // ── Sheet chore reorder ──────────────────────────────────────────────────
+    const targetItem = e.target.closest("[data-reorder-chore-id]");
+    if (targetItem) {
+      e.preventDefault();
+      document.querySelectorAll(".sheet-chore-item--drag-over-top, .sheet-chore-item--drag-over-bottom")
+        .forEach(el => el.classList.remove("sheet-chore-item--drag-over-top", "sheet-chore-item--drag-over-bottom"));
+      let payload;
+      try { payload = JSON.parse(e.dataTransfer.getData("text/plain")); } catch { return; }
+      if (!payload.reorderChoreId) return;
+      const draggedId = payload.reorderChoreId;
+      const targetId  = parseInt(targetItem.dataset.reorderChoreId, 10);
+      if (draggedId === targetId) return;
+      const rect = targetItem.getBoundingClientRect();
+      const insertBefore = e.clientY < rect.top + rect.height / 2;
+      // Build new order from the currently-displayed (sorted) chore list.
+      const sorted = sortChoresByOrder(state.chores, state.choreOrder);
+      const ids = sorted.map(c => c.id);
+      const fromIdx = ids.indexOf(draggedId);
+      const toIdx   = ids.indexOf(targetId);
+      if (fromIdx === -1 || toIdx === -1) return;
+      ids.splice(fromIdx, 1);
+      const insertIdx = ids.indexOf(targetId);
+      ids.splice(insertBefore ? insertIdx : insertIdx + 1, 0, draggedId);
+      await saveChoreOrder(state, ids);
+      render(app);
+      return;
+    }
+
+    // ── Calendar schedule drop ───────────────────────────────────────────────
     const cell = e.target.closest("[data-drop-period], [data-drop-hour]");
     if (!cell) return;
     e.preventDefault();
@@ -1106,6 +1170,12 @@ async function doCreateChoreFromSheet(form) {
     });
 
     await loadChoreData();
+    // Append new chore to the user's custom order so it appears at the bottom
+    // of the sheet list rather than being sorted to an arbitrary position.
+    if (newChore.id) {
+      const newOrder = [...(state.choreOrder || []), newChore.id];
+      await saveChoreOrder(state, newOrder);
+    }
     state.schedules = await loadSchedules();
     state.activeSheet     = null;
     state.activeSheetData = {};

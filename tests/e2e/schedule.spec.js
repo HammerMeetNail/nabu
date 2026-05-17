@@ -1779,3 +1779,101 @@ test.describe('Long-press on sheet chore items', () => {
     await expect(page.locator('.sheet-hint')).toContainText('Hold to add notes');
   });
 });
+
+// ─── Calendar scroll position preservation ────────────────────────────────────
+
+test.describe('Calendar scroll position: preserved across sheet open/close', () => {
+  /**
+   * Returns the scrollTop of the day-hour-grid-wrapper, or -1 if not found.
+   */
+  function getWrapperScroll(page) {
+    return page.evaluate(() => {
+      const w = document.querySelector('.day-hour-grid-wrapper');
+      return w ? w.scrollTop : -1;
+    });
+  }
+
+  /**
+   * Sets the day-hour-grid-wrapper scrollTop directly.
+   */
+  function setWrapperScroll(page, px) {
+    return page.evaluate((px) => {
+      const w = document.querySelector('.day-hour-grid-wrapper');
+      if (w) w.scrollTop = px;
+    }, px);
+  }
+
+  test('scroll position is preserved when sheet opens and closes (non-zero)', async ({ page }) => {
+    await setupWithChores(page);
+
+    // Scroll to 10 AM (10 rows × 48 px = 480) — safely within bounds for all viewport sizes.
+    await setWrapperScroll(page, 480);
+
+    // Open pick-chore sheet by clicking the 10 AM slot.
+    await page.getByRole('button', { name: '10 AM' }).click();
+    await page.waitForSelector('.bottom-sheet');
+
+    const scrollAfterOpen = await getWrapperScroll(page);
+    expect(scrollAfterOpen).toBe(480);
+
+    // Close the sheet via the backdrop.
+    await page.locator('.sheet-backdrop').click({ force: true });
+    await page.waitForFunction(() => !document.querySelector('.bottom-sheet'));
+
+    const scrollAfterClose = await getWrapperScroll(page);
+    expect(scrollAfterClose).toBe(480);
+  });
+
+  test('scroll position stays at 0 (midnight) when sheet opens — no spurious auto-scroll', async ({ page }) => {
+    await setupWithChores(page);
+
+    // Scroll to midnight (top).
+    await setWrapperScroll(page, 0);
+
+    // Open pick-chore sheet from the midnight slot.
+    await page.getByRole('button', { name: '12 AM' }).click();
+    await page.waitForSelector('.bottom-sheet');
+
+    const scrollAfterOpen = await getWrapperScroll(page);
+    expect(scrollAfterOpen).toBe(0);
+
+    // Close the sheet via the backdrop.
+    await page.locator('.sheet-backdrop').click({ force: true });
+    await page.waitForFunction(() => !document.querySelector('.bottom-sheet'));
+
+    const scrollAfterClose = await getWrapperScroll(page);
+    expect(scrollAfterClose).toBe(0);
+  });
+
+  test('scroll position is preserved after scheduling a chore from the sheet', async ({ page }) => {
+    await setupWithChores(page);
+
+    // Scroll to 10 AM (within bounds for all viewport sizes).
+    await setWrapperScroll(page, 480);
+
+    // Open pick-chore sheet and schedule the first chore.
+    await page.getByRole('button', { name: '10 AM' }).click();
+    await page.waitForSelector('.bottom-sheet');
+    await page.locator('[data-action="schedule-chore-here"]').first().click();
+    await page.waitForFunction(() => !document.querySelector('.bottom-sheet'), { timeout: 8000 });
+
+    const scrollAfterSchedule = await getWrapperScroll(page);
+    expect(scrollAfterSchedule).toBe(480);
+  });
+
+  test('scroll stays at 0 after scheduling a chore from the midnight slot', async ({ page }) => {
+    await setupWithChores(page);
+
+    // Scroll to midnight.
+    await setWrapperScroll(page, 0);
+
+    // Open pick-chore sheet from midnight and schedule.
+    await page.getByRole('button', { name: '12 AM' }).click();
+    await page.waitForSelector('.bottom-sheet');
+    await page.locator('[data-action="schedule-chore-here"]').first().click();
+    await page.waitForFunction(() => !document.querySelector('.bottom-sheet'), { timeout: 8000 });
+
+    const scrollAfterSchedule = await getWrapperScroll(page);
+    expect(scrollAfterSchedule).toBe(0);
+  });
+});

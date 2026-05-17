@@ -23,6 +23,7 @@ import (
 	"github.com/dave/choresy/internal/mail"
 	"github.com/dave/choresy/internal/middleware"
 	"github.com/dave/choresy/internal/stats"
+	"github.com/dave/choresy/internal/userprefs"
 	webassets "github.com/dave/choresy/web"
 )
 
@@ -41,17 +42,20 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	var householdStore household.Store
 	var choreStore chore.Store
 	var logStore logsvc.Store
+	var userPrefsStore userprefs.Store
 
 	if db != nil {
 		authStore = auth.NewPostgresStore(db)
 		householdStore = household.NewPostgresStore(db)
 		choreStore = chore.NewPostgresStore(db)
 		logStore = logsvc.NewPostgresStore(db)
+		userPrefsStore = userprefs.NewPostgresStore(db)
 	} else {
 		authStore = auth.NewMemoryStore()
 		householdStore = household.NewMemoryStore()
 		choreStore = chore.NewMemoryStore()
 		logStore = logsvc.NewMemoryStore()
+		userPrefsStore = userprefs.NewMemoryStore()
 	}
 
 	authService := auth.NewService(authStore)
@@ -64,6 +68,8 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	choreHandler := handlers.NewChoreHandler(choreService)
 	logService := logsvc.NewService(logStore)
 	logHandler := handlers.NewLogHandler(logService)
+	userPrefsService := userprefs.NewService(userPrefsStore)
+	preferencesHandler := handlers.NewPreferencesHandler(userPrefsService)
 	statsService := stats.NewService(logStore, &choreStatsAdapter{choreStore})
 	statsHandler := handlers.NewStatsHandler(statsService)
 
@@ -183,6 +189,18 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	mux.HandleFunc("/api/stats/breakdown", method(http.MethodGet, middleware.RequireAuth(statsHandler.Breakdown)))
 	mux.HandleFunc("/api/stats/recap", method(http.MethodGet, middleware.RequireAuth(statsHandler.Recap)))
 	mux.HandleFunc("/api/stats/overview", method(http.MethodGet, middleware.RequireAuth(statsHandler.Overview)))
+
+	mux.HandleFunc("/api/preferences", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			preferencesHandler.Get(w, r)
+		case http.MethodPatch:
+			preferencesHandler.Update(w, r)
+		default:
+			w.Header().Set("Allow", "GET, PATCH")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
 
 	mux.HandleFunc("/api/schedules", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {

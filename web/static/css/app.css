@@ -1221,6 +1221,36 @@ input:focus, select:focus, textarea:focus {
   transition: transform 0.1s ease, opacity 0.1s ease;
 }
 
+/* Drag-to-reorder: dragging item */
+.sheet-chore-item--dragging {
+  opacity: 0.4;
+  cursor: grabbing;
+}
+
+/* Drag-to-reorder: drop-position indicators */
+.sheet-chore-item--drag-over-top {
+  border-top: 2px solid var(--primary);
+}
+
+.sheet-chore-item--drag-over-bottom {
+  border-bottom: 2px solid var(--primary);
+}
+
+/* Drag handle */
+.drag-handle {
+  color: var(--text-secondary);
+  font-size: 18px;
+  line-height: 1;
+  cursor: grab;
+  flex-shrink: 0;
+  padding: 0 2px;
+  user-select: none;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
 .sheet-hint {
   font-size: 12px;
   color: var(--text-secondary);

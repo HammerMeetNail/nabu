@@ -15,6 +15,7 @@ export function createAppState() {
     weekLogs: [],
     activeSheet: null,
     activeSheetData: {},
+    choreOrder: [],   // per-user preferred chore order (array of chore IDs)
   };
 }
 
@@ -33,4 +34,5 @@ export function resetAuthedState(state) {
   state.weekLogs = [];
   state.activeSheet = null;
   state.activeSheetData = {};
+  state.choreOrder = [];
 }
