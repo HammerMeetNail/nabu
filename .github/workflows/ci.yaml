@@ -3,10 +3,16 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ["v*"]
+    tags:
+      - 'v*'
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      deploy_only:
+        description: 'Skip build, deploy existing image'
+        type: boolean
+        default: false
 
 env:
   GO_VERSION: "1.25"
@@ -14,30 +20,85 @@ env:
   IMAGE_NAME: dave/choresy
 
 jobs:
-  lint:
+  changes:
+    name: Detect Changes
     runs-on: ubuntu-latest
+    if: github.event_name != 'push' || startsWith(github.ref, 'refs/tags/v')
+    outputs:
+      code: ${{ startsWith(github.ref, 'refs/tags/v') || steps.filter.outputs.code }}
+      tests: ${{ steps.filter.outputs.tests }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            code:
+              - '**/*.go'
+              - '!**/*_test.go'
+              - 'go.mod'
+              - 'go.sum'
+              - 'web/**'
+              - 'migrations/**'
+              - 'Containerfile'
+              - 'compose*.yaml'
+              - '.github/workflows/**'
+              - 'Makefile'
+              - 'scripts/**'
+            tests:
+              - '**/*_test.go'
+
+  secrets:
+    name: Secret Scan
+    runs-on: ubuntu-latest
+    if: github.event_name != 'push' || startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
-      - name: go vet
-        run: go vet ./...
+      - uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.6.2
 
   test-go:
+    name: Go Tests
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.tests == 'true'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
-      - name: Go tests
-        run: go test -race -coverprofile=coverage.out ./...
+      - run: go mod download
+      - run: go test -v -race -coverprofile=coverage.out ./...
+      - uses: codecov/codecov-action@v5
+        with:
+          files: coverage.out
+          flags: go
+          token: ${{ secrets.CODECOV_TOKEN }}
 
   test-js:
+    name: JS Tests
     runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.tests == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
@@ -49,8 +110,10 @@ jobs:
         run: node --test web/static/js/tests/runner.js
 
   e2e:
+    name: E2E Tests
     runs-on: ubuntu-latest
-    needs: [test-go, test-js]
+    needs: [changes, test-go, test-js]
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.tests == 'true'
     services:
       mailpit:
         image: axllent/mailpit:v1.27
@@ -58,8 +121,8 @@ jobs:
           - 1025:1025
           - 8025:8025
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
       - uses: actions/setup-node@v4
@@ -75,41 +138,263 @@ jobs:
         run: ./scripts/e2e.sh
 
   build-image:
-    runs-on: ubuntu-latest
-    needs: [lint, test-go, test-js]
+    name: Build Image (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    needs: [changes, secrets, lint, test-go, test-js, e2e]
+    if: >
+      needs.changes.outputs.code == 'true' &&
+      needs.secrets.result == 'success' &&
+      needs.lint.result == 'success' &&
+      needs.test-go.result == 'success' &&
+      needs.test-js.result == 'success' &&
+      needs.e2e.result == 'success' &&
+      github.actor != 'dependabot[bot]'
     strategy:
       matrix:
-        platform: [linux/amd64, linux/arm64]
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      - name: Login to Quay.io
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Quay.io
         if: startsWith(github.ref, 'refs/tags/v')
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ secrets.QUAY_USERNAME }}
           password: ${{ secrets.QUAY_PASSWORD }}
-      - name: Build and push
+
+      - name: Build image (no push, PR/main)
+        if: "!startsWith(github.ref, 'refs/tags/v')"
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: Containerfile
-          platforms: ${{ matrix.platform }}
-          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          file: ./Containerfile
+          platforms: linux/${{ matrix.arch }}
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
 
-  deploy:
-    if: startsWith(github.ref, 'refs/tags/v')
+      - name: Build and push by digest (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Containerfile
+          platforms: linux/${{ matrix.arch }}
+          outputs: type=image,name=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+
+      - name: Export digest
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: actions/upload-artifact@v6
+        with:
+          name: digests-${{ matrix.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  scan-and-push:
+    name: Scan, Sign & Push Multi-Arch Manifest
     runs-on: ubuntu-latest
     needs: [build-image]
+    if: >
+      github.event_name == 'push' &&
+      startsWith(github.ref, 'refs/tags/v') &&
+      github.actor != 'dependabot[bot]'
+    outputs:
+      digest: ${{ steps.digest.outputs.digest }}
+      tag: ${{ steps.tag.outputs.tag }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
     steps:
-      - uses: actions/checkout@v4
-      - name: Deploy to production
-        run: echo "Deploy step — configure SSH and pull image on server"
-        shell: bash
+      - uses: actions/download-artifact@v7
+        with:
+          path: /tmp/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_PASSWORD }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+
+      - name: Create and push manifest
+        working-directory: /tmp/digests
+        run: |
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+
+      - name: Get manifest digest
+        id: digest
+        run: |
+          DIGEST=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest --format '{{json .Manifest.Digest}}' | tr -d '"')
+          echo "digest=$DIGEST" >> $GITHUB_OUTPUT
+
+      - name: Determine image tag
+        id: tag
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/v}"
+          else
+            TAG="latest"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          format: "table"
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image with Cosign (keyless)
+        env:
+          COSIGN_EXPERIMENTAL: "true"
+        run: |
+          cosign sign --yes ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}
+
+  release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [scan-and-push]
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6
+      - name: Get version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          body: |
+            ## Container Image
+
+            ```bash
+            podman pull quay.io/dave/choresy:${{ steps.version.outputs.version }}
+            ```
+
+            **Available tags:**
+            - `quay.io/dave/choresy:${{ steps.version.outputs.version }}`
+            - `quay.io/dave/choresy:latest`
+
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [scan-and-push]
+    if: >
+      (
+        github.event_name == 'workflow_dispatch' &&
+        (needs.scan-and-push.result == 'success' || needs.scan-and-push.result == 'skipped')
+      ) ||
+      (
+        github.event_name == 'push' &&
+        startsWith(github.ref, 'refs/tags/v') &&
+        needs.scan-and-push.result == 'success'
+      )
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install cloudflared
+        run: |
+          CLOUDFLARED_VERSION="2026.1.2"
+          CLOUDFLARED_SHA256="e157c54e929cc289cbd53860453168c2fe3439eb55e2e965a56579252585d9c1"
+          curl -fsSL "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64" -o cloudflared
+          echo "${CLOUDFLARED_SHA256}  cloudflared" | sha256sum -c -
+          chmod +x cloudflared
+          sudo mv cloudflared /usr/local/bin/
+
+      - name: Deploy to server
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          IMAGE_DIGEST: ${{ needs.scan-and-push.outputs.digest }}
+          IMAGE_TAG: ${{ needs.scan-and-push.outputs.tag }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+          cat >> ~/.ssh/config << 'SSHCONFIG'
+          Host ssh.yearofbingo.com
+            User deploy
+            ProxyCommand cloudflared access ssh --hostname %h
+            StrictHostKeyChecking accept-new
+          SSHCONFIG
+
+          # Substitute image digest into compose file
+          if [ -n "${IMAGE_DIGEST}" ]; then
+            sed "s|image: quay.io/dave/choresy:latest|# tag: ${IMAGE_TAG}\n    image: quay.io/dave/choresy@${IMAGE_DIGEST}|" \
+              compose.server.yaml > compose.server.deploy.yaml
+          else
+            cp compose.server.yaml compose.server.deploy.yaml
+          fi
+
+          # Copy compose file to server
+          scp compose.server.deploy.yaml ssh.yearofbingo.com:/opt/choresy/compose.yaml
+
+          # Deploy
+          ssh ssh.yearofbingo.com << EOF
+            cd /opt/choresy
+
+            # Write .env with all secrets
+            cat > .env << 'ENVFILE'
+          DB_PASSWORD=${DB_PASSWORD}
+          SMTP_HOST=${SMTP_HOST}
+          SMTP_PORT=${SMTP_PORT}
+          SMTP_USER=${SMTP_USER}
+          SMTP_PASS=${SMTP_PASS}
+          SMTP_FROM=${SMTP_FROM}
+          GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+          GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+          ENVFILE
+            chmod 600 .env
+
+            # Pull new image and restart
+            podman-compose pull
+            podman-compose down || true
+            podman-compose up -d
+          EOF
