@@ -5,3 +5,4 @@ output/playwright/
 test-results/
 .cache/
 .env
+.playwright-mcp/

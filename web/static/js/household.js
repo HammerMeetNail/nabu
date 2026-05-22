@@ -63,6 +63,16 @@ export async function transferOwnership(newOwnerId) {
   });
 }
 
+export function renderJoinView(code) {
+  return `<div class="auth-card">
+    <h1 class="auth-title">You're Invited!</h1>
+    <p class="text-center text-secondary mb-3">Create an account or sign in to join this household on Choresy.</p>
+    <button type="button" class="btn btn-primary btn-block" data-action="show-register">Create Account</button>
+    <div class="auth-divider">or</div>
+    <button type="button" class="btn btn-secondary btn-block" data-action="show-login">Sign In</button>
+  </div>`;
+}
+
 export function renderHouseholdView(household, members, invites) {
   if (!household) {
     return `<div class="card mt-3">
@@ -96,17 +106,26 @@ export function renderHouseholdView(household, members, invites) {
     <span class="role-badge">${m.role}</span>
   </li>`;}).join("");
 
-  const inviteList = (invites || []).map(inv => `<li class="member-item">
-    <code>${inv.code}</code>
+  const inviteList = (invites || []).map(inv => {
+    const invUrl = `${window.location.origin}/join?code=${inv.code}`;
+    return `<li class="member-item">
+    <code class="invite-link-url">${invUrl}</code>
+    <button type="button" class="btn btn-sm btn-secondary" data-action="copy-invite-link" data-code="${inv.code}">Copy</button>
     <span class="text-secondary">${inv.usedCount}/${inv.maxUses || '∞'} uses</span>
     <button type="button" class="btn btn-sm btn-danger" data-action="delete-invite" data-invite-id="${inv.id}">Revoke</button>
-  </li>`).join("");
+  </li>`;}).join("");
+
+  const inviteLink = `${window.location.origin}/join?code=${household.inviteCode}`;
 
   return `<div class="card mt-3">
     <h3>${escapeHTML(household.name)}</h3>
-    <p class="text-secondary">Invite Code: <code>${household.inviteCode}</code></p>
+    <p class="text-secondary mb-1">Invite Link</p>
+    <div class="invite-link-row">
+      <code class="invite-link-url">${inviteLink}</code>
+      <button type="button" class="btn btn-sm btn-secondary" data-action="copy-invite-link" data-code="${household.inviteCode}">Copy</button>
+    </div>
     <div class="mt-2">
-      <button type="button" class="btn btn-sm btn-primary" data-action="create-invite">Create Invite Link</button>
+      <button type="button" class="btn btn-sm btn-primary" data-action="create-invite">New tracked link</button>
     </div>
     ${invites && invites.length ? `<h4 class="mt-3">Active Invites</h4><ul class="member-list">${inviteList}</ul><div class="auth-divider"></div>` : ''}
     <h4 class="mt-3">Members</h4>

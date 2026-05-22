@@ -228,7 +228,16 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	if err != nil {
 		panic(err)
 	}
-	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
+	staticFileServer := http.FileServer(http.FS(staticFS))
+	mux.Handle("/static/", http.StripPrefix("/static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Prevent Cloudflare and browsers from caching JS/CSS; changes
+		// take effect on next page load without requiring a cache purge.
+		p := r.URL.Path
+		if strings.HasSuffix(p, ".js") || strings.HasSuffix(p, ".css") {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
+		staticFileServer.ServeHTTP(w, r)
+	})))
 	mux.HandleFunc("/service-worker.js", func(w http.ResponseWriter, r *http.Request) {
 		r.URL.Path = "/service-worker.js"
 		http.FileServer(http.FS(staticFS)).ServeHTTP(w, r)

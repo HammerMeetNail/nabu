@@ -97,6 +97,16 @@ func (s *PostgresStore) GetMembership(ctx context.Context, userID int64) (int64,
 	return hhID.Int64, role, err
 }
 
+func (s *PostgresStore) GetHouseholdByInviteCode(ctx context.Context, code string) (Household, error) {
+	var hh Household
+	err := s.db.QueryRowContext(ctx, `SELECT id, name, invite_code, created_at FROM households WHERE invite_code = $1`, code).
+		Scan(&hh.ID, &hh.Name, &hh.InviteCode, &hh.CreatedAt)
+	if err == sql.ErrNoRows {
+		return Household{}, ErrInviteNotFound
+	}
+	return hh, err
+}
+
 func (s *PostgresStore) CreateInvite(ctx context.Context, householdID, createdBy int64, code string, maxUses int) (Invite, error) {
 	var inv Invite
 	err := s.db.QueryRowContext(ctx, `

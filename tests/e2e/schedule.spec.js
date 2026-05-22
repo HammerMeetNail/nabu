@@ -559,6 +559,101 @@ test.describe('Chore Logging: Day View', () => {
     await expect(label).toContainText(/0 of \d+ done/);
   });
 
+  test('long-pressing a done chore opens log sheet and Remove log updates day view', async ({ page }) => {
+    await setupWithScheduledChore(page);
+
+    const card = page.locator('.chore-card').first();
+
+    // Log the chore via a normal click first.
+    await card.click();
+    await page.waitForTimeout(1000);
+    await expect(card).toHaveClass(/chore-card--done/);
+
+    // Now long-press the done card (≥500 ms) to open the log sheet via the
+    // long-press path (not the view-log click path).
+    await card.scrollIntoViewIfNeeded();
+    const box = await card.boundingBox();
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.waitForTimeout(650);
+    await page.mouse.up();
+
+    // Log sheet must be visible with the "Remove log" button.
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('[data-action="undo-chore"]')).toBeVisible();
+
+    // Click "Remove log".
+    await page.locator('[data-action="undo-chore"]').click();
+    await page.waitForTimeout(1500);
+
+    // The card should no longer be done.
+    await expect(card).not.toHaveClass(/chore-card--done/);
+    await expect(card).toHaveAttribute('data-action', 'log-chore');
+  });
+
+  test('touch long-press on done chore then tap Remove log updates day view', async ({ page }) => {
+    await setupWithScheduledChore(page);
+
+    const card = page.locator('.chore-card').first();
+
+    // Log the chore via a click.
+    await card.click();
+    await page.waitForTimeout(1000);
+    await expect(card).toHaveClass(/chore-card--done/);
+
+    // Simulate a touch long-press on the done card using raw touch events.
+    // This exercises the touchstart/touchend code path in app.js, including
+    // e.preventDefault() and the longPressJustFired guard.
+    await card.scrollIntoViewIfNeeded();
+    const box = await card.boundingBox();
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+
+    await page.evaluate(([x, y]) => {
+      const el = document.elementFromPoint(x, y);
+      const touch = new Touch({ identifier: 1, target: el, clientX: x, clientY: y, pageX: x, pageY: y });
+      el.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [touch], changedTouches: [touch] }));
+    }, [cx, cy]);
+
+    await page.waitForTimeout(650); // exceed 500 ms long-press threshold
+
+    await page.evaluate(([x, y]) => {
+      const el = document.elementFromPoint(x, y) || document.body;
+      const touch = new Touch({ identifier: 1, target: document.body, clientX: x, clientY: y, pageX: x, pageY: y });
+      document.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], changedTouches: [touch] }));
+    }, [cx, cy]);
+
+    // Log sheet must open with "Remove log" button.
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('[data-action="undo-chore"]')).toBeVisible();
+
+    // Simulate a touch tap on the "Remove log" button (touchstart + touchend,
+    // no e.preventDefault() for this element, so click should be dispatched
+    // either by iOS or by our touchend handler).
+    const undoBtn = page.locator('[data-action="undo-chore"]');
+    const undoBox = await undoBtn.boundingBox();
+    const ux = undoBox.x + undoBox.width / 2;
+    const uy = undoBox.y + undoBox.height / 2;
+
+    await page.evaluate(([x, y]) => {
+      const el = document.elementFromPoint(x, y);
+      const touch = new Touch({ identifier: 2, target: el, clientX: x, clientY: y, pageX: x, pageY: y });
+      el.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [touch], changedTouches: [touch] }));
+      // Simulate the click that the browser would synthesize after touchend
+      // (since preventDefault was not called for this touchstart).
+      el.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], changedTouches: [touch] }));
+      el.click();
+    }, [ux, uy]);
+
+    await page.waitForTimeout(1500);
+
+    // The card should no longer be done.
+    await expect(card).not.toHaveClass(/chore-card--done/);
+    await expect(card).toHaveAttribute('data-action', 'log-chore');
+  });
+
   test('done chore shows check-overlay in day view', async ({ page }) => {
     await setupWithScheduledChore(page);
 

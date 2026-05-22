@@ -49,6 +49,7 @@ type Store interface {
 	RemoveMember(ctx context.Context, householdID, userID int64) error
 	UpdateMemberRole(ctx context.Context, householdID, userID int64, role string) error
 	GetMembership(ctx context.Context, userID int64) (int64, string, error)
+	GetHouseholdByInviteCode(ctx context.Context, code string) (Household, error)
 	CreateInvite(ctx context.Context, householdID, createdBy int64, code string, maxUses int) (Invite, error)
 	GetInviteByCode(ctx context.Context, code string) (Invite, error)
 	GetInvites(ctx context.Context, householdID int64) ([]Invite, error)

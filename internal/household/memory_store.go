@@ -169,6 +169,17 @@ func (s *MemoryStore) GetMembership(_ context.Context, userID int64) (int64, str
 	return 0, "", ErrNotFound
 }
 
+func (s *MemoryStore) GetHouseholdByInviteCode(_ context.Context, code string) (Household, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, hh := range s.households {
+		if hh.InviteCode == code {
+			return hh, nil
+		}
+	}
+	return Household{}, ErrInviteNotFound
+}
+
 func (s *MemoryStore) CreateInvite(_ context.Context, householdID, createdBy int64, code string, maxUses int) (Invite, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -45,9 +45,7 @@ async function setupWithChores(page) {
 
 /**
  * Simulates a long-press (≥500 ms) on a locator by holding mousedown, then
- * releasing.  Matches the 500 ms threshold in app.js.  Also dispatches a
- * synthetic click to consume the `longPressJustFired` guard so subsequent
- * clicks on sheet buttons are not accidentally suppressed.
+ * releasing.  Matches the 500 ms threshold in app.js.
  */
 async function longPress(page, locator) {
   await locator.scrollIntoViewIfNeeded();
@@ -58,14 +56,6 @@ async function longPress(page, locator) {
   await page.mouse.down();
   await page.waitForTimeout(650); // just over the 500 ms threshold
   await page.mouse.up();
-  // Consume the longPressJustFired guard so the next real click works.
-  await page.evaluate(([cx, cy]) => {
-    const el = document.elementFromPoint(cx, cy);
-    if (el && el.dataset.action !== 'close-sheet') {
-      el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    }
-  }, [x, y]);
-  await page.waitForTimeout(50);
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
@@ -139,6 +129,70 @@ test.describe('Log from time slot', () => {
     await page.reload();
     await page.waitForSelector('.cal-date', { timeout: 15000 });
     await expect(page.locator('.day-hour-grid .chore-card')).toHaveCount(0);
+  });
+
+  test('touch long-press on sheet chore item then tap Log logs the chore in that slot', async ({ page }) => {
+    // Regression: touch long-press on a .sheet-chore-item must open the log
+    // sheet and tapping "Log" inside .bottom-sheet must work even when
+    // longPressJustFired is true (the guard must let .bottom-sheet clicks
+    // through).
+    await setupWithChores(page);
+
+    // Open the 2 PM pick-chore sheet.
+    await page.locator('[data-drop-hour="14"]').click();
+    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
+
+    // Get position of first sheet chore item.
+    const choreItem = page.locator('.sheet-chore-item').first();
+    const choreName = await choreItem.locator('.chore-name').innerText();
+    await choreItem.scrollIntoViewIfNeeded();
+    const box = await choreItem.boundingBox();
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+
+    // Dispatch a raw touch long-press (touchstart → wait 650 ms → touchend).
+    // This exercises the touchstart e.preventDefault() path and the
+    // longPressJustFired guard in app.js for .sheet-chore-item targets.
+    await page.evaluate(([x, y]) => {
+      const el = document.elementFromPoint(x, y);
+      const touch = new Touch({ identifier: 1, target: el, clientX: x, clientY: y, pageX: x, pageY: y });
+      el.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [touch], changedTouches: [touch] }));
+    }, [cx, cy]);
+
+    await page.waitForTimeout(650); // exceed the 500 ms long-press threshold
+
+    await page.evaluate(([x, y]) => {
+      const touch = new Touch({ identifier: 1, target: document.body, clientX: x, clientY: y, pageX: x, pageY: y });
+      document.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], changedTouches: [touch] }));
+    }, [cx, cy]);
+
+    // Log sheet must open with "Log" (save-log) button and notes field.
+    await expect(page.locator('[data-action="save-log"]')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('#log-note')).toBeVisible();
+
+    // Simulate a touch tap + browser-synthesised click on the "Log" button.
+    // The button is inside .bottom-sheet so the longPressJustFired guard must
+    // let it through.
+    const saveBtn = page.locator('[data-action="save-log"]');
+    const saveBox = await saveBtn.boundingBox();
+    const sx = saveBox.x + saveBox.width / 2;
+    const sy = saveBox.y + saveBox.height / 2;
+    await page.evaluate(([x, y]) => {
+      const el = document.elementFromPoint(x, y);
+      const touch = new Touch({ identifier: 2, target: el, clientX: x, clientY: y, pageX: x, pageY: y });
+      el.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [touch], changedTouches: [touch] }));
+      el.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], changedTouches: [touch] }));
+      el.click();
+    }, [sx, sy]);
+
+    await page.waitForTimeout(1500);
+
+    // The completed chore must appear as a done card in the 2 PM hour row.
+    const slotCards = page.locator('[data-drop-hour="14"] .chore-card');
+    await expect(slotCards).toHaveCount(1);
+    await expect(slotCards.first()).toHaveClass(/chore-card--done/);
+    await expect(slotCards.first().locator('.chore-name')).toContainText(choreName);
   });
 
   test('logging from hour 9 slot places the card in the 9 AM row, not 2 PM', async ({ page }) => {

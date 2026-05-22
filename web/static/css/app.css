@@ -491,6 +491,11 @@ input:focus, select:focus, textarea:focus {
   cursor: pointer;
   transition: transform 0.15s, opacity 0.15s;
   overflow: hidden;
+  /* Prevent iOS text-selection loupe and copy/define callout on long press */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .chore-card:active { transform: scale(0.97); }
@@ -734,6 +739,11 @@ input:focus, select:focus, textarea:focus {
   gap: 4px;
   cursor: pointer;
   min-height: 48px;
+  /* Div cells (not <button>) need these explicitly for iOS */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .day-hour-cell.drop-target {
@@ -872,6 +882,11 @@ input:focus, select:focus, textarea:focus {
   min-height: 48px;
   min-width: 0;
   overflow: hidden;
+  /* Div cells (not <button>) need these explicitly for iOS */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .week-cell.drop-target {
@@ -1208,6 +1223,10 @@ input:focus, select:focus, textarea:focus {
   min-height: 56px;
   width: 100%;
   transition: background 0.15s;
+  /* Prevent iOS text-selection loupe and copy/define callout on long press */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .sheet-chore-item:hover,
@@ -1411,4 +1430,19 @@ input:focus, select:focus, textarea:focus {
   .bottom-sheet {
     box-shadow: 0 -4px 24px rgba(0,0,0,0.55);
   }
+}
+
+.invite-link-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.invite-link-url {
+  font-size: 0.75rem;
+  word-break: break-all;
+  flex: 1;
+  min-width: 0;
 }

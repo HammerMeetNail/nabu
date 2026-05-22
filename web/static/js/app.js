@@ -18,7 +18,7 @@ import {
   renderForgotPasswordView,
   renderResetPasswordView,
 } from "./auth.js";
-import { loadHousehold, createHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, renderHouseholdView } from "./household.js";
+import { loadHousehold, createHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, renderHouseholdView, renderJoinView } from "./household.js?v=2";
 import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
 import { renderStatsView, loadOverview } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
@@ -107,6 +107,21 @@ export function render(root) {
     const url = new URL(window.location.href);
     const token = url.searchParams.get("token");
     html = renderResetPasswordView(token);
+  } else if (route.startsWith("/join")) {
+    const code = new URL(window.location.href).searchParams.get("code") || state._pendingInviteCode;
+    if (code) state._pendingInviteCode = code;
+    if (!state.user) {
+      html = renderJoinView(code);
+    } else if (!state.household && code) {
+      html = `<div class="auth-card"><p class="text-center">Joining household…</p></div>`;
+      if (!state._joinAttempted) {
+        state._joinAttempted = true;
+        doJoinWithCode(code);
+      }
+    } else {
+      state.currentRoute = "/";
+      html = renderTodayView();
+    }
   } else if (!state.user) {
     switch (route) {
       case "/register":
@@ -373,6 +388,10 @@ async function doLogin(form) {
     state.user = data.user;
     state.currentRoute = "/";
     await reloadAfterAuth();
+    if (state._pendingInviteCode && !state.household) {
+      await doJoinWithCode(state._pendingInviteCode);
+      return;
+    }
     const app = document.querySelector("#app");
     if (app) render(app);
   } else {
@@ -407,6 +426,10 @@ async function doRegister(form) {
     state.user = data.user;
     state.currentRoute = "/";
     await reloadAfterAuth();
+    if (state._pendingInviteCode && !state.household) {
+      await doJoinWithCode(state._pendingInviteCode);
+      return;
+    }
     const app = document.querySelector("#app");
     if (app) render(app);
   } else {
@@ -458,6 +481,20 @@ async function verifyEmail(token) {
   });
 }
 
+async function doJoinWithCode(code) {
+  try {
+    const data = await joinHousehold(code);
+    if (data.household) {
+      state._pendingInviteCode = null;
+      state.currentRoute = "/";
+      await Promise.all([loadHouseholdData(), loadChoreData(), loadTodayData()]);
+    }
+  } catch {}
+  state._joinAttempted = false;
+  const app = document.querySelector("#app");
+  if (app) render(app);
+}
+
 async function consumeMagicLink(token) {
   try {
     const csrfToken = document.cookie.match(/(?:^|;\s*)choresy_csrf=([^;]*)/)?.[1] || "";
@@ -497,7 +534,14 @@ export async function init() {
     const navEl = e.target.closest("[data-nav]");
     if (navEl) e.preventDefault();
 
-    if (longPressJustFired) { longPressJustFired = false; return; }
+    // Only swallow the residual click on the card / cell that was long-pressed.
+    // Sheet buttons (e.g. the "Log" save button) are inside .bottom-sheet and
+    // must always be processed, even if the user taps within the 50 ms grace
+    // period after lifting their finger from the long-press.
+    if (longPressJustFired) {
+      longPressJustFired = false;
+      if (!e.target.closest(".bottom-sheet")) return;
+    }
     const actionEl = e.target.closest("[data-action]");
 
     // data-nav SPA navigation: check first so it works without data-action
@@ -564,11 +608,26 @@ export async function init() {
         e.preventDefault();
         createInvite().then((data) => {
           if (data.invite) {
-            showToast("Invite created: " + data.invite.code, "info");
+            const url = `${window.location.origin}/join?code=${data.invite.code}`;
+            state.invites = [...(state.invites || []), data.invite];
+            navigator.clipboard.writeText(url).then(
+              () => showToast("Invite link copied to clipboard!", "info"),
+              () => showToast("Invite link: " + url, "info")
+            );
             render(app);
           }
         });
         break;
+      case "copy-invite-link": {
+        e.preventDefault();
+        const code = actionEl.dataset.code;
+        const url = `${window.location.origin}/join?code=${code}`;
+        navigator.clipboard.writeText(url).then(
+          () => showToast("Invite link copied!", "info"),
+          () => showToast(`Link: ${url}`, "info")
+        );
+        break;
+      }
       case "delete-invite":
         e.preventDefault();
         deleteInvite(parseInt(actionEl.dataset.inviteId)).then(() => render(app));
@@ -1031,10 +1090,18 @@ export async function init() {
     }
   });
 
+  // { passive: false } is required to call e.preventDefault() — without it,
+  // Chrome (and Android WebView) treats document-level touch listeners as
+  // passive by default (since Chrome 56) and silently ignores preventDefault.
+  // iOS Safari also adopted this default.  We need preventDefault to stop the
+  // text-selection loupe / copy callout during the long-press gesture and to
+  // suppress the synthesised click iOS fires after touchend (we fire our own
+  // click for short taps in the touchend handler below).
   document.addEventListener("touchstart", e => {
     const card = e.target.closest("[data-drag-chore-id]");
     const item = !card && e.target.closest(".sheet-chore-item");
     if (!card && !item) return;
+    e.preventDefault();
     const t = e.touches[0];
     pressStartX = t.clientX;
     pressStartY = t.clientY;
@@ -1045,11 +1112,28 @@ export async function init() {
       if (card) { card.classList.remove("chore-card--pressing"); openLogSheet(card); }
       if (item) { item.classList.remove("sheet-chore-item--pressing"); openLogSheetFromItem(item); }
     }, 500);
-  }, { passive: true });
+  }, { passive: false });
   document.addEventListener("touchend", e => {
+    const fired = longPressJustFired;
     cancelPress();
-    if (longPressJustFired) {
+    if (fired) {
+      // Long press was handled; allow a short grace period so any stray
+      // synthesised event (on browsers that still fire one) is swallowed.
       setTimeout(() => { longPressJustFired = false; }, 50);
+      return;
+    }
+    // We called preventDefault() in touchstart, so iOS will not synthesise a
+    // click.  For a short tap (finger barely moved) on a card or sheet item,
+    // fire a click manually so the existing data-action handler processes it.
+    const card = e.target.closest("[data-drag-chore-id]");
+    const item = !card && e.target.closest(".sheet-chore-item");
+    if (!card && !item) return;
+    const t = e.changedTouches[0];
+    if (!t) return;
+    const dx = t.clientX - pressStartX;
+    const dy = t.clientY - pressStartY;
+    if (Math.hypot(dx, dy) <= 8) {
+      (e.target.closest("[data-action]") || e.target).click();
     }
   });
   document.addEventListener("touchmove", e => {

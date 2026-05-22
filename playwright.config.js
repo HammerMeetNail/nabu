@@ -14,9 +14,10 @@ export default defineConfig({
       name: 'chromium',
       use: {
         browserName: 'chromium',
+        hasTouch: true,
         ...(process.env.CHROMIUM_PATH
           ? { executablePath: process.env.CHROMIUM_PATH }
-          : {}),
+          : { channel: 'chrome' }),
       },
     },
   ],

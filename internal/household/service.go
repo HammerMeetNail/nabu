@@ -108,8 +108,30 @@ func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode st
 	}
 
 	invite, err := s.store.GetInviteByCode(ctx, inviteCode)
-	if err != nil {
+	if err != nil && err != ErrInviteNotFound {
 		return Household{}, err
+	}
+
+	// If the code wasn't found in the invites table, try the permanent household invite code.
+	if err == ErrInviteNotFound {
+		hh, hhErr := s.store.GetHouseholdByInviteCode(ctx, inviteCode)
+		if hhErr != nil {
+			return Household{}, ErrInviteNotFound
+		}
+		members, membErr := s.store.GetMembers(ctx, hh.ID)
+		if membErr != nil {
+			return Household{}, membErr
+		}
+		if len(members) >= MaxMembersPerHousehold {
+			return Household{}, fmt.Errorf("household is full")
+		}
+		if addErr := s.store.AddMember(ctx, hh.ID, userID, RoleMember); addErr != nil {
+			return Household{}, addErr
+		}
+		if s.authStore != nil {
+			_ = s.authStore.SetUserHousehold(ctx, userID, hh.ID)
+		}
+		return hh, nil
 	}
 
 	members, err := s.store.GetMembers(ctx, invite.HouseholdID)
