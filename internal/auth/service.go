@@ -354,8 +354,8 @@ func (s *Service) CompleteGoogleOIDC(ctx context.Context, code, expectedNonce st
 	}
 
 	existingUser, existingErr := s.store.FindUserByEmail(ctx, identity.Email)
-	switch {
-	case existingErr == nil:
+	switch existingErr {
+	case nil:
 		session, err := s.rotatedSession(ctx, existingUser.ID)
 		if err != nil {
 			return User{}, Session{}, err

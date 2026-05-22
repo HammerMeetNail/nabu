@@ -21,7 +21,7 @@ type DateOnly struct {
 }
 
 func (d DateOnly) MarshalJSON() ([]byte, error) {
-	if d.Time.IsZero() {
+	if d.IsZero() {
 		return []byte("null"), nil
 	}
 	return json.Marshal(d.Time.UTC().Format("2006-01-02"))

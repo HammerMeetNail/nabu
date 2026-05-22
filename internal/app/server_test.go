@@ -108,7 +108,9 @@ func TestBuildServerWithoutDBReturnsInMemory(t *testing.T) {
 	if closer == nil {
 		t.Fatal("expected non-nil closer")
 	}
-	closer.Close()
+	if err := closer.Close(); err != nil {
+		t.Fatalf("closer.Close: %v", err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rec := httptest.NewRecorder()

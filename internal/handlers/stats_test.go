@@ -35,10 +35,12 @@ func setupStatsTest(t *testing.T) (*StatsHandler, string, *auth.Service) {
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"alice@example.com", "password123",
 	)
-	householdService.CreateHousehold(
+	if _, err := householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"My Home", user.ID,
-	)
+	); err != nil {
+		t.Fatalf("CreateHousehold: %v", err)
+	}
 
 	return handler, session.ID, authService
 }

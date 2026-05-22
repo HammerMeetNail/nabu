@@ -32,10 +32,12 @@ func setupLogTest(t *testing.T) (*LogHandler, string, *auth.Service) {
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"alice@example.com", "password123",
 	)
-	householdService.CreateHousehold(
+	if _, err := householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"My Home", user.ID,
-	)
+	); err != nil {
+		t.Fatalf("CreateHousehold: %v", err)
+	}
 
 	return handler, session.ID, authService
 }
@@ -47,7 +49,9 @@ func TestLogCreate(t *testing.T) {
 	choreStore := chore.NewMemoryStore()
 	choreService := chore.NewService(choreStore)
 	seedReq := withUser(httptest.NewRequest(http.MethodPost, "/", nil), authService, sessionID)
-	choreService.SeedDefaultChores(seedReq.Context(), 1)
+	if err := choreService.SeedDefaultChores(seedReq.Context(), 1); err != nil {
+		t.Fatalf("SeedDefaultChores: %v", err)
+	}
 
 	req := withUser(httptest.NewRequest(http.MethodPost, "/api/logs", strings.NewReader(
 		`{"choreId":1,"note":"done"}`,
