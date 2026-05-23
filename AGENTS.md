@@ -8,6 +8,24 @@ Use the Task tool to launch subagents for codebase exploration, CI babysitting, 
 
 After pushing a `v*` tag, always launch a subagent to watch CI to completion and verify production. Do not wait for the user to ask.
 
+## Git worktrees
+
+Always use a git worktree for any code change — never work directly in the main checkout.
+
+```bash
+# Create a worktree for the task (use a short descriptive name)
+git worktree add ../choresy-<name> -b <name>
+
+# Work in the worktree
+cd ../choresy-<name>
+
+# When done (after merging/deploying), remove it
+git worktree remove ../choresy-<name>
+git branch -d <name>
+```
+
+The main checkout at the workspace root stays clean and is only used for reference. All edits, commits, and test runs happen inside the worktree.
+
 ## Commands
 
 | Task | Command |
