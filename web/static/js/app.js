@@ -1267,16 +1267,22 @@ export async function init() {
   // { passive: false } is required to call e.preventDefault() — without it,
   // Chrome (and Android WebView) treats document-level touch listeners as
   // passive by default (since Chrome 56) and silently ignores preventDefault.
-  // iOS Safari also adopted this default.  We need preventDefault to stop the
-  // text-selection loupe / copy callout during the long-press gesture and to
-  // suppress the synthesised click iOS fires after touchend (we fire our own
-  // click for short taps in the touchend handler below).
+  // iOS Safari also adopted this default.
+  //
+  // For bottom-sheet cards/items we still preventDefault() immediately so that
+  // their scroll-contained sheet doesn't fight the outer page scroll.
+  //
+  // For home-grid cards in normal mode we deliberately skip preventDefault()
+  // here so the browser can start a vertical scroll freely.  We call
+  // preventDefault() in touchend instead to suppress the synthesised click
+  // (we fire our own for short taps).  In jiggle mode we must consume the
+  // whole sequence so the card drag doesn't become a page scroll.
   document.addEventListener("touchstart", e => {
     const card = e.target.closest("[data-drag-chore-id]");
     const item = !card && e.target.closest(".sheet-chore-item");
     const homeCard = !card && !item && e.target.closest(".home-chore-card");
     if (!card && !item && !homeCard) return;
-    e.preventDefault();
+    if (card || item || (homeCard && state.jiggleMode)) e.preventDefault();
     const t = e.touches[0];
     pressStartX = t.clientX;
     pressStartY = t.clientY;
@@ -1330,18 +1336,26 @@ export async function init() {
 
     const fired = longPressJustFired;
     cancelPress();
+
+    // Detect the touched element early so we can suppress the browser's
+    // synthesised click for home cards in all cases (tap, long-press, scroll).
+    // For card/item the touchstart already called preventDefault(), so the
+    // browser won't synthesise a click and we don't need to here.
+    const card = e.target.closest("[data-drag-chore-id]");
+    const item = !card && e.target.closest(".sheet-chore-item");
+    const homeCard = !card && !item && e.target.closest(".home-chore-card");
+    // touchstart skipped preventDefault() for normal-mode home cards so the
+    // browser could scroll; prevent the synthesised mouse events here instead.
+    if (homeCard) e.preventDefault();
+
     if (fired) {
       // Long press was handled; allow a short grace period so any stray
       // synthesised event (on browsers that still fire one) is swallowed.
       setTimeout(() => { longPressJustFired = false; }, 50);
       return;
     }
-    // We called preventDefault() in touchstart, so iOS will not synthesise a
-    // click.  For a short tap (finger barely moved) on a card or sheet item,
-    // fire a click manually so the existing data-action handler processes it.
-    const card = e.target.closest("[data-drag-chore-id]");
-    const item = !card && e.target.closest(".sheet-chore-item");
-    const homeCard = !card && !item && e.target.closest(".home-chore-card");
+    // For a short tap (finger barely moved) fire a click manually so the
+    // existing data-action handler processes it.
     if (!card && !item && !homeCard) return;
     const t = e.changedTouches[0];
     if (!t) return;
