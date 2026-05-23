@@ -12,14 +12,6 @@ import (
 	"github.com/dave/choresy/internal/auth"
 )
 
-type fakeSessionService struct {
-	authenticate func(ctx context.Context, token string) (auth.User, error)
-}
-
-func (f *fakeSessionService) Authenticate(ctx context.Context, token string) (auth.User, error) {
-	return f.authenticate(ctx, token)
-}
-
 func TestCSRFMiddlewareRejectsMissingHeader(t *testing.T) {
 	handler := CSRF("csrf")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)

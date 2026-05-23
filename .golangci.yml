@@ -1,0 +1,14 @@
+version: "2"
+
+linters:
+  exclusions:
+    rules:
+      # defer X.Close() is idiomatic Go cleanup; the returned error is not
+      # actionable at the call site since the resource is already being released.
+      - linters: [errcheck]
+        source: "defer .*\\.Close\\(\\)"
+
+      # server.go: newOIDCProvider is defined but not yet wired into BuildServer;
+      # the function is complete and will be connected in an upcoming change.
+      - path: internal/app/server\.go
+        linters: [unused]

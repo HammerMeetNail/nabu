@@ -62,7 +62,7 @@ func (s *MemoryStore) GetUserByEmail(_ context.Context, email string) (User, str
 	if !ok {
 		return User{}, "", ErrUserNotFound
 	}
-	pass, ok := s.passwordsByID[user.ID]
+	pass := s.passwordsByID[user.ID]
 	return user, pass, nil
 }
 

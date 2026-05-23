@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/dave/choresy/internal/middleware"
@@ -162,9 +161,4 @@ func (h *StatsHandler) Overview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"overview": overview})
-}
-
-func parseIntQuery(r *http.Request, key string) int {
-	v, _ := strconv.Atoi(r.URL.Query().Get(key))
-	return v
 }

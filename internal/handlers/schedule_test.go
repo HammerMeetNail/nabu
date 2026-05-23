@@ -34,10 +34,12 @@ func setupScheduleTest(t *testing.T) (*ScheduleHandler, string, *auth.Service) {
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"alice@example.com", "password123",
 	)
-	householdService.CreateHousehold(
+	if _, err := householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"My Home", user.ID,
-	)
+	); err != nil {
+		t.Fatalf("CreateHousehold: %v", err)
+	}
 	return handler, session.ID, authService
 }
 
@@ -142,7 +144,9 @@ func TestScheduleUpdateDelete(t *testing.T) {
 	}
 
 	var createResp map[string]any
-	json.Unmarshal(createRec.Body.Bytes(), &createResp)
+	if err := json.Unmarshal(createRec.Body.Bytes(), &createResp); err != nil {
+		t.Fatalf("json.Unmarshal: %v", err)
+	}
 	sched := createResp["schedule"].(map[string]any)
 	id := int64(sched["id"].(float64))
 
@@ -152,7 +156,7 @@ func TestScheduleUpdateDelete(t *testing.T) {
 			strings.NewReader(`{"frequencyType":"daily","timePeriod":"morning","isActive":true}`)),
 		authService, sessionID,
 	)
-	updateReq.SetPathValue("id", strings.TrimSpace(strings.Replace(strings.Repeat("0", 10)+string(rune('0'+id)), "", "", -1)))
+	updateReq.SetPathValue("id", strings.TrimSpace(strings.ReplaceAll(strings.Repeat("0", 10)+string(rune('0'+id)), "", "")))
 	// Set path value properly
 	updateReq2 := withUser(
 		httptest.NewRequest(http.MethodPatch, "/api/schedules/1",
