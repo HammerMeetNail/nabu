@@ -24,6 +24,7 @@ import (
 	"github.com/dave/choresy/internal/middleware"
 	"github.com/dave/choresy/internal/stats"
 	"github.com/dave/choresy/internal/userprefs"
+	"github.com/dave/choresy/internal/version"
 	webassets "github.com/dave/choresy/web"
 )
 
@@ -289,8 +290,10 @@ var indexTmpl = template.Must(template.ParseFS(webassets.Assets, "templates/inde
 func renderIndex(w http.ResponseWriter, cfg config.Config) {
 	data := struct {
 		AppName string
+		Version string
 	}{
 		AppName: "Choresy",
+		Version: version.Version,
 	}
 	if err := indexTmpl.Execute(w, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

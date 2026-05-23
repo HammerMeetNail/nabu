@@ -13,8 +13,13 @@ RUN go mod download
 # Copy source code
 COPY . .
 
+# Build version arg (injected by CI from git tag, e.g. "0.1.1")
+ARG BUILD_VERSION=dev
+
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux GOCACHE=/tmp/go-build go build -ldflags="-w -s" -o choresy ./cmd/server \
+RUN CGO_ENABLED=0 GOOS=linux GOCACHE=/tmp/go-build go build \
+    -ldflags="-w -s -X 'github.com/dave/choresy/internal/version.Version=${BUILD_VERSION}'" \
+    -o choresy ./cmd/server \
     && rm -rf /tmp/go-build
 
 # Runtime stage
