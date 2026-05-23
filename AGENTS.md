@@ -13,14 +13,14 @@ After pushing a `v*` tag, always launch a subagent to watch CI to completion and
 Always use a git worktree for any code change — never work directly in the main checkout.
 
 ```bash
-# Create a worktree for the task (use a short descriptive name)
-git worktree add ../choresy-<name> -b <name>
+# Create a worktree inside the repo directory (use a short descriptive name)
+git worktree add worktrees/<name> -b <name>
 
 # Work in the worktree
-cd ../choresy-<name>
+cd worktrees/<name>
 
 # When done (after merging/deploying), remove it
-git worktree remove ../choresy-<name>
+git worktree remove worktrees/<name>
 git branch -d <name>
 ```
 
