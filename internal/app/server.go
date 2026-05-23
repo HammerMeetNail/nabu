@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
 	"html/template"
@@ -8,6 +9,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -230,13 +232,29 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	if err != nil {
 		panic(err)
 	}
+
+	// Pre-process every JS file: inject ?v=VERSION into all relative .js import
+	// paths so that a new deploy busts both the Cloudflare CDN cache and browser
+	// caches for every module, not just app.js itself.
+	versionedJS := buildVersionedJSCache(staticFS, version.Version)
+
 	staticFileServer := http.FileServer(http.FS(staticFS))
 	mux.Handle("/static/", http.StripPrefix("/static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Prevent Cloudflare and browsers from caching JS/CSS; changes
-		// take effect on next page load without requiring a cache purge.
-		p := r.URL.Path
-		if strings.HasSuffix(p, ".js") || strings.HasSuffix(p, ".css") {
-			w.Header().Set("Cache-Control", "no-cache")
+		// Strip query string to get the bare file path.
+		p := strings.SplitN(r.URL.Path, "?", 2)[0]
+		if strings.HasSuffix(p, ".js") {
+			if content, ok := versionedJS[p]; ok {
+				w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+				// no-store prevents Cloudflare and browsers from caching;
+				// versioned import paths mean each deploy gets fresh URLs anyway.
+				w.Header().Set("Cache-Control", "no-store")
+				w.WriteHeader(http.StatusOK)
+				w.Write(content) //nolint:errcheck
+				return
+			}
+		}
+		if strings.HasSuffix(p, ".css") {
+			w.Header().Set("Cache-Control", "no-store")
 		}
 		staticFileServer.ServeHTTP(w, r)
 	})))
@@ -354,4 +372,35 @@ func (a *choreStatsAdapter) ListChores(ctx context.Context, householdID int64) (
 		result[i] = stats.ChoreInfo{ID: c.ID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category}
 	}
 	return result, nil
+}
+
+// buildVersionedJSCache walks all .js files under the given FS, rewrites every
+// relative ES-module import path by appending ?v=<ver>, and returns a map of
+// bare file path (e.g. "js/app.js") → modified content.  This ensures that
+// every deploy produces new import URLs for all modules, busting both the
+// Cloudflare CDN cache and browser caches without requiring any manual
+// cache-purge or per-file query-string management.
+var relativeJSImport = regexp.MustCompile(`(from\s+["'])(\.\/[^"'?#\s]+\.js)(["'])`)
+
+func buildVersionedJSCache(fsys fs.FS, ver string) map[string][]byte {
+	cache := make(map[string][]byte)
+	replacement := []byte("${1}${2}?v=" + ver + "${3}")
+	_ = fs.WalkDir(fsys, "js", func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".js") {
+			return nil
+		}
+		raw, err := fs.ReadFile(fsys, path)
+		if err != nil {
+			return nil
+		}
+		modified := relativeJSImport.ReplaceAll(raw, replacement)
+		// Map key is the URL path segment after /static/ — strip the "js/" prefix
+		// so "js/app.js" → "js/app.js" (matches r.URL.Path after StripPrefix).
+		cache[path] = modified
+		if !bytes.Equal(raw, modified) {
+			log.Printf("versioned JS imports in %s (%d replacements)", path, bytes.Count(modified, []byte("?v="+ver)))
+		}
+		return nil
+	})
+	return cache
 }
