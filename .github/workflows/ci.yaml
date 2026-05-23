@@ -17,7 +17,7 @@ on:
 env:
   GO_VERSION: "1.25"
   REGISTRY: quay.io
-  IMAGE_NAME: dave/choresy
+  IMAGE_NAME: choresy/choresy
 
 jobs:
   changes:
@@ -307,12 +307,12 @@ jobs:
             ## Container Image
 
             ```bash
-            podman pull quay.io/dave/choresy:${{ steps.version.outputs.version }}
+            podman pull quay.io/choresy/choresy:${{ steps.version.outputs.version }}
             ```
 
             **Available tags:**
-            - `quay.io/dave/choresy:${{ steps.version.outputs.version }}`
-            - `quay.io/dave/choresy:latest`
+            - `quay.io/choresy/choresy:${{ steps.version.outputs.version }}`
+            - `quay.io/choresy/choresy:latest`
 
   deploy:
     name: Deploy to Production
