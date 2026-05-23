@@ -24,7 +24,7 @@ services:
     restart: unless-stopped
 
   postgres:
-    image: docker.io/library/postgres:17-alpine
+    image: docker.io/library/postgres:16-alpine
     environment:
       - POSTGRES_USER=choresy
       - POSTGRES_PASSWORD=${DB_PASSWORD}
