@@ -2,6 +2,12 @@
 
 This file provides guidance to an LLM when working with code in this repository.
 
+## Agent model setup
+
+Use the Task tool to launch subagents for codebase exploration, CI babysitting, production verification, and other parallelisable work. Subagents are configured to use a less capable, cheaper model than the primary session — this is intentional.
+
+After pushing a `v*` tag, always launch a subagent to watch CI to completion and verify production. Do not wait for the user to ask.
+
 ## Commands
 
 | Task | Command |
@@ -123,6 +129,53 @@ If imports still show the old version number, the binary was not rebuilt with th
 curl -s https://choresy.yearofbingo.com/ | grep 'app.js'
 # Expected: <script ... src="/static/js/app.js?v=0.1.X" ...>
 ```
+
+## CI / Deploy babysitting
+
+After pushing a `v*` tag, an agent should monitor the pipeline to completion and verify production. Use this process:
+
+### 1. Watch the CI run
+
+```bash
+# Find the run ID for the tag
+gh run list --limit 5
+
+# Stream logs until the run completes (blocks until done)
+gh run watch <run-id>
+
+# If a job fails, check which step failed
+gh run view <run-id> --json jobs \
+  --jq '.jobs[] | {name: .name, conclusion: .conclusion, steps: [.steps[] | select(.conclusion == "failure") | .name]}'
+
+# Re-run only failed jobs (for transient infra errors)
+gh run rerun <run-id> --failed
+```
+
+### 2. Distinguish transient vs. real failures
+
+- If **only** the checkout/setup step failed and all test jobs passed → transient GitHub Actions infra error → re-run with `gh run rerun <run-id> --failed`.
+- If a test job (Go Tests, JS Tests, E2E, Lint) failed → real failure → read the full log, fix the code, commit, re-tag, and push a new `v*` tag.
+
+### 3. Verify production after deploy
+
+Once the `Deploy to Production` job goes green:
+
+```bash
+# Confirm versioned imports carry the new tag
+curl -s https://choresy.yearofbingo.com/static/js/calendar.js | grep "^import"
+# Expected: import { ... } from "./utils.js?v=0.1.X";
+
+# Confirm cache headers
+curl -sI https://choresy.yearofbingo.com/static/js/app.js | grep -i cache
+# Expected: cache-control: no-store
+#           cf-cache-status: BYPASS
+
+# Confirm correct version in index page
+curl -s https://choresy.yearofbingo.com/ | grep 'app.js'
+# Expected: src="/static/js/app.js?v=0.1.X"
+```
+
+If `cf-cache-status` is `HIT` or imports show the old version, the deploy did not take — investigate `server.go` and the CI build logs.
 
 ## Style
 
