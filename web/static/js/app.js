@@ -916,7 +916,10 @@ export async function init() {
         const indicators = [...document.querySelectorAll('.log-chip--on')].map(el => el.dataset.label);
         const whenInput = document.querySelector('#home-log-when');
         const completedAt = whenInput?.value ? new Date(whenInput.value).toISOString() : null;
-        logChore(choreId, note, "", indicators, null, completedAt).then(async (data) => {
+        // Extract the hour from the selected time so the calendar places the
+        // log in the correct time slot instead of the catch-all Anytime row.
+        const slotHour = whenInput?.value ? new Date(whenInput.value).getHours() : null;
+        logChore(choreId, note, "", indicators, slotHour, completedAt).then(async (data) => {
           const logId = data?.log?.id;
           state.activeSheet     = null;
           state.activeSheetData = {};
