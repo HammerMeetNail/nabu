@@ -134,11 +134,15 @@ export function renderHistoryView(state) {
       <p class="text-secondary">No completed chores yet this week.</p>
     </div>`;
   }
-  const items = logs.map(l => `<li class="member-item">
+  const items = logs.map(l => {
+    const chore = (state.chores || []).find(c => c.id === l.choreId);
+    const choreName = chore ? `${chore.icon} ${escapeHTML(chore.name)}` : `Chore #${l.choreId}`;
+    return `<li class="member-item">
     <span>${l.completedAt ? new Date(l.completedAt).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" }) : ''}</span>
-    <span>Chore #${l.choreId}</span>
+    <span>${choreName}</span>
     ${l.note ? `<span class="text-secondary">${escapeHTML(l.note)}</span>` : ''}
-  </li>`).join("");
+  </li>`;
+  }).join("");
   return `<div class="history-view">
     <h2>History</h2>
     <ul class="member-list">${items}</ul>
