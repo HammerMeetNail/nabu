@@ -367,7 +367,7 @@ jobs:
 
           # Substitute image digest into compose file
           if [ -n "${IMAGE_DIGEST}" ]; then
-            sed "s|image: quay.io/dave/choresy:latest|# tag: ${IMAGE_TAG}\n    image: quay.io/dave/choresy@${IMAGE_DIGEST}|" \
+            sed "s|image: quay.io/choresy/choresy:latest|# tag: ${IMAGE_TAG}\n    image: quay.io/choresy/choresy@${IMAGE_DIGEST}|" \
               compose.server.yaml > compose.server.deploy.yaml
           else
             cp compose.server.yaml compose.server.deploy.yaml
