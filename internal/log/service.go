@@ -20,16 +20,21 @@ func NewService(store Store) *Service {
 	}
 }
 
-func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int64, note string, indicators []string, date *time.Time, slotHour *int) (ChoreLog, error) {
+func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int64, note string, indicators []string, date *time.Time, slotHour *int, completedAt *time.Time) (ChoreLog, error) {
 	var day time.Time
-	var completedAt time.Time
-	if date != nil {
+	var logCompletedAt time.Time
+	if completedAt != nil {
+		// Caller supplied an exact timestamp — use its date for dedup and the
+		// timestamp itself as the stored completion time.
+		logCompletedAt = completedAt.UTC()
+		day = time.Date(logCompletedAt.Year(), logCompletedAt.Month(), logCompletedAt.Day(), 0, 0, 0, 0, time.UTC)
+	} else if date != nil {
 		day = time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
 		// Use noon UTC so the timestamp falls clearly within the requested day.
-		completedAt = time.Date(date.Year(), date.Month(), date.Day(), 12, 0, 0, 0, time.UTC)
+		logCompletedAt = time.Date(date.Year(), date.Month(), date.Day(), 12, 0, 0, 0, time.UTC)
 	} else {
 		day = s.today()
-		completedAt = s.now()
+		logCompletedAt = s.now()
 	}
 	existing, _ := s.store.FindLog(ctx, householdID, choreID, day)
 	if existing != nil {
@@ -43,7 +48,7 @@ func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int
 		HouseholdID: householdID,
 		UserID:      userID,
 		ChoreID:     choreID,
-		CompletedAt: completedAt,
+		CompletedAt: logCompletedAt,
 		Note:        note,
 		Indicators:  indicators,
 		SlotHour:    slotHour,
@@ -118,4 +123,8 @@ func (s *Service) DailySummaryFromLogs(date time.Time, logs []ChoreLog) DailySum
 func (s *Service) today() time.Time {
 	now := s.now()
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+func (s *Service) LatestPerChore(ctx context.Context, householdID int64) (map[int64]ChoreLog, error) {
+	return s.store.LatestPerChore(ctx, householdID)
 }

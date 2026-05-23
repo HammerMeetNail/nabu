@@ -38,6 +38,7 @@ async function setupWithChores(page) {
   });
 
   await page.reload();
+  await page.click('[data-nav=\"calendar\"]');
   await page.waitForSelector('.cal-date', { timeout: 15000 });
 
   return { email, csrf };
@@ -127,6 +128,7 @@ test.describe('Log from time slot', () => {
     // Reload and confirm the chore does not appear in any hour row
     // (it has no schedule and no slotHour, so the calendar does not show it).
     await page.reload();
+    await page.click('[data-nav=\"calendar\"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
     await expect(page.locator('.day-hour-grid .chore-card')).toHaveCount(0);
   });

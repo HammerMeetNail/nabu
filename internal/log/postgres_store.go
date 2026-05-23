@@ -102,6 +102,37 @@ func (s *PostgresStore) ListLogsRange(ctx context.Context, householdID int64, st
 	return s.queryLogs(ctx, householdID, start, end)
 }
 
+func (s *PostgresStore) LatestPerChore(ctx context.Context, householdID int64) (map[int64]ChoreLog, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT DISTINCT ON (chore_id)
+			id, household_id, user_id, chore_id, completed_at,
+			COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at
+		FROM chore_logs
+		WHERE household_id = $1
+		ORDER BY chore_id, completed_at DESC
+	`, householdID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := map[int64]ChoreLog{}
+	for rows.Next() {
+		var l ChoreLog
+		var indJSON string
+		var slotHour sql.NullInt64
+		if err := rows.Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt); err != nil {
+			return nil, err
+		}
+		_ = json.Unmarshal([]byte(indJSON), &l.Indicators)
+		if l.Indicators == nil {
+			l.Indicators = []string{}
+		}
+		l.SlotHour = nullIntToPtr(slotHour)
+		result[l.ChoreID] = l
+	}
+	return result, rows.Err()
+}
+
 func (s *PostgresStore) queryLogs(ctx context.Context, householdID int64, start, end time.Time) ([]ChoreLog, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at FROM chore_logs WHERE household_id = $1 AND completed_at >= $2 AND completed_at < $3 ORDER BY completed_at`, householdID, start, end)
 	if err != nil {

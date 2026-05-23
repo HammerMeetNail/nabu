@@ -26,11 +26,12 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		ChoreID    int64    `json:"choreId"`
-		Note       string   `json:"note"`
-		Indicators []string `json:"indicators"`
-		Date       string   `json:"date"` // optional ISO date "YYYY-MM-DD"; defaults to today
-		Hour       *int     `json:"hour"` // optional calendar slot hour (0-23)
+		ChoreID     int64    `json:"choreId"`
+		Note        string   `json:"note"`
+		Indicators  []string `json:"indicators"`
+		Date        string   `json:"date"`        // optional ISO date "YYYY-MM-DD"; defaults to today
+		Hour        *int     `json:"hour"`        // optional calendar slot hour (0-23)
+		CompletedAt string   `json:"completedAt"` // optional RFC3339 timestamp for backdating
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -47,7 +48,17 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		logDate = &t
 	}
 
-	entry, err := h.service.LogChore(r.Context(), *user.HouseholdID, user.ID, req.ChoreID, req.Note, req.Indicators, logDate, req.Hour)
+	var logCompletedAt *time.Time
+	if req.CompletedAt != "" {
+		t, err := time.Parse(time.RFC3339, req.CompletedAt)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid completedAt format, expected RFC3339")
+			return
+		}
+		logCompletedAt = &t
+	}
+
+	entry, err := h.service.LogChore(r.Context(), *user.HouseholdID, user.ID, req.ChoreID, req.Note, req.Indicators, logDate, req.Hour, logCompletedAt)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
@@ -193,4 +204,18 @@ func (h *LogHandler) Month(w http.ResponseWriter, r *http.Request) {
 func today() time.Time {
 	now := time.Now().UTC()
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+func (h *LogHandler) LatestPerChore(w http.ResponseWriter, r *http.Request) {
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
+		return
+	}
+	result, err := h.service.LatestPerChore(r.Context(), *user.HouseholdID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"latestLogs": result})
 }

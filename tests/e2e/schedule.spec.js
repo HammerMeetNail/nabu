@@ -38,6 +38,7 @@ async function setupWithChores(page) {
 
   await page.reload();
   // Wait for the day view to appear (confirms app fully initialised with chores)
+  await page.click('[data-nav="calendar"]');
   await page.waitForSelector('.cal-date', { timeout: 15000 });
 
   return { email, csrf };
@@ -74,6 +75,7 @@ async function setupWithScheduledChore(page) {
     headers: { 'X-CSRF-Token': csrf },
   });
   await page.reload();
+  await page.click('[data-nav=\"calendar\"]');
   await page.waitForSelector('.cal-date', { timeout: 15000 });
   return { email, csrf };
 }
@@ -457,6 +459,7 @@ test.describe('Pick-chore Bottom Sheet', () => {
     }
 
     await page.reload();
+    await page.click('[data-nav=\"calendar\"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     // Open the 8 AM sheet — all chores should still be visible
@@ -481,6 +484,7 @@ test.describe('Pick-chore Bottom Sheet', () => {
     });
 
     await page.reload();
+    await page.click('[data-nav=\"calendar\"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     // The 9 AM row now has a chore card — clicking the cell centre would hit the
@@ -679,6 +683,7 @@ test.describe('Chore Logging: Week View', () => {
     });
 
     await page.reload();
+    await page.click('[data-nav=\"calendar\"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     // Switch to week view.
@@ -707,6 +712,7 @@ test.describe('Chore Logging: Week View', () => {
     });
 
     await page.reload();
+    await page.click('[data-nav=\"calendar\"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     await page.locator('[data-action="switch-view"][data-view="week"]').click();
@@ -1094,6 +1100,7 @@ test.describe('Long-press edit sheet', () => {
     });
 
     await page.reload();
+    await page.click('[data-nav=\"calendar\"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     // The card should be in the 9 AM row
@@ -1118,6 +1125,7 @@ test.describe('Long-press edit sheet', () => {
     });
 
     await page.reload();
+    await page.click('[data-nav=\"calendar\"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     const wrap = page.locator('.day-hour-row[data-hour="8"] .chore-card-wrap').first();
@@ -1151,6 +1159,7 @@ test.describe('Long-press edit sheet', () => {
     });
 
     await page.reload();
+    await page.click('[data-nav=\"calendar\"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     const wrap = page.locator('.day-hour-row[data-hour="10"] .chore-card-wrap').first();
@@ -1192,6 +1201,7 @@ test.describe('Day View: Multiple chores per hour row', () => {
     ]);
 
     await page.reload();
+    await page.click('[data-nav=\"calendar\"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     // Both compact chip cards should appear inside the 8 AM cell.
@@ -1220,6 +1230,7 @@ test.describe('Day View: Multiple chores per hour row', () => {
     ]);
 
     await page.reload();
+    await page.click('[data-nav=\"calendar\"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     await expect(page.locator('[data-drop-hour="8"] .chore-card')).toHaveCount(1);
@@ -1257,6 +1268,7 @@ test.describe('Day View: Multiple chores per hour row', () => {
     ]);
 
     await page.reload();
+    await page.click('[data-nav=\"calendar\"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     await expect(page.locator('[data-drop-hour="9"] .chore-card')).toHaveCount(2);
@@ -1423,6 +1435,7 @@ test.describe('Frequency selector: pick-chore sheet', () => {
     });
 
     await page.reload();
+    await page.click('[data-nav=\"calendar\"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     // Card must appear in the 10 AM row today.
@@ -1483,6 +1496,7 @@ test.describe('Frequency selector: edit-schedule sheet', () => {
     });
 
     await page.reload();
+    await page.click('[data-nav=\"calendar\"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     // The card is in the 11 AM row only on Mon/Wed.  We may or may not be on one
@@ -1547,6 +1561,7 @@ test.describe('Frequency selector: edit-schedule sheet', () => {
     })).json();
 
     await page.reload();
+    await page.click('[data-nav=\"calendar\"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     const card = page.locator('.day-hour-row[data-hour="12"] .chore-card').first();
@@ -1718,6 +1733,7 @@ test.describe('Frequency selector: every_n_days', () => {
     })).json();
 
     await page.reload();
+    await page.click('[data-nav=\"calendar\"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     const card = page.locator('.day-hour-row[data-hour="12"] .chore-card').first();

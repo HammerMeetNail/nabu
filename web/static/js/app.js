@@ -24,6 +24,7 @@ import { renderStatsView, loadOverview } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
 import { loadPreferences, saveChoreOrder, sortChoresByOrder } from "./preferences.js";
+import { loadLatestLogs, renderHomeView as renderHomeViewGrid, renderHomeLogSheet } from "./home.js";
 
 /**
  * Reads the current frequency settings from a bottom sheet's freq <select>
@@ -77,6 +78,10 @@ let state;
 
 export function render(root) {
   const route = state.currentRoute || window.location.pathname || "/";
+  // Effective route for tab highlighting: unknown/auth-only paths fall back to
+  // home ("/") so the "today" tab is always active when the home grid renders.
+  const knownTabRoutes = ["/", "/today", "/calendar", "/chores", "/history", "/settings", "/stats"];
+  const tabRoute = knownTabRoutes.includes(route) ? route : "/";
   let html = "";
 
   if (route.startsWith("/verify-email")) {
@@ -120,7 +125,7 @@ export function render(root) {
       }
     } else {
       state.currentRoute = "/";
-      html = renderTodayView();
+      html = renderHomeViewWrapper();
     }
   } else if (!state.user) {
     switch (route) {
@@ -140,7 +145,10 @@ export function render(root) {
     switch (route) {
       case "/":
       case "/today":
-        html = renderTodayView();
+        html = renderHomeViewWrapper();
+        break;
+      case "/calendar":
+        html = renderCalendarView();
         break;
       case "/chores":
         html = renderChoresView();
@@ -153,7 +161,7 @@ export function render(root) {
         html = renderSettingsView();
         break;
       default:
-        html = renderTodayView();
+        html = renderHomeViewWrapper();
     }
   }
 
@@ -165,7 +173,7 @@ export function render(root) {
   const savedScroll = prevWrapper ? prevWrapper.scrollTop : -1;
 
   morphInnerHTML(root, html);
-  updateTabs(route);
+  updateTabs(tabRoute);
   updateTopBar();
 
   // Auto-scroll the day-hour-grid-wrapper to show the current time when it is
@@ -208,7 +216,24 @@ function renderHistoryView() {
   return renderHistoryPage(state);
 }
 
-function renderTodayView() {
+function renderHomeViewWrapper() {
+  const mainView = renderHomeViewGrid(state);
+  if (state.activeSheet === "home-log") {
+    const { choreId } = state.activeSheetData || {};
+    const chore = (state.chores || []).find(c => c.id === choreId);
+    if (chore) {
+      const sheetHTML = renderHomeLogSheet(chore);
+      return `<div class="sheet-overlay-wrapper">
+        ${mainView}
+        <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+        ${sheetHTML}
+      </div>`;
+    }
+  }
+  return mainView;
+}
+
+function renderCalendarView() {
   const chores = state.chores || [];
   if (!state.household && state.user) {
     return `<div class="card mt-3"><h2>Welcome!</h2>
@@ -316,6 +341,39 @@ async function loadStatsData() {
   } catch {}
 }
 
+async function loadLatestLogsData() {
+  if (!state.household) return;
+  try {
+    const data = await loadLatestLogs();
+    state.latestLogs = data?.latestLogs || {};
+  } catch {}
+}
+
+function showToastWithUndo(message, logId) {
+  const container = document.querySelector("#toast-container");
+  if (!container) return;
+  const toast = document.createElement("div");
+  toast.className = "toast toast-success";
+  toast.style.cssText = "display:flex;align-items:center;gap:8px;";
+  const label = document.createElement("span");
+  label.textContent = message;
+  const undoBtn = document.createElement("button");
+  undoBtn.type = "button";
+  undoBtn.textContent = "Undo";
+  undoBtn.style.cssText = "background:rgba(255,255,255,0.2);border:none;color:white;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;margin-left:auto;min-height:32px;";
+  undoBtn.addEventListener("click", () => {
+    toast.remove();
+    undoLog(logId).then(async () => {
+      await loadLatestLogsData();
+      render(document.querySelector("#app"));
+    }).catch(() => showToast("Failed to undo", "error"));
+  });
+  toast.appendChild(label);
+  toast.appendChild(undoBtn);
+  container.appendChild(toast);
+  setTimeout(() => toast.remove(), 4000);
+}
+
 function updateTabs(route) {
   const tabs = document.querySelector("#bottom-tabs");
   if (!tabs || !state.user) return;
@@ -406,6 +464,7 @@ async function reloadAfterAuth() {
       await Promise.all([
         loadChoreData(),
         loadTodayData(),
+        loadLatestLogsData(),
         loadStatsData(),
       ]);
     }
@@ -527,6 +586,7 @@ export async function init() {
   let longPressJustFired = false;
   let pressStartX = 0;
   let pressStartY = 0;
+  const jiggleDrag = { active: false, choreId: null, targetChoreId: null };
 
   document.addEventListener("click", (e) => {
     // Always prevent default for nav links so a long-press residual click
@@ -555,6 +615,10 @@ export async function init() {
           state.historyLogs = data.logs || [];
           render(app);
         });
+        return;
+      }
+      if (state.currentRoute === "/today") {
+        loadLatestLogsData().then(() => render(app));
         return;
       }
       render(app);
@@ -816,6 +880,53 @@ export async function init() {
           }).catch(() => showToast("Failed to remove schedule", "error"));
         break;
       }
+
+      case "home-tap-chore": {
+        e.preventDefault();
+        const choreId = parseInt(actionEl.dataset.homeChoreId, 10);
+        const chore = (state.chores || []).find(c => c.id === choreId);
+        if (!chore) break;
+        if (chore.indicatorLabels && chore.indicatorLabels.length > 0) {
+          state.activeSheet     = "home-log";
+          state.activeSheetData = { choreId };
+          render(app);
+        } else {
+          logChore(choreId, "", "", []).then(async (data) => {
+            const logId = data?.log?.id;
+            await loadLatestLogsData();
+            render(app);
+            if (logId) showToastWithUndo(`${chore.icon} ${chore.name}`, logId);
+          }).catch(() => showToast("Failed to log chore", "error"));
+        }
+        break;
+      }
+
+      case "save-home-log": {
+        e.preventDefault();
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
+        const note = (document.querySelector('#home-log-note')?.value || "").trim();
+        const indicators = [...document.querySelectorAll('.log-chip--on')].map(el => el.dataset.label);
+        const whenInput = document.querySelector('#home-log-when');
+        const completedAt = whenInput?.value ? new Date(whenInput.value).toISOString() : null;
+        logChore(choreId, note, "", indicators, null, completedAt).then(async (data) => {
+          const logId = data?.log?.id;
+          state.activeSheet     = null;
+          state.activeSheetData = {};
+          await loadLatestLogsData();
+          render(app);
+          if (logId) {
+            const chore = (state.chores || []).find(c => c.id === choreId);
+            showToastWithUndo(`${chore ? chore.icon + " " + chore.name : "Chore"}`, logId);
+          }
+        }).catch(() => showToast("Failed to log chore", "error"));
+        break;
+      }
+
+      case "exit-jiggle-mode":
+        e.preventDefault();
+        state.jiggleMode = false;
+        render(app);
+        break;
     }
   });
 
@@ -885,6 +996,7 @@ export async function init() {
       await Promise.all([
         loadChoreData(),
         loadTodayData(),
+        loadLatestLogsData(),
         loadStatsData(),
       ]);
     }
@@ -903,6 +1015,15 @@ export async function init() {
       reorderItem.classList.add("sheet-chore-item--dragging");
       return;
     }
+    // Home grid jiggle-mode reorder drag.
+    const homeReorderItem = e.target.closest("[data-home-reorder-chore-id]");
+    if (homeReorderItem) {
+      const choreId = parseInt(homeReorderItem.dataset.homeReorderChoreId, 10);
+      e.dataTransfer.setData("text/plain", JSON.stringify({ homeReorderChoreId: choreId }));
+      e.dataTransfer.effectAllowed = "move";
+      homeReorderItem.classList.add("home-chore-card--dragging");
+      return;
+    }
     // Calendar card drag.
     const card = e.target.closest("[data-drag-chore-id]");
     if (!card) return;
@@ -918,6 +1039,9 @@ export async function init() {
     e.target.closest("[data-reorder-chore-id]")?.classList.remove("sheet-chore-item--dragging");
     document.querySelectorAll(".sheet-chore-item--drag-over-top, .sheet-chore-item--drag-over-bottom")
       .forEach(el => el.classList.remove("sheet-chore-item--drag-over-top", "sheet-chore-item--drag-over-bottom"));
+    e.target.closest("[data-home-reorder-chore-id]")?.classList.remove("home-chore-card--dragging");
+    document.querySelectorAll(".home-chore-card--drag-over")
+      .forEach(el => el.classList.remove("home-chore-card--drag-over"));
   });
 
   document.addEventListener("dragover", e => {
@@ -936,6 +1060,14 @@ export async function init() {
       item.classList.add(e.clientY < half
         ? "sheet-chore-item--drag-over-top"
         : "sheet-chore-item--drag-over-bottom");
+    }
+    // Home grid jiggle reorder: highlight target card.
+    const homeItem = e.target.closest("[data-home-reorder-chore-id]");
+    if (homeItem) {
+      e.preventDefault();
+      document.querySelectorAll(".home-chore-card--drag-over")
+        .forEach(el => el.classList.remove("home-chore-card--drag-over"));
+      homeItem.classList.add("home-chore-card--drag-over");
     }
   });
 
@@ -956,6 +1088,30 @@ export async function init() {
   });
 
   document.addEventListener("drop", async e => {
+    // ── Home grid chore reorder ──────────────────────────────────────────────
+    const homeTargetItem = e.target.closest("[data-home-reorder-chore-id]");
+    if (homeTargetItem) {
+      e.preventDefault();
+      document.querySelectorAll(".home-chore-card--drag-over")
+        .forEach(el => el.classList.remove("home-chore-card--drag-over"));
+      let payload;
+      try { payload = JSON.parse(e.dataTransfer.getData("text/plain")); } catch { return; }
+      if (!payload.homeReorderChoreId) return;
+      const draggedId = payload.homeReorderChoreId;
+      const targetId  = parseInt(homeTargetItem.dataset.homeReorderChoreId, 10);
+      if (draggedId === targetId) return;
+      const sorted = sortChoresByOrder(state.chores, state.choreOrder);
+      const ids = sorted.map(c => c.id);
+      const fromIdx = ids.indexOf(draggedId);
+      if (fromIdx === -1 || ids.indexOf(targetId) === -1) return;
+      ids.splice(fromIdx, 1);
+      const insertIdx = ids.indexOf(targetId);
+      ids.splice(insertIdx, 0, draggedId);
+      await saveChoreOrder(state, ids);
+      render(app);
+      return;
+    }
+
     // ── Sheet chore reorder ──────────────────────────────────────────────────
     const targetItem = e.target.closest("[data-reorder-chore-id]");
     if (targetItem) {
@@ -1052,20 +1208,30 @@ export async function init() {
       .forEach(el => el.classList.remove("chore-card--pressing"));
     document.querySelectorAll(".sheet-chore-item--pressing")
       .forEach(el => el.classList.remove("sheet-chore-item--pressing"));
+    document.querySelectorAll(".home-chore-card--pressing")
+      .forEach(el => el.classList.remove("home-chore-card--pressing"));
   }
 
   document.addEventListener("mousedown", e => {
     const card = e.target.closest("[data-drag-chore-id]");
     const item = !card && e.target.closest(".sheet-chore-item");
-    if (!card && !item) return;
+    // Only trigger long-press on home cards that are NOT in jiggle/reorder mode.
+    const homeCard = !card && !item && e.target.closest(".home-chore-card:not([data-home-reorder-chore-id])");
+    if (!card && !item && !homeCard) return;
     pressStartX = e.clientX;
     pressStartY = e.clientY;
     if (card) card.classList.add("chore-card--pressing");
     if (item) item.classList.add("sheet-chore-item--pressing");
+    if (homeCard) homeCard.classList.add("home-chore-card--pressing");
     longPressTimer = setTimeout(() => {
       longPressJustFired = true;
       if (card) { card.classList.remove("chore-card--pressing"); openLogSheet(card); }
       if (item) { item.classList.remove("sheet-chore-item--pressing"); openLogSheetFromItem(item); }
+      if (homeCard) {
+        homeCard.classList.remove("home-chore-card--pressing");
+        state.jiggleMode = true;
+        render(app);
+      }
     }, 500);
   });
   // Cancel on actual cursor movement (>8px) — but NOT on DOM-triggered mouseleave
@@ -1100,20 +1266,60 @@ export async function init() {
   document.addEventListener("touchstart", e => {
     const card = e.target.closest("[data-drag-chore-id]");
     const item = !card && e.target.closest(".sheet-chore-item");
-    if (!card && !item) return;
+    const homeCard = !card && !item && e.target.closest(".home-chore-card");
+    if (!card && !item && !homeCard) return;
     e.preventDefault();
     const t = e.touches[0];
     pressStartX = t.clientX;
     pressStartY = t.clientY;
+    // In jiggle mode a touch on a home card starts a drag — handled in touchmove/touchend.
+    if (homeCard && state.jiggleMode) {
+      jiggleDrag.active = true;
+      jiggleDrag.choreId = parseInt(homeCard.dataset.homeReorderChoreId, 10);
+      jiggleDrag.targetChoreId = null;
+      homeCard.classList.add("home-chore-card--dragging");
+      return;
+    }
     if (card) card.classList.add("chore-card--pressing");
     if (item) item.classList.add("sheet-chore-item--pressing");
+    if (homeCard) homeCard.classList.add("home-chore-card--pressing");
     longPressTimer = setTimeout(() => {
       longPressJustFired = true;
       if (card) { card.classList.remove("chore-card--pressing"); openLogSheet(card); }
       if (item) { item.classList.remove("sheet-chore-item--pressing"); openLogSheetFromItem(item); }
+      if (homeCard) {
+        homeCard.classList.remove("home-chore-card--pressing");
+        state.jiggleMode = true;
+        render(app);
+      }
     }, 500);
   }, { passive: false });
   document.addEventListener("touchend", e => {
+    // ── Jiggle drag end ──────────────────────────────────────────────────────
+    if (jiggleDrag.active) {
+      document.querySelectorAll(".home-chore-card--dragging")
+        .forEach(el => el.classList.remove("home-chore-card--dragging"));
+      document.querySelectorAll(".home-chore-card--drag-over")
+        .forEach(el => el.classList.remove("home-chore-card--drag-over"));
+      const draggedId = jiggleDrag.choreId;
+      const targetId  = jiggleDrag.targetChoreId;
+      jiggleDrag.active = false;
+      jiggleDrag.choreId = null;
+      jiggleDrag.targetChoreId = null;
+      if (targetId && targetId !== draggedId) {
+        const sorted = sortChoresByOrder(state.chores, state.choreOrder);
+        const ids = sorted.map(c => c.id);
+        const fromIdx = ids.indexOf(draggedId);
+        if (fromIdx !== -1 && ids.indexOf(targetId) !== -1) {
+          ids.splice(fromIdx, 1);
+          const insertIdx = ids.indexOf(targetId);
+          ids.splice(insertIdx, 0, draggedId);
+          saveChoreOrder(state, ids).then(() => render(app));
+        }
+      }
+      return;
+    }
+
     const fired = longPressJustFired;
     cancelPress();
     if (fired) {
@@ -1127,7 +1333,8 @@ export async function init() {
     // fire a click manually so the existing data-action handler processes it.
     const card = e.target.closest("[data-drag-chore-id]");
     const item = !card && e.target.closest(".sheet-chore-item");
-    if (!card && !item) return;
+    const homeCard = !card && !item && e.target.closest(".home-chore-card");
+    if (!card && !item && !homeCard) return;
     const t = e.changedTouches[0];
     if (!t) return;
     const dx = t.clientX - pressStartX;
@@ -1143,6 +1350,25 @@ export async function init() {
     const dy = t.clientY - pressStartY;
     if (Math.hypot(dx, dy) > 8) cancelPress();
   }, { passive: true });
+
+  // Jiggle-mode touch drag: separate listener so we can call preventDefault()
+  // without making the regular touchmove passive listener non-passive.
+  document.addEventListener("touchmove", e => {
+    if (!jiggleDrag.active) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    const el = document.elementFromPoint(t.clientX, t.clientY);
+    const targetCard = el?.closest("[data-home-reorder-chore-id]");
+    document.querySelectorAll(".home-chore-card--drag-over")
+      .forEach(c => c.classList.remove("home-chore-card--drag-over"));
+    if (targetCard) {
+      const tid = parseInt(targetCard.dataset.homeReorderChoreId, 10);
+      jiggleDrag.targetChoreId = tid;
+      if (tid !== jiggleDrag.choreId) targetCard.classList.add("home-chore-card--drag-over");
+    } else {
+      jiggleDrag.targetChoreId = null;
+    }
+  }, { passive: false });
 
   render(app);
 }

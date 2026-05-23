@@ -109,3 +109,21 @@ func (s *MemoryStore) ListLogsRange(_ context.Context, householdID int64, start,
 	}
 	return result, nil
 }
+
+func (s *MemoryStore) LatestPerChore(_ context.Context, householdID int64) (map[int64]ChoreLog, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := map[int64]ChoreLog{}
+	for _, l := range s.logs {
+		if l.HouseholdID != householdID {
+			continue
+		}
+		if existing, ok := result[l.ChoreID]; !ok || l.CompletedAt.After(existing.CompletedAt) {
+			if l.Indicators == nil {
+				l.Indicators = []string{}
+			}
+			result[l.ChoreID] = l
+		}
+	}
+	return result, nil
+}
