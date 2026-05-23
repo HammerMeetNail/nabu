@@ -150,12 +150,17 @@ test.describe('Home Jiggle: drag-to-reorder', () => {
 
     await enterJiggleMode(page);
 
-    // Drag wrapper[0] onto wrapper[2]
+    // Drag wrapper[0] onto wrapper[2].
+    // Set up the waitForResponse BEFORE dispatching the drag so we cannot
+    // miss a fast async PATCH that resolves before the await below.
     const wrappers = page.locator('.home-card-wrapper');
+    const patchPromise = page.waitForResponse(
+      r => r.url().includes('/api/preferences') && r.request().method() === 'PATCH',
+    );
     await htmlDragDrop(page, wrappers.nth(0), wrappers.nth(2));
 
     // Wait for the saveChoreOrder API call and re-render
-    await page.waitForResponse(r => r.url().includes('/api/preferences') && r.request().method() === 'PATCH');
+    await patchPromise;
     await page.waitForTimeout(200);
 
     // Exit jiggle mode
