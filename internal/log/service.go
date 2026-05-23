@@ -21,26 +21,15 @@ func NewService(store Store) *Service {
 }
 
 func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int64, note string, indicators []string, date *time.Time, slotHour *int, completedAt *time.Time) (ChoreLog, error) {
-	var day time.Time
 	var logCompletedAt time.Time
 	if completedAt != nil {
-		// Caller supplied an exact timestamp — use its date for dedup and the
-		// timestamp itself as the stored completion time.
 		logCompletedAt = completedAt.UTC()
-		day = time.Date(logCompletedAt.Year(), logCompletedAt.Month(), logCompletedAt.Day(), 0, 0, 0, 0, time.UTC)
 	} else if date != nil {
-		day = time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
 		// Use noon UTC so the timestamp falls clearly within the requested day.
 		logCompletedAt = time.Date(date.Year(), date.Month(), date.Day(), 12, 0, 0, 0, time.UTC)
 	} else {
-		day = s.today()
 		logCompletedAt = s.now()
 	}
-	existing, _ := s.store.FindLog(ctx, householdID, choreID, day)
-	if existing != nil {
-		return *existing, nil
-	}
-
 	if indicators == nil {
 		indicators = []string{}
 	}
