@@ -621,6 +621,14 @@ export async function init() {
         loadLatestLogsData().then(() => render(app));
         return;
       }
+      // Navigating to the calendar tab: always refresh log data so that chores
+      // logged from the home tab (or any other source) are immediately visible.
+      if (state.currentRoute === "/calendar") {
+        render(app); // render immediately with current state (shows skeleton)
+        (state.calendarView === "week" ? loadWeekData() : loadTodayData())
+          .then(() => render(app));
+        return;
+      }
       render(app);
       return;
     }

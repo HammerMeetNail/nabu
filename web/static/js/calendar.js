@@ -23,8 +23,9 @@ function fmtShortDate(iso) {
 
 /**
  * Renders the full day view: 24 hourly rows (drag-and-droppable).
- * Scheduled chores appear in their designated hour rows.  Unscheduled chores
- * (and logs without a slotHour) are not displayed.
+ * Scheduled chores appear in their designated hour rows.  Logs without a
+ * slotHour (e.g. logged from the home tab) appear in an "Anytime" row above
+ * the hour grid.
  *
  * @param {object}   state
  * @param {object[]} state.chores          All household chores
@@ -44,6 +45,22 @@ export function renderDayView(state) {
 
   // Filter to schedules active on the viewed date (respects "once", "weekly", etc.)
   const activeSchedules = schedules.filter(sch => isActiveForDayJS(sch, date));
+
+  // Anytime row: logs with no slotHour (e.g. logged from the home tab).
+  // Always shown regardless of whether the chore also has a timed schedule.
+  const anytimeLogs = logs.filter(l => l.slotHour == null);
+  const anytimeRow = anytimeLogs.length > 0
+    ? `<div class="day-anytime-row">
+        <div class="hour-label hour-label--anytime">Anytime</div>
+        <div class="day-hour-cell">
+          ${anytimeLogs.map(l => {
+            const chore = chores.find(c => c.id === l.choreId);
+            if (!chore) return "";
+            return renderChoreCard(chore, null, l, date, true);
+          }).join("")}
+        </div>
+      </div>`
+    : "";
 
   // Build rows: one per hour 0-23.
   // Schedules with a specificTime matching the hour appear here, as do any
@@ -113,7 +130,7 @@ export function renderDayView(state) {
       </div>
       <p class="progress-label">${done} of ${total} done</p>
       <div class="day-hour-grid-wrapper">
-        <div class="day-hour-grid">${rows}</div>
+        <div class="day-hour-grid">${anytimeRow}${rows}</div>
       </div>
     </div>`;
 }
@@ -193,6 +210,29 @@ export function renderWeekView(state) {
     `<div class="week-col-header">${fmtShortDate(iso)}</div>`
   ).join("");
 
+  // Anytime row: one cell per day showing logs with no slotHour.
+  const anytimeCells = days.map(iso => {
+    const dayLogs = weekLogs.filter(l => {
+      if (l.slotHour != null) return false;
+      const logIso = l.completedAt ? l.completedAt.slice(0, 10) : "";
+      return logIso === iso;
+    });
+    const cards = dayLogs.map(l => {
+      const chore = chores.find(c => c.id === l.choreId);
+      if (!chore) return "";
+      return renderWeekChoreCard(chore, null, l, iso);
+    }).join("");
+    return `<div class="week-cell" data-date="${iso}">${cards}</div>`;
+  }).join("");
+
+  const hasAnytime = weekLogs.some(l => l.slotHour == null);
+  const anytimeRow = hasAnytime
+    ? `<div class="hour-row week-anytime-row">
+        <div class="hour-label hour-label--anytime">Anytime</div>
+        ${anytimeCells}
+      </div>`
+    : "";
+
   // Build rows: one per hour.
   // Only schedules with a specificTime are shown in the hourly grid.
   const rows = GRID_HOURS.map(hour => {
@@ -250,7 +290,7 @@ export function renderWeekView(state) {
             <div class="hour-label-spacer"></div>
             ${dayHeaders}
           </div>
-          <div class="week-body">${rows}</div>
+          <div class="week-body">${anytimeRow}${rows}</div>
         </div>
       </div>
     </div>`;

@@ -125,12 +125,13 @@ test.describe('Log from time slot', () => {
     // so accept either null or undefined (both mean "no slot set").
     expect(body.log.slotHour ?? null).toBeNull();
 
-    // Reload and confirm the chore does not appear in any hour row
-    // (it has no schedule and no slotHour, so the calendar does not show it).
+    // Reload and confirm the chore appears in the Anytime row (not in any
+    // timed hour row), since it has no slotHour and no schedule.
     await page.reload();
     await page.click('[data-nav=\"calendar\"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
-    await expect(page.locator('.day-hour-grid .chore-card')).toHaveCount(0);
+    await expect(page.locator('.day-hour-row .chore-card')).toHaveCount(0);
+    await expect(page.locator('.day-anytime-row .chore-card')).toHaveCount(1);
   });
 
   test('touch long-press on sheet chore item then tap Log logs the chore in that slot', async ({ page }) => {

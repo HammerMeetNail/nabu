@@ -730,6 +730,30 @@ input:focus, select:focus, textarea:focus {
   border-bottom: 1px solid var(--border);
 }
 
+/* Anytime row: shown at the top of the day-hour-grid when there are logs
+   with no slotHour (e.g. logged from the home tab). Same grid layout as
+   .day-hour-row with a subtle background to distinguish it. */
+.day-anytime-row {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  min-height: 48px;
+  border-bottom: 2px solid var(--border);
+  background: rgba(0,0,0,0.03);
+}
+
+/* "Anytime" label — italic to visually distinguish from hour labels */
+.hour-label--anytime {
+  font-style: italic;
+  font-size: 0.72rem;
+  color: var(--text-secondary, #888);
+}
+
+/* Anytime row in the week view */
+.week-anytime-row {
+  background: rgba(0,0,0,0.03);
+  border-bottom: 2px solid var(--border);
+}
+
 .day-hour-cell {
   padding: 4px;
   display: flex;
