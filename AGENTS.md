@@ -195,6 +195,35 @@ curl -s https://choresy.yearofbingo.com/ | grep 'app.js'
 
 If `cf-cache-status` is `HIT` or imports show the old version, the deploy did not take — investigate `server.go` and the CI build logs.
 
+## E2E tests
+
+**Every new feature and every bug fix must include a Playwright E2E test.**  Do not skip this step; do not wait for the user to ask.
+
+### What to cover
+
+- **Bug fix**: write a test that reproduces the bug (it should fail on the old code), then verify the fix makes it pass.
+- **New feature**: write tests that exercise the happy path, the sad path (cancel / error), and any persistence guarantees (e.g. reload the page and confirm state survived).
+
+### Workflow
+
+1. Add the spec file to `tests/e2e/` alongside the existing specs.
+2. Run `make local-fresh` to rebuild the app binary with any template/asset changes, then `make e2e` to run the full suite.  All tests — old and new — must pass before committing.
+3. If the local stack (`make local`) is already running with the old binary, run `make local-fresh` first; otherwise the new code won't be loaded.
+
+### Patterns
+
+Follow the conventions in the existing specs:
+
+- **`uniqueEmail()`** — generate a unique address per test to avoid cross-test contamination.
+- **`setupWithChores(page)`** — register a user, create a household, seed defaults, reload, wait for `.home-grid`.  Copy and adapt this helper for each spec file that needs it.
+- **`longPress(page, locator)`** — simulate a 650 ms mousedown to trigger the 500 ms long-press threshold.
+- Use `page.request.post/patch/get` for direct API calls (bypasses the UI where appropriate).
+- Wait for DOM changes with `expect(...).toBeVisible()` / `toHaveCount()` rather than fixed `waitForTimeout` calls wherever possible.  Use `waitForTimeout` only when an animation or async side-effect has no observable DOM signal.
+
+### Spec file naming
+
+Name spec files after the feature/area: `<area>-<feature>.spec.js` (e.g. `home-remove-chore.spec.js`, `schedule-drag.spec.js`).
+
 ## Style
 
 - `go fmt` for Go. No configured JS linter.

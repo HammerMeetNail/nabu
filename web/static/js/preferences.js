@@ -8,7 +8,7 @@ import { apiFetch } from "./api.js";
  */
 export async function loadPreferences(state) {
   try {
-    const data = await apiFetch("/api/preferences");
+    const { data } = await apiFetch("/api/preferences");
     state.choreOrder = data?.preferences?.choreOrder ?? [];
     state.hiddenHomeChoreIDs = data?.preferences?.hiddenHomeChoreIds ?? [];
   } catch {
@@ -26,7 +26,7 @@ export async function loadPreferences(state) {
 export async function saveChoreOrder(state, choreOrder) {
   state.choreOrder = choreOrder;
   try {
-    const data = await apiFetch("/api/preferences", {
+    const { data } = await apiFetch("/api/preferences", {
       method: "PATCH",
       body: JSON.stringify({ choreOrder }),
     });
@@ -47,7 +47,7 @@ export async function saveChoreOrder(state, choreOrder) {
 export async function saveHiddenHomeChores(state, hiddenIds) {
   state.hiddenHomeChoreIDs = hiddenIds;
   try {
-    const data = await apiFetch("/api/preferences", {
+    const { data } = await apiFetch("/api/preferences", {
       method: "PATCH",
       body: JSON.stringify({ hiddenHomeChoreIds: hiddenIds }),
     });
