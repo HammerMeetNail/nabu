@@ -25,6 +25,7 @@ import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, sortChoresByOrder } from "./preferences.js";
 import { loadLatestLogs, renderHomeView as renderHomeViewGrid, renderHomeLogSheet, renderConfirmRemoveFromHomeSheet } from "./home.js";
+import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
 
 /**
  * Reads the current frequency settings from a bottom sheet's freq <select>
@@ -198,18 +199,21 @@ export function render(root) {
 }
 
 function renderChoresView() {
-  const chores = state.chores || [];
-  if (chores.length === 0) {
-    return `<div class="chores-view"><h2>Chores</h2>
-    <div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-title">No chores yet</div>
-    <p>Use settings to set up your household chores.</p></div></div>`;
+  const mainView = renderChoresViewList(state);
+  if (state.activeSheet === "chore-edit") {
+    const { choreId } = state.activeSheetData || {};
+    const isNew = choreId === null || choreId === undefined;
+    const chore = isNew ? null : (state.chores || []).find(c => c.id === choreId);
+    if (isNew || chore) {
+      const sheetHTML = renderChoreSheet(isNew ? null : chore);
+      return `<div class="sheet-overlay-wrapper">
+        ${mainView}
+        <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+        ${sheetHTML}
+      </div>`;
+    }
   }
-  const grid = chores.map(c => `<div class="card mb-2" style="border-left:4px solid ${c.color}">
-    <span style="font-size:1.5rem">${c.icon}</span> <strong>${escapeHTML(c.name)}</strong>
-    <span class="text-secondary"> — ${c.category}</span>
-    ${c.isPredefined ? '<span class="role-badge">built-in</span>' : ''}
-  </div>`).join("");
-  return `<div class="chores-view"><h2>Chores</h2><div class="mt-3">${grid}</div></div>`;
+  return mainView;
 }
 
 function renderHistoryView() {
@@ -972,6 +976,186 @@ export async function init() {
         state.jiggleMode = false;
         render(app);
         break;
+
+      // ── Chores tab management ─────────────────────────────────────────────
+
+      case "chore-add": {
+        e.preventDefault();
+        state.activeSheet = "chore-edit";
+        state.activeSheetData = { choreId: null };
+        render(app);
+        break;
+      }
+
+      case "chore-edit": {
+        e.preventDefault();
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
+        state.activeSheet = "chore-edit";
+        state.activeSheetData = { choreId };
+        render(app);
+        break;
+      }
+
+      case "chore-toggle-home": {
+        e.preventDefault();
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
+        const hidden = new Set(state.hiddenHomeChoreIDs || []);
+        if (hidden.has(choreId)) {
+          hidden.delete(choreId);
+        } else {
+          hidden.add(choreId);
+        }
+        const newHidden = [...hidden];
+        saveHiddenHomeChores(state, newHidden).then(() => render(app));
+        render(app);
+        break;
+      }
+
+      case "save-chore": {
+        e.preventDefault();
+        const isNew = actionEl.dataset.isNew === "true";
+        const choreId = actionEl.dataset.choreId ? parseInt(actionEl.dataset.choreId, 10) : null;
+        const nameEl = document.querySelector("#chore-edit-name");
+        const name = (nameEl?.value || "").trim();
+        if (!name) {
+          nameEl?.focus();
+          break;
+        }
+        const iconEl = document.querySelector("#chore-icon-input");
+        const icon = (iconEl?.value || "").trim() || "📋";
+        // Read the selected color swatch.
+        const selectedSwatch = document.querySelector(".color-swatch--selected");
+        const color = selectedSwatch?.dataset?.color || "#2E86AB";
+        // Collect indicator labels (skip empty ones).
+        const indicatorLabels = [...document.querySelectorAll(".indicator-label-input")]
+          .map(el => el.value.trim())
+          .filter(v => v.length > 0);
+
+        if (isNew) {
+          apiFetch("/api/chores", {
+            method: "POST",
+            body: JSON.stringify({ name, icon, color, category: "custom", indicatorLabels }),
+          }).then(async ({ data }) => {
+            const newChore = data?.chore;
+            if (!newChore) { showToast("Failed to create chore", "error"); return; }
+            state.activeSheet = null;
+            state.activeSheetData = {};
+            await loadChoreData();
+            // Append new chore to order so it appears at the bottom.
+            if (newChore.id) {
+              const newOrder = [...(state.choreOrder || []), newChore.id];
+              await saveChoreOrder(state, newOrder);
+            }
+            render(app);
+            showToast(`${icon} ${name} added`, "success");
+          }).catch(() => showToast("Failed to create chore", "error"));
+        } else {
+          apiFetch(`/api/chores/${choreId}`, {
+            method: "PATCH",
+            body: JSON.stringify({ name, icon, color, indicatorLabels }),
+          }).then(async () => {
+            state.activeSheet = null;
+            state.activeSheetData = {};
+            await loadChoreData();
+            render(app);
+            showToast("Chore updated", "success");
+          }).catch(() => showToast("Failed to update chore", "error"));
+        }
+        break;
+      }
+
+      case "delete-chore": {
+        e.preventDefault();
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
+        const chore = (state.chores || []).find(c => c.id === choreId);
+        if (!chore) break;
+        // eslint-disable-next-line no-alert
+        if (!confirm(`Delete "${chore.name}"? This cannot be undone.`)) break;
+        apiFetch(`/api/chores/${choreId}`, { method: "DELETE" })
+          .then(async ({ response }) => {
+            if (!response.ok) { showToast("Cannot delete this chore", "error"); return; }
+            state.activeSheet = null;
+            state.activeSheetData = {};
+            // Remove from chore order.
+            state.choreOrder = (state.choreOrder || []).filter(id => id !== choreId);
+            // Remove from hidden list.
+            state.hiddenHomeChoreIDs = (state.hiddenHomeChoreIDs || []).filter(id => id !== choreId);
+            await loadChoreData();
+            render(app);
+            showToast("Chore deleted", "info");
+          })
+          .catch(() => showToast("Failed to delete chore", "error"));
+        break;
+      }
+
+      case "restore-chore-default": {
+        e.preventDefault();
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
+        const chore = (state.chores || []).find(c => c.id === choreId);
+        if (!chore) break;
+        // eslint-disable-next-line no-alert
+        if (!confirm(`Restore "${chore.name}" to its original default values?`)) break;
+        apiFetch(`/api/chores/${choreId}/restore-default`, { method: "POST" })
+          .then(async ({ response }) => {
+            if (!response.ok) { showToast("Could not restore default", "error"); return; }
+            state.activeSheet = null;
+            state.activeSheetData = {};
+            await loadChoreData();
+            render(app);
+            showToast("Restored to default", "success");
+          })
+          .catch(() => showToast("Failed to restore default", "error"));
+        break;
+      }
+
+      // ── Chore sheet: inline interactions ─────────────────────────────────
+
+      case "pick-chore-color": {
+        // Update selected swatch without a full re-render.
+        document.querySelectorAll(".color-swatch").forEach(el => {
+          const isSelected = el.dataset.color === actionEl.dataset.color;
+          el.classList.toggle("color-swatch--selected", isSelected);
+          el.setAttribute("aria-pressed", String(isSelected));
+        });
+        // Update the icon preview background.
+        const preview = document.querySelector("#chore-icon-preview");
+        if (preview) preview.style.background = actionEl.dataset.color;
+        break;
+      }
+
+      case "pick-chore-emoji": {
+        const emoji = actionEl.dataset.emoji;
+        const iconInput = document.querySelector("#chore-icon-input");
+        const preview = document.querySelector("#chore-icon-preview");
+        if (iconInput) iconInput.value = emoji;
+        if (preview) preview.textContent = emoji;
+        break;
+      }
+
+      case "add-indicator-label": {
+        e.preventDefault();
+        const list = document.querySelector("#indicator-labels-list");
+        if (!list) break;
+        const idx = list.children.length;
+        const row = document.createElement("div");
+        row.className = "indicator-chip-row";
+        row.dataset.index = idx;
+        row.innerHTML = `<input type="text" class="indicator-label-input input" data-index="${idx}"
+          value="" placeholder="e.g. 💩 poo" maxlength="30" />
+          <button type="button" class="indicator-remove-btn"
+            data-action="remove-indicator-label" data-index="${idx}"
+            aria-label="Remove label">×</button>`;
+        list.appendChild(row);
+        row.querySelector("input")?.focus();
+        break;
+      }
+
+      case "remove-indicator-label": {
+        e.preventDefault();
+        const row = actionEl.closest(".indicator-chip-row");
+        if (row) row.remove();
+        break;
+      }
     }
   });
 
@@ -990,16 +1174,25 @@ export async function init() {
   });
 
   // Keep the "Every N days" option label in sync as the user edits the interval.
+  // Also keep the emoji preview in sync with the chore icon input.
   document.addEventListener("input", (e) => {
     const input = e.target;
-    if (!input.classList.contains("interval-input")) return;
-    const sheet = input.closest(".bottom-sheet");
-    const sel   = sheet?.querySelector("[data-action='change-frequency']");
-    if (!sel) return;
-    const opt = sel.options[sel.selectedIndex];
-    if (opt?.value !== "every_n_days") return;
-    const n = Math.max(2, parseInt(input.value || "2", 10));
-    opt.textContent = `Every ${n} days`;
+    // Interval sync
+    if (input.classList.contains("interval-input")) {
+      const sheet = input.closest(".bottom-sheet");
+      const sel   = sheet?.querySelector("[data-action='change-frequency']");
+      if (!sel) return;
+      const opt = sel.options[sel.selectedIndex];
+      if (opt?.value !== "every_n_days") return;
+      const n = Math.max(2, parseInt(input.value || "2", 10));
+      opt.textContent = `Every ${n} days`;
+      return;
+    }
+    // Emoji input sync: update the large icon preview.
+    if (input.id === "chore-icon-input") {
+      const preview = document.querySelector("#chore-icon-preview");
+      if (preview) preview.textContent = input.value || "📋";
+    }
   });
 
   document.addEventListener("submit", (e) => {
@@ -1060,6 +1253,15 @@ export async function init() {
       reorderItem.classList.add("sheet-chore-item--dragging");
       return;
     }
+    // Chores-tab list reorder drag.
+    const choresTabItem = e.target.closest("[data-chores-tab-reorder-id]");
+    if (choresTabItem) {
+      const choreId = parseInt(choresTabItem.dataset.choresTabReorderId, 10);
+      e.dataTransfer.setData("text/plain", JSON.stringify({ choresTabReorderId: choreId }));
+      e.dataTransfer.effectAllowed = "move";
+      choresTabItem.classList.add("chore-row--dragging");
+      return;
+    }
     // Home grid jiggle-mode reorder drag.
     const homeReorderItem = e.target.closest("[data-home-reorder-chore-id]");
     if (homeReorderItem) {
@@ -1087,6 +1289,9 @@ export async function init() {
     e.target.closest("[data-home-reorder-chore-id]")?.classList.remove("home-chore-card--dragging");
     document.querySelectorAll(".home-chore-card--drag-over")
       .forEach(el => el.classList.remove("home-chore-card--drag-over"));
+    e.target.closest("[data-chores-tab-reorder-id]")?.classList.remove("chore-row--dragging");
+    document.querySelectorAll(".chore-row--drag-over-top, .chore-row--drag-over-bottom")
+      .forEach(el => el.classList.remove("chore-row--drag-over-top", "chore-row--drag-over-bottom"));
   });
 
   document.addEventListener("dragover", e => {
@@ -1105,6 +1310,19 @@ export async function init() {
       item.classList.add(e.clientY < half
         ? "sheet-chore-item--drag-over-top"
         : "sheet-chore-item--drag-over-bottom");
+    }
+    // Chores-tab list reorder: show insert position indicator.
+    const choresTabItem = e.target.closest("[data-chores-tab-reorder-id]");
+    if (choresTabItem) {
+      e.preventDefault();
+      const rect = choresTabItem.getBoundingClientRect();
+      const half = rect.top + rect.height / 2;
+      choresTabItem.closest("#chore-list")
+        ?.querySelectorAll("[data-chores-tab-reorder-id]")
+        .forEach(el => el.classList.remove("chore-row--drag-over-top", "chore-row--drag-over-bottom"));
+      choresTabItem.classList.add(e.clientY < half
+        ? "chore-row--drag-over-top"
+        : "chore-row--drag-over-bottom");
     }
     // Home grid jiggle reorder: highlight target card.
     const homeItem = e.target.closest("[data-home-reorder-chore-id]");
@@ -1130,9 +1348,41 @@ export async function init() {
     if (item && !item.contains(e.relatedTarget)) {
       item.classList.remove("sheet-chore-item--drag-over-top", "sheet-chore-item--drag-over-bottom");
     }
+    // Chores-tab reorder: remove indicator when leaving the row.
+    const choresTabItem = e.target.closest("[data-chores-tab-reorder-id]");
+    if (choresTabItem && !choresTabItem.contains(e.relatedTarget)) {
+      choresTabItem.classList.remove("chore-row--drag-over-top", "chore-row--drag-over-bottom");
+    }
   });
 
   document.addEventListener("drop", async e => {
+    // ── Chores-tab list reorder ──────────────────────────────────────────────
+    const choresTabTargetItem = e.target.closest("[data-chores-tab-reorder-id]");
+    if (choresTabTargetItem) {
+      e.preventDefault();
+      document.querySelectorAll(".chore-row--drag-over-top, .chore-row--drag-over-bottom")
+        .forEach(el => el.classList.remove("chore-row--drag-over-top", "chore-row--drag-over-bottom"));
+      let payload;
+      try { payload = JSON.parse(e.dataTransfer.getData("text/plain")); } catch { return; }
+      if (!payload.choresTabReorderId) return;
+      const draggedId = payload.choresTabReorderId;
+      const targetId  = parseInt(choresTabTargetItem.dataset.choresTabReorderId, 10);
+      if (draggedId === targetId) return;
+      const rect = choresTabTargetItem.getBoundingClientRect();
+      const insertBefore = e.clientY < rect.top + rect.height / 2;
+      const sorted = sortChoresByOrder(state.chores, state.choreOrder);
+      const ids = sorted.map(c => c.id);
+      const fromIdx = ids.indexOf(draggedId);
+      const toIdx   = ids.indexOf(targetId);
+      if (fromIdx === -1 || toIdx === -1) return;
+      ids.splice(fromIdx, 1);
+      const insertIdx = ids.indexOf(targetId);
+      ids.splice(insertBefore ? insertIdx : insertIdx + 1, 0, draggedId);
+      await saveChoreOrder(state, ids);
+      render(app);
+      return;
+    }
+
     // ── Home grid chore reorder ──────────────────────────────────────────────
     const homeTargetItem = e.target.closest("[data-home-reorder-chore-id]");
     if (homeTargetItem) {

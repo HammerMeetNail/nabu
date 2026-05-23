@@ -118,9 +118,14 @@ func (s *MemoryStore) SeedPredefinedChores(_ context.Context, householdID int64)
 	defer s.mu.Unlock()
 	for _, pc := range PredefinedChores {
 		exists := false
-		for _, existing := range s.chores {
+		for id, existing := range s.chores {
 			if existing.HouseholdID == householdID && existing.Name == pc.Name {
 				exists = true
+				// Backfill predefined_key if missing.
+				if existing.PredefinedKey == "" {
+					existing.PredefinedKey = pc.Name
+					s.chores[id] = existing
+				}
 				break
 			}
 		}
@@ -134,6 +139,7 @@ func (s *MemoryStore) SeedPredefinedChores(_ context.Context, householdID int64)
 				SortOrder:       pc.SortOrder,
 				Category:        pc.Category,
 				IsPredefined:    true,
+				PredefinedKey:   pc.Name,
 				CreatedAt:       time.Now().UTC(),
 				IndicatorLabels: pc.IndicatorLabels,
 			}

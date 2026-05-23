@@ -148,6 +148,22 @@ func (h *ChoreHandler) Reorder(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "reordered"})
 }
 
+func (h *ChoreHandler) RestoreDefault(w http.ResponseWriter, r *http.Request) {
+	idStr := r.PathValue("id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid chore id")
+		return
+	}
+
+	if err := h.service.RestoreDefaultChore(r.Context(), id); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "restored"})
+}
+
 func (h *ChoreHandler) GetDefaults(w http.ResponseWriter, r *http.Request) {
 	defaults := h.service.GetSystemDefaults()
 	writeJSON(w, http.StatusOK, map[string]any{"defaults": defaults})

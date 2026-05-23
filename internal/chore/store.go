@@ -14,6 +14,7 @@ type Chore struct {
 	SortOrder       int       `json:"sortOrder"`
 	Category        string    `json:"category"`
 	IsPredefined    bool      `json:"isPredefined"`
+	PredefinedKey   string    `json:"predefinedKey"`
 	CreatedBy       *int64    `json:"createdBy"`
 	CreatedAt       time.Time `json:"createdAt"`
 	IndicatorLabels []string  `json:"indicatorLabels"`

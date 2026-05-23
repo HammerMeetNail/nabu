@@ -87,6 +87,30 @@ func (s *Service) ReorderChores(ctx context.Context, householdID int64, choreIDs
 	return s.store.ReorderChores(ctx, householdID, choreIDs)
 }
 
+func (s *Service) RestoreDefaultChore(ctx context.Context, choreID int64) error {
+	existing, err := s.store.GetChore(ctx, choreID)
+	if err != nil {
+		return err
+	}
+	if !existing.IsPredefined || existing.PredefinedKey == "" {
+		return fmt.Errorf("chore is not a predefined chore")
+	}
+	for _, pc := range PredefinedChores {
+		if pc.Name == existing.PredefinedKey {
+			existing.Name = pc.Name
+			existing.Icon = pc.Icon
+			existing.Color = pc.Color
+			existing.Category = pc.Category
+			existing.IndicatorLabels = pc.IndicatorLabels
+			if existing.IndicatorLabels == nil {
+				existing.IndicatorLabels = []string{}
+			}
+			return s.store.UpdateChore(ctx, existing)
+		}
+	}
+	return fmt.Errorf("original predefined chore definition not found")
+}
+
 func (s *Service) GetSystemDefaults() []Chore {
 	var result []Chore
 	for _, pc := range PredefinedChores {

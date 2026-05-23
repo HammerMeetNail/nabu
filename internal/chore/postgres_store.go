@@ -17,16 +17,16 @@ func NewPostgresStore(db *sql.DB) *PostgresStore {
 func (s *PostgresStore) CreateChore(ctx context.Context, chore Chore) (Chore, error) {
 	labels, _ := json.Marshal(nilToEmpty(chore.IndicatorLabels))
 	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO chores (household_id, name, icon, color, sort_order, category, is_predefined, created_by, indicator_labels)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, created_at
-	`, chore.HouseholdID, chore.Name, chore.Icon, chore.Color, chore.SortOrder, chore.Category, chore.IsPredefined, chore.CreatedBy, string(labels)).Scan(&chore.ID, &chore.CreatedAt)
+		INSERT INTO chores (household_id, name, icon, color, sort_order, category, is_predefined, predefined_key, created_by, indicator_labels)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, created_at
+	`, chore.HouseholdID, chore.Name, chore.Icon, chore.Color, chore.SortOrder, chore.Category, chore.IsPredefined, nullableString(chore.PredefinedKey), chore.CreatedBy, string(labels)).Scan(&chore.ID, &chore.CreatedAt)
 	return chore, err
 }
 
 func (s *PostgresStore) GetChore(ctx context.Context, id int64) (Chore, error) {
 	var c Chore
 	var labelsJSON string
-	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, created_by, created_at, indicator_labels FROM chores WHERE id = $1`, id).Scan(&c.ID, &c.HouseholdID, &c.Name, &c.Icon, &c.Color, &c.SortOrder, &c.Category, &c.IsPredefined, &c.CreatedBy, &c.CreatedAt, &labelsJSON)
+	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, COALESCE(predefined_key,''), created_by, created_at, indicator_labels FROM chores WHERE id = $1`, id).Scan(&c.ID, &c.HouseholdID, &c.Name, &c.Icon, &c.Color, &c.SortOrder, &c.Category, &c.IsPredefined, &c.PredefinedKey, &c.CreatedBy, &c.CreatedAt, &labelsJSON)
 	if err == sql.ErrNoRows {
 		return Chore{}, ErrNotFound
 	}
@@ -40,7 +40,7 @@ func (s *PostgresStore) GetChore(ctx context.Context, id int64) (Chore, error) {
 }
 
 func (s *PostgresStore) ListChores(ctx context.Context, householdID int64) ([]Chore, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, created_by, created_at, indicator_labels FROM chores WHERE household_id = $1 ORDER BY sort_order`, householdID)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, COALESCE(predefined_key,''), created_by, created_at, indicator_labels FROM chores WHERE household_id = $1 ORDER BY sort_order`, householdID)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +49,7 @@ func (s *PostgresStore) ListChores(ctx context.Context, householdID int64) ([]Ch
 	for rows.Next() {
 		var c Chore
 		var labelsJSON string
-		if err := rows.Scan(&c.ID, &c.HouseholdID, &c.Name, &c.Icon, &c.Color, &c.SortOrder, &c.Category, &c.IsPredefined, &c.CreatedBy, &c.CreatedAt, &labelsJSON); err != nil {
+		if err := rows.Scan(&c.ID, &c.HouseholdID, &c.Name, &c.Icon, &c.Color, &c.SortOrder, &c.Category, &c.IsPredefined, &c.PredefinedKey, &c.CreatedBy, &c.CreatedAt, &labelsJSON); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(labelsJSON), &c.IndicatorLabels)
@@ -84,8 +84,8 @@ func (s *PostgresStore) ReorderChores(ctx context.Context, householdID int64, ch
 func (s *PostgresStore) SeedPredefinedChores(ctx context.Context, householdID int64) error {
 	for _, pc := range PredefinedChores {
 		labels, _ := json.Marshal(nilToEmpty(pc.IndicatorLabels))
-		if _, err := s.db.ExecContext(ctx, `INSERT INTO chores (household_id, name, icon, color, sort_order, category, is_predefined, indicator_labels) VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7) ON CONFLICT (household_id, name) DO NOTHING`,
-			householdID, pc.Name, pc.Icon, pc.Color, pc.SortOrder, pc.Category, string(labels)); err != nil {
+		if _, err := s.db.ExecContext(ctx, `INSERT INTO chores (household_id, name, icon, color, sort_order, category, is_predefined, predefined_key, indicator_labels) VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7,$8) ON CONFLICT (household_id, name) DO UPDATE SET predefined_key = EXCLUDED.predefined_key`,
+			householdID, pc.Name, pc.Icon, pc.Color, pc.SortOrder, pc.Category, pc.Name, string(labels)); err != nil {
 			return err
 		}
 	}
@@ -95,6 +95,13 @@ func (s *PostgresStore) SeedPredefinedChores(ctx context.Context, householdID in
 func nilToEmpty(s []string) []string {
 	if s == nil {
 		return []string{}
+	}
+	return s
+}
+
+func nullableString(s string) interface{} {
+	if s == "" {
+		return nil
 	}
 	return s
 }
