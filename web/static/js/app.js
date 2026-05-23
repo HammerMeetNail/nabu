@@ -899,7 +899,7 @@ export async function init() {
           state.activeSheetData = { choreId };
           render(app);
         } else {
-          logChore(choreId, "", "", []).then(async (data) => {
+          logChore(choreId, "", "", [], new Date().getHours()).then(async (data) => {
             const logId = data?.log?.id;
             await loadLatestLogsData();
             render(app);

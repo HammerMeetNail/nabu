@@ -234,21 +234,35 @@ export function renderWeekView(state) {
     : "";
 
   // Build rows: one per hour.
-  // Only schedules with a specificTime are shown in the hourly grid.
+  // Schedules with a specificTime AND ad-hoc logs whose slotHour matches are
+  // both rendered in the hourly grid (same pattern as the day view).
   const rows = GRID_HOURS.map(hour => {
     const cells = days.map(iso => {
-      const choreCells = schedules
-        .filter(sch => {
-          if (!isActiveForDayJS(sch, iso)) return false;
-          if (!sch.specificTime) return false;
-          const schHour = parseInt(sch.specificTime.split(":")[0], 10);
-          return schHour === hour;
+      const scheduledAtHour = schedules.filter(sch => {
+        if (!isActiveForDayJS(sch, iso)) return false;
+        if (!sch.specificTime) return false;
+        return parseInt(sch.specificTime.split(":")[0], 10) === hour;
+      });
+      const scheduledChoreIdsAtHour = new Set(scheduledAtHour.map(s => s.choreId));
+
+      const scheduledCells = scheduledAtHour.map(sch => {
+        const chore = chores.find(c => c.id === sch.choreId);
+        if (!chore) return "";
+        const log = logMap[logKey(chore.id, iso)];
+        return renderWeekChoreCard(chore, sch, log, iso);
+      }).join("");
+
+      // Ad-hoc logs at this hour that don't already have a schedule in this row.
+      const adHocCells = weekLogs
+        .filter(l => {
+          if (l.slotHour !== hour) return false;
+          const logIso = l.completedAt ? l.completedAt.slice(0, 10) : "";
+          return logIso === iso && !scheduledChoreIdsAtHour.has(l.choreId);
         })
-        .map(sch => {
-          const chore = chores.find(c => c.id === sch.choreId);
+        .map(l => {
+          const chore = chores.find(c => c.id === l.choreId);
           if (!chore) return "";
-          const log = logMap[logKey(chore.id, iso)];
-          return renderWeekChoreCard(chore, sch, log, iso);
+          return renderWeekChoreCard(chore, null, l, iso);
         }).join("");
 
       return `<div class="week-cell"
@@ -257,7 +271,7 @@ export function renderWeekView(state) {
         data-action="open-pick-chore-sheet"
         data-date="${iso}"
         data-hour="${hour}">
-        ${choreCells}
+        ${scheduledCells}${adHocCells}
       </div>`;
     }).join("");
 

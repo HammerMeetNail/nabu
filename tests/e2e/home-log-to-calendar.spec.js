@@ -1,14 +1,19 @@
 // tests/e2e/home-log-to-calendar.spec.js
-// Regression tests for: a chore logged from the home tab (no slotHour) must
-// appear in the "Anytime" row of the calendar day view and week view.
+// Regression tests: chores logged from the home tab must appear at the
+// system time they were tapped, not in the catch-all "Anytime" row.
 //
-// Bug: renderDayView / renderWeekView only rendered logs that had a slotHour
-// or a matching timed schedule.  Home-tab logs (slotHour === null) were
-// invisible in the calendar even though /api/logs/today returned them.
+// Original bug 1: renderDayView / renderWeekView only rendered logs that had a
+// slotHour or a matching timed schedule.  Home-tab logs (slotHour === null)
+// were invisible in the calendar even though /api/logs/today returned them.
 //
-// Also covers: Bug where a chore logged from the home sheet with an explicit
-// time set via #home-log-when appeared in "Anytime" instead of the correct
-// hour row because save-home-log always passed slotHour=null.
+// Original bug 2: home-tap-chore (no-indicator path) passed slotHour=null so
+// chores always landed in "Anytime" rather than the current hour row.
+//
+// Original bug 3: save-home-log (indicator sheet) also passed slotHour=null
+// so the datetime-local "When" picker had no effect on calendar placement.
+//
+// Original bug 4: renderWeekView only showed schedules in hour rows; ad-hoc
+// logs with a slotHour never appeared in the week grid.
 
 import { test, expect } from '@playwright/test';
 
@@ -55,37 +60,40 @@ async function setupWithChores(page) {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 test.describe('Home tab log → calendar visibility', () => {
-  test('chore logged from home tab appears in day view Anytime row', async ({ page }) => {
-    const { chores } = await setupWithChores(page);
+  test('direct-tap chore appears in the current hour row of the day view, not Anytime', async ({ page }) => {
+    // Regression: home-tap-chore (no indicator labels) always passed
+    // slotHour=null so chores landed in "Anytime" regardless of the clock.
+    await setupWithChores(page);
 
-    // Tap the first chore card (Feed Cats — no indicator labels, logs instantly).
+    // Record the current hour before tapping so we can find it in the grid.
+    const expectedHour = new Date().getHours();
+
+    // Tap the first no-indicator chore card (logs instantly, no sheet).
     const firstCard = page.locator('.home-chore-card').first();
     const choreName = await firstCard.locator('.home-card-name').innerText();
     await firstCard.click();
-    // Wait for the toast to confirm the log was created.
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     // Navigate to the calendar (day view).
     await page.click('[data-nav="calendar"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
-    // The Anytime row must be present and contain the logged chore as done.
-    const anytimeRow = page.locator('.day-anytime-row');
-    await expect(anytimeRow).toBeVisible();
+    // The chore must appear as done in the current-hour row.
+    const hourCard = page.locator(`[data-drop-hour="${expectedHour}"] .chore-card--done`);
+    await expect(hourCard).toHaveCount(1);
+    await expect(hourCard.first().locator('.chore-name')).toContainText(choreName);
 
-    const card = anytimeRow.locator('.chore-card');
-    await expect(card).toHaveCount(1);
-    await expect(card.first()).toHaveClass(/chore-card--done/);
-    await expect(card.first().locator('.chore-name')).toContainText(choreName);
-
-    // The card must NOT appear in any timed hour row (it has no slotHour).
-    await expect(page.locator('.day-hour-row .chore-card')).toHaveCount(0);
+    // The Anytime row must NOT contain a done card for this chore.
+    await expect(page.locator('.day-anytime-row .chore-card--done')).toHaveCount(0);
   });
 
-  test('chore logged from home tab appears in week view Anytime row for today', async ({ page }) => {
+  test('direct-tap chore appears in the current hour row of the week view', async ({ page }) => {
+    // Regression: week view hour rows only showed scheduled chores; ad-hoc
+    // logs with slotHour never appeared in the week grid.
     await setupWithChores(page);
 
-    // Log the first chore from the home tab.
+    const expectedHour = new Date().getHours();
+
     const firstCard = page.locator('.home-chore-card').first();
     const choreName = await firstCard.locator('.home-card-name').innerText();
     await firstCard.click();
@@ -97,19 +105,24 @@ test.describe('Home tab log → calendar visibility', () => {
     await page.click('[data-action="switch-view"][data-view="week"]');
     await page.waitForSelector('.week-view', { timeout: 5000 });
 
-    // The week-view Anytime row must be visible.
-    const anytimeRow = page.locator('.week-anytime-row');
-    await expect(anytimeRow).toBeVisible();
+    // The chore must appear as done in today's cell of the current-hour row.
+    const today = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const todayISO = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
 
-    // At least one week-chore-card for the logged chore must be done.
-    const doneCards = anytimeRow.locator('.week-chore-card.chore-card--done');
-    await expect(doneCards).toHaveCount(1);
+    const hourCell = page.locator(`.hour-row[data-hour="${expectedHour}"] [data-drop-date="${todayISO}"]`);
+    await expect(hourCell.locator('.chore-card--done')).toHaveCount(1);
+    await expect(hourCell.locator('.chore-card--done').first()).toHaveAttribute('aria-label', new RegExp(choreName));
 
-    // Verify the chore name is correct.
-    await expect(doneCards.first()).toHaveAttribute('aria-label', new RegExp(choreName));
+    // The week-view Anytime row must NOT contain a done card.
+    await expect(page.locator('.week-anytime-row .chore-card--done')).toHaveCount(0);
   });
 
-  test('chore with timed schedule logged from home tab appears in BOTH Anytime row and its hour row', async ({ page }) => {
+  test('timed-schedule chore logged from home tab shows as done in the schedule hour row', async ({ page }) => {
+    // Previously the home-tap log had slotHour=null and went to Anytime; the
+    // timed schedule still showed the card as done at 8 AM via the logMap.
+    // Now the home-tap log carries slotHour=currentHour.  The 8 AM schedule
+    // must still show as done regardless of what hour the test runs.
     const { csrf, chores } = await setupWithChores(page);
 
     // Schedule the first chore at 08:00 daily.
@@ -119,7 +132,7 @@ test.describe('Home tab log → calendar visibility', () => {
       headers: { 'X-CSRF-Token': csrf },
     });
 
-    // Log the chore from the home tab (no slotHour → anytime log).
+    // Log the chore from the home tab (gets slotHour = current hour).
     await page.reload();
     await page.waitForSelector('.home-grid', { timeout: 15000 });
 
@@ -132,19 +145,14 @@ test.describe('Home tab log → calendar visibility', () => {
     await page.click('[data-nav="calendar"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
-    // The Anytime row must contain the done card.
-    const anytimeRow = page.locator('.day-anytime-row');
-    await expect(anytimeRow).toBeVisible();
-    const anytimeCard = anytimeRow.locator('.chore-card');
-    await expect(anytimeCard).toHaveCount(1);
-    await expect(anytimeCard.first()).toHaveClass(/chore-card--done/);
-    await expect(anytimeCard.first().locator('.chore-name')).toContainText(choreName);
-
-    // The 8 AM hour row must ALSO show the chore as done (via the schedule).
+    // The 8 AM hour row must show the chore as done (via the schedule + logMap).
     const hourRowCard = page.locator('[data-drop-hour="8"] .chore-card');
     await expect(hourRowCard).toHaveCount(1);
     await expect(hourRowCard.first()).toHaveClass(/chore-card--done/);
     await expect(hourRowCard.first().locator('.chore-name')).toContainText(choreName);
+
+    // No log should appear in the Anytime row.
+    await expect(page.locator('.day-anytime-row .chore-card--done')).toHaveCount(0);
   });
 
   test('chore logged from home sheet with explicit 2 PM time appears in hour-14 row, not Anytime', async ({ page }) => {
@@ -188,5 +196,38 @@ test.describe('Home tab log → calendar visibility', () => {
 
     // The chore must NOT appear in the Anytime row.
     await expect(page.locator('.day-anytime-row .chore-card--done')).toHaveCount(0);
+  });
+
+  test('chore logged from home sheet with explicit 2 PM time appears in hour-14 row of week view', async ({ page }) => {
+    // Regression: week view did not show ad-hoc logs in hour rows at all.
+    const { chores } = await setupWithChores(page);
+
+    const choreWithIndicators = chores.find(c => c.indicatorLabels && c.indicatorLabels.length > 0);
+    expect(choreWithIndicators).toBeDefined();
+
+    const card = page.locator(`.home-chore-card[data-home-chore-id="${choreWithIndicators.id}"]`);
+    await card.click();
+    await expect(page.locator('#home-log-when')).toBeVisible({ timeout: 5000 });
+
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const todayISO = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    await page.fill('#home-log-when', `${todayISO}T14:00`);
+    await page.locator('[data-action="save-home-log"]').click();
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    // Switch to week view.
+    await page.click('[data-nav="calendar"]');
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+    await page.click('[data-action="switch-view"][data-view="week"]');
+    await page.waitForSelector('.week-view', { timeout: 5000 });
+
+    // The chore must appear as done in today's 2 PM cell of the week grid.
+    const hourCell = page.locator(`.hour-row[data-hour="14"] [data-drop-date="${todayISO}"]`);
+    await expect(hourCell.locator('.chore-card--done')).toHaveCount(1);
+    await expect(hourCell.locator('.chore-card--done').first()).toHaveAttribute('aria-label', new RegExp(choreWithIndicators.name));
+
+    // No done card in the Anytime row.
+    await expect(page.locator('.week-anytime-row .chore-card--done')).toHaveCount(0);
   });
 });
