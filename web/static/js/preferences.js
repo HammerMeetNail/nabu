@@ -2,7 +2,7 @@ import { apiFetch } from "./api.js";
 
 /**
  * Load the current user's preferences from the server and store the
- * choreOrder into the provided state object.
+ * choreOrder and hiddenHomeChoreIDs into the provided state object.
  *
  * @param {object} state - The global app state (mutated in place).
  */
@@ -10,8 +10,10 @@ export async function loadPreferences(state) {
   try {
     const data = await apiFetch("/api/preferences");
     state.choreOrder = data?.preferences?.choreOrder ?? [];
+    state.hiddenHomeChoreIDs = data?.preferences?.hiddenHomeChoreIds ?? [];
   } catch {
     state.choreOrder = [];
+    state.hiddenHomeChoreIDs = [];
   }
 }
 
@@ -32,6 +34,26 @@ export async function saveChoreOrder(state, choreOrder) {
     state.choreOrder = data?.preferences?.choreOrder ?? choreOrder;
   } catch {
     // Keep the optimistic in-memory order even if the save fails.
+  }
+}
+
+/**
+ * Persist an updated hidden-home-chores list to the server and update state.
+ * Chores in this list are not shown on the home grid for this user.
+ *
+ * @param {object} state       - The global app state (mutated in place).
+ * @param {number[]} hiddenIds - Array of chore IDs to hide from the home grid.
+ */
+export async function saveHiddenHomeChores(state, hiddenIds) {
+  state.hiddenHomeChoreIDs = hiddenIds;
+  try {
+    const data = await apiFetch("/api/preferences", {
+      method: "PATCH",
+      body: JSON.stringify({ hiddenHomeChoreIds: hiddenIds }),
+    });
+    state.hiddenHomeChoreIDs = data?.preferences?.hiddenHomeChoreIds ?? hiddenIds;
+  } catch {
+    // Keep the optimistic in-memory value even if the save fails.
   }
 }
 

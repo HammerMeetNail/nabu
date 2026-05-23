@@ -23,8 +23,8 @@ import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHist
 import { renderStatsView, loadOverview } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
-import { loadPreferences, saveChoreOrder, sortChoresByOrder } from "./preferences.js";
-import { loadLatestLogs, renderHomeView as renderHomeViewGrid, renderHomeLogSheet } from "./home.js";
+import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, sortChoresByOrder } from "./preferences.js";
+import { loadLatestLogs, renderHomeView as renderHomeViewGrid, renderHomeLogSheet, renderConfirmRemoveFromHomeSheet } from "./home.js";
 
 /**
  * Reads the current frequency settings from a bottom sheet's freq <select>
@@ -223,6 +223,18 @@ function renderHomeViewWrapper() {
     const chore = (state.chores || []).find(c => c.id === choreId);
     if (chore) {
       const sheetHTML = renderHomeLogSheet(chore);
+      return `<div class="sheet-overlay-wrapper">
+        ${mainView}
+        <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+        ${sheetHTML}
+      </div>`;
+    }
+  }
+  if (state.activeSheet === "confirm-remove-home-chore") {
+    const { choreId } = state.activeSheetData || {};
+    const chore = (state.chores || []).find(c => c.id === choreId);
+    if (chore) {
+      const sheetHTML = renderConfirmRemoveFromHomeSheet(chore);
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
@@ -933,6 +945,28 @@ export async function init() {
         break;
       }
 
+      case "home-remove-chore": {
+        e.preventDefault();
+        e.stopPropagation();
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
+        state.activeSheet = "confirm-remove-home-chore";
+        state.activeSheetData = { choreId };
+        render(app);
+        break;
+      }
+
+      case "confirm-remove-home-chore": {
+        e.preventDefault();
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
+        const newHidden = [...new Set([...(state.hiddenHomeChoreIDs || []), choreId])];
+        state.activeSheet = null;
+        state.activeSheetData = {};
+        // Optimistically update state and re-render; persist in the background.
+        saveHiddenHomeChores(state, newHidden).then(() => render(app));
+        render(app);
+        break;
+      }
+
       case "exit-jiggle-mode":
         e.preventDefault();
         state.jiggleMode = false;
@@ -1291,6 +1325,11 @@ export async function init() {
     pressStartY = t.clientY;
     // In jiggle mode a touch on a home card starts a drag — handled in touchmove/touchend.
     if (homeCard && state.jiggleMode) {
+      // If the user tapped the X (remove) button, skip drag setup so touchend
+      // can synthesize the click normally.
+      if (e.target.closest("[data-action='home-remove-chore']")) {
+        return;
+      }
       jiggleDrag.active = true;
       jiggleDrag.choreId = parseInt(homeCard.dataset.homeReorderChoreId, 10);
       jiggleDrag.targetChoreId = null;

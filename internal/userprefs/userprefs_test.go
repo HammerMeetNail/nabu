@@ -22,11 +22,14 @@ func TestMemoryStore_GetMissing(t *testing.T) {
 	if len(p.ChoreOrder) != 0 {
 		t.Fatalf("expected empty ChoreOrder, got %v", p.ChoreOrder)
 	}
+	if len(p.HiddenHomeChoreIDs) != 0 {
+		t.Fatalf("expected empty HiddenHomeChoreIDs, got %v", p.HiddenHomeChoreIDs)
+	}
 }
 
 func TestMemoryStore_UpsertAndGet(t *testing.T) {
 	s := userprefs.NewMemoryStore()
-	want := userprefs.Preferences{ChoreOrder: []int64{3, 1, 2}}
+	want := userprefs.Preferences{ChoreOrder: []int64{3, 1, 2}, HiddenHomeChoreIDs: []int64{5}}
 	if err := s.Upsert(context.Background(), 42, want); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
@@ -36,6 +39,9 @@ func TestMemoryStore_UpsertAndGet(t *testing.T) {
 	}
 	if len(got.ChoreOrder) != 3 || got.ChoreOrder[0] != 3 {
 		t.Fatalf("ChoreOrder = %v, want [3 1 2]", got.ChoreOrder)
+	}
+	if len(got.HiddenHomeChoreIDs) != 1 || got.HiddenHomeChoreIDs[0] != 5 {
+		t.Fatalf("HiddenHomeChoreIDs = %v, want [5]", got.HiddenHomeChoreIDs)
 	}
 }
 
@@ -97,6 +103,52 @@ func TestService_NilOrderBecomesEmpty(t *testing.T) {
 	}
 }
 
+func TestService_UpdateChoreOrderPreservesHidden(t *testing.T) {
+	svc := userprefs.NewService(userprefs.NewMemoryStore())
+	ctx := context.Background()
+
+	// First set some hidden chores.
+	if err := svc.UpdateHiddenHomeChores(ctx, 1, []int64{10, 20}); err != nil {
+		t.Fatalf("UpdateHiddenHomeChores: %v", err)
+	}
+
+	// Then update chore order; hidden list must survive.
+	if err := svc.UpdateChoreOrder(ctx, 1, []int64{3, 1, 2}); err != nil {
+		t.Fatalf("UpdateChoreOrder: %v", err)
+	}
+	p, _ := svc.GetPreferences(ctx, 1)
+	if len(p.HiddenHomeChoreIDs) != 2 || p.HiddenHomeChoreIDs[0] != 10 {
+		t.Fatalf("HiddenHomeChoreIDs = %v after UpdateChoreOrder, want [10 20]", p.HiddenHomeChoreIDs)
+	}
+}
+
+func TestService_UpdateHiddenHomeChores(t *testing.T) {
+	svc := userprefs.NewService(userprefs.NewMemoryStore())
+	ctx := context.Background()
+
+	if err := svc.UpdateHiddenHomeChores(ctx, 2, []int64{5, 6}); err != nil {
+		t.Fatalf("UpdateHiddenHomeChores: %v", err)
+	}
+	p, err := svc.GetPreferences(ctx, 2)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if len(p.HiddenHomeChoreIDs) != 2 || p.HiddenHomeChoreIDs[0] != 5 {
+		t.Fatalf("HiddenHomeChoreIDs = %v, want [5 6]", p.HiddenHomeChoreIDs)
+	}
+}
+
+func TestService_UpdateHiddenNilBecomesEmpty(t *testing.T) {
+	svc := userprefs.NewService(userprefs.NewMemoryStore())
+	if err := svc.UpdateHiddenHomeChores(context.Background(), 3, nil); err != nil {
+		t.Fatalf("UpdateHiddenHomeChores: %v", err)
+	}
+	p, _ := svc.GetPreferences(context.Background(), 3)
+	if p.HiddenHomeChoreIDs == nil {
+		t.Fatal("HiddenHomeChoreIDs must not be nil after UpdateHiddenHomeChores(nil)")
+	}
+}
+
 // ─── Postgres store tests ─────────────────────────────────────────────────────
 
 func TestPostgresStore_GetMissing(t *testing.T) {
@@ -107,7 +159,7 @@ func TestPostgresStore_GetMissing(t *testing.T) {
 	defer db.Close()
 
 	store := userprefs.NewPostgresStore(db)
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT chore_order FROM user_preferences WHERE user_id = $1`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT chore_order, hidden_home_chore_ids FROM user_preferences WHERE user_id = $1`)).
 		WithArgs(int64(1)).
 		WillReturnError(sql.ErrNoRows)
 
@@ -117,6 +169,9 @@ func TestPostgresStore_GetMissing(t *testing.T) {
 	}
 	if len(p.ChoreOrder) != 0 {
 		t.Fatalf("expected empty ChoreOrder, got %v", p.ChoreOrder)
+	}
+	if len(p.HiddenHomeChoreIDs) != 0 {
+		t.Fatalf("expected empty HiddenHomeChoreIDs, got %v", p.HiddenHomeChoreIDs)
 	}
 }
 
@@ -128,10 +183,11 @@ func TestPostgresStore_GetExisting(t *testing.T) {
 	defer db.Close()
 
 	store := userprefs.NewPostgresStore(db)
-	raw, _ := json.Marshal([]int64{3, 1, 2})
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT chore_order FROM user_preferences WHERE user_id = $1`)).
+	rawOrder, _ := json.Marshal([]int64{3, 1, 2})
+	rawHidden, _ := json.Marshal([]int64{7})
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT chore_order, hidden_home_chore_ids FROM user_preferences WHERE user_id = $1`)).
 		WithArgs(int64(5)).
-		WillReturnRows(sqlmock.NewRows([]string{"chore_order"}).AddRow(raw))
+		WillReturnRows(sqlmock.NewRows([]string{"chore_order", "hidden_home_chore_ids"}).AddRow(rawOrder, rawHidden))
 
 	p, err := store.Get(context.Background(), 5)
 	if err != nil {
@@ -139,6 +195,9 @@ func TestPostgresStore_GetExisting(t *testing.T) {
 	}
 	if len(p.ChoreOrder) != 3 || p.ChoreOrder[0] != 3 {
 		t.Fatalf("ChoreOrder = %v, want [3 1 2]", p.ChoreOrder)
+	}
+	if len(p.HiddenHomeChoreIDs) != 1 || p.HiddenHomeChoreIDs[0] != 7 {
+		t.Fatalf("HiddenHomeChoreIDs = %v, want [7]", p.HiddenHomeChoreIDs)
 	}
 }
 
@@ -150,12 +209,13 @@ func TestPostgresStore_Upsert(t *testing.T) {
 	defer db.Close()
 
 	store := userprefs.NewPostgresStore(db)
-	raw, _ := json.Marshal([]int64{10, 20})
+	rawOrder, _ := json.Marshal([]int64{10, 20})
+	rawHidden, _ := json.Marshal([]int64{})
 	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO user_preferences`)).
-		WithArgs(int64(9), raw).
+		WithArgs(int64(9), rawOrder, rawHidden).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	if err := store.Upsert(context.Background(), 9, userprefs.Preferences{ChoreOrder: []int64{10, 20}}); err != nil {
+	if err := store.Upsert(context.Background(), 9, userprefs.Preferences{ChoreOrder: []int64{10, 20}, HiddenHomeChoreIDs: []int64{}}); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
 }

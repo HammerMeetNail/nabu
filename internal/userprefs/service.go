@@ -18,9 +18,31 @@ func (s *Service) GetPreferences(ctx context.Context, userID int64) (Preferences
 }
 
 // UpdateChoreOrder persists a new chore ordering for the user.
+// It reads existing preferences first so that other fields (e.g.
+// HiddenHomeChoreIDs) are preserved.
 func (s *Service) UpdateChoreOrder(ctx context.Context, userID int64, choreOrder []int64) error {
 	if choreOrder == nil {
 		choreOrder = []int64{}
 	}
-	return s.store.Upsert(ctx, userID, Preferences{ChoreOrder: choreOrder})
+	prefs, err := s.store.Get(ctx, userID)
+	if err != nil {
+		return err
+	}
+	prefs.ChoreOrder = choreOrder
+	return s.store.Upsert(ctx, userID, prefs)
+}
+
+// UpdateHiddenHomeChores replaces the list of chore IDs that are hidden from
+// the user's home grid.  The chores still exist and are accessible from the
+// Chores tab.
+func (s *Service) UpdateHiddenHomeChores(ctx context.Context, userID int64, hiddenIDs []int64) error {
+	if hiddenIDs == nil {
+		hiddenIDs = []int64{}
+	}
+	prefs, err := s.store.Get(ctx, userID)
+	if err != nil {
+		return err
+	}
+	prefs.HiddenHomeChoreIDs = hiddenIDs
+	return s.store.Upsert(ctx, userID, prefs)
 }

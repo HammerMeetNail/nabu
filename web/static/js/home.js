@@ -38,7 +38,9 @@ export function formatTimeAgo(iso) {
  * @returns {string}  HTML string
  */
 export function renderHomeView(state) {
-  const chores = sortChoresByOrder(state.chores || [], state.choreOrder || []);
+  const hiddenSet = new Set(state.hiddenHomeChoreIDs || []);
+  const chores = sortChoresByOrder(state.chores || [], state.choreOrder || [])
+    .filter(c => !hiddenSet.has(c.id));
   const latestLogs = state.latestLogs || {};
   const jiggleMode = state.jiggleMode || false;
 
@@ -67,10 +69,14 @@ export function renderHomeView(state) {
     const timeHTML = timeAgo
       ? `<span class="home-card-time">${escapeHTML(timeAgo)}</span>`
       : `<span class="home-card-time home-card-time--never">never</span>`;
+    const removeBtn = jiggleMode
+      ? `<button type="button" class="home-card-remove" data-action="home-remove-chore" data-chore-id="${chore.id}" aria-label="Remove ${escapeHTML(chore.name)} from home">&#x2715;</button>`
+      : "";
     return `<button type="button"
       class="home-chore-card${wiggleClass}"
       data-home-chore-id="${chore.id}"${actionAttr}${reorderAttr}
       style="--chore-color:${chore.color}">
+      ${removeBtn}
       <span class="home-card-icon">${chore.icon}</span>
       <span class="home-card-name">${escapeHTML(chore.name)}</span>
       ${timeHTML}
@@ -88,6 +94,24 @@ export function renderHomeView(state) {
     <div class="home-grid${jiggleMode ? " home-grid--jiggle" : ""}">
       ${cards}
     </div>
+  </div>`;
+}
+
+/**
+ * Render the confirmation bottom sheet for removing a chore from the home grid.
+ * @param {object} chore
+ * @returns {string}  HTML string
+ */
+export function renderConfirmRemoveFromHomeSheet(chore) {
+  return `<div class="bottom-sheet">
+    <div class="sheet-handle"></div>
+    <div class="sheet-title">Remove from Home?</div>
+    <p class="confirm-remove-msg">${escapeHTML(chore.icon)} <strong>${escapeHTML(chore.name)}</strong> will still be available in the Chores tab.</p>
+    <button type="button" class="btn btn-danger btn-block"
+      data-action="confirm-remove-home-chore"
+      data-chore-id="${chore.id}">Remove from Home</button>
+    <button type="button" class="btn btn-secondary btn-block mt-2"
+      data-action="close-sheet">Cancel</button>
   </div>`;
 }
 
@@ -136,3 +160,4 @@ export function renderHomeLogSheet(chore) {
     </button>
   </div>`;
 }
+
