@@ -63,20 +63,27 @@ export function renderHomeView(state) {
   const cards = chores.map(chore => {
     const latest = latestLogs[chore.id];
     const timeAgo = latest ? formatTimeAgo(latest.completedAt) : "";
-    const wiggleClass = jiggleMode ? " home-chore-card--jiggle" : "";
-    const reorderAttr = jiggleMode ? ` draggable="true" data-home-reorder-chore-id="${chore.id}"` : "";
-    const actionAttr = jiggleMode ? "" : ` data-action="home-tap-chore"`;
     const timeHTML = timeAgo
       ? `<span class="home-card-time">${escapeHTML(timeAgo)}</span>`
       : `<span class="home-card-time home-card-time--never">never</span>`;
-    const removeBtn = jiggleMode
-      ? `<button type="button" class="home-card-remove" data-action="home-remove-chore" data-chore-id="${chore.id}" aria-label="Remove ${escapeHTML(chore.name)} from home">&#x2715;</button>`
-      : "";
+    if (jiggleMode) {
+      // Wrap in a div so the X badge and card button are siblings — nesting a
+      // <button> inside a <button> is invalid HTML and causes browsers to eject
+      // the inner content, producing empty cards.
+      return `<div class="home-card-wrapper" draggable="true" data-home-reorder-chore-id="${chore.id}">
+      <button type="button" class="home-card-remove" data-action="home-remove-chore" data-chore-id="${chore.id}" aria-label="Remove ${escapeHTML(chore.name)} from home">&#x2715;</button>
+      <button type="button" class="home-chore-card home-chore-card--jiggle" data-home-chore-id="${chore.id}" style="--chore-color:${chore.color}">
+        <span class="home-card-icon">${chore.icon}</span>
+        <span class="home-card-name">${escapeHTML(chore.name)}</span>
+        ${timeHTML}
+      </button>
+    </div>`;
+    }
     return `<button type="button"
-      class="home-chore-card${wiggleClass}"
-      data-home-chore-id="${chore.id}"${actionAttr}${reorderAttr}
+      class="home-chore-card"
+      data-home-chore-id="${chore.id}"
+      data-action="home-tap-chore"
       style="--chore-color:${chore.color}">
-      ${removeBtn}
       <span class="home-card-icon">${chore.icon}</span>
       <span class="home-card-name">${escapeHTML(chore.name)}</span>
       ${timeHTML}

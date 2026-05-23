@@ -1261,7 +1261,7 @@ export async function init() {
     const card = e.target.closest("[data-drag-chore-id]");
     const item = !card && e.target.closest(".sheet-chore-item");
     // Only trigger long-press on home cards that are NOT in jiggle/reorder mode.
-    const homeCard = !card && !item && e.target.closest(".home-chore-card:not([data-home-reorder-chore-id])");
+    const homeCard = !card && !item && e.target.closest(".home-chore-card:not(.home-chore-card--jiggle)");
     if (!card && !item && !homeCard) return;
     pressStartX = e.clientX;
     pressStartY = e.clientY;
@@ -1331,9 +1331,9 @@ export async function init() {
         return;
       }
       jiggleDrag.active = true;
-      jiggleDrag.choreId = parseInt(homeCard.dataset.homeReorderChoreId, 10);
+      jiggleDrag.choreId = parseInt(homeCard.dataset.homeChoreId, 10);
       jiggleDrag.targetChoreId = null;
-      homeCard.classList.add("home-chore-card--dragging");
+      homeCard.closest("[data-home-reorder-chore-id]")?.classList.add("home-chore-card--dragging");
       return;
     }
     if (card) card.classList.add("chore-card--pressing");

@@ -6,14 +6,19 @@
 // chore from the home grid for that user (stored in user_preferences).  The
 // chore is NOT deleted — it still appears in the Chores tab.
 //
-// DOM note: the X badge is a <button> nested inside a <button> (.home-chore-card).
-// Browsers auto-close the outer button when they encounter the inner one, so in
-// jiggle mode .home-chore-card elements are EMPTY and .home-card-name spans
-// become siblings (not children) of the card.  Consequently:
-//   - In jiggle mode do NOT use `.home-chore-card .home-card-name` selectors.
-//   - Get chore names before entering jiggle mode, when card structure is intact.
-//   - Click X badges via dispatchEvent (not Playwright's coordinate click, which
-//     fires on the sticky top-bar that visually covers the first-row badges).
+// DOM structure in jiggle mode (post-fix):
+//   <div class="home-card-wrapper" draggable="true" data-home-reorder-chore-id="N">
+//     <button class="home-card-remove" …>✕</button>          ← sibling of card
+//     <button class="home-chore-card home-chore-card--jiggle" …>
+//       <span class="home-card-icon">…</span>
+//       <span class="home-card-name">…</span>                ← inside the card
+//     </button>
+//   </div>
+//
+// The previous implementation nested the X badge <button> inside the card
+// <button>, which is invalid HTML.  Browsers auto-closed the outer button,
+// emptying the cards.  That bug is now fixed.  Selectors that query
+// .home-chore-card .home-card-name work correctly in jiggle mode.
 
 import { test, expect } from '@playwright/test';
 
@@ -89,14 +94,9 @@ async function enterJiggleMode(page) {
 /**
  * Dispatches a click event directly on the nth X button.
  *
- * We use dispatchEvent instead of locator.click() because:
- * 1. The sticky top-bar (z-index 100) visually covers the X badges after
- *    Playwright scrolls them into view, causing coordinate-based clicks to land
- *    on the header instead of the badge.
- * 2. The X badge is a <button> nested inside <button> (.home-chore-card);
- *    browsers auto-close the outer button, so in the live DOM the badge is a
- *    sibling (not a child) of .home-chore-card.  dispatchEvent fires directly
- *    on the element and bubbles to the document click handler regardless.
+ * We use dispatchEvent instead of locator.click() because the sticky top-bar
+ * (z-index 100) visually covers the X badges after Playwright scrolls them
+ * into view, causing coordinate-based clicks to land on the header instead.
  */
 async function clickRemoveButton(page, index) {
   await page.locator('.home-card-remove').nth(index).dispatchEvent('click');
@@ -153,8 +153,6 @@ test.describe('Home Remove: confirmation sheet', () => {
   test('confirmation sheet contains the chore name', async ({ page }) => {
     await setupWithChores(page);
 
-    // Get card name BEFORE jiggle mode — in normal mode the card structure is
-    // intact; in jiggle mode the nested-button parse breaks the nesting.
     const cardName = await page.locator('.home-chore-card').nth(4).locator('.home-card-name').innerText();
 
     await enterJiggleMode(page);
@@ -190,7 +188,6 @@ test.describe('Home Remove: removing a chore', () => {
     await setupWithChores(page);
     const initialCount = await page.locator('.home-chore-card').count();
 
-    // Get name before jiggle mode so we can use .home-chore-card > .home-card-name
     const removedName = await page.locator('.home-chore-card').nth(4).locator('.home-card-name').innerText();
 
     await enterJiggleMode(page);
@@ -203,9 +200,7 @@ test.describe('Home Remove: removing a chore', () => {
     await expect(page.locator('.home-chore-card')).toHaveCount(initialCount - 1);
 
     // The removed chore's name no longer appears in the grid.
-    // In jiggle mode .home-card-name spans are siblings of .home-chore-card
-    // (browser hoists the inner button), so query .home-card-name directly.
-    const names = await page.locator('.home-card-name').allInnerTexts();
+    const names = await page.locator('.home-chore-card .home-card-name').allInnerTexts();
     expect(names).not.toContain(removedName);
   });
 
@@ -254,7 +249,7 @@ test.describe('Home Remove: removing a chore', () => {
     await page.waitForSelector('.home-grid', { timeout: 15000 });
 
     await expect(page.locator('.home-chore-card')).toHaveCount(countAfterRemove);
-    // After reload we are in normal mode; .home-card-name is inside .home-chore-card again
+    // After reload in normal mode, .home-card-name is inside .home-chore-card
     const names = await page.locator('.home-chore-card .home-card-name').allInnerTexts();
     expect(names).not.toContain(removedName);
   });

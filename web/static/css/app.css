@@ -1559,17 +1559,51 @@ input:focus, select:focus, textarea:focus {
   100% { transform: rotate(-2deg); }
 }
 
-.home-chore-card--jiggle {
-  animation: jiggle 0.4s ease-in-out infinite;
-  cursor: grab;
-  /* Allow the X badge to sit at the corner, partially outside the card */
+/* Wrapper div that is the grid item in jiggle mode.
+   The X badge and card button are siblings inside it — this avoids the
+   invalid nested-<button> pattern that caused browsers to eject card content. */
+.home-card-wrapper {
+  position: relative;
   overflow: visible;
+  transition: transform 0.12s, opacity 0.12s;
 }
 
-.home-chore-card--jiggle:active {
+/* Card fills the wrapper */
+.home-card-wrapper .home-chore-card {
+  width: 100%;
+}
+
+/* Jiggle animation lives on the wrapper so badge and card move together */
+.home-grid--jiggle .home-card-wrapper {
+  animation: jiggle 0.4s ease-in-out infinite;
+  cursor: grab;
+}
+
+.home-grid--jiggle .home-card-wrapper:active {
   cursor: grabbing;
   transform: scale(1.06);
   animation: none;
+}
+
+/* Drag states in jiggle mode are applied to the wrapper */
+.home-card-wrapper.home-chore-card--dragging {
+  opacity: 0.35;
+  cursor: grabbing;
+}
+
+.home-card-wrapper.home-chore-card--drag-over {
+  outline: 2px dashed var(--primary);
+  outline-offset: -2px;
+  background: rgba(46,134,171,0.07);
+}
+
+.home-chore-card--jiggle {
+  /* animation and cursor handled by parent .home-card-wrapper */
+  /* overflow: visible no longer needed — X badge is a sibling, not a child */
+}
+
+.home-chore-card--jiggle:active {
+  /* scale/animation handled by .home-grid--jiggle .home-card-wrapper:active */
 }
 
 /* Remove-from-home X badge, shown in jiggle mode (iOS-style) */
@@ -1635,7 +1669,8 @@ input:focus, select:focus, textarea:focus {
 }
 
 @media (prefers-color-scheme: dark) {
-  .home-chore-card--drag-over {
+  .home-chore-card--drag-over,
+  .home-card-wrapper.home-chore-card--drag-over {
     background: rgba(77,171,206,0.14);
   }
 }
