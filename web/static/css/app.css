@@ -153,26 +153,34 @@ input:focus, select:focus, textarea:focus {
   padding: 0 4px;
 }
 
-/* Header Nav Tabs */
+/* Bottom Tabs */
 #bottom-tabs {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 480px;
+  height: calc(64px + var(--safe-bottom));
+  padding-bottom: var(--safe-bottom);
   display: flex;
-  align-items: center;
-  gap: 2px;
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  z-index: 100;
 }
 
 .tab-item {
-  width: 36px;
-  height: 36px;
+  flex: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
+  gap: 2px;
+  font-size: 11px;
   color: var(--text-secondary);
   text-decoration: none;
   -webkit-tap-highlight-color: transparent;
 }
-
-.tab-item span { display: none; }
 
 .tab-item.active { color: var(--primary); }
 
@@ -180,12 +188,11 @@ input:focus, select:focus, textarea:focus {
 
 .tab-item.active svg { opacity: 1; }
 
-.tab-item:hover { background: var(--bg); }
-
 /* Main Content */
 #app {
   flex: 1;
   padding: 16px;
+  padding-bottom: calc(80px + var(--safe-bottom));
 }
 
 /* Buttons */
@@ -327,7 +334,7 @@ input:focus, select:focus, textarea:focus {
 /* Toast Notifications */
 #toast-container {
   position: fixed;
-  bottom: 16px;
+  bottom: calc(80px + var(--safe-bottom));
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
@@ -1009,7 +1016,7 @@ input:focus, select:focus, textarea:focus {
 
 .fab {
   position: fixed;
-  bottom: calc(20px + var(--safe-bottom));
+  bottom: calc(72px + var(--safe-bottom));
   right: 20px;
   width: 56px;
   height: 56px;
@@ -1097,7 +1104,7 @@ input:focus, select:focus, textarea:focus {
 
 .bottom-sheet {
   position: fixed;
-  bottom: 0;
+  bottom: calc(64px + var(--safe-bottom));
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
@@ -1662,6 +1669,7 @@ input:focus, select:focus, textarea:focus {
 /* ── Chores tab management ───────────────────────────────────────────────── */
 
 .chores-view {
+  padding: 0 0 80px;
   position: relative;
   min-height: 100%;
 }

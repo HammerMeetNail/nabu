@@ -132,10 +132,10 @@ test.describe('Fix 1: multiple logs per chore per day', () => {
   });
 });
 
-// ─── Fix 2: Scroll fix — #app has no large bottom padding ────────────────────
+// ─── Fix 2: Scroll fix — #app has bottom padding for fixed nav ───────────────
 
-test.describe('Fix 2: no spurious bottom padding on #app', () => {
-  test('#app padding-bottom is small (not reserving space for old fixed nav)', async ({ page }) => {
+test.describe('Fix 2: #app has correct bottom padding for fixed bottom nav', () => {
+  test('#app padding-bottom reserves space for the fixed bottom nav', async ({ page }) => {
     await setupWithChores(page);
 
     const paddingBottom = await page.evaluate(() => {
@@ -143,15 +143,16 @@ test.describe('Fix 2: no spurious bottom padding on #app', () => {
       return parseInt(window.getComputedStyle(app).paddingBottom, 10);
     });
 
-    // Old value was 80+ px; after fix it should be a normal value (≤ 20px).
-    expect(paddingBottom).toBeLessThanOrEqual(20);
+    // Fixed bottom nav is 64px tall; #app must reserve at least 64px so content
+    // is not obscured.
+    expect(paddingBottom).toBeGreaterThanOrEqual(64);
   });
 });
 
-// ─── Fix 3: Nav-in-header ─────────────────────────────────────────────────────
+// ─── Fix 3: Nav tabs restored to bottom ──────────────────────────────────────
 
-test.describe('Fix 3: nav tabs live in the header', () => {
-  test('#bottom-tabs is a descendant of #top-bar', async ({ page }) => {
+test.describe('Fix 3: nav tabs are a fixed bottom bar, not in the header', () => {
+  test('#bottom-tabs is NOT a descendant of #top-bar', async ({ page }) => {
     await setupWithChores(page);
 
     const isInsideHeader = await page.evaluate(() => {
@@ -160,19 +161,39 @@ test.describe('Fix 3: nav tabs live in the header', () => {
       return header ? header.contains(nav) : false;
     });
 
-    expect(isInsideHeader).toBe(true);
+    expect(isInsideHeader).toBe(false);
   });
 
-  test('tab text labels are not visible (hidden via CSS)', async ({ page }) => {
+  test('#bottom-tabs is fixed-positioned', async ({ page }) => {
     await setupWithChores(page);
 
-    // All five tab spans should have display:none
-    const allHidden = await page.evaluate(() => {
-      const spans = [...document.querySelectorAll('#bottom-tabs .tab-item span')];
-      return spans.every(s => window.getComputedStyle(s).display === 'none');
+    const position = await page.evaluate(() => {
+      return window.getComputedStyle(document.querySelector('#bottom-tabs')).position;
     });
 
-    expect(allHidden).toBe(true);
+    expect(position).toBe('fixed');
+  });
+
+  test('tab text labels are visible', async ({ page }) => {
+    await setupWithChores(page);
+
+    // All five tab spans should be rendered (not display:none)
+    const allVisible = await page.evaluate(() => {
+      const spans = [...document.querySelectorAll('#bottom-tabs .tab-item span')];
+      return spans.length === 5 && spans.every(s => window.getComputedStyle(s).display !== 'none');
+    });
+
+    expect(allVisible).toBe(true);
+  });
+
+  test('tab order is chores, calendar, home, history, settings', async ({ page }) => {
+    await setupWithChores(page);
+
+    const order = await page.evaluate(() => {
+      return [...document.querySelectorAll('#bottom-tabs .tab-item')].map(el => el.dataset.nav);
+    });
+
+    expect(order).toEqual(['chores', 'calendar', 'today', 'history', 'settings']);
   });
 
   test('all five nav icon buttons are visible after login', async ({ page }) => {
