@@ -15,7 +15,8 @@ export function createAppState() {
     weekLogs: [],
     activeSheet: null,
     activeSheetData: {},
-    choreOrder: [],   // per-user preferred chore order (array of chore IDs)
+    choreOrder: [],            // per-user preferred chore order (array of chore IDs)
+    hiddenHomeChoreIDs: [],    // chore IDs hidden from the Home tab grid
     jiggleMode: false,         // home grid reorder mode
     latestLogs: {},            // map of choreId -> ChoreLog (most recent per chore)
   };
@@ -37,6 +38,7 @@ export function resetAuthedState(state) {
   state.activeSheet = null;
   state.activeSheetData = {};
   state.choreOrder = [];
+  state.hiddenHomeChoreIDs = [];
   state.jiggleMode = false;
   state.latestLogs = {};
 }
