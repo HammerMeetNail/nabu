@@ -121,6 +121,28 @@ export function renderNotificationPanel(notifications) {
         .join("")
     : `<li class="notif-empty">No notifications</li>`;
 
+  // Push diagnostic (remove once push is confirmed working)
+  let diag = "";
+  if (window._appState && window._appState._lastPush) {
+    const lp = window._appState._lastPush;
+    diag = `<li class="notif-item" style="font-size:11px;color:var(--text-secondary)">
+      <div class="notif-content">
+        <span>Push diag: decrypted=${lp.decrypted} title="${lp.title}" ${new Date(lp.time).toLocaleTimeString()}</span>
+      </div>
+    </li>`;
+  }
+
+  // Push diagnostic (remove once push is confirmed working)
+  let diag = "";
+  if (window.__pushDiag) {
+    const lp = window.__pushDiag;
+    diag = `<li class="notif-item" style="font-size:11px;color:var(--text-secondary)">
+      <div class="notif-content">
+        <span>Push: decrypted=${lp.decrypted} title="${escapeHTML(lp.title||'')}" ${new Date(lp.time).toLocaleTimeString()}</span>
+      </div>
+    </li>`;
+  }
+
   return `
   <div class="notif-panel" id="notif-panel">
     <div class="notif-panel-header">

@@ -374,6 +374,22 @@ async function loadNotifData() {
     state.notifications = data.notifications || [];
     state.unreadNotifications = data.unreadCount || 0;
   } catch {}
+
+  // Check push diagnostic from service worker
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    try {
+      const mc = new MessageChannel();
+      const swResult = new Promise((resolve) => {
+        mc.port1.onmessage = (e) => resolve(e.data);
+        setTimeout(() => resolve(null), 1000);
+      });
+      navigator.serviceWorker.controller.postMessage("last-push", [mc.port2]);
+      const lastPush = await swResult;
+      if (lastPush && lastPush.time) {
+        window.__pushDiag = lastPush;
+      }
+    } catch {}
+  }
 }
 
 function showToastWithUndo(message, logId) {
