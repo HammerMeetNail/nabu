@@ -2,6 +2,23 @@ import { apiFetch } from "./api.js";
 import { escapeHTML } from "./utils.js";
 
 /**
+ * Clear the PWA home screen icon badge.
+ */
+export async function clearAppBadge() {
+  try {
+    if (navigator.clearAppBadge) {
+      await navigator.clearAppBadge();
+    }
+  } catch { /* not supported */ }
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (reg && reg.active && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.controller.postMessage("clear-badge");
+    }
+  } catch { /* SW not available */ }
+}
+
+/**
  * Request notification permission. Must be called directly from a user-gesture
  * handler (click, submit) before any async/await operations.
  */

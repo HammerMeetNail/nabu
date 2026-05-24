@@ -26,7 +26,7 @@ import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPi
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, sortChoresByOrder } from "./preferences.js";
 import { loadLatestLogs, renderHomeView as renderHomeViewGrid, renderHomeLogSheet, renderConfirmRemoveFromHomeSheet } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
-import { loadNotifications, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission } from "./notifications.js";
+import { loadNotifications, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge } from "./notifications.js";
 
 /**
  * Reads the current frequency settings from a bottom sheet's freq <select>
@@ -738,6 +738,7 @@ export async function init() {
         break;
       case "open-notifications": {
         e.preventDefault();
+        clearAppBadge();
         loadNotifData().then(() => {
           const container = document.querySelector("#notif-panel-container");
           if (container) {
@@ -764,6 +765,7 @@ export async function init() {
       }
       case "mark-all-read": {
         e.preventDefault();
+        clearAppBadge();
         markAllRead().then(() => loadNotifData()).then(() => {
           state.unreadNotifications = 0;
           updateTopBar();

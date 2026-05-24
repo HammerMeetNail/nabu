@@ -53,14 +53,18 @@ self.addEventListener("push", (event) => {
   self.lastPush = { decrypted, title, body, time: ts, hasData };
   self.__diag = self.__diag || [];
   self.__diag.push({ type: "push-received", ts, decrypted, hasData });
+  self.__badgeCount = (self.__badgeCount || 0) + 1;
   event.waitUntil(
-    self.registration.showNotification(title, {
-      body: body || "(tap to open)",
-      icon,
-      tag: "choresy",
-      requireInteraction: true,
-      vibrate: [200, 100, 200],
-    })
+    Promise.all([
+      self.registration.showNotification(title, {
+        body: body || "(tap to open)",
+        icon,
+        tag: "choresy",
+        requireInteraction: true,
+        vibrate: [200, 100, 200],
+      }),
+      setBadge(self.__badgeCount),
+    ])
   );
 });
 
@@ -75,21 +79,44 @@ self.addEventListener("message", (event) => {
       registration: !!self.registration,
     });
   }
+  if (event.data === "clear-badge") {
+    self.__badgeCount = 0;
+    event.waitUntil(clearBadge());
+  }
 });
+
+async function setBadge(count) {
+  try {
+    if ("setAppBadge" in self.navigator) {
+      await self.navigator.setAppBadge(count);
+    }
+  } catch { /* not supported */ }
+}
+
+async function clearBadge() {
+  try {
+    if ("clearAppBadge" in self.navigator) {
+      await self.navigator.clearAppBadge();
+    }
+  } catch { /* not supported */ }
+}
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-      for (const client of clientList) {
-        if (client.url && client.focus) {
-          return client.focus();
+    Promise.all([
+      clearBadge(),
+      self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+        for (const client of clientList) {
+          if (client.url && client.focus) {
+            return client.focus();
+          }
         }
-      }
-      if (self.clients.openWindow) {
-        return self.clients.openWindow("/");
-      }
-    })
+        if (self.clients.openWindow) {
+          return self.clients.openWindow("/");
+        }
+      }),
+    ])
   );
 });
 
