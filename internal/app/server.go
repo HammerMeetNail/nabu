@@ -294,6 +294,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	})))
 	mux.HandleFunc("/service-worker.js", func(w http.ResponseWriter, r *http.Request) {
 		r.URL.Path = "/service-worker.js"
+		w.Header().Set("Cache-Control", "no-store")
 		http.FileServer(http.FS(staticFS)).ServeHTTP(w, r)
 	})
 
