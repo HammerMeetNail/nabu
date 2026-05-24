@@ -66,8 +66,8 @@ func GenerateVAPIDKeys() (privB64, pubB64 string, err error) {
 		return "", "", err
 	}
 	privB64 = base64urlEncode(priv.D.Bytes())
-	x := priv.PublicKey.X.Bytes()
-	y := priv.PublicKey.Y.Bytes()
+	x := priv.X.Bytes()
+	y := priv.Y.Bytes()
 	// Pad to 32 bytes each
 	pub := make([]byte, 65)
 	pub[0] = 0x04
