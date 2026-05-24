@@ -11,11 +11,11 @@ services:
       - APP_BASE_URL=https://choresy.yearofbingo.com
       - SERVER_SECURE=true
       - DATABASE_URL=postgres://choresy:${DB_PASSWORD}@postgres:5432/choresy?sslmode=disable
-      - SMTP_HOST=${SMTP_HOST}
-      - SMTP_PORT=${SMTP_PORT}
-      - SMTP_USER=${SMTP_USER}
+      - SMTP_HOST=smtp.resend.com
+      - SMTP_PORT=587
+      - SMTP_USER=resend
       - SMTP_PASS=${SMTP_PASS}
-      - SMTP_FROM=${SMTP_FROM}
+      - SMTP_FROM=noreply@yearofbingo.com
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
