@@ -36,10 +36,17 @@ self.addEventListener("push", (event) => {
   }
   const title = data.title || "Choresy";
   const body = data.body || "";
-  const icon = "/static/icons/icon.svg";
-  const badge = "/static/icons/icon.svg";
+  const icon = "/static/icons/icon-192.png";
+  const badge = "/static/icons/icon-192.png";
   event.waitUntil(
-    self.registration.showNotification(title, { body, icon, badge, tag: "choresy" })
+    self.registration.showNotification(title, {
+      body,
+      icon,
+      badge,
+      tag: "choresy",
+      requireInteraction: true,
+      vibrate: [200, 100, 200],
+    })
   );
 });
 
