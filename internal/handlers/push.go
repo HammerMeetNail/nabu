@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/dave/choresy/internal/middleware"
@@ -29,9 +30,12 @@ func (h *PushHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		} `json:"subscription"`
 	}
 	if err := readJSON(r, &req); err != nil {
+		log.Printf("push: subscribe parse error for user %d: %v", user.ID, err)
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
+
+	log.Printf("push: subscribe user %d endpoint=%.50s", user.ID, req.Subscription.Endpoint)
 
 	sub := push.Subscription{
 		Endpoint: req.Subscription.Endpoint,
@@ -39,9 +43,11 @@ func (h *PushHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		Auth:     req.Subscription.Keys.Auth,
 	}
 	if err := h.store.SaveSubscription(r.Context(), user.ID, sub); err != nil {
+		log.Printf("push: subscribe save error for user %d: %v", user.ID, err)
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	log.Printf("push: subscribed user %d", user.ID)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "subscribed"})
 }
 
