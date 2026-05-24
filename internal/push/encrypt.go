@@ -50,21 +50,19 @@ func EncryptPayload(payload []byte, clientP256DH, clientAuth string) ([]byte, er
 	}
 
 	// Derive key and nonce via HKDF per RFC 8291 section 3.4.
-	// Step 1: HKDF-Extract(salt=auth_secret, IKM=DH_shared_secret)
-	prk := hkdf.Extract(sha256.New, sharedSecret, authSecret)
+	// Step 1: HKDF(salt=auth_secret, IKM=DH_shared_secret, info="WebPush: info\0" || client_pub || ephemeral_pub, L=32)
+	prkCombined := hkdf.Extract(sha256.New, sharedSecret, authSecret)
+	secretInfo := append([]byte("WebPush: info\x00"), clientPubKey...)
+	secretInfo = append(secretInfo, ephemeralPub.Bytes()...)
+	secret := expandHKDF(prkCombined, secretInfo, 32)
 
-	// Step 2: HKDF-Expand(prk, "Content-Encoding: auth\0", L=32) → intermediate key
-	authInfo := []byte("Content-Encoding: auth\x00")
-	secret := expandHKDF(prk, authInfo, 32)
+	// Step 2: HKDF-Extract(salt=random_salt, IKM=secret)
+	prk := hkdf.Extract(sha256.New, secret, salt)
 
-	// Step 3: Build context with length-prefixed public keys
-	context := buildContext(clientPubKey, ephemeralPub.Bytes())
-	keyInfo := append([]byte("Content-Encoding: aes128gcm\x00"), context...)
-	nonceInfo := append([]byte("Content-Encoding: nonce\x00"), context...)
-
-	// Step 4: Derive CEK and nonce using separate HKDF-Expands
-	cek := expandHKDF(secret, keyInfo, 16)
-	nonce := expandHKDF(secret, nonceInfo, 12)
+	// Step 3: cek = HKDF-Expand(prk, "Content-Encoding: aes128gcm\0", 16)
+	//         nonce = HKDF-Expand(prk, "Content-Encoding: nonce\0", 12)
+	cek := expandHKDF(prk, []byte("Content-Encoding: aes128gcm\x00"), 16)
+	nonce := expandHKDF(prk, []byte("Content-Encoding: nonce\x00"), 12)
 
 	// AES-128-GCM
 	block, err := aes.NewCipher(cek)
@@ -115,15 +113,4 @@ func expandHKDF(prk, info []byte, length int) []byte {
 	return out
 }
 
-// buildContext creates the context info string per RFC 8291 section 3.3:
-// "WebPush: info" || 0x00 || receiver public key (length-prefixed) || sender public key (length-prefixed)
-func buildContext(clientPubKey, ephemeralPubKey []byte) []byte {
-	var ctx []byte
-	ctx = append(ctx, []byte("WebPush: info\x00")...)
-	ctx = append(ctx, 0x00)
-	ctx = append(ctx, 0x00, byte(len(clientPubKey)))
-	ctx = append(ctx, clientPubKey...)
-	ctx = append(ctx, 0x00, byte(len(ephemeralPubKey)))
-	ctx = append(ctx, ephemeralPubKey...)
-	return ctx
-}
+
