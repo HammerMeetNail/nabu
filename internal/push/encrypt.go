@@ -49,19 +49,22 @@ func EncryptPayload(payload []byte, clientP256DH, clientAuth string) ([]byte, er
 		return nil, err
 	}
 
-	// Derive key and nonce via HKDF (RFC 8291)
+	// Derive key and nonce via HKDF per RFC 8291 section 3.4.
+	// Step 1: HKDF-Extract(salt=auth_secret, IKM=DH_shared_secret)
 	prk := hkdf.Extract(sha256.New, sharedSecret, authSecret)
-	info := buildInfo(ephemeralPub.Bytes(), clientPubKey)
-	kdf := hkdf.Expand(sha256.New, prk, info)
 
-	cek := make([]byte, 16) // content encryption key
-	nonce := make([]byte, 12)
-	if _, err := io.ReadFull(kdf, cek); err != nil {
-		return nil, err
-	}
-	if _, err := io.ReadFull(kdf, nonce); err != nil {
-		return nil, err
-	}
+	// Step 2: HKDF-Expand(prk, "Content-Encoding: auth\0", L=32) → intermediate key
+	authInfo := []byte("Content-Encoding: auth\x00")
+	secret := expandHKDF(prk, authInfo, 32)
+
+	// Step 3: Build context with length-prefixed public keys
+	context := buildContext(clientPubKey, ephemeralPub.Bytes())
+	keyInfo := append([]byte("Content-Encoding: aes128gcm\x00"), context...)
+	nonceInfo := append([]byte("Content-Encoding: nonce\x00"), context...)
+
+	// Step 4: Derive CEK and nonce using separate HKDF-Expands
+	cek := expandHKDF(secret, keyInfo, 16)
+	nonce := expandHKDF(secret, nonceInfo, 12)
 
 	// AES-128-GCM
 	block, err := aes.NewCipher(cek)
@@ -102,11 +105,25 @@ func EncryptPayload(payload []byte, clientP256DH, clientAuth string) ([]byte, er
 	return result, nil
 }
 
-// buildInfo creates the HKDF info string per RFC 8291 section 3.3.
-func buildInfo(ephemeralPub, clientPubKey []byte) []byte {
-	// "WebPush: info\0" || receiver public key || sender public key
-	info := []byte("WebPush: info\x00")
-	info = append(info, clientPubKey...)
-	info = append(info, ephemeralPub...)
-	return info
+// expandHKDF is a helper that reads L bytes from HKDF-Expand.
+func expandHKDF(prk, info []byte, length int) []byte {
+	out := make([]byte, length)
+	kdf := hkdf.Expand(sha256.New, prk, info)
+	if _, err := io.ReadFull(kdf, out); err != nil {
+		panic("hkdf: " + err.Error())
+	}
+	return out
+}
+
+// buildContext creates the context info string per RFC 8291 section 3.3:
+// "WebPush: info" || 0x00 || receiver public key (length-prefixed) || sender public key (length-prefixed)
+func buildContext(clientPubKey, ephemeralPubKey []byte) []byte {
+	var ctx []byte
+	ctx = append(ctx, []byte("WebPush: info\x00")...)
+	ctx = append(ctx, 0x00)
+	ctx = append(ctx, 0x00, byte(len(clientPubKey)))
+	ctx = append(ctx, clientPubKey...)
+	ctx = append(ctx, 0x00, byte(len(ephemeralPubKey)))
+	ctx = append(ctx, ephemeralPubKey...)
+	return ctx
 }
