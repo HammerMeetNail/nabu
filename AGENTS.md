@@ -233,9 +233,9 @@ Name spec files after the feature/area: `<area>-<feature>.spec.js` (e.g. `home-r
 
 ## Key invariants — do not break
 
-These caused hard-to-diagnose production bugs and are covered by `tests/e2e/home-log-to-calendar.spec.js`:
+These caused hard-to-diagnose production bugs and are covered by E2E tests:
 
-1. **Home-tab direct tap** (`home-tap-chore` event in `app.js`): must call `logChore(..., new Date().getHours(), ...)`.
+1. **Home-tab direct tap** (`home-tap-chore` event in `app.js`): must call `logChore(..., new Date().getHours(), new Date().toISOString())` — the `slotHour` from `getHours()` drives calendar placement, and `completedAt` as the current time prevents the home-tab "time ago" from being wrong by the UTC offset. 
 2. **Home-tab sheet log** (`save-home-log` event in `app.js`): must extract `new Date(whenInput.value).getHours()` and pass as `slotHour`.
 3. **`renderWeekView` in `calendar.js`**: ad-hoc logs (those not matching a scheduled slot) must be placed in their `slotHour` row, not forced into the Anytime row — mirrors the `adHocCells` pattern in `renderDayView`.
 4. **No hard-coded `?v=N` in JS import paths** — the server rewrites them all at startup.
