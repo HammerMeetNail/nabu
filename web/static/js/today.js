@@ -2,17 +2,23 @@ import { apiFetch } from "./api.js";
 import { escapeHTML } from "./utils.js";
 import { loadSchedulesForDate } from "./schedule.js";
 
+function formatLocalISODate(d) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 export function todayISO(offset) {
   const d = new Date();
   d.setDate(d.getDate() + (offset || 0));
-  return d.toISOString().split("T")[0];
+  return formatLocalISODate(d);
 }
 
 function shiftDate(iso, offset) {
   const d = new Date(iso + "T00:00:00");
   d.setDate(d.getDate() + offset);
-  return d.toISOString().split("T")[0];
+  return formatLocalISODate(d);
 }
 
 function fmtDate(iso) {
@@ -35,7 +41,7 @@ export async function loadHistory() {
   const start = todayISO(0);
   const d = new Date(start + "T00:00:00");
   d.setDate(d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1));
-  const weekStart = d.toISOString().split("T")[0];
+  const weekStart = formatLocalISODate(d);
   const { data } = await apiFetch(`/api/logs/week?start=${weekStart}`);
   return data;
 }
@@ -148,5 +154,4 @@ export function renderHistoryView(state) {
     <ul class="member-list">${items}</ul>
   </div>`;
 }
-
 

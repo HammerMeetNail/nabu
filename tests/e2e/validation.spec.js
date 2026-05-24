@@ -410,10 +410,10 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     await page.click('a[data-nav="today"]');
     await page.waitForTimeout(500);
 
-    // Click notifications bell → settings
+    // Click notifications bell → notification panel
     await bell.click();
     await page.waitForTimeout(700);
-    await expect(page.locator('.settings-view')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('.notif-panel')).toBeVisible({ timeout: 3000 });
 
     // === Logout ===
     await page.click('a[data-nav="settings"]');

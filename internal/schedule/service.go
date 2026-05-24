@@ -118,6 +118,9 @@ func (s *Service) IsActiveForDay(sch ChoreSchedule, date time.Time) bool {
 			return false
 		}
 		origin := sch.CreatedAt.Truncate(24 * time.Hour)
+		if sch.StartDate != nil {
+			origin = sch.StartDate.Time.UTC().Truncate(24 * time.Hour)
+		}
 		diff := int(d.Sub(origin).Hours() / 24)
 		return diff >= 0 && diff%sch.IntervalDays == 0
 

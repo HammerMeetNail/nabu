@@ -1,21 +1,61 @@
 package handlers
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/dave/choresy/internal/chore"
+	"github.com/dave/choresy/internal/household"
 	"github.com/dave/choresy/internal/log"
 	"github.com/dave/choresy/internal/middleware"
+	"github.com/dave/choresy/internal/notification"
 )
 
 type LogHandler struct {
-	service *log.Service
+	service        *log.Service
+	notifService   *notification.Service // optional; nil disables notifications
+	choreStore     chore.Store
+	householdStore household.Store
 }
 
 func NewLogHandler(service *log.Service) *LogHandler {
 	return &LogHandler{service: service}
+}
+
+// WithNotification attaches the services required to fan out chore-logged
+// notifications to other household members after a successful log creation.
+func (h *LogHandler) WithNotification(ns *notification.Service, cs chore.Store, hs household.Store) *LogHandler {
+	h.notifService = ns
+	h.choreStore = cs
+	h.householdStore = hs
+	return h
+}
+
+// fanOutNotification creates notifications for all household members except
+// the one who logged the chore.  It is always called in a goroutine so that
+// push / DB latency never delays the HTTP response.
+func (h *LogHandler) fanOutNotification(householdID, loggerID, choreID int64) {
+	if h.notifService == nil {
+		return
+	}
+	ctx := context.Background()
+
+	c, err := h.choreStore.GetChore(ctx, choreID)
+	if err != nil {
+		return
+	}
+	members, err := h.householdStore.GetMembers(ctx, householdID)
+	if err != nil {
+		return
+	}
+	mi := make([]notification.MemberInfo, len(members))
+	for i, m := range members {
+		mi[i] = notification.MemberInfo{UserID: m.UserID, DisplayName: m.DisplayName}
+	}
+	h.notifService.NotifyChoreLogged(ctx, mi, loggerID, c.Name, c.Icon)
 }
 
 func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -62,6 +102,14 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
+	}
+
+	// Fire-and-forget: notify other household members.
+	if h.notifService != nil {
+		hhID := *user.HouseholdID
+		loggerID := user.ID
+		choreID := req.ChoreID
+		go h.fanOutNotification(hhID, loggerID, choreID)
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{"log": entry})

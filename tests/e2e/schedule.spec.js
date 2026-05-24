@@ -1638,6 +1638,12 @@ test.describe('Drag-and-drop: default "once" frequency', () => {
 // ─── Frequency selector: every_n_days ─────────────────────────────────────────
 
 test.describe('Frequency selector: every_n_days', () => {
+  const localTodayISO = () => {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  };
+
   test('pick-chore sheet contains "Every N days" option', async ({ page }) => {
     await setupWithChores(page);
 
@@ -1727,6 +1733,7 @@ test.describe('Frequency selector: every_n_days', () => {
         specificTime: '12:00',
         frequencyType: 'every_n_days',
         intervalDays: 3,
+        startDate: localTodayISO(),
         isActive: true,
       },
       headers: { 'X-CSRF-Token': csrf },

@@ -20,10 +20,12 @@ import (
 	"github.com/dave/choresy/internal/database"
 	"github.com/dave/choresy/internal/handlers"
 	"github.com/dave/choresy/internal/household"
-	"github.com/dave/choresy/internal/schedule"
 	logsvc "github.com/dave/choresy/internal/log"
 	"github.com/dave/choresy/internal/mail"
 	"github.com/dave/choresy/internal/middleware"
+	"github.com/dave/choresy/internal/notification"
+	"github.com/dave/choresy/internal/push"
+	"github.com/dave/choresy/internal/schedule"
 	"github.com/dave/choresy/internal/stats"
 	"github.com/dave/choresy/internal/userprefs"
 	"github.com/dave/choresy/internal/version"
@@ -46,6 +48,8 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	var choreStore chore.Store
 	var logStore logsvc.Store
 	var userPrefsStore userprefs.Store
+	var notifStore notification.Store
+	var pushStore push.Store
 
 	if db != nil {
 		authStore = auth.NewPostgresStore(db)
@@ -53,12 +57,16 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		choreStore = chore.NewPostgresStore(db)
 		logStore = logsvc.NewPostgresStore(db)
 		userPrefsStore = userprefs.NewPostgresStore(db)
+		notifStore = notification.NewPostgresStore(db)
+		pushStore = push.NewPostgresStore(db)
 	} else {
 		authStore = auth.NewMemoryStore()
 		householdStore = household.NewMemoryStore()
 		choreStore = chore.NewMemoryStore()
 		logStore = logsvc.NewMemoryStore()
 		userPrefsStore = userprefs.NewMemoryStore()
+		notifStore = notification.NewMemoryStore()
+		pushStore = push.NewMemoryStore()
 	}
 
 	authService := auth.NewService(authStore)
@@ -71,6 +79,24 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	choreHandler := handlers.NewChoreHandler(choreService)
 	logService := logsvc.NewService(logStore)
 	logHandler := handlers.NewLogHandler(logService)
+	notifService := notification.NewService(notifStore)
+	notifHandler := handlers.NewNotificationHandler(notifService)
+	logHandler.WithNotification(notifService, choreStore, householdStore)
+
+	var vapidSigner *push.VAPIDSigner
+	if cfg.VAPIDPublicKey != "" && cfg.VAPIDPrivateKey != "" {
+		var err error
+		vapidSigner, err = push.NewVAPIDSigner(cfg.VAPIDPrivateKey, cfg.VAPIDPublicKey, cfg.VAPIDSubject)
+		if err != nil {
+			log.Printf("warning: failed to create VAPID signer: %v", err)
+			vapidSigner = nil
+		}
+	}
+	pushService := push.NewService(pushStore, vapidSigner)
+	if vapidSigner != nil {
+		notifService.WithPushSender(pushService)
+	}
+	pushHandler := handlers.NewPushHandler(pushStore)
 	userPrefsService := userprefs.NewService(userPrefsStore)
 	preferencesHandler := handlers.NewPreferencesHandler(userPrefsService)
 	statsService := stats.NewService(logStore, &choreStatsAdapter{choreStore})
@@ -187,6 +213,13 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	mux.HandleFunc("/api/logs/week", method(http.MethodGet, middleware.RequireAuth(logHandler.Week)))
 	mux.HandleFunc("/api/logs/month", method(http.MethodGet, middleware.RequireAuth(logHandler.Month)))
 	mux.HandleFunc("/api/logs/latest-per-chore", method(http.MethodGet, middleware.RequireAuth(logHandler.LatestPerChore)))
+
+	mux.HandleFunc("/api/notifications", method(http.MethodGet, middleware.RequireAuth(notifHandler.List)))
+	mux.HandleFunc("/api/notifications/read-all", method(http.MethodPost, middleware.RequireAuth(notifHandler.MarkAllRead)))
+	mux.HandleFunc("/api/notifications/{id}", method(http.MethodDelete, middleware.RequireAuth(notifHandler.Delete)))
+
+	mux.HandleFunc("/api/push/subscribe", method(http.MethodPost, middleware.RequireAuth(pushHandler.Subscribe)))
+	mux.HandleFunc("/api/push/unsubscribe", method(http.MethodPost, middleware.RequireAuth(pushHandler.Unsubscribe)))
 
 	mux.HandleFunc("/api/stats/leaderboard", method(http.MethodGet, middleware.RequireAuth(statsHandler.Leaderboard)))
 	mux.HandleFunc("/api/stats/streaks", method(http.MethodGet, middleware.RequireAuth(statsHandler.Streaks)))
@@ -308,11 +341,13 @@ var indexTmpl = template.Must(template.ParseFS(webassets.Assets, "templates/inde
 
 func renderIndex(w http.ResponseWriter, cfg config.Config) {
 	data := struct {
-		AppName string
-		Version string
+		AppName        string
+		Version        string
+		VAPIDPublicKey string
 	}{
-		AppName: "Choresy",
-		Version: version.Version,
+		AppName:        "Choresy",
+		Version:        version.Version,
+		VAPIDPublicKey: cfg.VAPIDPublicKey,
 	}
 	if err := indexTmpl.Execute(w, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

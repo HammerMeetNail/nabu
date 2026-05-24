@@ -5,7 +5,7 @@ export default defineConfig({
   timeout: 60000,
   expect: { timeout: 10000 },
   use: {
-    baseURL: 'http://localhost:8080',
+    baseURL: process.env.BASE_URL || 'http://localhost:8080',
     headless: true,
     viewport: { width: 390, height: 844 },
   },

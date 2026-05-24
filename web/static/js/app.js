@@ -26,6 +26,7 @@ import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPi
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, sortChoresByOrder } from "./preferences.js";
 import { loadLatestLogs, renderHomeView as renderHomeViewGrid, renderHomeLogSheet, renderConfirmRemoveFromHomeSheet } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
+import { loadNotifications, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush } from "./notifications.js";
 
 /**
  * Reads the current frequency settings from a bottom sheet's freq <select>
@@ -48,6 +49,7 @@ function readSheetFreq(prefix, date) {
     case "every_n_days": {
       const intervalInput = document.querySelector(`#${prefix}-interval`);
       payload.intervalDays = Math.max(2, parseInt(intervalInput?.value || "2", 10));
+      payload.startDate = date || todayISO(0);
       break;
     }
     case "weekly": {
@@ -365,6 +367,15 @@ async function loadLatestLogsData() {
   } catch {}
 }
 
+async function loadNotifData() {
+  if (!state.user) return;
+  try {
+    const data = await loadNotifications();
+    state.notifications = data.notifications || [];
+    state.unreadNotifications = data.unreadCount || 0;
+  } catch {}
+}
+
 function showToastWithUndo(message, logId) {
   const container = document.querySelector("#toast-container");
   if (!container) return;
@@ -420,9 +431,14 @@ function updateTopBar() {
       bell.hidden = false;
       bell.title = "Notifications";
     }
-    if (badge && state.unreadNotifications > 0) {
-      badge.hidden = false;
-      badge.textContent = String(state.unreadNotifications);
+    if (badge) {
+      if (state.unreadNotifications > 0) {
+        badge.hidden = false;
+        badge.textContent = String(state.unreadNotifications);
+      } else {
+        badge.hidden = true;
+        badge.textContent = "";
+      }
     }
   } else {
     topBar.hidden = true;
@@ -462,6 +478,7 @@ async function doLogin(form) {
     state.user = data.user;
     state.currentRoute = "/";
     await reloadAfterAuth();
+    maybeSubscribePush().catch(() => {});
     if (state._pendingInviteCode && !state.household) {
       await doJoinWithCode(state._pendingInviteCode);
       return;
@@ -482,6 +499,7 @@ async function reloadAfterAuth() {
         loadTodayData(),
         loadLatestLogsData(),
         loadStatsData(),
+        loadNotifData(),
       ]);
     }
   } catch {}
@@ -501,6 +519,7 @@ async function doRegister(form) {
     state.user = data.user;
     state.currentRoute = "/";
     await reloadAfterAuth();
+    maybeSubscribePush().catch(() => {});
     if (state._pendingInviteCode && !state.household) {
       await doJoinWithCode(state._pendingInviteCode);
       return;
@@ -593,6 +612,10 @@ export async function init() {
     state.user = await loadSession();
   } catch {
     state.user = null;
+  }
+
+  if (state.user) {
+    maybeSubscribePush().catch(() => {});
   }
 
   const app = document.querySelector("#app");
@@ -692,6 +715,56 @@ export async function init() {
           render(app);
         });
         break;
+      case "open-notifications": {
+        e.preventDefault();
+        loadNotifData().then(() => {
+          const container = document.querySelector("#notif-panel-container");
+          if (container) {
+            container.hidden = false;
+            container.innerHTML = renderNotificationPanel(state.notifications);
+          }
+        });
+        // Show panel immediately with current state while loading
+        const container = document.querySelector("#notif-panel-container");
+        if (container) {
+          container.hidden = false;
+          container.innerHTML = renderNotificationPanel(state.notifications);
+        }
+        break;
+      }
+      case "close-notifications": {
+        e.preventDefault();
+        const container = document.querySelector("#notif-panel-container");
+        if (container) {
+          container.hidden = true;
+          container.innerHTML = "";
+        }
+        break;
+      }
+      case "mark-all-read": {
+        e.preventDefault();
+        markAllRead().then(() => loadNotifData()).then(() => {
+          state.unreadNotifications = 0;
+          updateTopBar();
+          const container = document.querySelector("#notif-panel-container");
+          if (container && !container.hidden) {
+            container.innerHTML = renderNotificationPanel(state.notifications);
+          }
+        });
+        break;
+      }
+      case "dismiss-notification": {
+        e.preventDefault();
+        const nid = parseInt(actionEl.dataset.notifId, 10);
+        deleteNotification(nid).then(() => loadNotifData()).then(() => {
+          updateTopBar();
+          const container = document.querySelector("#notif-panel-container");
+          if (container && !container.hidden) {
+            container.innerHTML = renderNotificationPanel(state.notifications);
+          }
+        });
+        break;
+      }
       case "create-invite":
         e.preventDefault();
         createInvite().then((data) => {
@@ -915,7 +988,7 @@ export async function init() {
           state.activeSheetData = { choreId };
           render(app);
         } else {
-          logChore(choreId, "", "", [], new Date().getHours()).then(async (data) => {
+          logChore(choreId, "", todayISO(0), [], new Date().getHours()).then(async (data) => {
             const logId = data?.log?.id;
             await loadLatestLogsData();
             render(app);
@@ -1236,6 +1309,7 @@ export async function init() {
         loadTodayData(),
         loadLatestLogsData(),
         loadStatsData(),
+        loadNotifData(),
       ]);
     }
   } catch {}
@@ -1684,6 +1758,25 @@ export async function init() {
     }
   }, { passive: false });
 
+  // ── Notification polling ─────────────────────────────────────────────────
+  // Poll every 30 s for new notifications.  Pause while the tab is hidden so
+  // we don't hammer the API in background tabs.
+  let notifPollTimer = null;
+  function startNotifPoll() {
+    if (notifPollTimer) clearInterval(notifPollTimer);
+    notifPollTimer = setInterval(() => {
+      if (!document.hidden && state.user) {
+        loadNotifData().then(() => updateTopBar());
+      }
+    }, 30000);
+  }
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && state.user) {
+      loadNotifData().then(() => updateTopBar());
+    }
+  });
+  if (state.user) startNotifPoll();
+
   render(app);
 }
 
@@ -1726,7 +1819,7 @@ async function loadWeekData() {
     const d = new Date(date + "T00:00:00");
     const day = d.getDay();
     d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
-    const weekStart = d.toISOString().split("T")[0];
+    const weekStart = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
     const [weekResult, scheduleList] = await Promise.all([
       loadWeek(weekStart),
       loadSchedules(),

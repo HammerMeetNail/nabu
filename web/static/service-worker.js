@@ -27,6 +27,38 @@ self.addEventListener("activate", (event) => {
   })());
 });
 
+self.addEventListener("push", (event) => {
+  let data = {};
+  try {
+    data = event.data?.json() || {};
+  } catch {
+    data = { title: "Choresy", body: event.data?.text() || "" };
+  }
+  const title = data.title || "Choresy";
+  const body = data.body || "";
+  const icon = "/static/icons/icon.svg";
+  const badge = "/static/icons/icon.svg";
+  event.waitUntil(
+    self.registration.showNotification(title, { body, icon, badge, tag: "choresy" })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url && client.focus) {
+          return client.focus();
+        }
+      }
+      if (self.clients.openWindow) {
+        return self.clients.openWindow("/");
+      }
+    })
+  );
+});
+
 self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") {
     return;

@@ -2,6 +2,9 @@
 # End-to-end test runner for Choresy
 set -e
 
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
+ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+
 echo "=== E2E: Starting stack ==="
 if [ "${CI}" = "true" ]; then
   # CI: run app with in-memory stores, Mailpit as service container
@@ -18,7 +21,13 @@ fi
 ./scripts/wait-for-stack.sh
 
 echo "=== E2E: Running Playwright tests ==="
-pnpm exec playwright test --config playwright.config.js "$@"
+if [ -x "$ROOT_DIR/node_modules/.bin/playwright" ]; then
+  "$ROOT_DIR/node_modules/.bin/playwright" test --config playwright.config.js "$@"
+elif [ -x "$ROOT_DIR/../../node_modules/.bin/playwright" ]; then
+  "$ROOT_DIR/../../node_modules/.bin/playwright" test --config playwright.config.js "$@"
+else
+  pnpm exec playwright test --config playwright.config.js "$@"
+fi
 
 EXIT=$?
 echo "=== E2E: Done (exit $EXIT) ==="

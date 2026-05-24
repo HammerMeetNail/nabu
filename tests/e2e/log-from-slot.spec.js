@@ -62,6 +62,12 @@ async function longPress(page, locator) {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 test.describe('Log from time slot', () => {
+  const localTodayISO = () => {
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  };
+
   test('long-pressing a chore in the 2 PM sheet and logging it places the card in the 2 PM row', async ({ page }) => {
     await setupWithChores(page);
 
@@ -114,7 +120,7 @@ test.describe('Log from time slot', () => {
     const choreId = (await (await page.request.get('/api/chores')).json()).chores[0].id;
 
     const resp = await page.request.post('/api/logs', {
-      data: { choreId, note: '', indicators: [] }, // no hour field
+      data: { choreId, note: '', indicators: [], date: localTodayISO() }, // no hour field
       headers: { 'X-CSRF-Token': csrf },
     });
 

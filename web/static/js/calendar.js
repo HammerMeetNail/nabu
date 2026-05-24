@@ -19,6 +19,13 @@ function fmtShortDate(iso) {
   return d.toLocaleDateString("en-US", { weekday: "short", day: "numeric" });
 }
 
+function formatLocalISODate(d) {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 // ─── Day View ─────────────────────────────────────────────────────────────────
 
 /**
@@ -347,7 +354,7 @@ function renderWeekChoreCard(chore, sch, log, iso) {
 export function shiftISO(iso, days) {
   const d = new Date(iso + "T00:00:00");
   d.setDate(d.getDate() + days);
-  return d.toISOString().split("T")[0];
+  return formatLocalISODate(d);
 }
 
 function isoMonday(iso) {
@@ -355,7 +362,7 @@ function isoMonday(iso) {
   const day = d.getDay();
   const diff = day === 0 ? -6 : 1 - day; // Move back to Monday
   d.setDate(d.getDate() + diff);
-  return d.toISOString().split("T")[0];
+  return formatLocalISODate(d);
 }
 
 function fmtLongDate(iso) {
@@ -398,11 +405,12 @@ export function isActiveForDayJS(sch, isoDate) {
       return (sch.daysOfWeek || []).includes(wd);
     case "every_n_days": {
       if (!sch.intervalDays || sch.intervalDays <= 0) return false;
-      // Use the date portion of createdAt to keep timezone consistent with isoDate.
-      const createdDateStr = sch.createdAt
-        ? String(sch.createdAt).slice(0, 10)
-        : isoDate;
-      const origin = new Date(createdDateStr + "T00:00:00");
+      const originDateStr = sch.startDate
+        ? String(sch.startDate).slice(0, 10)
+        : sch.createdAt
+          ? String(sch.createdAt).slice(0, 10)
+          : isoDate;
+      const origin = new Date(originDateStr + "T00:00:00");
       const diffDays = Math.round((d - origin) / 86400000);
       return diffDays >= 0 && diffDays % sch.intervalDays === 0;
     }
