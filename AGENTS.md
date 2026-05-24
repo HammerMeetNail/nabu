@@ -239,3 +239,35 @@ These caused hard-to-diagnose production bugs and are covered by `tests/e2e/home
 2. **Home-tab sheet log** (`save-home-log` event in `app.js`): must extract `new Date(whenInput.value).getHours()` and pass as `slotHour`.
 3. **`renderWeekView` in `calendar.js`**: ad-hoc logs (those not matching a scheduled slot) must be placed in their `slotHour` row, not forced into the Anytime row — mirrors the `adHocCells` pattern in `renderDayView`.
 4. **No hard-coded `?v=N` in JS import paths** — the server rewrites them all at startup.
+
+## Push notification troubleshooting
+
+See `PUSH_DEBUG.md` for the diagnostic playbook. The key gotcha: the HKDF chain in `internal/push/encrypt.go` must match `http_ece` (npm) exactly — Apple returns 201 even when the encryption keys are wrong, so there is no error signal at the gateway. The only way to know the push arrived is to check `self.lastPush` or `self.__diag` in the service worker.
+
+### Push architecture (`internal/push/`)
+
+- `encrypt.go` — RFC 8291 aes128gcm encryption. HKDF chain: HKDF-Extract(auth, DH) → HKDF-Expand("WebPush: info\0" + clientPub + ephemeralPub, 32) → HKDF-Extract(randomSalt, secret) → HKDF-Expand("Content-Encoding: aes128gcm\0", 16) for CEK, HKDF-Expand("Content-Encoding: nonce\0", 12) for nonce.
+- `vapid.go` — VAPID JWT signing (ES256). JWT header must contain ONLY `typ` and `alg` — no `kty`/`crv`.
+- `service.go` — HTTP POST to push endpoint. Uses `Content-Encoding: aes128gcm`, `TTL: 60`, VAPID `Authorization` header.
+
+### iOS PWA debugging
+
+Use `remotedebug-ios-webkit-adapter` (npm) to connect Chrome DevTools Protocol to an iPhone PWA. Run it on the Mac, then connect via WebSocket to evaluate JS in the main page:
+
+```bash
+remotedebug_ios_webkit_adapter --port 9222
+# Browse to http://localhost:9222/json to list pages
+# WebSocket: ws://localhost:9222/ios_<UDID>/ws://127.0.0.1:<port>/devtools/page/<n>
+```
+
+The service worker debugging page is listed but often unresponsive. Use the main page to relay diagnostics via `MessageChannel`:
+
+```js
+// The SW (v0.1.37+) responds to "push-diag" message:
+sw.postMessage("push-diag", [channel.port2])
+// Returns: { lastPush, diag: [...], registration }
+```
+
+`self.lastPush` being `{}` means no push event ever fired. The `diag` array logs `push-received`, `push-decode-error`, and `subscriptionchange` events.
+
+`showNotification()` from the main page tests the notification display path independently of push delivery. If it works but pushes don't arrive, the issue is in the server-side encryption or VAPID headers.
