@@ -566,6 +566,54 @@ input:focus, select:focus, textarea:focus {
 
 .member-item:last-child { border-bottom: none; }
 
+.hist-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.hist-table th {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 2px solid var(--border);
+  color: var(--text-secondary);
+  font-weight: 500;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.hist-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.hist-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.hist-date, .hist-time {
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.hist-time {
+  text-align: right;
+}
+
+.hist-who {
+  white-space: nowrap;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hist-note {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
 .avatar-circle-sm {
   width: 28px;
   height: 28px;

@@ -140,21 +140,37 @@ export function renderHistoryView(state) {
       <p class="text-secondary">No completed chores yet this week.</p>
     </div>`;
   }
+  const members = state.members || [];
+  const memberMap = {};
+  members.forEach(m => { memberMap[m.userId] = m.displayName || m.email; });
   const items = logs.map(l => {
     const chore = (state.chores || []).find(c => c.id === l.choreId);
     const choreName = chore ? `${chore.icon} ${escapeHTML(chore.name)}` : `Chore #${l.choreId}`;
-    const dateStr = l.completedAt
-      ? `${l.completedAt.slice(0, 10)} ${l.completedAt.slice(11, 16)}`
-      : '';
-    return `<li class="member-item">
-    <span>${dateStr}</span>
-    <span>${choreName}</span>
-    ${l.note ? `<span class="text-secondary">${escapeHTML(l.note)}</span>` : ''}
-  </li>`;
+    const who = memberMap[l.userId] || 'Someone';
+    let dateStr = '';
+    let timeStr = '';
+    if (l.completedAt) {
+      const d = new Date(l.completedAt);
+      const pad = n => String(n).padStart(2, '0');
+      dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+    return `<tr>
+    <td class="hist-date">${dateStr}</td>
+    <td class="hist-time">${timeStr}</td>
+    <td class="hist-who">${escapeHTML(who)}</td>
+    <td class="hist-chore">${choreName}</td>
+    <td class="hist-note">${l.note ? escapeHTML(l.note) : ''}</td>
+  </tr>`;
   }).join("");
   return `<div class="history-view">
     <h2>History</h2>
-    <ul class="member-list">${items}</ul>
+    <table class="hist-table">
+      <thead><tr>
+        <th>Date</th><th>Time</th><th>Who</th><th>Chore</th><th>Note</th>
+      </tr></thead>
+      <tbody>${items}</tbody>
+    </table>
   </div>`;
 }
 
