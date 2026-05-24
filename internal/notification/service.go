@@ -51,6 +51,11 @@ func (s *Service) UnreadCount(ctx context.Context, userID int64) (int, error) {
 	return s.store.GetUnreadCount(ctx, userID)
 }
 
+// MarkRead marks a single notification as read.
+func (s *Service) MarkRead(ctx context.Context, id, userID int64) error {
+	return s.store.MarkRead(ctx, id, userID)
+}
+
 // MarkAllRead marks all notifications for a user as read.
 func (s *Service) MarkAllRead(ctx context.Context, userID int64) error {
 	return s.store.MarkAllRead(ctx, userID)

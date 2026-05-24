@@ -216,6 +216,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 
 	mux.HandleFunc("/api/notifications", method(http.MethodGet, middleware.RequireAuth(notifHandler.List)))
 	mux.HandleFunc("/api/notifications/read-all", method(http.MethodPost, middleware.RequireAuth(notifHandler.MarkAllRead)))
+	mux.HandleFunc("/api/notifications/{id}/read", method(http.MethodPost, middleware.RequireAuth(notifHandler.MarkRead)))
 	mux.HandleFunc("/api/notifications/{id}", method(http.MethodDelete, middleware.RequireAuth(notifHandler.Delete)))
 
 	mux.HandleFunc("/api/push/subscribe", method(http.MethodPost, middleware.RequireAuth(pushHandler.Subscribe)))

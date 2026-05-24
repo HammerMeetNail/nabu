@@ -98,6 +98,14 @@ export async function loadNotifications() {
 }
 
 /**
+ * Mark a single notification as read.
+ * @param {number} id
+ */
+export async function markRead(id) {
+  await apiFetch(`/api/notifications/${id}/read`, { method: "POST" });
+}
+
+/**
  * Mark all notifications for the current user as read.
  */
 export async function markAllRead() {
@@ -118,15 +126,16 @@ export async function deleteNotification(id) {
  * @returns {string} HTML string
  */
 export function renderNotificationPanel(notifications) {
-  const items = notifications.length
-    ? notifications
+  const unread = notifications.filter((n) => !n.isRead);
+  const items = unread.length
+    ? unread
         .map(
           (n) => `
-    <li class="notif-item${n.isRead ? " notif-item--read" : ""}" data-notif-id="${n.id}">
-      <div class="notif-content">
+    <li class="notif-item" data-notif-id="${n.id}">
+      <button type="button" class="notif-content" data-action="mark-notif-read" data-notif-id="${n.id}">
         <span class="notif-title">${escapeHTML(n.title)}</span>
         <span class="notif-body">${escapeHTML(n.body)}</span>
-      </div>
+      </button>
       <button type="button" class="notif-dismiss icon-button" data-action="dismiss-notification" data-notif-id="${n.id}" aria-label="Dismiss">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -154,7 +163,7 @@ export function renderNotificationPanel(notifications) {
     <div class="notif-panel-header">
       <span class="notif-panel-title">Notifications</span>
       ${
-        notifications.some((n) => !n.isRead)
+        unread.length > 0
           ? `<button type="button" class="notif-mark-all-read text-button" data-action="mark-all-read">Mark all read</button>`
           : ""
       }

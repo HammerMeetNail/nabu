@@ -2058,10 +2058,6 @@ input:focus, select:focus, textarea:focus {
   cursor: default;
 }
 
-.notif-item--read {
-  opacity: 0.7;
-}
-
 .notif-item:last-child {
   border-bottom: none;
 }
@@ -2072,6 +2068,18 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.notif-content:hover {
+  opacity: 0.8;
 }
 
 .notif-title {
