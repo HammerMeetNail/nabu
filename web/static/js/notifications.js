@@ -2,12 +2,24 @@ import { apiFetch } from "./api.js";
 import { escapeHTML } from "./utils.js";
 
 /**
- * Attempt to register for Web Push notifications if the user grants permission.
+ * Request notification permission. Must be called directly from a user-gesture
+ * handler (click, submit) before any async/await operations.
+ */
+export function requestNotificationPermission() {
+  if (typeof Notification === 'undefined') return;
+  if (Notification.permission === 'default') {
+    Notification.requestPermission().catch(() => {});
+  }
+}
+
+/**
+ * Attempt to register for Web Push notifications if the user granted permission.
  * This is called once after login / registration.
  */
 export async function maybeSubscribePush() {
   const vapidKey = document.querySelector('meta[name="vapid-public-key"]')?.content;
   if (!vapidKey || !navigator.serviceWorker || !window.PushManager) return;
+  if (Notification.permission !== 'granted') return;
 
   try {
     // Register the service worker. Must happen before pushManager.subscribe.
@@ -17,9 +29,6 @@ export async function maybeSubscribePush() {
   }
 
   try {
-    const permission = await Notification.requestPermission();
-    if (permission !== "granted") return;
-
     const reg = await navigator.serviceWorker.ready;
     const existing = await reg.pushManager.getSubscription();
     if (existing) {

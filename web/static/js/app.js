@@ -26,7 +26,7 @@ import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPi
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, sortChoresByOrder } from "./preferences.js";
 import { loadLatestLogs, renderHomeView as renderHomeViewGrid, renderHomeLogSheet, renderConfirmRemoveFromHomeSheet } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
-import { loadNotifications, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush } from "./notifications.js";
+import { loadNotifications, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission } from "./notifications.js";
 
 /**
  * Reads the current frequency settings from a bottom sheet's freq <select>
@@ -471,6 +471,7 @@ function hideError(containerId) {
 
 async function doLogin(form) {
   hideError("#login-error");
+  requestNotificationPermission();
   const email = form.querySelector("#login-email").value;
   const password = form.querySelector("#login-password").value;
   const { ok, data } = await handleLogin(email, password);
@@ -507,6 +508,7 @@ async function reloadAfterAuth() {
 
 async function doRegister(form) {
   hideError("#register-error");
+  requestNotificationPermission();
   const email = form.querySelector("#reg-email").value;
   const password = form.querySelector("#reg-password").value;
   const confirm = form.querySelector("#reg-confirm").value;
