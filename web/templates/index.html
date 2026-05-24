@@ -74,7 +74,7 @@
     <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
     <div id="notif-panel-container" hidden></div>
     {{if .VAPIDPublicKey}}
-    <script>window.VAPID_PUBLIC_KEY = "{{.VAPIDPublicKey}}";</script>
+    <meta name="vapid-public-key" content="{{.VAPIDPublicKey}}">
     {{end}}
     <script type="module" src="/static/js/app.js?v={{.Version}}"></script>
   </body>

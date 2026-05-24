@@ -6,7 +6,7 @@ import { escapeHTML } from "./utils.js";
  * This is called once after login / registration.
  */
 export async function maybeSubscribePush() {
-  const vapidKey = window.VAPID_PUBLIC_KEY;
+  const vapidKey = document.querySelector('meta[name="vapid-public-key"]')?.content;
   if (!vapidKey || !navigator.serviceWorker || !window.PushManager) return;
 
   try {
