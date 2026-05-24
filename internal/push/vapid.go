@@ -82,13 +82,9 @@ func (s *VAPIDSigner) SignJWT(endpoint string) (string, error) {
 	head := struct {
 		Typ string `json:"typ"`
 		Alg string `json:"alg"`
-		Kty string `json:"kty,omitempty"`
-		Crv string `json:"crv,omitempty"`
 	}{
 		Typ: "JWT",
 		Alg: "ES256",
-		Kty: "EC",
-		Crv: "P-256",
 	}
 
 	origin := endpointOrigin(endpoint)
