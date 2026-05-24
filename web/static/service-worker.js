@@ -29,25 +29,35 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("push", (event) => {
   let data = {};
+  let decrypted = false;
   try {
-    data = event.data?.json() || {};
+    if (event.data) {
+      data = event.data.json();
+      decrypted = true;
+    }
   } catch {
-    data = { title: "Choresy", body: event.data?.text() || "" };
+    // data stays as {}
   }
   const title = data.title || "Choresy";
   const body = data.body || "";
   const icon = "/static/icons/icon-192.png";
-  const badge = "/static/icons/icon-192.png";
+  // Store last push result so the page can check it
+  self.lastPush = { decrypted, title, body, time: Date.now() };
   event.waitUntil(
     self.registration.showNotification(title, {
-      body,
+      body: body || "(tap to open)",
       icon,
-      badge,
       tag: "choresy",
       requireInteraction: true,
       vibrate: [200, 100, 200],
     })
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data === "last-push") {
+    event.ports[0].postMessage(self.lastPush || {});
+  }
 });
 
 self.addEventListener("notificationclick", (event) => {
