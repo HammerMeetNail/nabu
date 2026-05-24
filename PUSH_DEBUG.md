@@ -163,6 +163,23 @@ The JWT header must contain ONLY:
 
 Do NOT include `kty` or `crv` fields — these are JWK fields, not JWT header fields.
 
+### Generating new VAPID keys
+
+```bash
+go run ./cmd/vapid-keygen/
+```
+
+This prints base64url-encoded P-256 key pair values ready for CI secrets:
+```
+VAPID_PRIVATE_KEY=<32-byte-d-value>
+VAPID_PUBLIC_KEY=<65-byte-uncompressed-point>
+VAPID_SUBJECT=mailto:your-email@example.com
+```
+
+After rotating keys, update the `vapid-public-key` meta tag in `web/templates/index.html` to match `VAPID_PUBLIC_KEY`. All existing push subscriptions become invalid after key rotation — users must re-subscribe.
+
+The private key is the raw P-256 `d` value (32 bytes, base64url). The public key is the uncompressed point `0x04 || x || y` (65 bytes, base64url). Both are stored without padding.
+
 ## Service worker cache
 
 The `/service-worker.js` endpoint must return `Cache-Control: no-store` with `cf-cache-status: BYPASS`. Without this, Cloudflare caches the SW for 4 hours, preventing updates from reaching devices.
