@@ -27,22 +27,32 @@ self.addEventListener("activate", (event) => {
   })());
 });
 
+self.addEventListener("pushsubscriptionchange", (event) => {
+  const ts = Date.now();
+  self.__diag = self.__diag || [];
+  self.__diag.push({ type: "subscriptionchange", ts, old: !!event.oldSubscription, new: !!event.newSubscription });
+});
+
 self.addEventListener("push", (event) => {
+  const ts = Date.now();
   let data = {};
   let decrypted = false;
+  let hasData = !!event.data;
   try {
     if (event.data) {
       data = event.data.json();
       decrypted = true;
     }
-  } catch {
-    // data stays as {}
+  } catch (e) {
+    self.__diag = self.__diag || [];
+    self.__diag.push({ type: "push-decode-error", ts, msg: e.message });
   }
   const title = data.title || "Choresy";
   const body = data.body || "";
   const icon = "/static/icons/icon-192.png";
-  // Store last push result so the page can check it
-  self.lastPush = { decrypted, title, body, time: Date.now() };
+  self.lastPush = { decrypted, title, body, time: ts, hasData };
+  self.__diag = self.__diag || [];
+  self.__diag.push({ type: "push-received", ts, decrypted, hasData });
   event.waitUntil(
     self.registration.showNotification(title, {
       body: body || "(tap to open)",
@@ -57,6 +67,13 @@ self.addEventListener("push", (event) => {
 self.addEventListener("message", (event) => {
   if (event.data === "last-push") {
     event.ports[0].postMessage(self.lastPush || {});
+  }
+  if (event.data === "push-diag") {
+    event.ports[0].postMessage({
+      lastPush: self.lastPush || null,
+      diag: self.__diag || [],
+      registration: !!self.registration,
+    });
   }
 });
 
