@@ -41,9 +41,9 @@ func NewVAPIDSigner(privateKeyB64, publicKeyB64, subject string) (*VAPIDSigner, 
 	y := new(big.Int).SetBytes(pubBytes[33:65])
 
 	privateKey := new(ecdsa.PrivateKey)
-	privateKey.PublicKey.Curve = curve
-	privateKey.PublicKey.X = x
-	privateKey.PublicKey.Y = y
+	privateKey.Curve = curve
+	privateKey.X = x
+	privateKey.Y = y
 	privateKey.D = new(big.Int).SetBytes(privBytes)
 
 	// Verify the public key matches the private key
