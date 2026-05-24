@@ -41,16 +41,22 @@ export async function maybeSubscribePush() {
       applicationServerKey: urlBase64ToUint8Array(vapidKey),
     });
     await sendSubscriptionToServer(sub);
-  } catch {
-    // Best-effort — push is optional.
+  } catch (e) {
+    // Best-effort — push is optional. Log the reason for debugging.
+    window.__pushError = e.name + ': ' + e.message;
+    console.error("push subscribe failed:", e.name, e.message);
   }
 }
 
 async function sendSubscriptionToServer(sub) {
-  await apiFetch("/api/push/subscribe", {
-    method: "POST",
-    body: JSON.stringify({ subscription: sub.toJSON() }),
-  });
+  try {
+    await apiFetch("/api/push/subscribe", {
+      method: "POST",
+      body: JSON.stringify({ subscription: sub.toJSON() }),
+    });
+  } catch (e) {
+    window.__pushError = 'send: ' + e.name + ': ' + e.message;
+  }
 }
 
 function urlBase64ToUint8Array(base64String) {
