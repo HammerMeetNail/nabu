@@ -135,7 +135,7 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install chromium
       - name: Run E2E tests
-        run: 'echo "E2E tests temporarily skipped (stuck in infinite loop) - TODO: fix and re-enable"'
+        run: ./scripts/e2e.sh
 
   build-image:
     name: Build Image (${{ matrix.arch }})
