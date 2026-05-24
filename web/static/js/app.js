@@ -615,6 +615,9 @@ export async function init() {
   }
 
   if (state.user) {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+    }
     maybeSubscribePush().catch(() => {});
   }
 
