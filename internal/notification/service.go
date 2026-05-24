@@ -3,6 +3,7 @@ package notification
 import (
 	"context"
 	"fmt"
+	"log"
 )
 
 // MemberInfo is a minimal member representation used to fan out notifications
@@ -94,6 +95,7 @@ func (s *Service) NotifyChoreLogged(ctx context.Context, members []MemberInfo, l
 			continue
 		}
 		if s.pushSender != nil {
+			log.Printf("notif: sending push to user %d title=%q", n.UserID, n.Title)
 			// Best-effort — ignore push errors so a failed push device
 			// doesn't stop other recipients from being notified.
 			_ = s.pushSender.SendPushToUser(ctx, n.UserID, n.Title, n.Body)
