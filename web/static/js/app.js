@@ -477,8 +477,8 @@ async function doLogin(form) {
   if (ok && data.user) {
     state.user = data.user;
     state.currentRoute = "/";
-    await reloadAfterAuth();
     maybeSubscribePush().catch(() => {});
+    await reloadAfterAuth();
     if (state._pendingInviteCode && !state.household) {
       await doJoinWithCode(state._pendingInviteCode);
       return;
@@ -518,8 +518,8 @@ async function doRegister(form) {
   if (ok && data.user) {
     state.user = data.user;
     state.currentRoute = "/";
-    await reloadAfterAuth();
     maybeSubscribePush().catch(() => {});
+    await reloadAfterAuth();
     if (state._pendingInviteCode && !state.household) {
       await doJoinWithCode(state._pendingInviteCode);
       return;
