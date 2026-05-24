@@ -10,6 +10,13 @@ export async function maybeSubscribePush() {
   if (!vapidKey || !navigator.serviceWorker || !window.PushManager) return;
 
   try {
+    // Register the service worker. Must happen before pushManager.subscribe.
+    await navigator.serviceWorker.register("/service-worker.js");
+  } catch {
+    // Already registered or failed silently.
+  }
+
+  try {
     const permission = await Notification.requestPermission();
     if (permission !== "granted") return;
 
