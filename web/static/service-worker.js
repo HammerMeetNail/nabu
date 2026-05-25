@@ -1,12 +1,14 @@
-const CACHE_NAME = "choresy-static-v1";
+const CACHE_NAME = "choresy-static-v2";
 const OFFLINE_URL = "/static/offline.html";
 const STATIC_ASSETS = [
   "/static/css/app.css",
+  "/static/css/app.css?v=latest",
   "/static/js/app.js",
   "/static/js/state.js",
   "/static/js/morph.js",
   "/static/js/api.js",
   "/static/manifest.webmanifest",
+  "/static/manifest.webmanifest?v=latest",
   "/static/icons/icon.svg",
   OFFLINE_URL,
 ];

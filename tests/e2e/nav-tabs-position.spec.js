@@ -50,6 +50,20 @@ async function tabsBottomGap(page) {
 }
 
 test.describe('Navigation Tabs: Positioning', () => {
+  test('page versions CSS and manifest URLs', async ({ page }) => {
+    await page.goto('/register');
+
+    const assets = await page.evaluate(() => {
+      return {
+        stylesheetHref: document.querySelector('link[rel="stylesheet"]')?.getAttribute('href'),
+        manifestHref: document.querySelector('link[rel="manifest"]')?.getAttribute('href'),
+      };
+    });
+
+    expect(assets.stylesheetHref).toMatch(/^\/static\/css\/app\.css\?v=/);
+    expect(assets.manifestHref).toMatch(/^\/static\/manifest\.webmanifest\?v=/);
+  });
+
   test('bottom tabs are flush with the viewport bottom on initial load', async ({ page }) => {
     await setupWithChores(page);
 
