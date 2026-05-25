@@ -31,7 +31,10 @@
 html {
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
-  height: 100dvh;
+  /* --app-h is set to window.innerHeight by an inline script in <head>.
+     On iOS PWA, 100dvh excludes the bottom safe-area inset at cold open
+     even with viewport-fit=cover; innerHeight returns the full screen height. */
+  height: var(--app-h, 100dvh);
 }
 
 body {
@@ -44,7 +47,7 @@ body {
   -webkit-font-smoothing: antialiased;
   /* Flex column makes #bottom-tabs a natural static sibling of .app-shell,
      eliminating the iOS PWA cold-open gap that afflicts position:sticky/fixed. */
-  height: 100dvh;
+  height: var(--app-h, 100dvh);
   display: flex;
   flex-direction: column;
 }

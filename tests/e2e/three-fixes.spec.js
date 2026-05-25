@@ -7,6 +7,9 @@
 //      no content is hidden under an overlapping tab bar.
 //   3. Nav tabs: #bottom-tabs is a static flex item at the page bottom —
 //      no position:sticky/fixed so there is no iOS PWA cold-open gap.
+//      The body height is driven by --app-h (set from window.innerHeight in
+//      an inline <head> script) rather than 100dvh, so the body always covers
+//      the full visual viewport including the iOS safe-area-inset-bottom.
 
 import { test, expect } from '@playwright/test';
 
@@ -178,6 +181,22 @@ test.describe('Fix 3: nav tabs are a static flex item at the page bottom', () =>
     });
 
     expect(isInsideHeader).toBe(false);
+  });
+
+  test('body height equals window.innerHeight (--app-h JS fix)', async ({ page }) => {
+    await setupWithChores(page);
+
+    const result = await page.evaluate(() => {
+      const bodyH   = Math.round(document.body.getBoundingClientRect().height);
+      const innerH  = window.innerHeight;
+      const appHPx  = getComputedStyle(document.documentElement).getPropertyValue('--app-h').trim();
+      return { bodyH, innerH, appHPx };
+    });
+
+    // The inline <head> script must have set --app-h
+    expect(result.appHPx).toBe(result.innerH + 'px');
+    // And the body must fill the full viewport (no gap below tabs)
+    expect(result.bodyH).toBe(result.innerH);
   });
 
   test('#bottom-tabs is NOT positioned (static in normal flow)', async ({ page }) => {
