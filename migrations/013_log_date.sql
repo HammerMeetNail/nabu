@@ -1,0 +1,1 @@
+ALTER TABLE chore_logs ADD COLUMN IF NOT EXISTS log_date DATE;

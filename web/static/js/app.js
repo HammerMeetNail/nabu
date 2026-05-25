@@ -1034,7 +1034,10 @@ export async function init() {
         // Extract the hour from the selected time so the calendar places the
         // log in the correct time slot instead of the catch-all Anytime row.
         const slotHour = whenInput?.value ? new Date(whenInput.value).getHours() : null;
-        logChore(choreId, note, "", indicators, slotHour, completedAt).then(async (data) => {
+        // Extract the local date so the server stores the correct log_date,
+        // preventing UTC-midnight boundary issues in date-based filtering.
+        const logDate = whenInput?.value ? whenInput.value.split('T')[0] : "";
+        logChore(choreId, note, logDate, indicators, slotHour, completedAt).then(async (data) => {
           const logId = data?.log?.id;
           state.activeSheet     = null;
           state.activeSheetData = {};

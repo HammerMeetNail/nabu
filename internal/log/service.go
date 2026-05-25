@@ -25,13 +25,17 @@ func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int
 	if completedAt != nil {
 		logCompletedAt = completedAt.UTC()
 	} else if date != nil {
-		// Use noon UTC so the timestamp falls clearly within the requested day.
 		logCompletedAt = time.Date(date.Year(), date.Month(), date.Day(), 12, 0, 0, 0, time.UTC)
 	} else {
 		logCompletedAt = s.now()
 	}
 	if indicators == nil {
 		indicators = []string{}
+	}
+	var logDate *string
+	if date != nil {
+		d := date.Format("2006-01-02")
+		logDate = &d
 	}
 	return s.store.CreateLog(ctx, ChoreLog{
 		HouseholdID: householdID,
@@ -41,6 +45,7 @@ func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int
 		Note:        note,
 		Indicators:  indicators,
 		SlotHour:    slotHour,
+		LogDate:     logDate,
 	})
 }
 
