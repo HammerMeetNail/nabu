@@ -140,10 +140,10 @@ test.describe('Fix 1: multiple logs per chore per day', () => {
   });
 });
 
-// ─── Fix 2: #app bottom padding no longer needs nav reservation ─────────────
+// ─── Fix 2: Scroll fix — #app has bottom padding for sticky nav ─────────────
 
-test.describe('Fix 2: #app has correct bottom padding for sibling layout', () => {
-  test('#app padding-bottom is standard 16px since tabs are a sibling, not overlapping', async ({ page }) => {
+test.describe('Fix 2: #app has correct bottom padding for sticky bottom nav', () => {
+  test('#app padding-bottom reserves space for the sticky bottom nav', async ({ page }) => {
     await setupWithChores(page);
 
     const paddingBottom = await page.evaluate(() => {
@@ -151,8 +151,7 @@ test.describe('Fix 2: #app has correct bottom padding for sibling layout', () =>
       return parseInt(window.getComputedStyle(app).paddingBottom, 10);
     });
 
-    // Tabs are a sticky sibling inside .app-shell, not overlapping #app.
-    expect(paddingBottom).toBe(16);
+    expect(paddingBottom).toBeGreaterThanOrEqual(64);
   });
 });
 
