@@ -140,10 +140,10 @@ test.describe('Fix 1: multiple logs per chore per day', () => {
   });
 });
 
-// ─── Fix 2: #app bottom padding no longer reserved for fixed nav ─────────────
+// ─── Fix 2: Scroll fix — #app has bottom padding for sticky nav ─────────────
 
-test.describe('Fix 2: #app has correct bottom padding for flex layout', () => {
-  test('#app padding-bottom is the standard 16px, not reserved for fixed nav', async ({ page }) => {
+test.describe('Fix 2: #app has correct bottom padding for sticky bottom nav', () => {
+  test('#app padding-bottom reserves space for the sticky bottom nav', async ({ page }) => {
     await setupWithChores(page);
 
     const paddingBottom = await page.evaluate(() => {
@@ -151,15 +151,15 @@ test.describe('Fix 2: #app has correct bottom padding for flex layout', () => {
       return parseInt(window.getComputedStyle(app).paddingBottom, 10);
     });
 
-    // Tabs are now a flex sibling inside .app-shell, not overlapping #app.
-    // No 80px reservation needed; just the standard 16px.
-    expect(paddingBottom).toBe(16);
+    // Sticky bottom nav is 64px tall; #app must reserve at least 64px so content
+    // is not obscured.
+    expect(paddingBottom).toBeGreaterThanOrEqual(64);
   });
 });
 
 // ─── Fix 3: Nav tabs at bottom ───────────────────────────────────────────────
 
-test.describe('Fix 3: nav tabs are a bottom bar, not in the header', () => {
+test.describe('Fix 3: nav tabs are a sticky bottom bar', () => {
   test('#bottom-tabs is NOT a descendant of #top-bar', async ({ page }) => {
     await setupWithChores(page);
 
@@ -172,17 +172,14 @@ test.describe('Fix 3: nav tabs are a bottom bar, not in the header', () => {
     expect(isInsideHeader).toBe(false);
   });
 
-  test('#bottom-tabs is flush with the viewport bottom', async ({ page }) => {
+  test('#bottom-tabs is sticky-positioned', async ({ page }) => {
     await setupWithChores(page);
 
-    const gap = await page.evaluate(() => {
-      const tabs = document.querySelector('#bottom-tabs');
-      if (!tabs) return null;
-      return window.innerHeight - tabs.getBoundingClientRect().bottom;
+    const position = await page.evaluate(() => {
+      return window.getComputedStyle(document.querySelector('#bottom-tabs')).position;
     });
 
-    expect(gap).not.toBeNull();
-    expect(Math.abs(gap)).toBeLessThan(2);
+    expect(position).toBe('sticky');
   });
 
   test('tab text labels are visible', async ({ page }) => {
