@@ -661,6 +661,9 @@ async function verifyEmail(token) {
     headers: { "X-CSRF-Token": csrfToken },
   });
   if (res.ok) {
+    if (state.user) {
+      state.user.emailVerified = true;
+    }
     state.user = await loadSession();
   }
 }
