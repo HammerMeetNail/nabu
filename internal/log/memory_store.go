@@ -73,9 +73,7 @@ func (s *MemoryStore) FindLog(_ context.Context, householdID, choreID int64, dat
 	defer s.mu.RUnlock()
 	for _, l := range s.logs {
 		if l.HouseholdID == householdID && l.ChoreID == choreID {
-			y1, m1, d1 := l.CompletedAt.UTC().Date()
-			y2, m2, d2 := date.UTC().Date()
-			if y1 == y2 && m1 == m2 && d1 == d2 {
+			if logMatchesDate(l, date) {
 				return &l, nil
 			}
 		}
@@ -88,12 +86,8 @@ func (s *MemoryStore) ListLogs(_ context.Context, householdID int64, date time.T
 	defer s.mu.RUnlock()
 	var result []ChoreLog
 	for _, l := range s.logs {
-		if l.HouseholdID == householdID {
-			y1, m1, d1 := l.CompletedAt.UTC().Date()
-			y2, m2, d2 := date.UTC().Date()
-			if y1 == y2 && m1 == m2 && d1 == d2 {
-				result = append(result, l)
-			}
+		if l.HouseholdID == householdID && logMatchesDate(l, date) {
+			result = append(result, l)
 		}
 	}
 	return result, nil
@@ -104,7 +98,7 @@ func (s *MemoryStore) ListLogsRange(_ context.Context, householdID int64, start,
 	defer s.mu.RUnlock()
 	var result []ChoreLog
 	for _, l := range s.logs {
-		if l.HouseholdID == householdID && !l.CompletedAt.Before(start) && l.CompletedAt.Before(end) {
+		if l.HouseholdID == householdID && logInRange(l, start, end) {
 			result = append(result, l)
 		}
 	}
@@ -118,10 +112,10 @@ func (s *MemoryStore) HistoryLogs(_ context.Context, householdID int64, start, e
 	hasOlder := false
 	for _, l := range s.logs {
 		if l.HouseholdID == householdID {
-			if !l.CompletedAt.Before(start) && l.CompletedAt.Before(end) {
+			if logInRange(l, start, end) {
 				result = append(result, l)
 			}
-			if l.CompletedAt.Before(start) {
+			if logBeforeRange(l, start) {
 				hasOlder = true
 			}
 		}
@@ -133,6 +127,42 @@ func (s *MemoryStore) HistoryLogs(_ context.Context, householdID int64, start, e
 		result = []ChoreLog{}
 	}
 	return result, hasOlder, nil
+}
+
+func logMatchesDate(l ChoreLog, date time.Time) bool {
+	y1, m1, d1 := logDateParts(l)
+	y2, m2, d2 := date.UTC().Date()
+	return y1 == y2 && m1 == m2 && d1 == d2
+}
+
+func logDateParts(l ChoreLog) (int, time.Month, int) {
+	if l.LogDate != nil {
+		d, err := time.Parse("2006-01-02", *l.LogDate)
+		if err == nil {
+			return d.Date()
+		}
+	}
+	return l.CompletedAt.UTC().Date()
+}
+
+func logInRange(l ChoreLog, start, end time.Time) bool {
+	if l.LogDate != nil {
+		d, err := time.Parse("2006-01-02", *l.LogDate)
+		if err == nil {
+			return !d.Before(start) && d.Before(end)
+		}
+	}
+	return !l.CompletedAt.Before(start) && l.CompletedAt.Before(end)
+}
+
+func logBeforeRange(l ChoreLog, start time.Time) bool {
+	if l.LogDate != nil {
+		d, err := time.Parse("2006-01-02", *l.LogDate)
+		if err == nil {
+			return d.Before(start)
+		}
+	}
+	return l.CompletedAt.Before(start)
 }
 
 func (s *MemoryStore) LatestPerChore(_ context.Context, householdID int64) (map[int64]ChoreLog, error) {

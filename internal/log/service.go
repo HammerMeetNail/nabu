@@ -33,6 +33,11 @@ func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int
 	if indicators == nil {
 		indicators = []string{}
 	}
+	var logDate *string
+	if date != nil {
+		d := date.Format("2006-01-02")
+		logDate = &d
+	}
 	return s.store.CreateLog(ctx, ChoreLog{
 		HouseholdID: householdID,
 		UserID:      userID,
@@ -41,6 +46,7 @@ func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int
 		Note:        note,
 		Indicators:  indicators,
 		SlotHour:    slotHour,
+		LogDate:     logDate,
 	})
 }
 

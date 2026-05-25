@@ -34,10 +34,14 @@ func NewPostgresStore(db *sql.DB) *PostgresStore {
 
 func (s *PostgresStore) CreateLog(ctx context.Context, log ChoreLog) (ChoreLog, error) {
 	indJSON, _ := json.Marshal(nilToEmptyLog(log.Indicators))
+	var logDate sql.NullString
+	if log.LogDate != nil {
+		logDate = sql.NullString{String: *log.LogDate, Valid: true}
+	}
 	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO chore_logs (household_id, user_id, chore_id, completed_at, note, indicators, slot_hour)
-		VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, created_at
-	`, log.HouseholdID, log.UserID, log.ChoreID, log.CompletedAt, log.Note, string(indJSON), ptrToNullInt64(log.SlotHour)).Scan(&log.ID, &log.CreatedAt)
+		INSERT INTO chore_logs (household_id, user_id, chore_id, completed_at, note, indicators, slot_hour, log_date)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, created_at
+	`, log.HouseholdID, log.UserID, log.ChoreID, log.CompletedAt, log.Note, string(indJSON), ptrToNullInt64(log.SlotHour), logDate).Scan(&log.ID, &log.CreatedAt)
 	return log, err
 }
 
@@ -45,7 +49,8 @@ func (s *PostgresStore) GetLog(ctx context.Context, id int64) (ChoreLog, error) 
 	var l ChoreLog
 	var indJSON string
 	var slotHour sql.NullInt64
-	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at FROM chore_logs WHERE id = $1`, id).Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt)
+	var logDate sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date FROM chore_logs WHERE id = $1`, id).Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate)
 	if err == sql.ErrNoRows {
 		return ChoreLog{}, ErrNotFound
 	}
@@ -55,6 +60,9 @@ func (s *PostgresStore) GetLog(ctx context.Context, id int64) (ChoreLog, error) 
 			l.Indicators = []string{}
 		}
 		l.SlotHour = nullIntToPtr(slotHour)
+		if logDate.Valid {
+			l.LogDate = &logDate.String
+		}
 	}
 	return l, err
 }
@@ -76,9 +84,9 @@ func (s *PostgresStore) FindLog(ctx context.Context, householdID, choreID int64,
 	var l ChoreLog
 	var indJSON string
 	var slotHour sql.NullInt64
-	start := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
-	end := start.AddDate(0, 0, 1)
-	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at FROM chore_logs WHERE household_id = $1 AND chore_id = $2 AND completed_at >= $3 AND completed_at < $4 LIMIT 1`, householdID, choreID, start, end).Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt)
+	var logDate sql.NullString
+	dateStr := date.Format("2006-01-02")
+	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date FROM chore_logs WHERE household_id = $1 AND chore_id = $2 AND COALESCE(log_date, completed_at::date) = $3::date LIMIT 1`, householdID, choreID, dateStr).Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
 	}
@@ -88,6 +96,9 @@ func (s *PostgresStore) FindLog(ctx context.Context, householdID, choreID int64,
 			l.Indicators = []string{}
 		}
 		l.SlotHour = nullIntToPtr(slotHour)
+		if logDate.Valid {
+			l.LogDate = &logDate.String
+		}
 	}
 	return &l, err
 }
@@ -95,18 +106,19 @@ func (s *PostgresStore) FindLog(ctx context.Context, householdID, choreID int64,
 func (s *PostgresStore) ListLogs(ctx context.Context, householdID int64, date time.Time) ([]ChoreLog, error) {
 	start := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, time.UTC)
 	end := start.AddDate(0, 0, 1)
-	return s.queryLogs(ctx, householdID, start, end)
+	return s.queryLogs(ctx, householdID, start.Format("2006-01-02"), end.Format("2006-01-02"))
 }
 
 func (s *PostgresStore) ListLogsRange(ctx context.Context, householdID int64, start, end time.Time) ([]ChoreLog, error) {
-	return s.queryLogs(ctx, householdID, start, end)
+	return s.queryLogs(ctx, householdID, start.Format("2006-01-02"), end.Format("2006-01-02"))
 }
 
 func (s *PostgresStore) LatestPerChore(ctx context.Context, householdID int64) (map[int64]ChoreLog, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT DISTINCT ON (chore_id)
 			id, household_id, user_id, chore_id, completed_at,
-			COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at
+			COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at,
+			log_date
 		FROM chore_logs
 		WHERE household_id = $1
 		ORDER BY chore_id, completed_at DESC
@@ -120,7 +132,8 @@ func (s *PostgresStore) LatestPerChore(ctx context.Context, householdID int64) (
 		var l ChoreLog
 		var indJSON string
 		var slotHour sql.NullInt64
-		if err := rows.Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt); err != nil {
+		var logDate sql.NullString
+		if err := rows.Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(indJSON), &l.Indicators)
@@ -128,13 +141,25 @@ func (s *PostgresStore) LatestPerChore(ctx context.Context, householdID int64) (
 			l.Indicators = []string{}
 		}
 		l.SlotHour = nullIntToPtr(slotHour)
+		if logDate.Valid {
+			l.LogDate = &logDate.String
+		}
 		result[l.ChoreID] = l
 	}
 	return result, rows.Err()
 }
 
-func (s *PostgresStore) queryLogs(ctx context.Context, householdID int64, start, end time.Time) ([]ChoreLog, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at FROM chore_logs WHERE household_id = $1 AND completed_at >= $2 AND completed_at < $3 ORDER BY completed_at`, householdID, start, end)
+func (s *PostgresStore) queryLogs(ctx context.Context, householdID int64, dateStart, dateEnd string) ([]ChoreLog, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, household_id, user_id, chore_id, completed_at,
+		       COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at,
+		       log_date
+		FROM chore_logs
+		WHERE household_id = $1
+		  AND COALESCE(log_date, completed_at::date) >= $2::date
+		  AND COALESCE(log_date, completed_at::date) < $3::date
+		ORDER BY completed_at
+	`, householdID, dateStart, dateEnd)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +169,8 @@ func (s *PostgresStore) queryLogs(ctx context.Context, householdID int64, start,
 		var l ChoreLog
 		var indJSON string
 		var slotHour sql.NullInt64
-		if err := rows.Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt); err != nil {
+		var logDate sql.NullString
+		if err := rows.Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(indJSON), &l.Indicators)
@@ -152,13 +178,18 @@ func (s *PostgresStore) queryLogs(ctx context.Context, householdID int64, start,
 			l.Indicators = []string{}
 		}
 		l.SlotHour = nullIntToPtr(slotHour)
+		if logDate.Valid {
+			l.LogDate = &logDate.String
+		}
 		logs = append(logs, l)
 	}
 	return logs, rows.Err()
 }
 
 func (s *PostgresStore) HistoryLogs(ctx context.Context, householdID int64, start, end time.Time) ([]ChoreLog, bool, error) {
-	logs, err := s.queryLogs(ctx, householdID, start, end)
+	dateStart := start.Format("2006-01-02")
+	dateEnd := end.Format("2006-01-02")
+	logs, err := s.queryLogs(ctx, householdID, dateStart, dateEnd)
 	if err != nil {
 		return nil, false, err
 	}
@@ -167,7 +198,7 @@ func (s *PostgresStore) HistoryLogs(ctx context.Context, householdID int64, star
 	}
 
 	var hasMore bool
-	err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM chore_logs WHERE household_id = $1 AND completed_at < $2)`, householdID, start).Scan(&hasMore)
+	err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM chore_logs WHERE household_id = $1 AND COALESCE(log_date, completed_at::date) < $2::date)`, householdID, dateStart).Scan(&hasMore)
 	if err != nil {
 		hasMore = false
 	}
