@@ -31,6 +31,11 @@
 html {
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
+  /* iOS PWA safe-area fill: iOS uses the <html> background to paint the
+     safe-area extension at the screen edges. Match the tab bar colour so
+     the bottom gap (between position:fixed bottom:0 and the physical screen
+     edge) shows white instead of the beige body background. */
+  background: var(--surface);
 }
 
 body {
