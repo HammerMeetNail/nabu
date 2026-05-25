@@ -467,6 +467,7 @@ function updateTopBar() {
   if (state.user) {
     topBar.hidden = false;
     tabs.hidden = false;
+    void tabs.offsetHeight;
     const avatar = document.querySelector("#user-avatar");
     if (avatar) {
       avatar.hidden = false;
