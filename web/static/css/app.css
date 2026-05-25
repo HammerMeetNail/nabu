@@ -167,8 +167,8 @@ input:focus, select:focus, textarea:focus {
   margin: 0 auto;
   width: 100%;
   max-width: 480px;
-  height: calc(64px + var(--safe-bottom));
-  padding-bottom: var(--safe-bottom);
+  height: calc(64px + var(--safe-bottom) + 6px);
+  padding-bottom: calc(var(--safe-bottom) + 6px);
   display: flex;
   background: var(--surface);
   border-top: 1px solid var(--border);
@@ -198,7 +198,7 @@ input:focus, select:focus, textarea:focus {
 #app {
   flex: 1;
   padding: 16px;
-  padding-bottom: calc(80px + var(--safe-bottom));
+  padding-bottom: calc(86px + var(--safe-bottom));
 }
 
 /* Buttons */
@@ -356,7 +356,7 @@ input:focus, select:focus, textarea:focus {
 /* Toast Notifications */
 #toast-container {
   position: fixed;
-  bottom: calc(80px + var(--safe-bottom));
+  bottom: calc(86px + var(--safe-bottom));
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
