@@ -1,5 +1,5 @@
 // tests/e2e/home-time-accuracy.spec.js
-// Regression test: home-tab direct tap must store completedAt as the current
+// Regression test: home-tab log via sheet must store completedAt as the current
 // time, not noon UTC.  Before the fix, home-tap-chore sent only `date` + `hour`
 // and the server fell back to noon UTC, making formatTimeAgo show "Xh ago"
 // immediately after logging (the offset matched the user's UTC offset).
@@ -49,24 +49,25 @@ async function setupWithChores(page) {
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 test.describe('Home tab: completedAt accuracy', () => {
-  test('direct-tap stores completedAt at the current time, not noon UTC', async ({ page }) => {
+  test('log via sheet stores completedAt at the current time, not noon UTC', async ({ page }) => {
     const { chores } = await setupWithChores(page);
 
-    // Find a chore with no indicator labels — these log instantly on tap
-    // without opening the home-log sheet.
     const noIndicatorChore = chores.find(
       c => !c.indicatorLabels || c.indicatorLabels.length === 0
     );
     expect(noIndicatorChore).toBeDefined();
 
     const card = page.locator(`.home-chore-card[data-home-chore-id="${noIndicatorChore.id}"]`);
-    const choreName = await card.locator('.home-card-name').innerText();
 
     // Record the time just before the tap.
     const beforeMs = Date.now();
 
-    // Tap the chore card (logs instantly, no sheet).
+    // Tap the chore card — opens the log sheet.
     await card.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+
+    // Log via the sheet.
+    await page.locator('[data-action="save-home-log"]').click();
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     const afterMs = Date.now();
@@ -80,8 +81,9 @@ test.describe('Home tab: completedAt accuracy', () => {
     expect(log).toBeDefined();
     const completedAtMs = new Date(log.completedAt).getTime();
 
-    // The stored timestamp must be within 10 seconds of the tap window.
-    const tolerance = 10000;
+    // The stored timestamp must be within 70 seconds of the tap window
+    // (datetime-local drops seconds, so completedAt can be up to 59s behind).
+    const tolerance = 70000;
     expect(completedAtMs).toBeGreaterThanOrEqual(beforeMs - tolerance);
     expect(completedAtMs).toBeLessThanOrEqual(afterMs + tolerance);
   });
@@ -96,8 +98,10 @@ test.describe('Home tab: completedAt accuracy', () => {
 
     const card = page.locator(`.home-chore-card[data-home-chore-id="${noIndicatorChore.id}"]`);
 
-    // Log the chore.
+    // Log the chore via the sheet.
     await card.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+    await page.locator('[data-action="save-home-log"]').click();
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     // Record the displayed time text.

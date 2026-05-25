@@ -165,6 +165,10 @@ export function renderHomeLogSheet(chore) {
       data-chore-id="${chore.id}">
       Log
     </button>
+    <button type="button" class="btn btn-ghost btn-full sheet-cancel-btn mt-1"
+      data-action="close-sheet">
+      Cancel
+    </button>
   </div>`;
 }
 

@@ -61,25 +61,34 @@ async function setupWithChores(page) {
 
 test.describe('Home tab log → calendar visibility', () => {
   test('direct-tap chore appears in the current hour row of the day view, not Anytime', async ({ page }) => {
-    // Regression: home-tap-chore (no indicator labels) always passed
-    // slotHour=null so chores landed in "Anytime" regardless of the clock.
+    // Chores logged from the home sheet must carry the correct slotHour.
+    // Use a fixed safe hour (14 = 2 PM) that stays on today's UTC date
+    // regardless of timezone offset.
     await setupWithChores(page);
 
-    // Record the current hour before tapping so we can find it in the grid.
-    const expectedHour = new Date().getHours();
+    const testHour = 14;
 
-    // Tap the first no-indicator chore card (logs instantly, no sheet).
+    // Tap the first chore card — opens the log sheet.
     const firstCard = page.locator('.home-chore-card').first();
     const choreName = await firstCard.locator('.home-card-name').innerText();
     await firstCard.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+
+    // Set time to a known safe hour to avoid UTC day boundary issues.
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const dtLocal = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T14:00`;
+    await page.fill('#home-log-when', dtLocal);
+
+    await page.locator('[data-action="save-home-log"]').click();
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     // Navigate to the calendar (day view).
     await page.click('[data-nav="calendar"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
-    // The chore must appear as done in the current-hour row.
-    const hourCard = page.locator(`[data-drop-hour="${expectedHour}"] .chore-card--done`);
+    // The chore must appear as done in the 2 PM row.
+    const hourCard = page.locator(`[data-drop-hour="${testHour}"] .chore-card--done`);
     await expect(hourCard).toHaveCount(1);
     await expect(hourCard.first().locator('.chore-name')).toContainText(choreName);
 
@@ -88,15 +97,23 @@ test.describe('Home tab log → calendar visibility', () => {
   });
 
   test('direct-tap chore appears in the current hour row of the week view', async ({ page }) => {
-    // Regression: week view hour rows only showed scheduled chores; ad-hoc
-    // logs with slotHour never appeared in the week grid.
+    // Ad-hoc logs with slotHour must appear in the week grid hour rows.
+    // Use a fixed safe hour (14 = 2 PM) to avoid UTC day boundary issues.
     await setupWithChores(page);
 
-    const expectedHour = new Date().getHours();
+    const testHour = 14;
 
     const firstCard = page.locator('.home-chore-card').first();
     const choreName = await firstCard.locator('.home-card-name').innerText();
     await firstCard.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const todayISO = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+    await page.fill('#home-log-when', `${todayISO}T14:00`);
+
+    await page.locator('[data-action="save-home-log"]').click();
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     // Navigate to the calendar, then switch to week view.
@@ -105,12 +122,8 @@ test.describe('Home tab log → calendar visibility', () => {
     await page.click('[data-action="switch-view"][data-view="week"]');
     await page.waitForSelector('.week-view', { timeout: 5000 });
 
-    // The chore must appear as done in today's cell of the current-hour row.
-    const today = new Date();
-    const pad = n => String(n).padStart(2, '0');
-    const todayISO = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
-
-    const hourCell = page.locator(`.hour-row[data-hour="${expectedHour}"] [data-drop-date="${todayISO}"]`);
+    // The chore must appear as done in today's cell of the 2 PM row.
+    const hourCell = page.locator(`.hour-row[data-hour="${testHour}"] [data-drop-date="${todayISO}"]`);
     await expect(hourCell.locator('.chore-card--done')).toHaveCount(1);
     await expect(hourCell.locator('.chore-card--done').first()).toHaveAttribute('aria-label', new RegExp(choreName));
 
@@ -119,10 +132,8 @@ test.describe('Home tab log → calendar visibility', () => {
   });
 
   test('timed-schedule chore logged from home tab shows as done in the schedule hour row', async ({ page }) => {
-    // Previously the home-tap log had slotHour=null and went to Anytime; the
-    // timed schedule still showed the card as done at 8 AM via the logMap.
-    // Now the home-tap log carries slotHour=currentHour.  The 8 AM schedule
-    // must still show as done regardless of what hour the test runs.
+    // The 8 AM schedule must show as done after logging, regardless of when
+    // the test runs.  Set the sheet time to 8 AM to stay on today's UTC date.
     const { csrf, chores } = await setupWithChores(page);
 
     // Schedule the first chore at 08:00 daily.
@@ -132,13 +143,22 @@ test.describe('Home tab log → calendar visibility', () => {
       headers: { 'X-CSRF-Token': csrf },
     });
 
-    // Log the chore from the home tab (gets slotHour = current hour).
+    // Log the chore from the home tab via the sheet.
     await page.reload();
     await page.waitForSelector('.home-grid', { timeout: 15000 });
 
     const firstCard = page.locator('.home-chore-card').first();
     const choreName = await firstCard.locator('.home-card-name').innerText();
     await firstCard.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+
+    // Set the time to 8 AM to avoid UTC day boundary issues and match the schedule.
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const dtLocal = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T08:00`;
+    await page.fill('#home-log-when', dtLocal);
+
+    await page.locator('[data-action="save-home-log"]').click();
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     // Navigate to day view.

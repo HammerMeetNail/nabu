@@ -1018,18 +1018,9 @@ export async function init() {
         const choreId = parseInt(actionEl.dataset.homeChoreId, 10);
         const chore = (state.chores || []).find(c => c.id === choreId);
         if (!chore) break;
-        if (chore.indicatorLabels && chore.indicatorLabels.length > 0) {
-          state.activeSheet     = "home-log";
-          state.activeSheetData = { choreId };
-          render(app);
-        } else {
-          logChore(choreId, "", todayISO(0), [], new Date().getHours(), new Date().toISOString()).then(async (data) => {
-            const logId = data?.log?.id;
-            await loadLatestLogsData();
-            render(app);
-            if (logId) showToastWithUndo(`${chore.icon} ${chore.name}`, logId);
-          }).catch(() => showToast("Failed to log chore", "error"));
-        }
+        state.activeSheet     = "home-log";
+        state.activeSheetData = { choreId };
+        render(app);
         break;
       }
 
