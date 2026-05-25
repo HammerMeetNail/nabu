@@ -185,8 +185,12 @@ test.describe("Settings: auth features", () => {
     await page.fill("#current-password", "test123456");
     await page.fill("#new-password", "newpassword789");
     await page.fill("#confirm-password", "newpassword789");
+    const pwChangeResp = page.waitForResponse(
+      r => r.url().includes('/api/auth/password') && r.request().method() === 'POST',
+      { timeout: 10000 }
+    );
     await page.click("#change-password-form button[type=\"submit\"]");
-    await page.waitForTimeout(500);
+    await pwChangeResp;
 
     await page.reload();
     await page.waitForSelector("#user-avatar:not([hidden])", {
