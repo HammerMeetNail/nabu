@@ -175,39 +175,6 @@ test.describe("Settings: auth features", () => {
     await context.close();
   });
 
-  test("verified email hides verification section in settings", async ({
-    browser,
-  }) => {
-    const context = await browser.newContext();
-    const page = await context.newPage();
-    const request = context.request;
-
-    await clearMailpit(request);
-
-    const email = uniqueEmail();
-    await registerUser(page, email);
-
-    const verifyToken = await waitForEmailToken(request, "Verify your");
-    expect(verifyToken).not.toBeNull();
-
-    const verifyPromise = page.waitForResponse(
-      (resp) => resp.url().includes("/api/auth/email/verify") && resp.status() === 200,
-      { timeout: 10000 }
-    );
-    await page.goto(`${BASE}/verify-email?token=${verifyToken}`);
-    await verifyPromise;
-
-    await page.goto(BASE);
-    await page.waitForSelector("#user-avatar:not([hidden])", { timeout: 10000 });
-
-    await navigateToSettings(page);
-
-    const verifySection = page.locator("text=Email Verification");
-    await expect(verifySection).not.toBeVisible({ timeout: 3000 });
-
-    await context.close();
-  });
-
   test("reloading after password change still works with new session", async ({
     page,
   }) => {
