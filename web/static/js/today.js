@@ -143,34 +143,50 @@ export function renderHistoryView(state) {
   const members = state.members || [];
   const memberMap = {};
   members.forEach(m => { memberMap[m.userId] = m.displayName || m.email; });
-  const items = logs.map(l => {
-    const chore = (state.chores || []).find(c => c.id === l.choreId);
-    const choreName = chore ? `${chore.icon} ${escapeHTML(chore.name)}` : `Chore #${l.choreId}`;
-    const who = memberMap[l.userId] || 'Someone';
-    let dateStr = '';
-    let timeStr = '';
-    if (l.completedAt) {
-      const d = new Date(l.completedAt);
-      const pad = n => String(n).padStart(2, '0');
-      dateStr = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-      timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+
+  // Group logs by date
+  const groups = [];
+  let currentDate = '';
+  for (const l of logs) {
+    const d = l.completedAt ? new Date(l.completedAt) : null;
+    const pad = n => String(n).padStart(2, '0');
+    const dateKey = d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : '';
+    const timeStr = d ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : '';
+    const dayLabel = d ? d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+
+    if (dateKey !== currentDate) {
+      currentDate = dateKey;
+      groups.push({ date: dateKey, label: dayLabel, rows: [] });
     }
-    return `<tr>
-    <td class="hist-date">${dateStr}</td>
-    <td class="hist-time">${timeStr}</td>
-    <td class="hist-who">${escapeHTML(who)}</td>
-    <td class="hist-chore">${choreName}</td>
-    <td class="hist-note">${l.note ? escapeHTML(l.note) : ''}</td>
-  </tr>`;
-  }).join("");
+    const chore = (state.chores || []).find(c => c.id === l.choreId);
+    groups[groups.length - 1].rows.push({
+      icon: chore?.icon || '',
+      name: chore?.name || `Chore #${l.choreId}`,
+      color: chore?.color || '#999',
+      who: memberMap[l.userId] || 'Someone',
+      time: timeStr,
+      note: l.note || '',
+    });
+  }
+
+  const html = groups.map(g => {
+    const rows = g.rows.map(r => `
+      <div class="hist-row" style="--chore-color:${r.color}">
+        <span class="hist-icon">${r.icon}</span>
+        <div class="hist-body">
+          <span class="hist-name">${escapeHTML(r.name)}</span>
+          <span class="hist-meta">${r.time} · ${escapeHTML(r.who)}${r.note ? ` · ${escapeHTML(r.note)}` : ''}</span>
+        </div>
+      </div>`).join('');
+    return `<div class="hist-group">
+      <div class="hist-date-header">${g.label}</div>
+      ${rows}
+    </div>`;
+  }).join('');
+
   return `<div class="history-view">
     <h2>History</h2>
-    <table class="hist-table">
-      <thead><tr>
-        <th>Date</th><th>Time</th><th>Who</th><th>Chore</th><th>Note</th>
-      </tr></thead>
-      <tbody>${items}</tbody>
-    </table>
+    ${html}
   </div>`;
 }
 
