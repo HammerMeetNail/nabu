@@ -3,13 +3,11 @@
 //   1. Dedup bug: logging "Change Baby" (or any chore with indicators) twice in
 //      the same day silently returned the existing log — both logs must now be
 //      created and appear in /api/logs/today.
-//   2. Layout: .app-shell (scroll container) ends where #bottom-tabs begins;
-//      no content is hidden under an overlapping tab bar.
-//   3. Nav tabs: #bottom-tabs is a static flex item at the page bottom —
-//      no position:sticky/fixed so there is no iOS PWA cold-open gap.
-//      The body height is driven by --app-h (set from window.innerHeight in
-//      an inline <head> script) rather than 100dvh, so the body always covers
-//      the full visual viewport including the iOS safe-area-inset-bottom.
+//   2. Layout: #app has enough bottom padding (≥ 80px) so content is not hidden
+//      behind the fixed tab bar.
+//   3. Nav tabs: #bottom-tabs uses position:fixed (locks to viewport); an ::after
+//      pseudo-element paints the surface colour into the iOS safe-area gap so the
+//      beige body background never shows below the tab bar on cold open.
 
 import { test, expect } from '@playwright/test';
 
@@ -146,31 +144,24 @@ test.describe('Fix 1: multiple logs per chore per day', () => {
 // ─── Fix 2: Content area does not overlap with bottom tabs ───────────────────
 
 test.describe('Fix 2: content area does not overlap with bottom tabs', () => {
-  test('.app-shell ends where #bottom-tabs begins (no overlap)', async ({ page }) => {
+  test('#app has enough bottom padding to clear the fixed tab bar', async ({ page }) => {
     await setupWithChores(page);
 
-    const result = await page.evaluate(() => {
-      const shell = document.querySelector('.app-shell');
-      const tabs  = document.querySelector('#bottom-tabs');
-      if (!shell || !tabs) return null;
-      const shellRect = shell.getBoundingClientRect();
-      const tabsRect  = tabs.getBoundingClientRect();
-      return {
-        shellBottom: Math.round(shellRect.bottom),
-        tabsTop:     Math.round(tabsRect.top),
-        overlap:     shellRect.bottom - tabsRect.top,
-      };
+    const paddingBottom = await page.evaluate(() => {
+      const app = document.querySelector('#app');
+      if (!app) return null;
+      return parseFloat(window.getComputedStyle(app).paddingBottom);
     });
 
-    expect(result).not.toBeNull();
-    // The content shell must not overlap the tab bar.
-    expect(result.overlap).toBeLessThanOrEqual(1);
+    expect(paddingBottom).not.toBeNull();
+    // Must be ≥ 80px so content clears the 64px tab bar + safe-area padding.
+    expect(paddingBottom).toBeGreaterThanOrEqual(80);
   });
 });
 
 // ─── Fix 3: Nav tabs at bottom ───────────────────────────────────────────────
 
-test.describe('Fix 3: nav tabs are a static flex item at the page bottom', () => {
+test.describe('Fix 3: nav tabs use position:fixed + ::after gap fill', () => {
   test('#bottom-tabs is NOT a descendant of #top-bar', async ({ page }) => {
     await setupWithChores(page);
 
@@ -183,31 +174,28 @@ test.describe('Fix 3: nav tabs are a static flex item at the page bottom', () =>
     expect(isInsideHeader).toBe(false);
   });
 
-  test('body height equals window.innerHeight (--app-h JS fix)', async ({ page }) => {
-    await setupWithChores(page);
-
-    const result = await page.evaluate(() => {
-      const bodyH   = Math.round(document.body.getBoundingClientRect().height);
-      const innerH  = window.innerHeight;
-      const appHPx  = getComputedStyle(document.documentElement).getPropertyValue('--app-h').trim();
-      return { bodyH, innerH, appHPx };
-    });
-
-    // The inline <head> script must have set --app-h
-    expect(result.appHPx).toBe(result.innerH + 'px');
-    // And the body must fill the full viewport (no gap below tabs)
-    expect(result.bodyH).toBe(result.innerH);
-  });
-
-  test('#bottom-tabs is NOT positioned (static in normal flow)', async ({ page }) => {
+  test('#bottom-tabs uses position:fixed (locks to viewport)', async ({ page }) => {
     await setupWithChores(page);
 
     const position = await page.evaluate(() => {
       return window.getComputedStyle(document.querySelector('#bottom-tabs')).position;
     });
 
-    // Static positioning — no sticky/fixed that could produce the cold-open gap.
-    expect(position).toBe('static');
+    // position:fixed keeps the tab bar locked to the viewport on all browsers,
+    // including iOS WebKit, preventing scroll-with-content regression.
+    expect(position).toBe('fixed');
+  });
+
+  test('body does NOT use display:flex (no flex-body scroll regression)', async ({ page }) => {
+    await setupWithChores(page);
+
+    const display = await page.evaluate(() => {
+      return window.getComputedStyle(document.body).display;
+    });
+
+    // The flex-body approach caused tabs to scroll with content on iOS WebKit;
+    // body must be block (the default) so position:fixed tabs stay locked.
+    expect(display).toBe('block');
   });
 
   test('tab text labels are visible', async ({ page }) => {
