@@ -3,10 +3,10 @@
 //   1. Dedup bug: logging "Change Baby" (or any chore with indicators) twice in
 //      the same day silently returned the existing log — both logs must now be
 //      created and appear in /api/logs/today.
-//   2. Scroll fix: #app no longer reserves 80px padding-bottom for the old
-//      fixed bottom nav, so the home grid never forces a spurious scroll.
-//   3. Nav-in-header: the nav tabs (#bottom-tabs) live inside the top-bar
-//      header; text labels are hidden; icon buttons are visible.
+//   2. Layout: .app-shell (scroll container) ends where #bottom-tabs begins;
+//      no content is hidden under an overlapping tab bar.
+//   3. Nav tabs: #bottom-tabs is a static flex item at the page bottom —
+//      no position:sticky/fixed so there is no iOS PWA cold-open gap.
 
 import { test, expect } from '@playwright/test';
 
@@ -140,24 +140,34 @@ test.describe('Fix 1: multiple logs per chore per day', () => {
   });
 });
 
-// ─── Fix 2: Scroll fix — #app has bottom padding for sticky nav ─────────────
+// ─── Fix 2: Content area does not overlap with bottom tabs ───────────────────
 
-test.describe('Fix 2: #app has correct bottom padding for sticky bottom nav', () => {
-  test('#app padding-bottom reserves space for the sticky bottom nav', async ({ page }) => {
+test.describe('Fix 2: content area does not overlap with bottom tabs', () => {
+  test('.app-shell ends where #bottom-tabs begins (no overlap)', async ({ page }) => {
     await setupWithChores(page);
 
-    const paddingBottom = await page.evaluate(() => {
-      const app = document.querySelector('#app');
-      return parseInt(window.getComputedStyle(app).paddingBottom, 10);
+    const result = await page.evaluate(() => {
+      const shell = document.querySelector('.app-shell');
+      const tabs  = document.querySelector('#bottom-tabs');
+      if (!shell || !tabs) return null;
+      const shellRect = shell.getBoundingClientRect();
+      const tabsRect  = tabs.getBoundingClientRect();
+      return {
+        shellBottom: Math.round(shellRect.bottom),
+        tabsTop:     Math.round(tabsRect.top),
+        overlap:     shellRect.bottom - tabsRect.top,
+      };
     });
 
-    expect(paddingBottom).toBeGreaterThanOrEqual(64);
+    expect(result).not.toBeNull();
+    // The content shell must not overlap the tab bar.
+    expect(result.overlap).toBeLessThanOrEqual(1);
   });
 });
 
 // ─── Fix 3: Nav tabs at bottom ───────────────────────────────────────────────
 
-test.describe('Fix 3: nav tabs are a sticky bottom bar', () => {
+test.describe('Fix 3: nav tabs are a static flex item at the page bottom', () => {
   test('#bottom-tabs is NOT a descendant of #top-bar', async ({ page }) => {
     await setupWithChores(page);
 
@@ -170,14 +180,15 @@ test.describe('Fix 3: nav tabs are a sticky bottom bar', () => {
     expect(isInsideHeader).toBe(false);
   });
 
-  test('#bottom-tabs is sticky-positioned', async ({ page }) => {
+  test('#bottom-tabs is NOT positioned (static in normal flow)', async ({ page }) => {
     await setupWithChores(page);
 
     const position = await page.evaluate(() => {
       return window.getComputedStyle(document.querySelector('#bottom-tabs')).position;
     });
 
-    expect(position).toBe('sticky');
+    // Static positioning — no sticky/fixed that could produce the cold-open gap.
+    expect(position).toBe('static');
   });
 
   test('tab text labels are visible', async ({ page }) => {

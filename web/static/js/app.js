@@ -467,10 +467,6 @@ function updateTopBar() {
   if (state.user) {
     topBar.hidden = false;
     tabs.hidden = false;
-    void tabs.offsetHeight;
-    requestAnimationFrame(() => {
-      window.scrollBy(0, 0);
-    });
     const avatar = document.querySelector("#user-avatar");
     if (avatar) {
       avatar.hidden = false;
