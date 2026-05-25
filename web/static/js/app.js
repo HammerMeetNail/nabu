@@ -179,6 +179,7 @@ export function render(root) {
   morphInnerHTML(root, html);
   updateTabs(tabRoute);
   updateTopBar();
+  if (state.user) scheduleFixedTabsReconcile();
 
   // Auto-scroll the day-hour-grid-wrapper to show the current time when it is
   // first rendered (scrollTop === 0).  This prevents the grid from always
@@ -466,6 +467,8 @@ function isIOSStandalone() {
   return isIOS && (nav.standalone === true || window.matchMedia("(display-mode: standalone)").matches);
 }
 
+let reconcileTimer = null;
+
 function reconcileFixedTabs() {
   if (!isIOSStandalone()) return;
   if (document.hidden) return;
@@ -491,6 +494,29 @@ function reconcileFixedTabs() {
   });
 }
 
+function scheduleFixedTabsReconcile() {
+  if (!isIOSStandalone()) return;
+  if (reconcileTimer) {
+    clearTimeout(reconcileTimer);
+    reconcileTimer = null;
+  }
+
+  const delays = [0, 50, 150, 300, 500];
+  let index = 0;
+
+  const run = () => {
+    reconcileFixedTabs();
+    index += 1;
+    if (index >= delays.length) {
+      reconcileTimer = null;
+      return;
+    }
+    reconcileTimer = window.setTimeout(run, delays[index]);
+  };
+
+  run();
+}
+
 function updateTopBar() {
   const topBar = document.querySelector("#top-bar");
   const tabs = document.querySelector("#bottom-tabs");
@@ -499,7 +525,6 @@ function updateTopBar() {
   if (state.user) {
     topBar.hidden = false;
     tabs.hidden = false;
-    reconcileFixedTabs();
     const avatar = document.querySelector("#user-avatar");
     if (avatar) {
       avatar.hidden = false;
@@ -1941,12 +1966,12 @@ export async function init() {
   }
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && state.user) {
-      reconcileFixedTabs();
+      scheduleFixedTabsReconcile();
       loadNotifData().then(() => updateTopBar());
     }
   });
   window.addEventListener("pageshow", () => {
-    if (state.user) reconcileFixedTabs();
+    if (state.user) scheduleFixedTabsReconcile();
   });
   if (state.user) startNotifPoll();
 
