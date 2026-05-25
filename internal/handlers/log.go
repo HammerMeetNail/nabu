@@ -186,6 +186,9 @@ func (h *LogHandler) Today(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if logs == nil {
+		logs = []log.ChoreLog{}
+	}
 
 	summary := h.service.DailySummaryFromLogs(date, logs)
 

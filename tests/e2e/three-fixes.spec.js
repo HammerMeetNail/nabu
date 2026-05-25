@@ -86,11 +86,16 @@ test.describe('Fix 1: multiple logs per chore per day', () => {
     await tapChangeBaby(page);
     await saveLogSheet(page);
 
-    // Both must appear in today's logs
-    const todayResp = await page.request.get('/api/logs/today');
+    // Both must appear in today's logs.
+    // Pass the local date so the server matches logs by log_date
+    // rather than the server's UTC clock.
+    const today = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const localDate = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+    const todayResp = await page.request.get(`/api/logs/today?date=${localDate}`);
     expect(todayResp.ok()).toBe(true);
     const { logs } = await todayResp.json();
-    const babyLogs = logs.filter(l => l.choreId === baby.id);
+    const babyLogs = (logs || []).filter(l => l.choreId === baby.id);
     expect(babyLogs.length).toBeGreaterThanOrEqual(2);
   });
 
@@ -118,9 +123,12 @@ test.describe('Fix 1: multiple logs per chore per day', () => {
     await expect(page.locator('.bottom-sheet')).toHaveCount(0, { timeout: 5000 });
     await page.waitForTimeout(500);
 
-    const todayResp = await page.request.get('/api/logs/today');
+    const today = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const localDate = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+    const todayResp = await page.request.get(`/api/logs/today?date=${localDate}`);
     const { logs } = await todayResp.json();
-    const babyLogs = logs.filter(l => l.choreId === baby.id);
+    const babyLogs = (logs || []).filter(l => l.choreId === baby.id);
     expect(babyLogs.length).toBeGreaterThanOrEqual(2);
 
     // The two logs should not be identical (different indicators)
