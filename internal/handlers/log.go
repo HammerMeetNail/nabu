@@ -249,6 +249,44 @@ func (h *LogHandler) Month(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"logs": logs})
 }
 
+func (h *LogHandler) History(w http.ResponseWriter, r *http.Request) {
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
+		return
+	}
+
+	var before time.Time
+	beforeStr := r.URL.Query().Get("before")
+	if beforeStr != "" {
+		parsed, err := time.Parse("2006-01-02", beforeStr)
+		if err == nil {
+			before = parsed
+		}
+	}
+	if before.IsZero() {
+		before = today().AddDate(0, 0, 1)
+	}
+	end := before
+	if end.After(today().AddDate(0, 0, 1)) {
+		end = today().AddDate(0, 0, 1)
+	}
+	start := end.AddDate(0, 0, -7)
+
+	logs, hasMore, err := h.service.GetHistoryLogs(r.Context(), *user.HouseholdID, start, end)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"logs":    logs,
+		"hasMore": hasMore,
+		"start":   start.Format("2006-01-02"),
+		"end":     end.Format("2006-01-02"),
+	})
+}
+
 func today() time.Time {
 	now := time.Now().UTC()
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)

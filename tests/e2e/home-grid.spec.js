@@ -99,35 +99,36 @@ test.describe('Home Grid: Rendering', () => {
   });
 });
 
-// ─── Home Grid: Instant Log ───────────────────────────────────────────────────
+// ─── Home Grid: Log Sheet ────────────────────────────────────────────────────
 
-test.describe('Home Grid: Instant Log', () => {
-  test('tapping a no-indicator card logs instantly and shows a toast', async ({ page }) => {
+test.describe('Home Grid: Log Sheet', () => {
+  test('tapping any card opens the log sheet and saving logs it', async ({ page }) => {
     await setupWithChores(page);
 
-    // "Feed Cats" is the first card (SortOrder 0) and has no indicator labels.
     const firstCard = page.locator('.home-chore-card').first();
     const choreName = await firstCard.locator('.home-card-name').innerText();
 
     await firstCard.click();
-    await page.waitForTimeout(1500);
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('[data-action="save-home-log"]')).toBeVisible();
 
-    // Toast should appear with the chore name and an Undo button
+    await page.click('[data-action="save-home-log"]');
+
     const toast = page.locator('#toast-container .toast');
     await expect(toast).toBeVisible({ timeout: 5000 });
     await expect(toast).toContainText(choreName);
     await expect(toast.locator('button')).toContainText('Undo');
   });
 
-  test('after tapping a card the time-ago label updates from "never"', async ({ page }) => {
+  test('after saving a log the time-ago label updates from "never"', async ({ page }) => {
     await setupWithChores(page);
 
     const firstCard = page.locator('.home-chore-card').first();
-    // Before: "never"
     await expect(firstCard.locator('.home-card-time--never')).toBeVisible();
 
     await firstCard.click();
-    await page.waitForTimeout(1500);
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+    await page.click('[data-action="save-home-log"]');
 
     // After: "never" class gone; label shows "just now" or a relative time
     await expect(firstCard.locator('.home-card-time--never')).toHaveCount(0);
@@ -140,9 +141,10 @@ test.describe('Home Grid: Instant Log', () => {
     const { chores } = await (await page.request.get('/api/chores')).json();
     const choreId = chores[0].id;
 
-    // Tap first card to create a log
+    // Tap first card, save log via sheet
     await page.locator('.home-chore-card').first().click();
-    await page.waitForTimeout(1500);
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+    await page.click('[data-action="save-home-log"]');
 
     // Verify a log was created via latest-per-chore
     let latest = (await (await page.request.get('/api/logs/latest-per-chore')).json()).latestLogs;
@@ -160,12 +162,9 @@ test.describe('Home Grid: Instant Log', () => {
   });
 });
 
-// ─── Home Grid: Indicator Log Sheet ──────────────────────────────────────────
+// ─── Home Grid: Log Sheet Details ───────────────────────────────────────────
 
-test.describe('Home Grid: Indicator Log Sheet', () => {
-  /**
-   * Finds and clicks the "Change Baby" card which has indicator labels.
-   */
+test.describe('Home Grid: Log Sheet Details', () => {
   async function tapChangeBaby(page) {
     const cards = page.locator('.home-chore-card');
     const count = await cards.count();
@@ -179,12 +178,10 @@ test.describe('Home Grid: Indicator Log Sheet', () => {
     throw new Error('Change Baby chore card not found');
   }
 
-  test('tapping a card with indicator labels opens the log sheet', async ({ page }) => {
+  test('every card opens the log sheet', async ({ page }) => {
     await setupWithChores(page);
 
-    await tapChangeBaby(page);
-    await page.waitForTimeout(400);
-
+    await page.locator('.home-chore-card').first().click();
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
     await expect(page.locator('[data-action="save-home-log"]')).toBeVisible();
   });

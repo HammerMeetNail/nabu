@@ -584,6 +584,17 @@ input:focus, select:focus, textarea:focus {
 
 .hist-table { display: none; } /* replaced by hist-group/hist-row */
 
+.hist-chunk {
+  margin-bottom: 16px;
+}
+
+.hist-chunk-header {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  padding: 0 12px 8px;
+}
+
 .hist-group {
   margin-bottom: 4px;
 }
@@ -628,6 +639,16 @@ input:focus, select:focus, textarea:focus {
 .hist-meta {
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+.load-more-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 16px 0 32px;
+}
+
+.load-more-btn {
+  min-width: 120px;
 }
 
 .avatar-circle-sm {

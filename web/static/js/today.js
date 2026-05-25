@@ -38,11 +38,12 @@ export async function loadWeek(start) {
 }
 
 export async function loadHistory() {
-  const start = todayISO(0);
-  const d = new Date(start + "T00:00:00");
-  d.setDate(d.getDate() - d.getDay() + (d.getDay() === 0 ? -6 : 1));
-  const weekStart = formatLocalISODate(d);
-  const { data } = await apiFetch(`/api/logs/week?start=${weekStart}`);
+  const { data } = await apiFetch("/api/logs/history");
+  return data;
+}
+
+export async function loadMoreHistory(before) {
+  const { data } = await apiFetch(`/api/logs/history?before=${before}`);
   return data;
 }
 
@@ -76,10 +77,6 @@ export async function loadChores() {
   return data;
 }
 
-/**
- * Loads today's logs AND today's active schedules in parallel.
- * Returns a merged object suitable for passing into renderDayView.
- */
 export async function loadTodayWithSchedules(state) {
   const date = state.calendarDate || state.todayDate || todayISO(0);
   const [todayData, schedules] = await Promise.all([
@@ -137,29 +134,31 @@ export function renderHistoryView(state) {
   if (logs.length === 0) {
     return `<div class="history-view">
       <h2>History</h2>
-      <p class="text-secondary">No completed chores yet this week.</p>
+      <p class="text-secondary">No completed chores yet.</p>
     </div>`;
   }
   const members = state.members || [];
   const memberMap = {};
   members.forEach(m => { memberMap[m.userId] = m.displayName || m.email; });
 
-  // Group logs by date
-  const groups = [];
+  const pad = n => String(n).padStart(2, '0');
+
+  // Group by day
+  const dayGroups = [];
   let currentDate = '';
   for (const l of logs) {
     const d = l.completedAt ? new Date(l.completedAt) : null;
-    const pad = n => String(n).padStart(2, '0');
-    const dateKey = d ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` : '';
-    const timeStr = d ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : '';
-    const dayLabel = d ? d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+    if (!d) continue;
+    const dateKey = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const dayLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
     if (dateKey !== currentDate) {
       currentDate = dateKey;
-      groups.push({ date: dateKey, label: dayLabel, rows: [] });
+      dayGroups.push({ date: dateKey, label: dayLabel, rows: [] });
     }
     const chore = (state.chores || []).find(c => c.id === l.choreId);
-    groups[groups.length - 1].rows.push({
+    dayGroups[dayGroups.length - 1].rows.push({
       icon: chore?.icon || '',
       name: chore?.name || `Chore #${l.choreId}`,
       color: chore?.color || '#999',
@@ -169,24 +168,84 @@ export function renderHistoryView(state) {
     });
   }
 
-  const html = groups.map(g => {
-    const rows = g.rows.map(r => `
-      <div class="hist-row" style="--chore-color:${r.color}">
-        <span class="hist-icon">${r.icon}</span>
-        <div class="hist-body">
-          <span class="hist-name">${escapeHTML(r.name)}</span>
-          <span class="hist-meta">${r.time} · ${escapeHTML(r.who)}${r.note ? ` · ${escapeHTML(r.note)}` : ''}</span>
-        </div>
-      </div>`).join('');
-    return `<div class="hist-group">
-      <div class="hist-date-header">${g.label}</div>
-      ${rows}
+  // Group day groups into 7-day chunk groups
+  // Logs are newest-first.  Each chunk: [chunkStart, chunkStart+7).
+  // We want day groups ordered newest-to-oldest, so when we go from
+  // newest to oldest, the first day group starts a new chunk, and
+  // subsequent day groups belong to that chunk until we cross a
+  // 7-day boundary.
+  const chunked = [];
+  if (dayGroups.length > 0) {
+    let chunkDays = [];
+    const msPerDay = 86400000;
+    // Start of the first chunk: truncate the first day's date to the
+    // start of its 7-day window (same as backend calculation).
+    const firstDate = new Date(dayGroups[0].date + "T00:00:00");
+    // Align to the same window boundary used by the server:
+    // end = min(before, tomorrow), start = end - 7.
+    // For rendering, we use 7-day segments anchored from the first day.
+    // Walk the day groups and wrap every 7 days.
+    let chunkIdx = 0;
+    for (const dg of dayGroups) {
+      const d = new Date(dg.date + "T00:00:00");
+      const daysSinceFirst = Math.round((firstDate - d) / msPerDay);
+      const newChunkIdx = Math.floor(daysSinceFirst / 7);
+      if (newChunkIdx !== chunkIdx) {
+        const chunkStart = new Date(firstDate);
+        chunkStart.setDate(chunkStart.getDate() - chunkIdx * 7);
+        const chunkEnd = new Date(chunkStart);
+        chunkEnd.setDate(chunkEnd.getDate() + 6);
+        chunked.push({
+          label: fmtChunkRange(chunkStart, chunkEnd),
+          days: chunkDays,
+        });
+        chunkDays = [];
+        chunkIdx = newChunkIdx;
+      }
+      chunkDays.push(dg);
+    }
+    // Flush last chunk
+    const chunkStart = new Date(firstDate);
+    chunkStart.setDate(chunkStart.getDate() - chunkIdx * 7);
+    const chunkEnd = new Date(chunkStart);
+    chunkEnd.setDate(chunkEnd.getDate() + 6);
+    chunked.push({
+      label: fmtChunkRange(chunkStart, chunkEnd),
+      days: chunkDays,
+    });
+  }
+
+  const html = chunked.map(chunk => {
+    const days = chunk.days.map(g => {
+      const rows = g.rows.map(r => `
+        <div class="hist-row" style="--chore-color:${r.color}">
+          <span class="hist-icon">${r.icon}</span>
+          <div class="hist-body">
+            <span class="hist-name">${escapeHTML(r.name)}</span>
+            <span class="hist-meta">${r.time} · ${escapeHTML(r.who)}${r.note ? ` · ${escapeHTML(r.note)}` : ''}</span>
+          </div>
+        </div>`).join('');
+      return `<div class="hist-date-header">${g.label}</div>${rows}`;
+    }).join('');
+    return `<div class="hist-chunk">
+      <div class="hist-chunk-header">${chunk.label}</div>
+      ${days}
     </div>`;
   }).join('');
+
+  const loadMore = state.historyHasMore
+    ? `<div class="load-more-wrap"><button type="button" class="btn btn-secondary load-more-btn" data-action="load-more-history">Load more</button></div>`
+    : '';
 
   return `<div class="history-view">
     <h2>History</h2>
     ${html}
+    ${loadMore}
   </div>`;
+}
+
+function fmtChunkRange(start, end) {
+  const opts = { month: 'short', day: 'numeric' };
+  return `${start.toLocaleDateString('en-US', opts)} - ${end.toLocaleDateString('en-US', opts)}`;
 }
 

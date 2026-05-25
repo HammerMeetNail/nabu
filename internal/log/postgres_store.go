@@ -157,6 +157,26 @@ func (s *PostgresStore) queryLogs(ctx context.Context, householdID int64, start,
 	return logs, rows.Err()
 }
 
+func (s *PostgresStore) HistoryLogs(ctx context.Context, householdID int64, start, end time.Time) ([]ChoreLog, bool, error) {
+	logs, err := s.queryLogs(ctx, householdID, start, end)
+	if err != nil {
+		return nil, false, err
+	}
+	for i, j := 0, len(logs)-1; i < j; i, j = i+1, j-1 {
+		logs[i], logs[j] = logs[j], logs[i]
+	}
+
+	var hasMore bool
+	err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM chore_logs WHERE household_id = $1 AND completed_at < $2)`, householdID, start).Scan(&hasMore)
+	if err != nil {
+		hasMore = false
+	}
+	if logs == nil {
+		logs = []ChoreLog{}
+	}
+	return logs, hasMore, nil
+}
+
 func nilToEmptyLog(s []string) []string {
 	if s == nil {
 		return []string{}

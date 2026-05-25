@@ -2,6 +2,7 @@ package log
 
 import (
 	"context"
+	"sort"
 	"sync"
 	"time"
 )
@@ -108,6 +109,30 @@ func (s *MemoryStore) ListLogsRange(_ context.Context, householdID int64, start,
 		}
 	}
 	return result, nil
+}
+
+func (s *MemoryStore) HistoryLogs(_ context.Context, householdID int64, start, end time.Time) ([]ChoreLog, bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var result []ChoreLog
+	hasOlder := false
+	for _, l := range s.logs {
+		if l.HouseholdID == householdID {
+			if !l.CompletedAt.Before(start) && l.CompletedAt.Before(end) {
+				result = append(result, l)
+			}
+			if l.CompletedAt.Before(start) {
+				hasOlder = true
+			}
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].CompletedAt.After(result[j].CompletedAt)
+	})
+	if result == nil {
+		result = []ChoreLog{}
+	}
+	return result, hasOlder, nil
 }
 
 func (s *MemoryStore) LatestPerChore(_ context.Context, householdID int64) (map[int64]ChoreLog, error) {

@@ -117,3 +117,7 @@ func (s *Service) today() time.Time {
 func (s *Service) LatestPerChore(ctx context.Context, householdID int64) (map[int64]ChoreLog, error) {
 	return s.store.LatestPerChore(ctx, householdID)
 }
+
+func (s *Service) GetHistoryLogs(ctx context.Context, householdID int64, start, end time.Time) ([]ChoreLog, bool, error) {
+	return s.store.HistoryLogs(ctx, householdID, start, end)
+}

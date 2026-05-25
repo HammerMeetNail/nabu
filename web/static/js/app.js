@@ -20,7 +20,7 @@ import {
   renderResetPasswordView,
 } from "./auth.js";
 import { loadHousehold, createHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, renderHouseholdView, renderJoinView } from "./household.js?v=2";
-import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
+import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, loadMoreHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
 import { renderStatsView, loadOverview } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
@@ -752,6 +752,8 @@ export async function init() {
       if (state.currentRoute === "/history") {
         loadHistory().then(data => {
           state.historyLogs = data.logs || [];
+          state.historyHasMore = data.hasMore;
+          state.historyBefore = data.start || null;
           render(app);
         });
         return;
@@ -1101,18 +1103,9 @@ export async function init() {
         const choreId = parseInt(actionEl.dataset.homeChoreId, 10);
         const chore = (state.chores || []).find(c => c.id === choreId);
         if (!chore) break;
-        if (chore.indicatorLabels && chore.indicatorLabels.length > 0) {
-          state.activeSheet     = "home-log";
-          state.activeSheetData = { choreId };
-          render(app);
-        } else {
-          logChore(choreId, "", todayISO(0), [], new Date().getHours(), new Date().toISOString()).then(async (data) => {
-            const logId = data?.log?.id;
-            await loadLatestLogsData();
-            render(app);
-            if (logId) showToastWithUndo(`${chore.icon} ${chore.name}`, logId);
-          }).catch(() => showToast("Failed to log chore", "error"));
-        }
+        state.activeSheet     = "home-log";
+        state.activeSheetData = { choreId };
+        render(app);
         break;
       }
 
@@ -1345,6 +1338,25 @@ export async function init() {
         e.preventDefault();
         const row = actionEl.closest(".indicator-chip-row");
         if (row) row.remove();
+        break;
+      }
+
+      case "load-more-history": {
+        e.preventDefault();
+        const before = state.historyBefore;
+        if (!before) break;
+        const btn = actionEl;
+        btn.disabled = true;
+        btn.textContent = "Loading...";
+        loadMoreHistory(before).then(data => {
+          state.historyLogs = [...(state.historyLogs || []), ...(data.logs || [])];
+          state.historyHasMore = data.hasMore;
+          state.historyBefore = data.start || null;
+          render(app);
+        }).catch(() => {
+          btn.disabled = false;
+          btn.textContent = "Load more";
+        });
         break;
       }
     }
