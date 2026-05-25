@@ -64,6 +64,16 @@ test.describe('Navigation Tabs: Positioning', () => {
     expect(assets.manifestHref).toMatch(/^\/static\/manifest\.webmanifest\?v=/);
   });
 
+  test('showing tabs does not leave temporary body padding behind', async ({ page }) => {
+    await setupWithChores(page);
+
+    const paddingBottom = await page.evaluate(() => {
+      return window.getComputedStyle(document.body).paddingBottom;
+    });
+
+    expect(paddingBottom).toBe('0px');
+  });
+
   test('bottom tabs are flush with the viewport bottom on initial load', async ({ page }) => {
     await setupWithChores(page);
 

@@ -459,6 +459,38 @@ function updateTabs(route) {
   });
 }
 
+function isIOSStandalone() {
+  const nav = window.navigator;
+  const isIOS = /iPad|iPhone|iPod/.test(nav.userAgent)
+    || (nav.platform === "MacIntel" && nav.maxTouchPoints > 1);
+  return isIOS && (nav.standalone === true || window.matchMedia("(display-mode: standalone)").matches);
+}
+
+function reconcileFixedTabs() {
+  if (!isIOSStandalone()) return;
+  if (document.hidden) return;
+
+  const startY = window.scrollY;
+  const canScroll = document.documentElement.scrollHeight > window.innerHeight + 1;
+
+  requestAnimationFrame(() => {
+    if (canScroll) {
+      window.scrollTo(0, startY + 1);
+      requestAnimationFrame(() => window.scrollTo(0, startY));
+      return;
+    }
+
+    // Force a real viewport-layout pass even on short pages where there is no
+    // natural scroll range yet.
+    document.body.style.paddingBottom = "1px";
+    window.scrollTo(0, 1);
+    requestAnimationFrame(() => {
+      window.scrollTo(0, 0);
+      document.body.style.paddingBottom = "";
+    });
+  });
+}
+
 function updateTopBar() {
   const topBar = document.querySelector("#top-bar");
   const tabs = document.querySelector("#bottom-tabs");
@@ -467,6 +499,7 @@ function updateTopBar() {
   if (state.user) {
     topBar.hidden = false;
     tabs.hidden = false;
+    reconcileFixedTabs();
     const avatar = document.querySelector("#user-avatar");
     if (avatar) {
       avatar.hidden = false;
@@ -1908,8 +1941,12 @@ export async function init() {
   }
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && state.user) {
+      reconcileFixedTabs();
       loadNotifData().then(() => updateTopBar());
     }
+  });
+  window.addEventListener("pageshow", () => {
+    if (state.user) reconcileFixedTabs();
   });
   if (state.user) startNotifPoll();
 
