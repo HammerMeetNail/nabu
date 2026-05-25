@@ -6,6 +6,8 @@ This file provides guidance to an LLM when working with code in this repository.
 
 Use the Task tool to launch subagents for codebase exploration, CI babysitting, production verification, and other parallelisable work. Subagents are configured to use a less capable, cheaper model than the primary session — this is intentional.
 
+**Subagent scope limits**: Subagents handle well-defined, standalone tasks: monitoring CI, verifying production deploys, searching the codebase for patterns, or reading files in bulk. If a subagent encounters complexity, ambiguity, or a task that requires design decisions, it must stop and report back to the primary agent — never re-implement features, make design choices, or produce code changes. Kick the work back.
+
 After pushing a `v*` tag, always launch a subagent to watch CI to completion and verify production. Do not wait for the user to ask.
 
 ## Git worktrees
@@ -13,6 +15,9 @@ After pushing a `v*` tag, always launch a subagent to watch CI to completion and
 Always use a git worktree for any code change — never work directly in the main checkout.
 
 ```bash
+# First, pull latest main so your worktree starts from the current state
+git fetch origin && git checkout main && git pull origin main
+
 # Create a worktree inside the repo directory (use a short descriptive name)
 git worktree add worktrees/<name> -b <name>
 
@@ -25,6 +30,18 @@ git branch -d <name>
 ```
 
 The main checkout at the workspace root stays clean and is only used for reference. All edits, commits, and test runs happen inside the worktree.
+
+### Worktree branching and deploy safety
+
+Deploys are triggered by pushing a `v*` tag (see Production section). Tags can live on any branch, **not** only on `main`. This means parallel worktree branches can deploy independently, and whoever pushes a tag last wins — their code overwrites whatever was previously in production.
+
+**To avoid regressions from parallel work:**
+
+- **Before starting new work**, always `git fetch origin && git pull origin main` so your worktree is based on the latest state. If you skip this, you may build on stale code and lose changes that landed on `main` since your last session.
+- **If another session has deployed while you were working**, your `v*` tag will overwrite its changes. Before tagging, check `git log --oneline origin/main -10` and compare against your worktree. If there are new commits on `main`, rebase or merge them first.
+- **Never re-implement a feature that already exists.** If you need a feature from another branch or tag, cherry-pick or merge it — do not write it again from scratch. Re-implementations drop edge-case fixes, tests, and accompanying infrastructure (e.g. migrations, Cancel buttons).
+- **When merging is not possible** (e.g. the worktree branch was a standalone deploy), ensure the branch is merged back into `main` afterward. Unmerged feature branches leave the door open for someone else to inadvertently revert the work.
+- **Check for orphaned branches** after a deploy: `git branch -a --contains <tag>` will show whether the tag's commit is reachable from `main`. If it is not, the changes live on an orphan branch and are at risk of being lost.
 
 ## Commands
 
