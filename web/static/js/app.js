@@ -657,9 +657,17 @@ async function doResendVerification() {
 
 async function verifyEmail(token) {
   const csrfToken = document.cookie.match(/(?:^|;\s*)choresy_csrf=([^;]*)/)?.[1] || "";
-  await fetch(`/api/auth/email/verify?token=${encodeURIComponent(token)}`, {
+  const res = await fetch(`/api/auth/email/verify?token=${encodeURIComponent(token)}`, {
     headers: { "X-CSRF-Token": csrfToken },
   });
+  if (res.ok) {
+    if (state.user) {
+      state.user.emailVerified = true;
+    }
+    try {
+      state.user = await loadSession();
+    } catch {}
+  }
 }
 
 async function doJoinWithCode(code) {

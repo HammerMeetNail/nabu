@@ -188,10 +188,13 @@ test.describe("Settings: auth features", () => {
     await registerUser(page, email);
 
     const verifyToken = await waitForEmailToken(request, "Verify your");
-    await page.goto(`${BASE}/verify-email?token=${verifyToken}`);
-    await page.waitForTimeout(1500);
 
-    await page.goto(BASE);
+    const verifyResp = await request.get(
+      `${BASE}/api/auth/email/verify?token=${encodeURIComponent(verifyToken)}`
+    );
+    expect(verifyResp.ok()).toBeTruthy();
+
+    await page.reload();
     await page.waitForSelector("#user-avatar:not([hidden])", { timeout: 10000 });
 
     await navigateToSettings(page);
