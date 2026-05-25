@@ -89,30 +89,74 @@ export async function handleResetPassword(token, password) {
   return { ok: res.ok, data: await res.json() };
 }
 
-export function renderLoginView() {
-  return `<div class="auth-card">
-    <h1 class="auth-title">Choresy</h1>
-    <form id="login-form" data-action="login">
-      <div class="form-group">
-        <label class="form-label" for="login-email">Email</label>
-        <input id="login-email" type="email" name="email" required autocomplete="email">
-      </div>
-      <div class="form-group">
-        <label class="form-label" for="login-password">Password</label>
-        <input id="login-password" type="password" name="password" required minlength="8" autocomplete="current-password">
-      </div>
-      <div id="login-error" class="form-error hidden"></div>
-      <button type="submit" class="btn btn-primary btn-block">Sign In</button>
-    </form>
-    <div class="mt-2">
-      <button type="button" class="btn btn-ghost btn-block" data-action="show-magic-link">Sign in with magic link</button>
-    </div>
-    <div class="auth-divider">or</div>
-    <button type="button" class="btn btn-secondary btn-block" data-action="show-register">Create Account</button>
-  </div>`;
+export async function handleChangePassword(currentPassword, newPassword) {
+  const csrfToken = getCSRFToken();
+  const res = await fetch("/api/auth/password", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": csrfToken,
+    },
+    body: JSON.stringify({
+      current_password: currentPassword,
+      new_password: newPassword,
+    }),
+  });
+  return { ok: res.ok, data: await res.json() };
 }
 
-export function renderRegisterView() {
+export function renderLoginView(googleOAuthEnabled) {
+  const googleButton = googleOAuthEnabled ? `
+    <div class="auth-divider">or</div>
+    <a href="/api/auth/google/login" class="btn btn-google btn-block">
+      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+      </svg>
+      Continue with Google
+    </a>
+  ` : "";
+  return `<div class="auth-card">` +
+    `<h1 class="auth-title">Choresy</h1>` +
+    `<form id="login-form" data-action="login">` +
+    `  <div class="form-group">` +
+    `    <label class="form-label" for="login-email">Email</label>` +
+    `    <input id="login-email" type="email" name="email" required autocomplete="email">` +
+    `  </div>` +
+    `  <div class="form-group">` +
+    `    <label class="form-label" for="login-password">Password</label>` +
+    `    <input id="login-password" type="password" name="password" required minlength="8" autocomplete="current-password">` +
+    `  </div>` +
+    `  <div id="login-error" class="form-error hidden"></div>` +
+    `  <button type="submit" class="btn btn-primary btn-block">Sign In</button>` +
+    `</form>` +
+    `<div class="mt-2">` +
+    `  <button type="button" class="btn btn-ghost btn-block" data-action="show-magic-link">Sign in with magic link</button>` +
+    `</div>` +
+    googleButton +
+    `<div class="auth-divider">or</div>` +
+    `<button type="button" class="btn btn-secondary btn-block" data-action="show-register">Create Account</button>` +
+    `<p class="text-center mt-2">` +
+    `  <button type="button" class="btn btn-ghost" data-action="show-forgot-password">Forgot password?</button>` +
+    `</p>` +
+  `</div>`;
+}
+
+export function renderRegisterView(googleOAuthEnabled) {
+  const googleButton = googleOAuthEnabled ? `
+    <div class="auth-divider">or</div>
+    <a href="/api/auth/google/login" class="btn btn-google btn-block">
+      <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+      </svg>
+      Continue with Google
+    </a>
+  ` : "";
   return `<div class="auth-card">
     <h1 class="auth-title">Create Account</h1>
     <form id="register-form" data-action="register">
@@ -131,6 +175,7 @@ export function renderRegisterView() {
       <div id="register-error" class="form-error hidden"></div>
       <button type="submit" class="btn btn-primary btn-block">Create Account</button>
     </form>
+    ${googleButton}
     <p class="text-center mt-2">
       <button type="button" class="btn btn-ghost" data-action="show-login">Already have an account? Sign in</button>
     </p>

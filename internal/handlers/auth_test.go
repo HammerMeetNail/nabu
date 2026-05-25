@@ -172,6 +172,71 @@ func TestAuthMeUnauthenticated(t *testing.T) {
 	}
 }
 
+func TestAuthChangePassword(t *testing.T) {
+	handler, svc := setupAuthHandler(t)
+
+	user, _, err := svc.Register(
+		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
+		"alice@example.com", "password123",
+	)
+	if err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	body := `{"current_password":"password123","new_password":"newpassword456"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/password", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := middleware.WithUser(req.Context(), user)
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	handler.ChangePassword(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+func TestAuthChangePasswordWrongCurrent(t *testing.T) {
+	handler, svc := setupAuthHandler(t)
+
+	user, _, err := svc.Register(
+		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
+		"alice@example.com", "password123",
+	)
+	if err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	body := `{"current_password":"wrongpass","new_password":"newpassword456"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/password", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := middleware.WithUser(req.Context(), user)
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+
+	handler.ChangePassword(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestAuthChangePasswordUnauthenticated(t *testing.T) {
+	handler, _ := setupAuthHandler(t)
+
+	body := `{"current_password":"password123","new_password":"newpassword456"}`
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/password", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.ChangePassword(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
+	}
+}
+
 func TestAuthForgotPassword(t *testing.T) {
 	handler, _ := setupAuthHandler(t)
 

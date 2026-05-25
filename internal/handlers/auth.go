@@ -191,6 +191,39 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.authResponse(user, session))
 }
 
+func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	var req struct {
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	updatedUser, session, err := h.authService.ChangePassword(r.Context(), user.ID, req.CurrentPassword, req.NewPassword)
+	if err != nil {
+		switch err {
+		case auth.ErrInvalidCredentials:
+			writeError(w, http.StatusUnauthorized, "current password is incorrect")
+		case auth.ErrWeakPassword:
+			writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		default:
+			writeError(w, http.StatusInternalServerError, "password change failed")
+		}
+		return
+	}
+
+	h.SetSessionCookie(w, session.ID)
+	writeJSON(w, http.StatusOK, h.authResponse(updatedUser, session))
+}
+
 func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 	state, err := auth.GenerateState()
 	if err != nil {

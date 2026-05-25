@@ -76,3 +76,7 @@ func RequireHousehold(next http.HandlerFunc) http.HandlerFunc {
 		next(w, r)
 	}
 }
+
+func WithUser(ctx context.Context, user auth.User) context.Context {
+	return context.WithValue(ctx, userContextKey, user)
+}

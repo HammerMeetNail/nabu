@@ -112,5 +112,3 @@ func expandHKDF(prk, info []byte, length int) []byte {
 	}
 	return out
 }
-
-

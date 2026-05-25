@@ -68,8 +68,8 @@ func TestEncryptDecryptWithKnownValues(t *testing.T) {
 
 func TestBase64URLDecode(t *testing.T) {
 	tests := []struct {
-		input    string
-		wantLen  int
+		input   string
+		wantLen int
 	}{
 		{"BFiD30jh-xT1-ztVT4-JzRZUkVaC3jSJpXSpsu8uy1q86f28QIg8W2iznxdqLqdlg7nYlVru_A1FjmmTmrV31Eo", 65},
 		{"mfbNpuEjYa06PwSg5azFcw", 16},

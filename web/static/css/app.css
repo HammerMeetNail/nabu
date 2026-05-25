@@ -241,6 +241,22 @@ input:focus, select:focus, textarea:focus {
 
 .btn-block { width: 100%; }
 
+.btn-google {
+  background: white;
+  color: #3c4043;
+  border: 1px solid #dadce0;
+  gap: 10px;
+  justify-content: center;
+}
+
+.btn-google:hover {
+  background: #f8f9fa;
+}
+
+.btn-google svg {
+  flex-shrink: 0;
+}
+
 .btn-sm {
   padding: 6px 12px;
   font-size: 13px;

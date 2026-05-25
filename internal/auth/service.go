@@ -331,6 +331,44 @@ func (s *Service) ResetPassword(ctx context.Context, token, newPassword string) 
 	return user, session, nil
 }
 
+func (s *Service) ChangePassword(ctx context.Context, userID int64, currentPassword, newPassword string) (User, Session, error) {
+	if len(newPassword) < 8 {
+		return User{}, Session{}, ErrWeakPassword
+	}
+
+	user, passwordHash, err := s.store.GetUserByIDWithHash(ctx, userID)
+	if err != nil {
+		return User{}, Session{}, ErrInvalidCredentials
+	}
+	if passwordHash == "" {
+		return User{}, Session{}, errors.New("no password set")
+	}
+
+	if err := verifyPassword(passwordHash, currentPassword); err != nil {
+		return User{}, Session{}, ErrInvalidCredentials
+	}
+
+	newHash, err := hashPassword(newPassword)
+	if err != nil {
+		return User{}, Session{}, fmt.Errorf("hash password: %w", err)
+	}
+
+	if err := s.store.UpdatePassword(ctx, userID, newHash); err != nil {
+		return User{}, Session{}, err
+	}
+	if err := s.store.DeleteUserSessions(ctx, userID); err != nil {
+		return User{}, Session{}, err
+	}
+
+	session, err := s.rotatedSession(ctx, user.ID)
+	if err != nil {
+		return User{}, Session{}, err
+	}
+
+	s.logAudit(ctx, "auth.password_changed", map[string]string{"user_id": fmt.Sprintf("%d", user.ID)})
+	return user, session, nil
+}
+
 func (s *Service) GoogleAuthCodeURL(state, nonce string) (string, error) {
 	if s.oidcProvider == nil || !s.oidcProvider.Enabled() {
 		return "", ErrOIDCUnavailable

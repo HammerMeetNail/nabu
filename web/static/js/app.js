@@ -10,6 +10,7 @@ import {
   handleMagicLinkRequest,
   handleForgotPassword,
   handleResetPassword,
+  handleChangePassword,
   renderLoginView,
   renderRegisterView,
   renderMagicLinkRequestView,
@@ -133,7 +134,7 @@ export function render(root) {
   } else if (!state.user) {
     switch (route) {
       case "/register":
-        html = renderRegisterView();
+        html = renderRegisterView(state.googleOAuthEnabled);
         break;
       case "/magic-link":
         html = renderMagicLinkRequestView();
@@ -142,7 +143,7 @@ export function render(root) {
         html = renderForgotPasswordView();
         break;
       default:
-        html = renderLoginView();
+        html = renderLoginView(state.googleOAuthEnabled);
     }
   } else {
     switch (route) {
@@ -329,6 +330,7 @@ function renderCalendarView() {
 
 function renderSettingsView() {
   const hh = state.household;
+  const user = state.user;
   let statsHTML = '';
   try {
     if (state.stats && state.stats.leaderboard) {
@@ -339,10 +341,41 @@ function renderSettingsView() {
   } catch {
     statsHTML = '<p class="text-center text-secondary">Stats unavailable</p>';
   }
+
+  const verificationSection = user && !user.emailVerified ? `
+    <div class="card mt-3" style="border-left: 4px solid #F4A261;">
+      <h3>Email Verification</h3>
+      <p class="text-secondary">Your email <strong>${escapeHTML(user.email)}</strong> is not verified.</p>
+      <button type="button" class="btn btn-sm btn-secondary mt-2" data-action="resend-verification">Resend verification email</button>
+    </div>
+  ` : "";
+
+  const passwordSection = `
+    <div class="card mt-3">
+      <h3>Change Password</h3>
+      <form id="change-password-form" data-action="change-password">
+        <div class="form-group">
+          <label class="form-label" for="current-password">Current Password</label>
+          <input id="current-password" type="password" name="currentPassword" required autocomplete="current-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="new-password">New Password</label>
+          <input id="new-password" type="password" name="newPassword" required minlength="8" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="confirm-password">Confirm New Password</label>
+          <input id="confirm-password" type="password" name="confirmPassword" required minlength="8" autocomplete="new-password">
+        </div>
+        <div id="change-password-error" class="form-error hidden"></div>
+        <button type="submit" class="btn btn-primary btn-sm mt-2">Update Password</button>
+      </form>
+    </div>
+  `;
+
   if (!hh) {
-    return `<div class="settings-view">${renderHouseholdView(null)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p><button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div></div>`;
+    return `<div class="settings-view">${renderHouseholdView(null)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}<button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div></div>`;
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p><button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div>${statsHTML}</div>`;
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}<button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div>${statsHTML}</div>`;
 }
 
 async function loadStatsData() {
@@ -586,6 +619,42 @@ async function doResetPassword(form) {
   }
 }
 
+async function doChangePassword(form) {
+  hideError("#change-password-error");
+  const currentPassword = form.querySelector("#current-password").value;
+  const newPassword = form.querySelector("#new-password").value;
+  const confirmPassword = form.querySelector("#confirm-password").value;
+  if (newPassword !== confirmPassword) {
+    setError("#change-password-error", "New passwords do not match");
+    return;
+  }
+  if (newPassword.length < 8) {
+    setError("#change-password-error", "Password must be at least 8 characters");
+    return;
+  }
+  const { ok, data } = await handleChangePassword(currentPassword, newPassword);
+  if (ok && data.user) {
+    state.user = data.user;
+    form.reset();
+    showToast("Password updated", "success");
+  } else {
+    setError("#change-password-error", data.error || "Password change failed");
+  }
+}
+
+async function doResendVerification() {
+  const csrfToken = document.cookie.match(/(?:^|;\s*)choresy_csrf=([^;]*)/)?.[1] || "";
+  try {
+    await fetch("/api/auth/email/verification/resend", {
+      method: "POST",
+      headers: { "X-CSRF-Token": csrfToken },
+    });
+    showToast("Verification email sent", "info");
+  } catch {
+    showToast("Failed to resend verification email", "error");
+  }
+}
+
 async function verifyEmail(token) {
   const csrfToken = document.cookie.match(/(?:^|;\s*)choresy_csrf=([^;]*)/)?.[1] || "";
   await fetch(`/api/auth/email/verify?token=${encodeURIComponent(token)}`, {
@@ -625,6 +694,8 @@ async function consumeMagicLink(token) {
 
 export async function init() {
   state = createAppState();
+
+  state.googleOAuthEnabled = document.body?.dataset?.googleOauthEnabled === "true";
 
   try {
     state.user = await loadSession();
@@ -735,6 +806,10 @@ export async function init() {
           state.currentRoute = "/";
           render(app);
         });
+        break;
+      case "resend-verification":
+        e.preventDefault();
+        doResendVerification();
         break;
       case "open-notifications": {
         e.preventDefault();
@@ -1323,6 +1398,9 @@ export async function init() {
         break;
       case "password-reset":
         doResetPassword(form);
+        break;
+      case "change-password":
+        doChangePassword(form);
         break;
       case "create-household":
         doCreateHousehold(form);

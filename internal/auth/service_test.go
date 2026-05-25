@@ -326,3 +326,65 @@ func TestPasswordHashAndVerify(t *testing.T) {
 		t.Fatal("expected error for wrong password")
 	}
 }
+
+func TestChangePassword(t *testing.T) {
+	store := NewMemoryStore()
+	svc := NewService(store)
+	mailer := mail.NewMemorySender()
+	svc.SetMailer(mailer, "http://localhost:8080")
+
+	user, _, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	updatedUser, session, err := svc.ChangePassword(context.Background(), user.ID, "password123", "newpassword456")
+	if err != nil {
+		t.Fatalf("ChangePassword: %v", err)
+	}
+	if updatedUser.ID != user.ID {
+		t.Fatal("expected same user")
+	}
+	if session.ID == "" {
+		t.Fatal("expected session ID")
+	}
+
+	_, _, err = svc.Login(context.Background(), "alice@example.com", "password123")
+	if err != ErrInvalidCredentials {
+		t.Fatal("old password should not work")
+	}
+	_, _, err = svc.Login(context.Background(), "alice@example.com", "newpassword456")
+	if err != nil {
+		t.Fatalf("new password should work: %v", err)
+	}
+}
+
+func TestChangePasswordWrongCurrent(t *testing.T) {
+	store := NewMemoryStore()
+	svc := NewService(store)
+
+	user, _, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	_, _, err = svc.ChangePassword(context.Background(), user.ID, "wrongcurrent", "newpassword456")
+	if err != ErrInvalidCredentials {
+		t.Fatalf("error = %v, want ErrInvalidCredentials", err)
+	}
+}
+
+func TestChangePasswordWeak(t *testing.T) {
+	store := NewMemoryStore()
+	svc := NewService(store)
+
+	user, _, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	_, _, err = svc.ChangePassword(context.Background(), user.ID, "password123", "short")
+	if err != ErrWeakPassword {
+		t.Fatalf("error = %v, want ErrWeakPassword", err)
+	}
+}

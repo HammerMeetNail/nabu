@@ -72,6 +72,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	authService := auth.NewService(authStore)
 	authService.SetAuditLogger(audit.NewStdLogger(log.Default()))
 	authService.SetMailer(newMailer(cfg), cfg.AppBaseURL)
+	authService.SetOIDCProvider(newOIDCProvider(cfg))
 	authHandler := handlers.NewAuthHandler(authService, "choresy_session", cfg.ServerSecure)
 	householdService := household.NewService(householdStore, authService)
 	householdHandler := handlers.NewHouseholdHandler(householdService)
@@ -127,6 +128,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	mux.HandleFunc("/api/auth/magic-link/consume", method(http.MethodGet, authHandler.ConsumeMagicLink))
 	mux.HandleFunc("/api/auth/password/forgot", method(http.MethodPost, authHandler.ForgotPassword))
 	mux.HandleFunc("/api/auth/password/reset", method(http.MethodPost, authHandler.ResetPassword))
+	mux.HandleFunc("/api/auth/password", method(http.MethodPost, middleware.RequireAuth(authHandler.ChangePassword)))
 	mux.HandleFunc("/api/auth/google/login", method(http.MethodGet, authHandler.GoogleLogin))
 	mux.HandleFunc("/api/auth/google/callback", method(http.MethodGet, authHandler.GoogleCallback))
 
@@ -342,14 +344,17 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 var indexTmpl = template.Must(template.ParseFS(webassets.Assets, "templates/index.html"))
 
 func renderIndex(w http.ResponseWriter, cfg config.Config) {
+	googleOAuthEnabled := cfg.GoogleClientID != "" && cfg.GoogleClientSecret != ""
 	data := struct {
-		AppName        string
-		Version        string
-		VAPIDPublicKey string
+		AppName            string
+		Version            string
+		VAPIDPublicKey     string
+		GoogleOAuthEnabled bool
 	}{
-		AppName:        "Choresy",
-		Version:        version.Version,
-		VAPIDPublicKey: cfg.VAPIDPublicKey,
+		AppName:            "Choresy",
+		Version:            version.Version,
+		VAPIDPublicKey:     cfg.VAPIDPublicKey,
+		GoogleOAuthEnabled: googleOAuthEnabled,
 	}
 	if err := indexTmpl.Execute(w, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

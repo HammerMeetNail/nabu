@@ -16,7 +16,7 @@ func NewPostgresStore(db *sql.DB) Store {
 }
 
 func (s *postgresStore) Get(ctx context.Context, userID int64) (Preferences, error) {
-	var rawOrder  []byte
+	var rawOrder []byte
 	var rawHidden []byte
 	err := s.db.QueryRowContext(ctx,
 		`SELECT chore_order, hidden_home_chore_ids FROM user_preferences WHERE user_id = $1`,

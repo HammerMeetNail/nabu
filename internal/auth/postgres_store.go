@@ -82,6 +82,29 @@ func (s *PostgresStore) GetUserByID(ctx context.Context, id int64) (User, error)
 	return user, nil
 }
 
+func (s *PostgresStore) GetUserByIDWithHash(ctx context.Context, id int64) (User, string, error) {
+	var user User
+	var passwordHash string
+	var householdID sql.NullInt64
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, household_id, email, password_hash, display_name, avatar_color, email_verified, role, created_at
+		FROM users WHERE id = $1
+	`, id).Scan(
+		&user.ID, &householdID, &user.Email, &passwordHash,
+		&user.DisplayName, &user.AvatarColor, &user.EmailVerified, &user.Role, &user.CreatedAt,
+	)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return User{}, "", ErrUserNotFound
+		}
+		return User{}, "", err
+	}
+	if householdID.Valid {
+		user.HouseholdID = &householdID.Int64
+	}
+	return user, passwordHash, nil
+}
+
 func (s *PostgresStore) FindUserByEmail(ctx context.Context, email string) (User, error) {
 	var user User
 	var householdID sql.NullInt64

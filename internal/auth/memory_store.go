@@ -77,6 +77,18 @@ func (s *MemoryStore) GetUserByID(_ context.Context, id int64) (User, error) {
 	return user, nil
 }
 
+func (s *MemoryStore) GetUserByIDWithHash(_ context.Context, id int64) (User, string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	user, ok := s.usersByID[id]
+	if !ok {
+		return User{}, "", ErrUserNotFound
+	}
+	pass := s.passwordsByID[id]
+	return user, pass, nil
+}
+
 func (s *MemoryStore) FindUserByEmail(_ context.Context, email string) (User, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

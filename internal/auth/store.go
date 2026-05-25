@@ -38,6 +38,7 @@ type Store interface {
 	CreateUser(ctx context.Context, email, passwordHash string) (User, error)
 	GetUserByEmail(ctx context.Context, email string) (User, string, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
+	GetUserByIDWithHash(ctx context.Context, id int64) (User, string, error)
 	FindUserByEmail(ctx context.Context, email string) (User, error)
 	VerifyEmail(ctx context.Context, userID int64) (User, error)
 	UpdatePassword(ctx context.Context, userID int64, passwordHash string) error
