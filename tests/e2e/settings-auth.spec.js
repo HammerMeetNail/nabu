@@ -188,13 +188,18 @@ test.describe("Settings: auth features", () => {
     await registerUser(page, email);
 
     const verifyToken = await waitForEmailToken(request, "Verify your");
+    expect(verifyToken).not.toBeNull();
 
     const verifyResp = await request.get(
       `${BASE}/api/auth/email/verify?token=${encodeURIComponent(verifyToken)}`
     );
     expect(verifyResp.ok()).toBeTruthy();
 
-    await page.reload();
+    const meResp = await request.get(`${BASE}/api/me`);
+    const meData = await meResp.json();
+    expect(meData.user?.emailVerified).toBe(true);
+
+    await page.goto(BASE);
     await page.waitForSelector("#user-avatar:not([hidden])", { timeout: 10000 });
 
     await navigateToSettings(page);
