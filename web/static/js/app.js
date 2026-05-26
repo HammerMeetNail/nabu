@@ -179,7 +179,6 @@ export function render(root) {
   morphInnerHTML(root, html);
   updateTabs(tabRoute);
   updateTopBar();
-  if (state.user) scheduleFixedTabsReconcile();
 
   // Auto-scroll the day-hour-grid-wrapper to show the current time when it is
   // first rendered (scrollTop === 0).  This prevents the grid from always
@@ -460,90 +459,6 @@ function updateTabs(route) {
   });
 }
 
-function isIOSStandalone() {
-  const nav = window.navigator;
-  const isIOS = /iPad|iPhone|iPod/.test(nav.userAgent)
-    || (nav.platform === "MacIntel" && nav.maxTouchPoints > 1);
-  return isIOS && (nav.standalone === true || window.matchMedia("(display-mode: standalone)").matches);
-}
-
-let reconcileTimer = null;
-let initialTabsSettled = false;
-let initialTabsRevealScheduled = false;
-
-function reconcileFixedTabs() {
-  if (!isIOSStandalone()) return;
-  if (document.hidden) return;
-
-  const startY = window.scrollY;
-  const canScroll = document.documentElement.scrollHeight > window.innerHeight + 1;
-
-  requestAnimationFrame(() => {
-    if (canScroll) {
-      window.scrollTo(0, startY + 1);
-      requestAnimationFrame(() => window.scrollTo(0, startY));
-      return;
-    }
-
-    // Force a real viewport-layout pass even on short pages where there is no
-    // natural scroll range yet.
-    document.body.style.paddingBottom = "1px";
-    window.scrollTo(0, 1);
-    requestAnimationFrame(() => {
-      window.scrollTo(0, 0);
-      document.body.style.paddingBottom = "";
-    });
-  });
-}
-
-function scheduleFixedTabsReconcile() {
-  if (!isIOSStandalone()) return;
-  if (reconcileTimer) {
-    clearTimeout(reconcileTimer);
-    reconcileTimer = null;
-  }
-
-  const delays = [0, 50, 150, 300, 500];
-  let index = 0;
-
-  const run = () => {
-    reconcileFixedTabs();
-    index += 1;
-    if (index >= delays.length) {
-      reconcileTimer = null;
-      return;
-    }
-    reconcileTimer = window.setTimeout(run, delays[index]);
-  };
-
-  run();
-}
-
-function revealTabsAfterFirstPaint(tabs) {
-  if (!isIOSStandalone() || initialTabsSettled) {
-    tabs.hidden = false;
-    return;
-  }
-  if (initialTabsRevealScheduled) return;
-
-  initialTabsRevealScheduled = true;
-  tabs.hidden = false;
-  tabs.style.visibility = "hidden";
-
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      tabs.style.visibility = "";
-      tabs.style.transform = "translateX(-50%) translateZ(0)";
-      requestAnimationFrame(() => {
-        tabs.style.transform = "translateX(-50%)";
-        initialTabsSettled = true;
-        initialTabsRevealScheduled = false;
-        scheduleFixedTabsReconcile();
-      });
-    });
-  });
-}
-
 function updateTopBar() {
   const topBar = document.querySelector("#top-bar");
   const tabs = document.querySelector("#bottom-tabs");
@@ -551,7 +466,7 @@ function updateTopBar() {
 
   if (state.user) {
     topBar.hidden = false;
-    revealTabsAfterFirstPaint(tabs);
+    tabs.hidden = false;
     const avatar = document.querySelector("#user-avatar");
     if (avatar) {
       avatar.hidden = false;
@@ -577,10 +492,6 @@ function updateTopBar() {
   } else {
     topBar.hidden = true;
     tabs.hidden = true;
-    tabs.style.visibility = "";
-    tabs.style.transform = "";
-    initialTabsSettled = false;
-    initialTabsRevealScheduled = false;
   }
 }
 
@@ -1997,12 +1908,8 @@ export async function init() {
   }
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && state.user) {
-      scheduleFixedTabsReconcile();
       loadNotifData().then(() => updateTopBar());
     }
-  });
-  window.addEventListener("pageshow", () => {
-    if (state.user) scheduleFixedTabsReconcile();
   });
   if (state.user) startNotifPoll();
 
