@@ -130,6 +130,7 @@ test.describe('Feed Baby volume picker', () => {
       headers: { 'X-CSRF-Token': csrf },
     });
     await page.reload();
+    await page.click('[data-nav="calendar"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     // Long-press the scheduled card to open the log sheet.
@@ -160,6 +161,7 @@ test.describe('Feed Baby volume picker', () => {
       headers: { 'X-CSRF-Token': csrf },
     });
     await page.reload();
+    await page.click('[data-nav="calendar"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     const card = page.locator('[data-drop-hour="10"] .chore-card').first();

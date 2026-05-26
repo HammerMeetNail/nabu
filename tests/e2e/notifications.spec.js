@@ -86,180 +86,174 @@ async function fetchNotifications(page) {
   return res.json();
 }
 
+async function setupOwnerAndMember(browser) {
+  const ownerCtx = await browser.newContext();
+  const ownerPage = await ownerCtx.newPage();
+  const ownerEmail = uniqueEmail();
+  const ownerCsrf = await registerAndCreateHousehold(ownerPage, ownerEmail);
+  const code = await getInviteCode(ownerPage, ownerCsrf);
+  const { page: memberPage, context: memberCtx } = await joinAsSecondUser(browser, code);
+  return { ownerCtx, ownerPage, ownerCsrf, memberPage, memberCtx };
+}
+
 test.describe('In-app notifications', () => {
   test('logging a chore creates a notification for other household members', async ({ browser }) => {
-    const ownerPage = await browser.newPage();
-    const ownerEmail = uniqueEmail();
-    const ownerCsrf = await registerAndCreateHousehold(ownerPage, ownerEmail);
-    const code = await getInviteCode(ownerPage, ownerCsrf);
+    const { ownerCtx, ownerPage, ownerCsrf, memberPage, memberCtx } = await setupOwnerAndMember(browser);
+    try {
+      // Verify member sees no unread badge initially
+      await memberPage.waitForSelector('#notifications-bell:not([hidden])', { timeout: 5000 });
+      const badgeBefore = await memberPage.locator('#notification-badge').isVisible().catch(() => false);
+      expect(badgeBefore).toBe(false);
 
-    const { page: memberPage, context: memberCtx } = await joinAsSecondUser(browser, code);
+      // Owner logs a chore via API
+      const choresRes = await ownerPage.request.get('/api/chores', {
+        headers: { 'X-CSRF-Token': ownerCsrf },
+      });
+      const choresData = await choresRes.json();
+      const firstChore = choresData.chores[0];
+      expect(firstChore).toBeTruthy();
 
-    // Verify member sees no unread badge initially
-    await memberPage.waitForSelector('#notifications-bell:not([hidden])', { timeout: 5000 });
-    const badgeBefore = await memberPage.locator('#notification-badge').isVisible().catch(() => false);
-    expect(badgeBefore).toBe(false);
+      await ownerPage.request.post('/api/logs', {
+        data: { choreId: firstChore.id, note: '', indicators: [] },
+        headers: { 'X-CSRF-Token': ownerCsrf },
+      });
 
-    // Owner logs a chore via API
-    const choresRes = await ownerPage.request.get('/api/chores', {
-      headers: { 'X-CSRF-Token': ownerCsrf },
-    });
-    const choresData = await choresRes.json();
-    const firstChore = choresData.chores[0];
-    expect(firstChore).toBeTruthy();
+      // Poll API until notification appears (goroutine is fire-and-forget)
+      await expect.poll(
+        async () => (await fetchNotifications(memberPage)).unreadCount,
+        { timeout: 10000, intervals: [500] }
+      ).toBeGreaterThanOrEqual(1);
 
-    await ownerPage.request.post('/api/logs', {
-      data: { choreId: firstChore.id, note: '', indicators: [] },
-      headers: { 'X-CSRF-Token': ownerCsrf },
-    });
-
-    // Poll API until notification appears (goroutine is fire-and-forget)
-    await expect.poll(
-      async () => (await fetchNotifications(memberPage)).unreadCount,
-      { timeout: 10000, intervals: [500] }
-    ).toBeGreaterThanOrEqual(1);
-
-    // Reload and verify badge
-    await memberPage.reload();
-    await memberPage.waitForSelector('.home-grid', { timeout: 15000 });
-    await expect.poll(
-      async () => {
-        const badge = memberPage.locator('#notification-badge');
-        return await badge.isVisible().catch(() => false);
-      },
-      { timeout: 8000, intervals: [300] }
-    ).toBe(true);
-
-    await memberCtx.close();
-    await ownerPage.close();
+      // Reload and verify badge
+      await memberPage.reload();
+      await memberPage.waitForSelector('.home-grid', { timeout: 15000 });
+      await expect.poll(
+        async () => {
+          const badge = memberPage.locator('#notification-badge');
+          return await badge.isVisible().catch(() => false);
+        },
+        { timeout: 8000, intervals: [300] }
+      ).toBe(true);
+    } finally {
+      await memberCtx.close();
+      await ownerCtx.close();
+    }
   });
 
   test('notification panel opens, shows items, and mark-all-read clears badge', async ({ browser }) => {
-    const ownerPage = await browser.newPage();
-    const ownerEmail = uniqueEmail();
-    const ownerCsrf = await registerAndCreateHousehold(ownerPage, ownerEmail);
-    const code = await getInviteCode(ownerPage, ownerCsrf);
+    const { ownerCtx, ownerPage, ownerCsrf, memberPage, memberCtx } = await setupOwnerAndMember(browser);
+    try {
+      // Trigger a notification
+      const choresRes = await ownerPage.request.get('/api/chores', {
+        headers: { 'X-CSRF-Token': ownerCsrf },
+      });
+      const choresData = await choresRes.json();
+      const firstChore = choresData.chores[0];
 
-    const { page: memberPage, context: memberCtx } = await joinAsSecondUser(browser, code);
+      await ownerPage.request.post('/api/logs', {
+        data: { choreId: firstChore.id, note: '', indicators: [] },
+        headers: { 'X-CSRF-Token': ownerCsrf },
+      });
 
-    // Trigger a notification
-    const choresRes = await ownerPage.request.get('/api/chores', {
-      headers: { 'X-CSRF-Token': ownerCsrf },
-    });
-    const choresData = await choresRes.json();
-    const firstChore = choresData.chores[0];
+      // Wait for notification via API
+      await expect.poll(
+        async () => (await fetchNotifications(memberPage)).unreadCount,
+        { timeout: 10000, intervals: [500] }
+      ).toBeGreaterThanOrEqual(1);
 
-    await ownerPage.request.post('/api/logs', {
-      data: { choreId: firstChore.id, note: '', indicators: [] },
-      headers: { 'X-CSRF-Token': ownerCsrf },
-    });
+      // Reload and wait for badge
+      await memberPage.reload();
+      await memberPage.waitForSelector('.home-grid', { timeout: 15000 });
+      await expect.poll(
+        async () => {
+          const badge = memberPage.locator('#notification-badge');
+          return await badge.isVisible().catch(() => false);
+        },
+        { timeout: 8000, intervals: [300] }
+      ).toBe(true);
 
-    // Wait for notification via API
-    await expect.poll(
-      async () => (await fetchNotifications(memberPage)).unreadCount,
-      { timeout: 10000, intervals: [500] }
-    ).toBeGreaterThanOrEqual(1);
+      // Open notification panel
+      await memberPage.click('#notifications-bell');
+      await memberPage.waitForSelector('.notif-panel', { timeout: 5000 });
 
-    // Reload and wait for badge
-    await memberPage.reload();
-    await memberPage.waitForSelector('.home-grid', { timeout: 15000 });
-    await expect.poll(
-      async () => {
-        const badge = memberPage.locator('#notification-badge');
-        return await badge.isVisible().catch(() => false);
-      },
-      { timeout: 8000, intervals: [300] }
-    ).toBe(true);
+      // Should see at least one notification item
+      const items = memberPage.locator('.notif-item');
+      await expect(items).toHaveCount(1);
 
-    // Open notification panel
-    await memberPage.click('#notifications-bell');
-    await memberPage.waitForSelector('.notif-panel', { timeout: 5000 });
-
-    // Should see at least one notification item
-    const items = memberPage.locator('.notif-item');
-    await expect(items).toHaveCount(1);
-
-    // Mark all read
-    await memberPage.click('button[data-action="mark-all-read"]');
-    await expect.poll(
-      async () => {
-        const badge = memberPage.locator('#notification-badge');
-        return await badge.isHidden().catch(() => false);
-      },
-      { timeout: 5000, intervals: [200] }
-    ).toBe(true);
-
-    await memberCtx.close();
-    await ownerPage.close();
+      // Mark all read
+      await memberPage.click('button[data-action="mark-all-read"]');
+      await expect.poll(
+        async () => {
+          const badge = memberPage.locator('#notification-badge');
+          return await badge.isHidden().catch(() => false);
+        },
+        { timeout: 5000, intervals: [200] }
+      ).toBe(true);
+    } finally {
+      await memberCtx.close();
+      await ownerCtx.close();
+    }
   });
 
   test('deleting a notification removes it from the panel', async ({ browser }) => {
-    const ownerPage = await browser.newPage();
-    const ownerEmail = uniqueEmail();
-    const ownerCsrf = await registerAndCreateHousehold(ownerPage, ownerEmail);
-    const code = await getInviteCode(ownerPage, ownerCsrf);
+    const { ownerCtx, ownerPage, ownerCsrf, memberPage, memberCtx } = await setupOwnerAndMember(browser);
+    try {
+      const choresRes = await ownerPage.request.get('/api/chores', {
+        headers: { 'X-CSRF-Token': ownerCsrf },
+      });
+      const choresData = await choresRes.json();
+      const firstChore = choresData.chores[0];
 
-    const { page: memberPage, context: memberCtx } = await joinAsSecondUser(browser, code);
+      await ownerPage.request.post('/api/logs', {
+        data: { choreId: firstChore.id, note: '', indicators: [] },
+        headers: { 'X-CSRF-Token': ownerCsrf },
+      });
 
-    const choresRes = await ownerPage.request.get('/api/chores', {
-      headers: { 'X-CSRF-Token': ownerCsrf },
-    });
-    const choresData = await choresRes.json();
-    const firstChore = choresData.chores[0];
+      await expect.poll(
+        async () => (await fetchNotifications(memberPage)).notifications.length,
+        { timeout: 10000, intervals: [500] }
+      ).toBeGreaterThanOrEqual(1);
 
-    await ownerPage.request.post('/api/logs', {
-      data: { choreId: firstChore.id, note: '', indicators: [] },
-      headers: { 'X-CSRF-Token': ownerCsrf },
-    });
+      // Open panel and dismiss
+      await memberPage.reload();
+      await memberPage.waitForSelector('.home-grid', { timeout: 15000 });
+      await memberPage.click('#notifications-bell');
+      await memberPage.waitForSelector('.notif-item', { timeout: 5000 });
 
-    await expect.poll(
-      async () => (await fetchNotifications(memberPage)).notifications.length,
-      { timeout: 10000, intervals: [500] }
-    ).toBeGreaterThanOrEqual(1);
-
-    // Open panel and dismiss
-    await memberPage.reload();
-    await memberPage.waitForSelector('.home-grid', { timeout: 15000 });
-    await memberPage.click('#notifications-bell');
-    await memberPage.waitForSelector('.notif-item', { timeout: 5000 });
-
-    await memberPage.click('button[data-action="dismiss-notification"]');
-    await expect(memberPage.locator('.notif-item')).toHaveCount(0, { timeout: 5000 });
-
-    await memberCtx.close();
-    await ownerPage.close();
+      await memberPage.click('button[data-action="dismiss-notification"]');
+      await expect(memberPage.locator('.notif-item')).toHaveCount(0, { timeout: 5000 });
+    } finally {
+      await memberCtx.close();
+      await ownerCtx.close();
+    }
   });
 
   test('notification survives page reload', async ({ browser }) => {
-    const ownerPage = await browser.newPage();
-    const ownerEmail = uniqueEmail();
-    const ownerCsrf = await registerAndCreateHousehold(ownerPage, ownerEmail);
-    const code = await getInviteCode(ownerPage, ownerCsrf);
+    const { ownerCtx, ownerPage, ownerCsrf, memberPage, memberCtx } = await setupOwnerAndMember(browser);
+    try {
+      const choresRes = await ownerPage.request.get('/api/chores', {
+        headers: { 'X-CSRF-Token': ownerCsrf },
+      });
+      const choresData = await choresRes.json();
+      const firstChore = choresData.chores[0];
 
-    const { page: memberPage, context: memberCtx } = await joinAsSecondUser(browser, code);
+      await ownerPage.request.post('/api/logs', {
+        data: { choreId: firstChore.id, note: '', indicators: [] },
+        headers: { 'X-CSRF-Token': ownerCsrf },
+      });
 
-    const choresRes = await ownerPage.request.get('/api/chores', {
-      headers: { 'X-CSRF-Token': ownerCsrf },
-    });
-    const choresData = await choresRes.json();
-    const firstChore = choresData.chores[0];
+      await expect.poll(
+        async () => (await fetchNotifications(memberPage)).notifications.length,
+        { timeout: 10000, intervals: [500] }
+      ).toBeGreaterThanOrEqual(1);
 
-    await ownerPage.request.post('/api/logs', {
-      data: { choreId: firstChore.id, note: '', indicators: [] },
-      headers: { 'X-CSRF-Token': ownerCsrf },
-    });
-
-    await expect.poll(
-      async () => (await fetchNotifications(memberPage)).notifications.length,
-      { timeout: 10000, intervals: [500] }
-    ).toBeGreaterThanOrEqual(1);
-
-    // Verify via API after reload
-    const data = await fetchNotifications(memberPage);
-    expect(data.notifications.length).toBeGreaterThanOrEqual(1);
-    expect(data.notifications[0].type).toBe('chore_logged');
-
-    await memberCtx.close();
-    await ownerPage.close();
+      // Verify via API after reload
+      const data = await fetchNotifications(memberPage);
+      expect(data.notifications.length).toBeGreaterThanOrEqual(1);
+      expect(data.notifications[0].type).toBe('chore_logged');
+    } finally {
+      await memberCtx.close();
+      await ownerCtx.close();
+    }
   });
 });

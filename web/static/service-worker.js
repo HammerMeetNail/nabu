@@ -86,6 +86,10 @@ self.addEventListener("message", (event) => {
 });
 
 async function setBadge(count) {
+  const ua = self.navigator && self.navigator.userAgent ? self.navigator.userAgent : "";
+  if (/HeadlessChrome|HeadlessShell/i.test(ua)) {
+    return;
+  }
   try {
     if ("setAppBadge" in self.navigator) {
       await self.navigator.setAppBadge(count);
@@ -94,6 +98,10 @@ async function setBadge(count) {
 }
 
 async function clearBadge() {
+  const ua = self.navigator && self.navigator.userAgent ? self.navigator.userAgent : "";
+  if (/HeadlessChrome|HeadlessShell/i.test(ua)) {
+    return;
+  }
   try {
     if ("clearAppBadge" in self.navigator) {
       await self.navigator.clearAppBadge();
