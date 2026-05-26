@@ -1123,7 +1123,7 @@ input:focus, select:focus, textarea:focus {
 
 .fab {
   position: fixed;
-  bottom: calc(72px + var(--safe-bottom));
+  bottom: calc(78px + var(--safe-bottom));
   right: 20px;
   width: 56px;
   height: 56px;
@@ -1231,7 +1231,7 @@ input:focus, select:focus, textarea:focus {
 
 .bottom-sheet {
   position: fixed;
-  bottom: calc(64px + var(--safe-bottom));
+  bottom: calc(70px + var(--safe-bottom));
   left: 50%;
   transform: translateX(-50%);
   width: 100%;

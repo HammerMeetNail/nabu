@@ -13,5 +13,10 @@
     document.documentElement.style.setProperty('--app-h', window.innerHeight + 'px');
   }
   setAppH();
+  requestAnimationFrame(setAppH);
+  setTimeout(setAppH, 150);
   window.addEventListener('resize', setAppH);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', setAppH);
+  }
 }());
