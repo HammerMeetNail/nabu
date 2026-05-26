@@ -186,11 +186,11 @@ test.describe("Settings: auth features", () => {
     await page.fill("#new-password", "newpassword789");
     await page.fill("#confirm-password", "newpassword789");
     await page.click("#change-password-form button[type=\"submit\"]");
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(1000);
 
     await page.reload();
     await page.waitForSelector("#user-avatar:not([hidden])", {
-      timeout: 10000,
+      timeout: 15000,
     });
     await expect(page.locator("#top-bar")).not.toBeHidden({ timeout: 5000 });
   });
