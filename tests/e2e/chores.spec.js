@@ -87,11 +87,37 @@ test.describe('Default chores: action-specific names', () => {
     expect(feedCats).toHaveLength(1);
   });
 
-  test('seeded default chores list has 17 items', async ({ page }) => {
+  test('seeded default chores do not include the cat-specific custom chores', async ({ page }) => {
     await setupWithChores(page);
 
     const { chores } = await (await page.request.get('/api/chores')).json();
-    expect(chores).toHaveLength(17);
+    const names = chores.map(c => c.name);
+    expect(names).not.toContain('Feed Orange Cat');
+    expect(names).not.toContain('Feed Black Cat');
+    expect(names).not.toContain('Feed Mongo');
+    expect(names).not.toContain('Feed Roger');
+  });
+
+  test('seeded default chores list has 15 items', async ({ page }) => {
+    await setupWithChores(page);
+
+    const { chores } = await (await page.request.get('/api/chores')).json();
+    expect(chores).toHaveLength(15);
+  });
+
+  test('Feed Mongo and Feed Roger can be added as custom chores', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    for (const name of ['Feed Mongo', 'Feed Roger']) {
+      const resp = await page.request.post('/api/chores', {
+        data: { name },
+        headers: { 'X-CSRF-Token': csrf },
+      });
+      expect(resp.status()).toBe(201);
+      const { chore } = await resp.json();
+      expect(chore.name).toBe(name);
+      expect(chore.isPredefined).toBe(false);
+    }
   });
 });
 

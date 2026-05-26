@@ -60,8 +60,8 @@ test.describe('Chores tab: display', () => {
   test('shows all seeded chores in the list', async ({ page }) => {
     await setupChoresTab(page);
     const rows = page.locator('.chore-row');
-    // Default seed = 17 chores
-    await expect(rows).toHaveCount(17);
+    // Default seed = 15 chores
+    await expect(rows).toHaveCount(15);
   });
 
   test('shows drag handle, eye toggle, and edit button on each row', async ({ page }) => {
