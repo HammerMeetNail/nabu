@@ -1047,6 +1047,11 @@ export async function init() {
         const timeInput    = document.querySelector("#sheet-time");
         const specificTime = timeInput?.value || null;
         const freqPayload  = readSheetFreq("sheet", slotDate);
+        const frequencyType = freqPayload?.frequencyType || "once";
+        const shouldLogNow = frequencyType === "once" && !!slotDate;
+        const slotHour = specificTime
+          ? parseInt(specificTime.split(":")[0], 10)
+          : (state.activeSheetData?.hour ?? null);
         createSchedule({
           choreId,
           timePeriod:    "anytime",
@@ -1054,9 +1059,17 @@ export async function init() {
           isActive:      true,
           ...freqPayload,
         }).then(async () => {
+          if (shouldLogNow) {
+            try {
+              await logChore(choreId, "", slotDate, [], Number.isNaN(slotHour) ? null : slotHour);
+            } catch {
+              showToast("Scheduled chore but failed to log history", "error");
+            }
+          }
           state.activeSheet = null;
           state.activeSheetData = {};
           state.schedules = await loadSchedules();
+          await (state.calendarView === "week" ? loadWeekData() : loadTodayData());
           render(app);
         }).catch(() => showToast("Failed to schedule chore", "error"));
         break;

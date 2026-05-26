@@ -737,7 +737,7 @@ test.describe('Chore Logging: Week View', () => {
 // ─── Drag and Drop: Day View ──────────────────────────────────────────────────
 
 test.describe('Drag and Drop: Day View', () => {
-  test('dragging a chore to an hour row moves it there', async ({ page }) => {
+  test('dragging a logged chore to an hour row keeps original completion and moves schedule', async ({ page }) => {
     await setupWithChores(page);
 
     // Schedule the first chore at 8 AM so it appears as a draggable card
@@ -754,9 +754,10 @@ test.describe('Drag and Drop: Day View', () => {
     await htmlDragDrop(page, card, hourCell);
     await page.waitForTimeout(1500);
 
-    // Chore should now be in the 2 PM row, not 8 AM
+    // Schedule moves to 2 PM, while the already-logged completion remains at
+    // the original 8 AM slot for history accuracy.
     await expect(page.locator('[data-drop-hour="14"] .chore-card')).toHaveCount(1);
-    await expect(page.locator('[data-drop-hour="8"] .chore-card')).toHaveCount(0);
+    await expect(page.locator('[data-drop-hour="8"] .chore-card--done')).toHaveCount(1);
   });
 
   test('dragging preserves the chore name after move', async ({ page }) => {
@@ -779,7 +780,7 @@ test.describe('Drag and Drop: Day View', () => {
     await expect(page.locator('[data-drop-hour="14"] .chore-name').first()).toContainText(choreName);
   });
 
-  test('dragging a scheduled chore between hour rows updates the schedule', async ({ page }) => {
+  test('dragging a logged scheduled chore between hour rows updates schedule and keeps logged slot', async ({ page }) => {
     await setupWithChores(page);
 
     // First schedule the chore at 8 AM via the sheet
@@ -798,7 +799,7 @@ test.describe('Drag and Drop: Day View', () => {
     await page.waitForTimeout(1500);
 
     await expect(page.locator('[data-drop-hour="18"] .chore-card')).toHaveCount(1);
-    await expect(page.locator('[data-drop-hour="8"] .chore-card')).toHaveCount(0);
+    await expect(page.locator('[data-drop-hour="8"] .chore-card--done')).toHaveCount(1);
   });
 
 });
