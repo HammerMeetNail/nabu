@@ -357,6 +357,10 @@ export function renderLogSheet(chore, log, date) {
       <div class="chip-list">${chips}</div>
     </div>` : "";
 
+  const volumeSection = chore.hasVolumeML
+    ? renderVolumeSelect(log?.volumeML ?? null)
+    : "";
+
   const noteSection = `
     <div class="sheet-note-row">
       <label for="log-note" class="field-label">Note (optional)</label>
@@ -389,6 +393,7 @@ export function renderLogSheet(chore, log, date) {
       <div class="sheet-handle" aria-hidden="true"></div>
       <h2 class="sheet-title">${title}</h2>
       ${chipsSection}
+      ${volumeSection}
       ${noteSection}
       ${actions}
       <button type="button" class="btn btn-ghost btn-full sheet-cancel-btn" data-action="close-sheet">
@@ -495,4 +500,19 @@ export function renderRecurrencePicker(sch) {
         Save Schedule
       </button>
     </div>`;
+}
+
+export function renderVolumeSelect(selectedML = null) {
+  const options = Array.from({ length: 41 }, (_, i) => i * 5);
+  const optsHTML = options.map(v => {
+    const sel = selectedML === v ? " selected" : "";
+    return `<option value="${v}"${sel}>${v} mL</option>`;
+  }).join("");
+  return `<div class="sheet-volume-row">
+    <label for="log-volume" class="field-label">Volume</label>
+    <select id="log-volume" class="select-input volume-select">
+      <option value=""${selectedML == null ? " selected" : ""}>--</option>
+      ${optsHTML}
+    </select>
+  </div>`;
 }

@@ -1,0 +1,191 @@
+// tests/e2e/feed-baby-volume.spec.js
+// Tests for the volume (mL) picker on the Feed Baby chore log sheet.
+
+import { test, expect } from '@playwright/test';
+
+function uniqueEmail() {
+  return `e2e-vol-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@test.com`;
+}
+
+async function setupWithChores(page) {
+  const email = uniqueEmail();
+
+  await page.goto('/register');
+  await page.waitForSelector('#register-form');
+  await page.fill('#reg-email', email);
+  await page.fill('#reg-password', 'test123456');
+  await page.fill('#reg-confirm', 'test123456');
+  await page.click('button[type="submit"]');
+  await page.waitForSelector('#user-avatar:not([hidden])', { timeout: 10000 });
+
+  const csrf = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
+
+  await page.request.post('/api/household', {
+    data: { name: `Vol Test ${Date.now()}` },
+    headers: { 'X-CSRF-Token': csrf },
+  });
+
+  await page.request.post('/api/chores/seed-defaults', {
+    headers: { 'X-CSRF-Token': csrf },
+  });
+
+  await page.reload();
+  await page.waitForSelector('.home-grid', { timeout: 15000 });
+
+  const chores = (await (await page.request.get('/api/chores')).json()).chores || [];
+  const feedBaby = chores.find(c => c.name === 'Feed Baby');
+
+  return { csrf, chores, feedBaby };
+}
+
+test.describe('Feed Baby volume picker', () => {
+  test('home log sheet shows volume picker for Feed Baby', async ({ page }) => {
+    const { feedBaby } = await setupWithChores(page);
+    expect(feedBaby).toBeDefined();
+    expect(feedBaby.hasVolumeML).toBe(true);
+
+    const card = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
+    await expect(card).toBeVisible();
+    await card.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+
+    await expect(page.locator('#log-volume')).toBeVisible();
+  });
+
+  test('home log sheet saves volumeML via API', async ({ page }) => {
+    const { feedBaby } = await setupWithChores(page);
+
+    const card = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
+    await card.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('#log-volume')).toBeVisible();
+
+    await page.selectOption('#log-volume', '120');
+    await page.click('[data-action="save-home-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    const resp = await page.request.get('/api/logs/latest-per-chore');
+    const body = await resp.json();
+    const log = body.latestLogs[feedBaby.id];
+    expect(log).toBeDefined();
+    expect(log.volumeML).toBe(120);
+  });
+
+  test('home log sheet without volume selected sends null volumeML', async ({ page }) => {
+    const { feedBaby, csrf } = await setupWithChores(page);
+
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+    const resp = await page.request.post('/api/logs', {
+      data: { choreId: feedBaby.id, note: '', indicators: [], date: today },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    expect(resp.status()).toBe(201);
+    const body = await resp.json();
+    expect(body.log.volumeML ?? null).toBeNull();
+  });
+
+  test('volume appears in history row', async ({ page }) => {
+    const { feedBaby } = await setupWithChores(page);
+
+    const card = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
+    await card.click();
+    await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
+
+    await page.selectOption('#log-volume', '85');
+    await page.click('[data-action="save-home-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    await page.click('[data-nav="history"]');
+    await page.waitForSelector('.history-view', { timeout: 10000 });
+
+    const meta = page.locator('.hist-meta').first();
+    await expect(meta).toContainText('85mL');
+  });
+
+  test('non-Feed Baby chores do not show volume picker', async ({ page }) => {
+    const { chores } = await setupWithChores(page);
+    const nonFeedChore = chores.find(c => c.name !== 'Feed Baby');
+    expect(nonFeedChore).toBeDefined();
+
+    const card = page.locator(`.home-chore-card[data-home-chore-id="${nonFeedChore.id}"]`);
+    await card.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+
+    await expect(page.locator('#log-volume')).toHaveCount(0);
+  });
+
+  test('calendar log sheet shows volume picker for Feed Baby', async ({ page }) => {
+    const { feedBaby } = await setupWithChores(page);
+
+    await page.click('[data-nav="calendar"]');
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
+    // Schedule Feed Baby at 10 AM so we have a card to long-press.
+    const csrf = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
+    await page.request.post('/api/schedules', {
+      data: { choreId: feedBaby.id, timePeriod: 'anytime', specificTime: '10:00', frequencyType: 'daily', isActive: true },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    await page.reload();
+    await page.click('[data-nav="calendar"]');
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
+    // Long-press the scheduled card to open the log sheet.
+    const card = page.locator('[data-drop-hour="10"] .chore-card').first();
+    await expect(card).toBeVisible();
+    await card.scrollIntoViewIfNeeded();
+    const box = await card.boundingBox();
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.waitForTimeout(650);
+    await page.mouse.up();
+
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('#log-volume')).toBeVisible();
+  });
+
+  test('calendar log sheet saves volumeML via API', async ({ page }) => {
+    const { feedBaby } = await setupWithChores(page);
+
+    await page.click('[data-nav="calendar"]');
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
+    const csrf = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
+    await page.request.post('/api/schedules', {
+      data: { choreId: feedBaby.id, timePeriod: 'anytime', specificTime: '10:00', frequencyType: 'daily', isActive: true },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    await page.reload();
+    await page.click('[data-nav="calendar"]');
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
+    const card = page.locator('[data-drop-hour="10"] .chore-card').first();
+    await card.scrollIntoViewIfNeeded();
+    const box = await card.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(650);
+    await page.mouse.up();
+
+    await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
+    await page.selectOption('#log-volume', '50');
+    await page.click('[data-action="save-log"]');
+    await page.waitForTimeout(1500);
+
+    const resp = await page.request.get('/api/logs/latest-per-chore');
+    const body = await resp.json();
+    const log = body.latestLogs[feedBaby.id];
+    expect(log).toBeDefined();
+    expect(log.volumeML).toBe(50);
+  });
+
+  test('chores API returns hasVolumeML for Feed Baby', async ({ page }) => {
+    const { feedBaby } = await setupWithChores(page);
+    expect(feedBaby.hasVolumeML).toBe(true);
+  });
+});

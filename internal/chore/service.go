@@ -102,6 +102,7 @@ func (s *Service) RestoreDefaultChore(ctx context.Context, choreID int64) error 
 			existing.Color = pc.Color
 			existing.Category = pc.Category
 			existing.IndicatorLabels = pc.IndicatorLabels
+			existing.HasVolumeML = pc.HasVolumeML
 			if existing.IndicatorLabels == nil {
 				existing.IndicatorLabels = []string{}
 			}
@@ -115,12 +116,14 @@ func (s *Service) GetSystemDefaults() []Chore {
 	var result []Chore
 	for _, pc := range PredefinedChores {
 		result = append(result, Chore{
-			Name:         pc.Name,
-			Icon:         pc.Icon,
-			Color:        pc.Color,
-			Category:     pc.Category,
-			IsPredefined: true,
-			SortOrder:    pc.SortOrder,
+			Name:            pc.Name,
+			Icon:            pc.Icon,
+			Color:           pc.Color,
+			Category:        pc.Category,
+			IsPredefined:    true,
+			SortOrder:       pc.SortOrder,
+			IndicatorLabels: pc.IndicatorLabels,
+			HasVolumeML:     pc.HasVolumeML,
 		})
 	}
 	return result
@@ -132,7 +135,7 @@ func (s *Service) SeedDefaultChores(ctx context.Context, householdID int64) erro
 
 var PredefinedChores = []Chore{
 	{Name: "Feed Cats", Icon: "🐱", Color: "#F59E0B", Category: "feeding", SortOrder: 0},
-	{Name: "Feed Baby", Icon: "🍼", Color: "#EC4899", Category: "feeding", SortOrder: 1},
+	{Name: "Feed Baby", Icon: "🍼", Color: "#EC4899", Category: "feeding", SortOrder: 1, HasVolumeML: true},
 	{Name: "Change Baby", Icon: "👶", Color: "#8B5CF6", Category: "care", SortOrder: 2, IndicatorLabels: []string{"💩 poo", "💛 pee"}},
 	{Name: "Water Plants", Icon: "🌱", Color: "#10B981", Category: "plants", SortOrder: 3},
 	{Name: "Clean Litter Box", Icon: "🧹", Color: "#6366F1", Category: "cleaning", SortOrder: 4},

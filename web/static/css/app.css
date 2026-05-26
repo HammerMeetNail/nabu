@@ -31,6 +31,10 @@
 html {
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
+  /* --app-h is set to window.innerHeight by an inline script in <head>.
+     On iOS PWA, 100dvh excludes the bottom safe-area inset at cold open
+     even with viewport-fit=cover; innerHeight returns the full screen height. */
+  height: var(--app-h, 100dvh);
 }
 
 body {
@@ -41,6 +45,11 @@ body {
   overflow-x: hidden;
   overscroll-behavior: contain;
   -webkit-font-smoothing: antialiased;
+  /* Flex column makes #bottom-tabs a natural static sibling of .app-shell,
+     eliminating the iOS PWA cold-open gap that afflicts position:sticky/fixed. */
+  height: var(--app-h, 100dvh);
+  display: flex;
+  flex-direction: column;
 }
 
 a { color: var(--primary); text-decoration: none; }
@@ -77,7 +86,12 @@ input:focus, select:focus, textarea:focus {
 .app-shell {
   max-width: 480px;
   margin: 0 auto;
-  min-height: 100dvh;
+  /* flex: 1 1 0 + min-height: 0 lets the shell fill the remaining viewport height
+     (body height minus tab bar) and scroll its own content internally.
+     No min-height calc needed; the tab bar sits below as a plain flex sibling. */
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
 }
@@ -162,18 +176,19 @@ input:focus, select:focus, textarea:focus {
 
 /* Bottom Tabs */
 #bottom-tabs {
-  position: fixed;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
+  /* Static flex item — no position:sticky/fixed means no WebKit layout-vs-visual-
+     viewport reconciliation bug on iOS PWA cold open.  The flex body (height:100dvh)
+     guarantees the tabs land exactly at the screen bottom at first paint. */
+  margin: 0 auto;
   width: 100%;
   max-width: 480px;
-  height: calc(64px + var(--safe-bottom));
-  padding-bottom: var(--safe-bottom);
+  height: calc(64px + var(--safe-bottom) + 6px);
+  padding-bottom: calc(var(--safe-bottom) + 6px);
   display: flex;
   background: var(--surface);
   border-top: 1px solid var(--border);
   z-index: 100;
+  flex-shrink: 0;
 }
 
 .tab-item {
@@ -199,7 +214,7 @@ input:focus, select:focus, textarea:focus {
 #app {
   flex: 1;
   padding: 16px;
-  padding-bottom: calc(80px + var(--safe-bottom));
+  padding-bottom: 16px;
 }
 
 /* Buttons */
@@ -357,7 +372,7 @@ input:focus, select:focus, textarea:focus {
 /* Toast Notifications */
 #toast-container {
   position: fixed;
-  bottom: calc(80px + var(--safe-bottom));
+  bottom: calc(86px + var(--safe-bottom));
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
@@ -1178,6 +1193,26 @@ input:focus, select:focus, textarea:focus {
 .sheet-note-row .field-label {
   display: block;
   margin-bottom: 6px;
+}
+
+/* ─── Log sheet: volume row ──────────────────────────────────────────────────── */
+
+.sheet-volume-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.sheet-volume-row .field-label {
+  margin: 0;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.volume-select {
+  flex: 1;
+  min-width: 0;
 }
 
 /* ─── Bottom Sheet ─────────────────────────────────────────────────────────── */

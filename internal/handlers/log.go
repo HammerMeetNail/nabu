@@ -72,6 +72,7 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Date        string   `json:"date"`        // optional ISO date "YYYY-MM-DD"; defaults to today
 		Hour        *int     `json:"hour"`        // optional calendar slot hour (0-23)
 		CompletedAt string   `json:"completedAt"` // optional RFC3339 timestamp for backdating
+		VolumeML    *int     `json:"volumeML"`    // optional volume in mL
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -98,7 +99,7 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		logCompletedAt = &t
 	}
 
-	entry, err := h.service.LogChore(r.Context(), *user.HouseholdID, user.ID, req.ChoreID, req.Note, req.Indicators, logDate, req.Hour, logCompletedAt)
+	entry, err := h.service.LogChore(r.Context(), *user.HouseholdID, user.ID, req.ChoreID, req.Note, req.Indicators, logDate, req.Hour, logCompletedAt, req.VolumeML)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
@@ -129,13 +130,14 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Note       string   `json:"note"`
 		Indicators []string `json:"indicators"`
+		VolumeML   *int     `json:"volumeML"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	if err := h.service.UpdateLog(r.Context(), id, req.Note, req.Indicators); err != nil {
+	if err := h.service.UpdateLog(r.Context(), id, req.Note, req.Indicators, req.VolumeML); err != nil {
 		if errors.Is(err, log.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "log not found")
 			return

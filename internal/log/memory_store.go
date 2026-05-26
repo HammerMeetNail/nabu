@@ -57,6 +57,7 @@ func (s *MemoryStore) UpdateLog(_ context.Context, log ChoreLog) error {
 	} else {
 		existing.Indicators = log.Indicators
 	}
+	existing.VolumeML = log.VolumeML
 	s.logs[log.ID] = existing
 	return nil
 }

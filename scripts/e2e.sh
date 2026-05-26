@@ -5,10 +5,15 @@ set -e
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname "$0")" && pwd)
 ROOT_DIR=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
 
+echo "=== E2E: Validating JS syntax ==="
+for js in "$ROOT_DIR"/web/static/js/*.js; do
+  node --check "$js"
+done
+
 echo "=== E2E: Starting stack ==="
 if [ "${CI}" = "true" ]; then
   # CI: run app with in-memory stores, Mailpit as service container
-  SMTP_HOST=localhost SMTP_PORT=1025 RATE_LIMIT_AUTH_MAX=1000 go run ./cmd/server &
+  SMTP_HOST=127.0.0.1 SMTP_PORT=1025 RATE_LIMIT_AUTH_MAX=1000 go run ./cmd/server &
   APP_PID=$!
   trap "kill ${APP_PID} 2>/dev/null" EXIT
 else
