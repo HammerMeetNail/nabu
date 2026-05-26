@@ -1195,6 +1195,26 @@ input:focus, select:focus, textarea:focus {
   margin-bottom: 6px;
 }
 
+/* ─── Log sheet: volume row ──────────────────────────────────────────────────── */
+
+.sheet-volume-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.sheet-volume-row .field-label {
+  margin: 0;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.volume-select {
+  flex: 1;
+  min-width: 0;
+}
+
 /* ─── Bottom Sheet ─────────────────────────────────────────────────────────── */
 
 .sheet-overlay-wrapper {

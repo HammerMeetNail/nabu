@@ -57,8 +57,23 @@ export function renderHomeView(state) {
         <div class="empty-state-title">No chores set up yet</div>
         <p>Add chores via the <a href="#" data-nav="chores">Chores</a> tab.</p>
       </div>
-    </div>`;
-  }
+  </div>`;
+}
+
+export function renderVolumePicker(selectedML = null) {
+  const options = Array.from({ length: 41 }, (_, i) => i * 5);
+  const optsHTML = options.map(v => {
+    const selected = selectedML === v ? " selected" : "";
+    return `<option value="${v}"${selected}>${v} mL</option>`;
+  }).join("");
+  return `<div class="sheet-volume-row">
+    <label for="log-volume" class="field-label">Volume</label>
+    <select id="log-volume" class="select-input volume-select">
+      <option value=""${selectedML == null ? " selected" : ""}>--</option>
+      ${optsHTML}
+    </select>
+  </div>`;
+}
 
   const cards = chores.map(chore => {
     const latest = latestLogs[chore.id];
@@ -131,8 +146,8 @@ export function renderConfirmRemoveFromHomeSheet(chore) {
  */
 export function renderHomeLogSheet(chore) {
   const labels = chore.indicatorLabels || [];
+  const hasVolume = chore.hasVolumeML === true;
 
-  // Pre-fill datetime-local with current local time ("YYYY-MM-DDTHH:MM").
   const now = new Date();
   const pad = n => String(n).padStart(2, "0");
   const dtLocal = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
@@ -148,10 +163,15 @@ export function renderHomeLogSheet(chore) {
       </div>`
     : "";
 
+  const volumeHTML = hasVolume
+    ? renderVolumePicker()
+    : "";
+
   return `<div class="bottom-sheet">
     <div class="sheet-handle"></div>
     <div class="sheet-title">${chore.icon} ${escapeHTML(chore.name)}</div>
     ${chipsHTML}
+    ${volumeHTML}
     <div class="sheet-note-row">
       <span class="field-label">Note (optional)</span>
       <textarea id="home-log-note" class="text-input" rows="2" placeholder="Any notes..."></textarea>

@@ -18,6 +18,7 @@ type Chore struct {
 	CreatedBy       *int64    `json:"createdBy"`
 	CreatedAt       time.Time `json:"createdAt"`
 	IndicatorLabels []string  `json:"indicatorLabels"`
+	HasVolumeML     bool      `json:"hasVolumeML"`
 }
 
 type Store interface {

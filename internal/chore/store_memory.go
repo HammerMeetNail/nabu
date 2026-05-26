@@ -142,6 +142,7 @@ func (s *MemoryStore) SeedPredefinedChores(_ context.Context, householdID int64)
 				PredefinedKey:   pc.Name,
 				CreatedAt:       time.Now().UTC(),
 				IndicatorLabels: pc.IndicatorLabels,
+				HasVolumeML:     pc.HasVolumeML,
 			}
 			s.chores[chore.ID] = chore
 		}

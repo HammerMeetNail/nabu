@@ -15,7 +15,8 @@ type ChoreLog struct {
 	Indicators  []string  `json:"indicators"`
 	SlotHour    *int      `json:"slotHour,omitempty"` // calendar hour (0-23) the log was made from; nil = anytime
 	CreatedAt   time.Time `json:"createdAt"`
-	LogDate     *string   `json:"-"` // explicit log date (YYYY-MM-DD); nil uses completedAt date for queries
+	LogDate     *string   `json:"-"`
+	VolumeML    *int      `json:"volumeML,omitempty"`
 }
 
 type DailySummary struct {

@@ -39,9 +39,9 @@ func (s *PostgresStore) CreateLog(ctx context.Context, log ChoreLog) (ChoreLog, 
 		logDate = sql.NullString{String: *log.LogDate, Valid: true}
 	}
 	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO chore_logs (household_id, user_id, chore_id, completed_at, note, indicators, slot_hour, log_date)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, created_at
-	`, log.HouseholdID, log.UserID, log.ChoreID, log.CompletedAt, log.Note, string(indJSON), ptrToNullInt64(log.SlotHour), logDate).Scan(&log.ID, &log.CreatedAt)
+		INSERT INTO chore_logs (household_id, user_id, chore_id, completed_at, note, indicators, slot_hour, log_date, volume_ml)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, created_at
+	`, log.HouseholdID, log.UserID, log.ChoreID, log.CompletedAt, log.Note, string(indJSON), ptrToNullInt64(log.SlotHour), logDate, ptrToNullInt64(log.VolumeML)).Scan(&log.ID, &log.CreatedAt)
 	return log, err
 }
 
@@ -50,7 +50,8 @@ func (s *PostgresStore) GetLog(ctx context.Context, id int64) (ChoreLog, error) 
 	var indJSON string
 	var slotHour sql.NullInt64
 	var logDate sql.NullString
-	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date FROM chore_logs WHERE id = $1`, id).Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate)
+	var volumeML sql.NullInt64
+	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date, volume_ml FROM chore_logs WHERE id = $1`, id).Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML)
 	if err == sql.ErrNoRows {
 		return ChoreLog{}, ErrNotFound
 	}
@@ -63,6 +64,7 @@ func (s *PostgresStore) GetLog(ctx context.Context, id int64) (ChoreLog, error) 
 		if logDate.Valid {
 			l.LogDate = &logDate.String
 		}
+		l.VolumeML = nullIntToPtr(volumeML)
 	}
 	return l, err
 }
@@ -70,8 +72,8 @@ func (s *PostgresStore) GetLog(ctx context.Context, id int64) (ChoreLog, error) 
 func (s *PostgresStore) UpdateLog(ctx context.Context, log ChoreLog) error {
 	indJSON, _ := json.Marshal(nilToEmptyLog(log.Indicators))
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE chore_logs SET note=$1, indicators=$2 WHERE id=$3`,
-		log.Note, string(indJSON), log.ID)
+		`UPDATE chore_logs SET note=$1, indicators=$2, volume_ml=$3 WHERE id=$4`,
+		log.Note, string(indJSON), ptrToNullInt64(log.VolumeML), log.ID)
 	return err
 }
 
@@ -85,8 +87,9 @@ func (s *PostgresStore) FindLog(ctx context.Context, householdID, choreID int64,
 	var indJSON string
 	var slotHour sql.NullInt64
 	var logDate sql.NullString
+	var volumeML sql.NullInt64
 	dateStr := date.Format("2006-01-02")
-	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date FROM chore_logs WHERE household_id = $1 AND chore_id = $2 AND COALESCE(log_date, completed_at::date) = $3::date LIMIT 1`, householdID, choreID, dateStr).Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate)
+	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date, volume_ml FROM chore_logs WHERE household_id = $1 AND chore_id = $2 AND COALESCE(log_date, completed_at::date) = $3::date LIMIT 1`, householdID, choreID, dateStr).Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
 	}
@@ -99,6 +102,7 @@ func (s *PostgresStore) FindLog(ctx context.Context, householdID, choreID int64,
 		if logDate.Valid {
 			l.LogDate = &logDate.String
 		}
+		l.VolumeML = nullIntToPtr(volumeML)
 	}
 	return &l, err
 }
@@ -118,7 +122,7 @@ func (s *PostgresStore) LatestPerChore(ctx context.Context, householdID int64) (
 		SELECT DISTINCT ON (chore_id)
 			id, household_id, user_id, chore_id, completed_at,
 			COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at,
-			log_date
+			log_date, volume_ml
 		FROM chore_logs
 		WHERE household_id = $1
 		ORDER BY chore_id, completed_at DESC
@@ -133,7 +137,8 @@ func (s *PostgresStore) LatestPerChore(ctx context.Context, householdID int64) (
 		var indJSON string
 		var slotHour sql.NullInt64
 		var logDate sql.NullString
-		if err := rows.Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate); err != nil {
+		var volumeML sql.NullInt64
+		if err := rows.Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(indJSON), &l.Indicators)
@@ -144,6 +149,7 @@ func (s *PostgresStore) LatestPerChore(ctx context.Context, householdID int64) (
 		if logDate.Valid {
 			l.LogDate = &logDate.String
 		}
+		l.VolumeML = nullIntToPtr(volumeML)
 		result[l.ChoreID] = l
 	}
 	return result, rows.Err()
@@ -153,7 +159,7 @@ func (s *PostgresStore) queryLogs(ctx context.Context, householdID int64, dateSt
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, household_id, user_id, chore_id, completed_at,
 		       COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at,
-		       log_date
+		       log_date, volume_ml
 		FROM chore_logs
 		WHERE household_id = $1
 		  AND COALESCE(log_date, completed_at::date) >= $2::date
@@ -170,7 +176,8 @@ func (s *PostgresStore) queryLogs(ctx context.Context, householdID int64, dateSt
 		var indJSON string
 		var slotHour sql.NullInt64
 		var logDate sql.NullString
-		if err := rows.Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate); err != nil {
+		var volumeML sql.NullInt64
+		if err := rows.Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(indJSON), &l.Indicators)
@@ -181,6 +188,7 @@ func (s *PostgresStore) queryLogs(ctx context.Context, householdID int64, dateSt
 		if logDate.Valid {
 			l.LogDate = &logDate.String
 		}
+		l.VolumeML = nullIntToPtr(volumeML)
 		logs = append(logs, l)
 	}
 	return logs, rows.Err()

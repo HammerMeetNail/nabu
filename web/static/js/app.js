@@ -973,9 +973,11 @@ export async function init() {
         const indicators = [...document.querySelectorAll('.log-chip--on')]
           .map(el => el.dataset.label);
         const slotHour = state.activeSheetData?.slotHour ?? null;
+        const volumeVal = document.querySelector('#log-volume')?.value;
+        const volumeML = volumeVal && volumeVal !== "" ? parseInt(volumeVal, 10) : null;
         const doLog = logId
-          ? updateLog(parseInt(logId, 10), note, indicators)
-          : logChore(choreId, note, date, indicators, slotHour);
+          ? updateLog(parseInt(logId, 10), note, indicators, volumeML)
+          : logChore(choreId, note, date, indicators, slotHour, null, volumeML);
         doLog.then(async () => {
           state.activeSheet     = null;
           state.activeSheetData = {};
@@ -1122,7 +1124,9 @@ export async function init() {
         // Extract the local date so the server stores the correct log_date,
         // preventing UTC-midnight boundary issues in date-based filtering.
         const logDate = whenInput?.value ? whenInput.value.split('T')[0] : "";
-        logChore(choreId, note, logDate, indicators, slotHour, completedAt).then(async (data) => {
+        const volumeVal = document.querySelector('#log-volume')?.value;
+        const volumeML = volumeVal && volumeVal !== "" ? parseInt(volumeVal, 10) : null;
+        logChore(choreId, note, logDate, indicators, slotHour, completedAt, volumeML).then(async (data) => {
           const logId = data?.log?.id;
           state.activeSheet     = null;
           state.activeSheetData = {};
