@@ -1798,7 +1798,6 @@ input:focus, select:focus, textarea:focus {
 .chores-view {
   padding: 0 0 80px;
   position: relative;
-  min-height: 100%;
 }
 
 .chores-view-header {
