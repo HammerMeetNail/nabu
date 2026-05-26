@@ -17,7 +17,7 @@ export default defineConfig({
         hasTouch: true,
         ...(process.env.CHROMIUM_PATH
           ? { executablePath: process.env.CHROMIUM_PATH }
-          : { channel: 'chrome' }),
+          : {}),
       },
     },
   ],
