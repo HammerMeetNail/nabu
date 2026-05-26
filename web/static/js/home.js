@@ -60,21 +60,6 @@ export function renderHomeView(state) {
   </div>`;
 }
 
-export function renderVolumePicker(selectedML = null) {
-  const options = Array.from({ length: 41 }, (_, i) => i * 5);
-  const optsHTML = options.map(v => {
-    const selected = selectedML === v ? " selected" : "";
-    return `<option value="${v}"${selected}>${v} mL</option>`;
-  }).join("");
-  return `<div class="sheet-volume-row">
-    <label for="log-volume" class="field-label">Volume</label>
-    <select id="log-volume" class="select-input volume-select">
-      <option value=""${selectedML == null ? " selected" : ""}>--</option>
-      ${optsHTML}
-    </select>
-  </div>`;
-}
-
   const cards = chores.map(chore => {
     const latest = latestLogs[chore.id];
     const timeAgo = latest ? formatTimeAgo(latest.completedAt) : "";
@@ -116,6 +101,21 @@ export function renderVolumePicker(selectedML = null) {
     <div class="home-grid${jiggleMode ? " home-grid--jiggle" : ""}">
       ${cards}
     </div>
+  </div>`;
+}
+
+export function renderVolumePicker(selectedML = null) {
+  const options = Array.from({ length: 41 }, (_, i) => i * 5);
+  const optsHTML = options.map(v => {
+    const selected = selectedML === v ? " selected" : "";
+    return `<option value="${v}"${selected}>${v} mL</option>`;
+  }).join("");
+  return `<div class="sheet-volume-row">
+    <label for="log-volume" class="field-label">Volume</label>
+    <select id="log-volume" class="select-input volume-select">
+      <option value=""${selectedML == null ? " selected" : ""}>--</option>
+      ${optsHTML}
+    </select>
   </div>`;
 }
 
@@ -191,4 +191,3 @@ export function renderHomeLogSheet(chore) {
     </button>
   </div>`;
 }
-
