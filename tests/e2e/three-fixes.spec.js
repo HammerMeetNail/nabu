@@ -163,7 +163,6 @@ test.describe('Fix 2: content area does not overlap with bottom tabs', () => {
     });
 
     expect(result).not.toBeNull();
-    // The content shell must not overlap the tab bar.
     expect(result.overlap).toBeLessThanOrEqual(1);
   });
 });
@@ -193,9 +192,7 @@ test.describe('Fix 3: nav tabs are a static flex item at the page bottom', () =>
       return { bodyH, innerH, appHPx };
     });
 
-    // The inline <head> script must have set --app-h
     expect(result.appHPx).toBe(result.innerH + 'px');
-    // And the body must fill the full viewport (no gap below tabs)
     expect(result.bodyH).toBe(result.innerH);
   });
 
@@ -206,7 +203,6 @@ test.describe('Fix 3: nav tabs are a static flex item at the page bottom', () =>
       return window.getComputedStyle(document.querySelector('#bottom-tabs')).position;
     });
 
-    // Static positioning — no sticky/fixed that could produce the cold-open gap.
     expect(position).toBe('static');
   });
 
