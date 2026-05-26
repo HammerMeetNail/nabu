@@ -468,6 +468,8 @@ function isIOSStandalone() {
 }
 
 let reconcileTimer = null;
+let initialTabsSettled = false;
+let initialTabsRevealScheduled = false;
 
 function reconcileFixedTabs() {
   if (!isIOSStandalone()) return;
@@ -517,6 +519,31 @@ function scheduleFixedTabsReconcile() {
   run();
 }
 
+function revealTabsAfterFirstPaint(tabs) {
+  if (!isIOSStandalone() || initialTabsSettled) {
+    tabs.hidden = false;
+    return;
+  }
+  if (initialTabsRevealScheduled) return;
+
+  initialTabsRevealScheduled = true;
+  tabs.hidden = false;
+  tabs.style.visibility = "hidden";
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      tabs.style.visibility = "";
+      tabs.style.transform = "translateX(-50%) translateZ(0)";
+      requestAnimationFrame(() => {
+        tabs.style.transform = "translateX(-50%)";
+        initialTabsSettled = true;
+        initialTabsRevealScheduled = false;
+        scheduleFixedTabsReconcile();
+      });
+    });
+  });
+}
+
 function updateTopBar() {
   const topBar = document.querySelector("#top-bar");
   const tabs = document.querySelector("#bottom-tabs");
@@ -524,7 +551,7 @@ function updateTopBar() {
 
   if (state.user) {
     topBar.hidden = false;
-    tabs.hidden = false;
+    revealTabsAfterFirstPaint(tabs);
     const avatar = document.querySelector("#user-avatar");
     if (avatar) {
       avatar.hidden = false;
@@ -550,6 +577,10 @@ function updateTopBar() {
   } else {
     topBar.hidden = true;
     tabs.hidden = true;
+    tabs.style.visibility = "";
+    tabs.style.transform = "";
+    initialTabsSettled = false;
+    initialTabsRevealScheduled = false;
   }
 }
 
