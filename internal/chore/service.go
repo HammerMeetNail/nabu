@@ -143,9 +143,7 @@ var PredefinedChores = []Chore{
 	{Name: "Walk Dog", Icon: "🐕", Color: "#EF4444", Category: "care", SortOrder: 9},
 	{Name: "Make Bed", Icon: "🛏️", Color: "#14B8A6", Category: "cleaning", SortOrder: 10},
 	{Name: "Baby Bath", Icon: "🛀", Color: "#60A5FA", Category: "care", SortOrder: 11},
-	{Name: "Feed Orange Cat", Icon: "🐈", Color: "#FB923C", Category: "feeding", SortOrder: 12},
-	{Name: "Feed Black Cat", Icon: "🐈‍⬛", Color: "#1F2937", Category: "feeding", SortOrder: 13},
-	{Name: "Cat Meds", Icon: "💊", Color: "#A78BFA", Category: "care", SortOrder: 14},
-	{Name: "Cat Wipe", Icon: "🧽", Color: "#34D399", Category: "care", SortOrder: 15},
-	{Name: "Cat Pumpkin", Icon: "🎃", Color: "#F97316", Category: "care", SortOrder: 16},
+	{Name: "Cat Meds", Icon: "💊", Color: "#A78BFA", Category: "care", SortOrder: 12},
+	{Name: "Cat Wipe", Icon: "🧽", Color: "#34D399", Category: "care", SortOrder: 13},
+	{Name: "Cat Pumpkin", Icon: "🎃", Color: "#F97316", Category: "care", SortOrder: 14},
 }

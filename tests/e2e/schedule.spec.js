@@ -342,7 +342,7 @@ test.describe('Pick-chore Bottom Sheet', () => {
     await page.locator('[data-drop-hour="8"]').click();
     await page.waitForTimeout(400);
 
-    await expect(page.locator('.sheet-chore-item')).toHaveCount(17);
+    await expect(page.locator('.sheet-chore-item')).toHaveCount(15);
     await expect(page.locator('.sheet-chore-item').first()).toContainText('Feed Cats');
   });
 
@@ -436,8 +436,8 @@ test.describe('Pick-chore Bottom Sheet', () => {
 
     const items = page.locator('.sheet-chore-item');
     const count = await items.count();
-    // All 17 chores remain (repeatable chores are never removed)
-    expect(count).toBe(17);
+    // All 15 chores remain (repeatable chores are never removed)
+    expect(count).toBe(15);
     // The scheduled chore is still present
     const names = await page.locator('.sheet-chore-item .chore-name').allInnerTexts();
     expect(names).toContain(firstName);
