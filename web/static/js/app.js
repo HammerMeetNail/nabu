@@ -985,13 +985,17 @@ export async function init() {
           render(app);
         });
         break;
-      case "log-chore":
+      case "log-chore": {
         e.preventDefault();
-        logChore(parseInt(actionEl.dataset.choreId), "", actionEl.dataset.date || "", []).then(async () => {
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
+        const slotEl = actionEl.closest('[data-hour]');
+        const slotHour = slotEl ? parseInt(slotEl.dataset.hour, 10) : null;
+        logChore(choreId, "", actionEl.dataset.date || "", [], slotHour, null, null, state.user?.id).then(async () => {
           await (state.calendarView === "week" ? loadWeekData() : loadTodayData());
           render(app);
         });
         break;
+      }
       case "undo-chore":
         e.preventDefault();
         undoLog(parseInt(actionEl.dataset.logId)).then(async () => {

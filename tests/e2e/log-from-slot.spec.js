@@ -227,4 +227,97 @@ test.describe('Log from time slot', () => {
     // The chore name should be visible in hour 9.
     await expect(page.locator('[data-drop-hour="9"] .chore-name').first()).toContainText(choreName);
   });
+
+  test('tapping a scheduled chore card in the day view logs it in the correct hour row, not Anytime', async ({ page }) => {
+    // Regression: clicking a chore card directly in the calendar (without going
+    // through any sheet) was passing slotHour=null to the API, placing the log
+    // in the catch-all Anytime row instead of the hour where the card was tapped.
+    await setupWithChores(page);
+
+    // Create a schedule at the current hour via API to get a card in the grid.
+    const now = new Date();
+    const testHour = String(now.getHours() % 12 + 8).padStart(2, '0') + ':00';
+    const csrf = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
+    const chores = (await (await page.request.get('/api/chores')).json()).chores;
+    const choreId = chores[0].id;
+    const choreName = chores[0].name;
+
+    await page.request.post('/api/schedules', {
+      data: { choreId, timePeriod: 'anytime', specificTime: testHour, frequencyType: 'daily', isActive: true },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+
+    await page.reload();
+    await page.click('[data-nav=\"calendar\"]');
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
+    const testHourNum = parseInt(testHour.split(':')[0], 10);
+
+    // The scheduled chore card should appear unlogged in its hour row.
+    const card = page.locator(`[data-drop-hour="${testHourNum}"] .chore-card`).first();
+    await expect(card).toHaveAttribute('data-action', 'log-chore');
+    await expect(card.locator('.chore-name')).toContainText(choreName);
+
+    // Tap the card directly to log it.
+    await card.click();
+    await page.waitForTimeout(1000);
+
+    // The card must now be marked done and still be in its hour row.
+    const doneCard = page.locator(`[data-drop-hour="${testHourNum}"] .chore-card--done`).first();
+    await expect(doneCard).toBeVisible();
+    await expect(doneCard.locator('.chore-name')).toContainText(choreName);
+
+    // The Anytime row must NOT contain this chore (regression guard).
+    const anytimeCards = page.locator('.day-anytime-row .chore-card');
+    await expect(anytimeCards).toHaveCount(0);
+  });
+
+  test('tapping a scheduled chore card in the week view logs it in the correct hour row', async ({ page }) => {
+    // Same regression as the day-view test but for the week view grid.
+    await setupWithChores(page);
+
+    const now = new Date();
+    const testHour = String(now.getHours() % 12 + 9).padStart(2, '0') + ':00';
+    const csrf = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
+    const chores = (await (await page.request.get('/api/chores')).json()).chores;
+    const choreId = chores[0].id;
+    const choreName = chores[0].name;
+
+    await page.request.post('/api/schedules', {
+      data: { choreId, timePeriod: 'anytime', specificTime: testHour, frequencyType: 'daily', isActive: true },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+
+    await page.reload();
+    await page.click('[data-nav=\"calendar\"]');
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
+    // Switch to week view.
+    await page.locator('[data-view="week"]').click();
+    await page.waitForSelector('.week-view', { timeout: 5000 });
+
+    const testHourNum = parseInt(testHour.split(':')[0], 10);
+
+    // Find the card for today's column in the correct hour row.
+    const todayISO = localTodayISO();
+    const card = page.locator(`.week-cell[data-drop-date="${todayISO}"][data-drop-hour="${testHourNum}"] .week-chore-card`).first();
+    await expect(card).toHaveAttribute('data-action', 'log-chore');
+    await expect(card).toContainText(choreName);
+
+    // Tap the card directly.
+    await card.scrollIntoViewIfNeeded();
+    await card.click();
+    await page.waitForTimeout(1000);
+
+    // Card must be done and still in the correct cell.
+    const doneCard = page.locator(`.week-cell[data-drop-date="${todayISO}"][data-drop-hour="${testHourNum}"] .week-chore-card.chore-card--done`).first();
+    await expect(doneCard).toContainText(choreName);
+
+    // Verify via API that the log has the correct slotHour.
+    const logsResp = await page.request.get(`/api/logs/today?date=${todayISO}`);
+    const logsBody = await logsResp.json();
+    const ourLog = (logsBody.logs || []).find(l => l.choreId === choreId);
+    expect(ourLog).toBeDefined();
+    expect(ourLog.slotHour).toBe(testHourNum);
+  });
 });
