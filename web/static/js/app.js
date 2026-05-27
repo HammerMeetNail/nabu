@@ -2001,7 +2001,7 @@ async function loadWeekData() {
 }
 
 async function reloadViewData() {
-  if (state.currentRoute === "history") {
+  if (state.currentRoute === "/history") {
     try {
       const data = await loadHistory();
       state.historyLogs = data?.logs || [];
