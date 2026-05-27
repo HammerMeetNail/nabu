@@ -732,6 +732,36 @@ export async function init() {
     maybeSubscribePush().catch(() => {});
   }
 
+  // When a new service worker takes control (after skipWaiting), show a
+  // refresh prompt so the user gets the latest app version without needing
+  // to manually close and reopen.
+  if ('serviceWorker' in navigator) {
+    let swRefreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (swRefreshing) return;
+      const container = document.querySelector("#toast-container");
+      if (!container) return;
+      const toast = document.createElement("div");
+      toast.className = "toast toast-info";
+      toast.style.cssText = "display:flex;align-items:center;gap:8px;";
+      const label = document.createElement("span");
+      label.textContent = "App updated";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = "Refresh";
+      btn.style.cssText = "background:rgba(255,255,255,0.2);border:none;color:white;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;margin-left:auto;min-height:32px;";
+      btn.addEventListener("click", () => {
+        swRefreshing = true;
+        window.location.reload();
+      });
+      toast.appendChild(label);
+      toast.appendChild(btn);
+      container.appendChild(toast);
+      // Auto-remove after 30 seconds if not dismissed.
+      setTimeout(() => { if (!swRefreshing) toast.remove(); }, 30000);
+    });
+  }
+
   const app = document.querySelector("#app");
   if (!app) return;
 
