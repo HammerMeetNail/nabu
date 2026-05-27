@@ -97,7 +97,11 @@ export function renderScheduleTab(state) {
         : "";
       return `
         <div class="sch-row ${doneClass}" style="--chore-color:${r.chore.color}">
-          <div class="sch-row-main">
+          <button type="button" class="sch-row-main"
+            data-action="schedule-open-log"
+            data-chore-id="${r.chore.id}"
+            data-date="${r.iso}"
+            data-slot-hour="${r.sch.specificTime ? r.sch.specificTime.split(':')[0] : ''}">
             <span class="sch-icon">${r.chore.icon}</span>
             <div class="sch-body">
               <div class="sch-name-row">
@@ -106,7 +110,7 @@ export function renderScheduleTab(state) {
               </div>
               <span class="sch-meta">${summary}${summarySuffix}</span>
             </div>
-          </div>
+          </button>
           <div class="sch-row-actions">
             ${r.isToday
               ? `<button type="button" class="btn btn-sm btn-primary sch-log-btn"

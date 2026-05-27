@@ -1103,6 +1103,19 @@ export async function init() {
         break;
       }
 
+      case "schedule-open-log": {
+        e.preventDefault();
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
+        const date    = actionEl.dataset.date || "";
+        const slotHourVal = actionEl.dataset.slotHour;
+        const slotHour = slotHourVal && slotHourVal !== ""
+          ? parseInt(slotHourVal, 10)
+          : null;
+        state.activeSheet     = "log";
+        state.activeSheetData = { choreId, logId: null, date, slotHour };
+        render(app);
+        break;
+      }
       case "schedule-tap-log": {
         e.preventDefault();
         const choreId = parseInt(actionEl.dataset.choreId, 10);

@@ -227,4 +227,38 @@ test.describe('Schedule Tab', () => {
     const countAfter = await page.locator('.sch-row').count();
     expect(countAfter).toBeGreaterThan(countBefore);
   });
+
+  test('tapping a schedule row opens the log sheet', async ({ page }) => {
+    await setupWithSchedules(page);
+
+    await page.click('[data-nav="schedule"]');
+    await page.waitForSelector('.sch-row-main', { timeout: 5000 });
+
+    const row = page.locator('.sch-row-main').first();
+    await row.click();
+    await page.waitForTimeout(500);
+
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
+    await expect(page.locator('.sheet-title')).toContainText('Feed Cats');
+    await expect(page.locator('#log-note')).toBeVisible();
+    await expect(page.locator('[data-action="save-log"]')).toBeVisible();
+  });
+
+  test('logging via the schedule row sheet creates a log for that date', async ({ page }) => {
+    await setupWithSchedules(page);
+
+    await page.click('[data-nav="schedule"]');
+    await page.waitForSelector('.sch-row-main', { timeout: 5000 });
+
+    const row = page.locator('.sch-row-main').first();
+    await row.click();
+    await page.waitForTimeout(500);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
+
+    await page.locator('[data-action="save-log"]').click();
+    await page.waitForTimeout(1000);
+
+    await expect(page.locator('.bottom-sheet')).not.toBeVisible();
+    await expect(page.locator('.sch-row--done')).not.toHaveCount(0);
+  });
 });
