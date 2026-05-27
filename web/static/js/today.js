@@ -47,12 +47,13 @@ export async function loadMoreHistory(before) {
   return data;
 }
 
-export async function logChore(choreId, note, date = "", indicators = [], slotHour = null, completedAt = null, volumeML = null) {
+export async function logChore(choreId, note, date = "", indicators = [], slotHour = null, completedAt = null, volumeML = null, userId = null) {
   const body = { choreId, note, indicators };
   if (date) body.date = date;
   if (slotHour !== null) body.hour = slotHour;
   if (completedAt) body.completedAt = completedAt;
   if (volumeML !== null) body.volumeML = volumeML;
+  if (userId !== null) body.userId = userId;
   const { data } = await apiFetch("/api/logs", {
     method: "POST",
     body: JSON.stringify(body),
@@ -65,9 +66,10 @@ export async function undoLog(logId) {
   return data;
 }
 
-export async function updateLog(logId, note, indicators = [], volumeML = null) {
+export async function updateLog(logId, note, indicators = [], volumeML = null, userId = null) {
   const body = { note, indicators };
   if (volumeML !== null) body.volumeML = volumeML;
+  if (userId !== null) body.userId = userId;
   const { data } = await apiFetch(`/api/logs/${logId}`, {
     method: "PATCH",
     body: JSON.stringify(body),
@@ -169,6 +171,9 @@ export function renderHistoryView(state) {
       time: timeStr,
       note: l.note || '',
       volumeML: l.volumeML,
+      logId: l.id,
+      choreId: l.choreId,
+      date: dateKey,
     });
   }
 
@@ -224,13 +229,17 @@ export function renderHistoryView(state) {
       const rows = g.rows.map(r => {
         const volumeStr = r.volumeML != null ? ` · ${r.volumeML}mL` : '';
         return `
-        <div class="hist-row" style="--chore-color:${r.color}">
+        <button type="button" class="hist-row" style="--chore-color:${r.color}"
+          data-action="view-log"
+          data-chore-id="${r.choreId}"
+          data-log-id="${r.logId}"
+          data-date="${r.date}">
           <span class="hist-icon">${r.icon}</span>
           <div class="hist-body">
             <span class="hist-name">${escapeHTML(r.name)}</span>
             <span class="hist-meta">${r.time} · ${escapeHTML(r.who)}${r.note ? ` · ${escapeHTML(r.note)}` : ''}${volumeStr}</span>
           </div>
-        </div>`;
+        </button>`;
       }).join('');
       return `<div class="hist-date-header">${g.label}</div>${rows}`;
     }).join('');

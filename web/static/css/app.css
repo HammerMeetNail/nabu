@@ -632,6 +632,18 @@ input:focus, select:focus, textarea:focus {
   border-left: 3px solid var(--chore-color, var(--border));
   margin: 0 0 1px;
   background: var(--surface);
+  width: 100%;
+  border-top: none;
+  border-right: none;
+  border-bottom: none;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.hist-row:active {
+  opacity: 0.7;
 }
 
 .hist-icon {
@@ -1212,6 +1224,26 @@ input:focus, select:focus, textarea:focus {
 }
 
 .volume-select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ─── Log sheet: member row ──────────────────────────────────────────────────── */
+
+.sheet-member-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.sheet-member-row .field-label {
+  margin: 0;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.member-select {
   flex: 1;
   min-width: 0;
 }

@@ -334,8 +334,10 @@ export function renderEditScheduleSheet(chore, sch, date) {
  * @param {object}      chore  { id, icon, name, color, indicatorLabels[] }
  * @param {object|null} log    Existing log entry, or null for new log
  * @param {string}      date   ISO date "YYYY-MM-DD"
+ * @param {object[]}    members   Household members
+ * @param {number}      currentUserId  Current auth user's ID
  */
-export function renderLogSheet(chore, log, date) {
+export function renderLogSheet(chore, log, date, members, currentUserId) {
   const title = `${chore.icon} ${escapeHTML(chore.name)}`;
   const noteVal = log ? escapeHTML(log.note || "") : "";
   const activeIndicators = new Set(log?.indicators || []);
@@ -360,6 +362,8 @@ export function renderLogSheet(chore, log, date) {
   const volumeSection = chore.hasVolumeML
     ? renderVolumeSelect(log?.volumeML ?? null)
     : "";
+
+  const memberSection = renderMemberSelect(members, currentUserId, log?.userId ?? null, "log");
 
   const noteSection = `
     <div class="sheet-note-row">
@@ -394,6 +398,7 @@ export function renderLogSheet(chore, log, date) {
       <h2 class="sheet-title">${title}</h2>
       ${chipsSection}
       ${volumeSection}
+      ${memberSection}
       ${noteSection}
       ${actions}
       <button type="button" class="btn btn-ghost btn-full sheet-cancel-btn" data-action="close-sheet">
@@ -513,6 +518,20 @@ export function renderVolumeSelect(selectedML = null) {
     <select id="log-volume" class="select-input volume-select">
       <option value=""${selectedML == null ? " selected" : ""}>--</option>
       ${optsHTML}
+    </select>
+  </div>`;
+}
+
+export function renderMemberSelect(members, currentUserId, selectedUserId = null, prefix = "log") {
+  if (!members || members.length <= 1) return "";
+  const selected = selectedUserId ?? currentUserId ?? "";
+  const options = members.map(m =>
+    `<option value="${m.userId}" ${m.userId === selected ? "selected" : ""}>${escapeHTML(m.displayName || m.email)}</option>`
+  ).join("");
+  return `<div class="sheet-member-row">
+    <label for="${prefix}-member" class="field-label">Done by</label>
+    <select id="${prefix}-member" class="select-input member-select">
+      ${options}
     </select>
   </div>`;
 }

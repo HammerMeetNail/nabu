@@ -73,10 +73,35 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Hour        *int     `json:"hour"`        // optional calendar slot hour (0-23)
 		CompletedAt string   `json:"completedAt"` // optional RFC3339 timestamp for backdating
 		VolumeML    *int     `json:"volumeML"`    // optional volume in mL
+		UserID      *int64   `json:"userId"`      // optional: log on behalf of another household member
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
+	}
+
+	logUserID := user.ID
+	if req.UserID != nil && *req.UserID != user.ID {
+		// Verify the requested user is a member of the household.
+		if h.householdStore != nil {
+			members, err := h.householdStore.GetMembers(r.Context(), *user.HouseholdID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to verify member")
+				return
+			}
+			found := false
+			for _, m := range members {
+				if m.UserID == *req.UserID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				writeError(w, http.StatusForbidden, "user is not a member of this household")
+				return
+			}
+		}
+		logUserID = *req.UserID
 	}
 
 	var logDate *time.Time
@@ -99,7 +124,7 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		logCompletedAt = &t
 	}
 
-	entry, err := h.service.LogChore(r.Context(), *user.HouseholdID, user.ID, req.ChoreID, req.Note, req.Indicators, logDate, req.Hour, logCompletedAt, req.VolumeML)
+	entry, err := h.service.LogChore(r.Context(), *user.HouseholdID, logUserID, req.ChoreID, req.Note, req.Indicators, logDate, req.Hour, logCompletedAt, req.VolumeML)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
@@ -108,7 +133,7 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 	// Fire-and-forget: notify other household members.
 	if h.notifService != nil {
 		hhID := *user.HouseholdID
-		loggerID := user.ID
+		loggerID := logUserID
 		choreID := req.ChoreID
 		go h.fanOutNotification(hhID, loggerID, choreID)
 	}
@@ -131,13 +156,38 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Note       string   `json:"note"`
 		Indicators []string `json:"indicators"`
 		VolumeML   *int     `json:"volumeML"`
+		UserID     *int64   `json:"userId"` // optional: change who the log is attributed to
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	if err := h.service.UpdateLog(r.Context(), id, req.Note, req.Indicators, req.VolumeML); err != nil {
+	// If changing userId, verify the target user is a household member.
+	var userID *int64
+	if req.UserID != nil {
+		if h.householdStore != nil && user.HouseholdID != nil {
+			members, err := h.householdStore.GetMembers(r.Context(), *user.HouseholdID)
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, "failed to verify member")
+				return
+			}
+			found := false
+			for _, m := range members {
+				if m.UserID == *req.UserID {
+					found = true
+					break
+				}
+			}
+			if !found {
+				writeError(w, http.StatusForbidden, "user is not a member of this household")
+				return
+			}
+		}
+		userID = req.UserID
+	}
+
+	if err := h.service.UpdateLog(r.Context(), id, req.Note, req.Indicators, req.VolumeML, userID); err != nil {
 		if errors.Is(err, log.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "log not found")
 			return

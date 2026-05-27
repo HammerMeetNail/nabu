@@ -51,7 +51,7 @@ func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int
 	})
 }
 
-func (s *Service) UpdateLog(ctx context.Context, logID int64, note string, indicators []string, volumeML *int) error {
+func (s *Service) UpdateLog(ctx context.Context, logID int64, note string, indicators []string, volumeML *int, userID *int64) error {
 	log, err := s.store.GetLog(ctx, logID)
 	if err != nil {
 		return err
@@ -62,6 +62,9 @@ func (s *Service) UpdateLog(ctx context.Context, logID int64, note string, indic
 	}
 	log.Indicators = indicators
 	log.VolumeML = volumeML
+	if userID != nil {
+		log.UserID = *userID
+	}
 	return s.store.UpdateLog(ctx, log)
 }
 

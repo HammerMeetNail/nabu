@@ -220,7 +220,21 @@ function renderChoresView() {
 }
 
 function renderHistoryView() {
-  return renderHistoryPage(state);
+  const mainView = renderHistoryPage(state);
+  if (state.activeSheet === "log") {
+    const { choreId, logId, date } = state.activeSheetData || {};
+    const chore = (state.chores || []).find(c => c.id === choreId);
+    if (chore) {
+      const log = logId ? ((state.historyLogs || []).find(l => l.id === logId) || null) : null;
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id);
+      return `<div class="sheet-overlay-wrapper">
+        ${mainView}
+        <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+        ${sheetHTML}
+      </div>`;
+    }
+  }
+  return mainView;
 }
 
 function renderHomeViewWrapper() {
@@ -229,7 +243,7 @@ function renderHomeViewWrapper() {
     const { choreId } = state.activeSheetData || {};
     const chore = (state.chores || []).find(c => c.id === choreId);
     if (chore) {
-      const sheetHTML = renderHomeLogSheet(chore);
+      const sheetHTML = renderHomeLogSheet(chore, state.members || [], state.user?.id);
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
@@ -306,7 +320,7 @@ function renderCalendarView() {
         ? (state.weekLogs || [])
         : (state.todayLogs || []);
       const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
-      const sheetHTML = renderLogSheet(chore, log, date || "");
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id);
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}
@@ -933,11 +947,11 @@ export async function init() {
         undoLog(parseInt(actionEl.dataset.logId)).then(async () => {
           state.activeSheet     = null;
           state.activeSheetData = {};
-          await (state.calendarView === "week" ? loadWeekData() : loadTodayData());
+          await reloadViewData();
           render(app);
         }).catch((err) => {
           console.error('undo-chore failed:', err);
-          (state.calendarView === "week" ? loadWeekData() : loadTodayData()).then(() => render(app));
+          reloadViewData().then(() => render(app));
         });
         break;
       case "view-log": {
@@ -975,13 +989,15 @@ export async function init() {
         const slotHour = state.activeSheetData?.slotHour ?? null;
         const volumeVal = document.querySelector('#log-volume')?.value;
         const volumeML = volumeVal && volumeVal !== "" ? parseInt(volumeVal, 10) : null;
+        const memberVal = document.querySelector('#log-member')?.value;
+        const userId = memberVal && memberVal !== "" ? parseInt(memberVal, 10) : null;
         const doLog = logId
-          ? updateLog(parseInt(logId, 10), note, indicators, volumeML)
-          : logChore(choreId, note, date, indicators, slotHour, null, volumeML);
+          ? updateLog(parseInt(logId, 10), note, indicators, volumeML, userId)
+          : logChore(choreId, note, date, indicators, slotHour, null, volumeML, userId);
         doLog.then(async () => {
           state.activeSheet     = null;
           state.activeSheetData = {};
-          await (state.calendarView === "week" ? loadWeekData() : loadTodayData());
+          await reloadViewData();
           render(app);
         }).catch(() => showToast("Failed to save log", "error"));
         break;
@@ -1139,7 +1155,9 @@ export async function init() {
         const logDate = whenInput?.value ? whenInput.value.split('T')[0] : "";
         const volumeVal = document.querySelector('#log-volume')?.value;
         const volumeML = volumeVal && volumeVal !== "" ? parseInt(volumeVal, 10) : null;
-        logChore(choreId, note, logDate, indicators, slotHour, completedAt, volumeML).then(async (data) => {
+        const memberVal = document.querySelector('#home-log-member')?.value;
+        const userId = memberVal && memberVal !== "" ? parseInt(memberVal, 10) : null;
+        logChore(choreId, note, logDate, indicators, slotHour, completedAt, volumeML, userId).then(async (data) => {
           const logId = data?.log?.id;
           state.activeSheet     = null;
           state.activeSheetData = {};
@@ -1980,6 +1998,20 @@ async function loadWeekData() {
     state.weekLogs = weekResult.logs || [];
     state.schedules = scheduleList;
   } catch {}
+}
+
+async function reloadViewData() {
+  if (state.currentRoute === "history") {
+    try {
+      const data = await loadHistory();
+      state.historyLogs = data?.logs || [];
+      state.historyHasMore = data?.hasMore || false;
+    } catch {}
+  } else if (state.calendarView === "week") {
+    await loadWeekData();
+  } else {
+    await loadTodayData();
+  }
 }
 
 async function doCreateHousehold(form) {

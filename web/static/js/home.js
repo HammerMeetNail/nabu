@@ -1,6 +1,7 @@
 import { apiFetch } from "./api.js";
 import { escapeHTML } from "./utils.js";
 import { sortChoresByOrder } from "./preferences.js";
+import { renderMemberSelect, renderVolumeSelect } from "./schedule.js";
 
 /**
  * Fetch the most-recent log for each chore in the household.
@@ -142,9 +143,11 @@ export function renderConfirmRemoveFromHomeSheet(chore) {
  * Used for chores that have indicator labels (must choose before logging)
  * and for backdating (datetime-local input).
  * @param {object} chore
+ * @param {object[]} members   Household members
+ * @param {number}   currentUserId  Current auth user's ID
  * @returns {string}  HTML string
  */
-export function renderHomeLogSheet(chore) {
+export function renderHomeLogSheet(chore, members, currentUserId) {
   const labels = chore.indicatorLabels || [];
   const hasVolume = chore.hasVolumeML === true;
 
@@ -164,14 +167,17 @@ export function renderHomeLogSheet(chore) {
     : "";
 
   const volumeHTML = hasVolume
-    ? renderVolumePicker()
+    ? renderVolumeSelect()
     : "";
+
+  const memberHTML = renderMemberSelect(members, currentUserId, currentUserId, "home-log");
 
   return `<div class="bottom-sheet">
     <div class="sheet-handle"></div>
     <div class="sheet-title">${chore.icon} ${escapeHTML(chore.name)}</div>
     ${chipsHTML}
     ${volumeHTML}
+    ${memberHTML}
     <div class="sheet-note-row">
       <span class="field-label">Note (optional)</span>
       <textarea id="home-log-note" class="text-input" rows="2" placeholder="Any notes..."></textarea>
