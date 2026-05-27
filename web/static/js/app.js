@@ -232,7 +232,8 @@ function renderHistoryView() {
     const chore = (state.chores || []).find(c => c.id === choreId);
     if (chore) {
       const log = logId ? ((state.historyLogs || []).find(l => l.id === logId) || null) : null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id);
+      const cachedVolumeML = state.latestLogs[choreId]?.volumeML ?? null;
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML);
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
@@ -249,7 +250,8 @@ function renderHomeViewWrapper() {
     const { choreId } = state.activeSheetData || {};
     const chore = (state.chores || []).find(c => c.id === choreId);
     if (chore) {
-      const sheetHTML = renderHomeLogSheet(chore, state.members || [], state.user?.id);
+      const cachedML = state.latestLogs[choreId]?.volumeML ?? null;
+      const sheetHTML = renderHomeLogSheet(chore, state.members || [], state.user?.id, cachedML);
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
@@ -326,7 +328,8 @@ function renderCalendarView() {
         ? (state.weekLogs || [])
         : (state.todayLogs || []);
       const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id);
+      const cachedVolumeML = state.latestLogs[choreId]?.volumeML ?? null;
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML);
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}

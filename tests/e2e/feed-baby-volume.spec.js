@@ -188,4 +188,131 @@ test.describe('Feed Baby volume picker', () => {
     const { feedBaby } = await setupWithChores(page);
     expect(feedBaby.hasVolumeML).toBe(true);
   });
+
+  test('home log sheet pre-populates volume from previous log', async ({ page }) => {
+    const { feedBaby } = await setupWithChores(page);
+
+    const card = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
+
+    // First log: set volume to 120 mL
+    await card.click();
+    await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('#log-volume')).toHaveValue(''); // No prior log
+    await page.selectOption('#log-volume', '120');
+    await page.click('[data-action="save-home-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    // Open log sheet again: volume should be pre-populated at 120 mL
+    await card.click();
+    await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('#log-volume')).toHaveValue('120');
+  });
+
+  test('home log sheet pre-populates from latest log on reload', async ({ page }) => {
+    const { feedBaby } = await setupWithChores(page);
+
+    // Log with 80 mL then reload to test cache-miss (cold start from API)
+    const card = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
+    await card.click();
+    await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
+    await page.selectOption('#log-volume', '80');
+    await page.click('[data-action="save-home-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    // Reload the page (cold cache) and open the sheet again
+    await page.reload();
+    await page.waitForSelector('.home-grid', { timeout: 15000 });
+
+    const card2 = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
+    await card2.click();
+    await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('#log-volume')).toHaveValue('80');
+  });
+
+  test('home log sheet volume defaults to empty when not set on prior log', async ({ page }) => {
+    const { feedBaby } = await setupWithChores(page);
+
+    const card = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
+
+    // First log: don't set volume (leave it as --)
+    await card.click();
+    await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
+    await page.selectOption('#log-volume', '--'); // explicitly choose no volume
+    await page.click('[data-action="save-home-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    // Open again: should still be empty
+    await card.click();
+    await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('#log-volume')).toHaveValue('');
+  });
+
+  test('calendar log sheet pre-populates volume from previous log', async ({ page }) => {
+    const { feedBaby } = await setupWithChores(page);
+
+    // Schedule Feed Baby so we have a card to long-press in calendar
+    const csrf = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
+    await page.request.post('/api/schedules', {
+      data: { choreId: feedBaby.id, timePeriod: 'anytime', specificTime: '10:00', frequencyType: 'daily', isActive: true },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+
+    // Log with 65 mL via home sheet first
+    const homeCard = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
+    await homeCard.click();
+    await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
+    await page.selectOption('#log-volume', '65');
+    await page.click('[data-action="save-home-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    // Go to calendar and long-press the scheduled card
+    await page.reload();
+    await page.waitForSelector('.home-grid', { timeout: 15000 });
+    await page.click('[data-nav="calendar"]');
+    await page.waitForSelector('.cal-date', { timeout: 15000 });
+
+    const card = page.locator('[data-drop-hour="10"] .chore-card').first();
+    await expect(card).toBeVisible();
+    await card.scrollIntoViewIfNeeded();
+    const box = await card.boundingBox();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(650);
+    await page.mouse.up();
+
+    await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('#log-volume')).toHaveValue('65');
+  });
+
+  test('editing an existing log uses its own volume, not the cache', async ({ page }) => {
+    const { feedBaby } = await setupWithChores(page);
+
+    const card = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
+
+    // Log with 150 mL first (older)
+    await card.click();
+    await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
+    await page.selectOption('#log-volume', '150');
+    await page.click('[data-action="save-home-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    // Log with 30 mL second (newer, this becomes the cached value)
+    await card.click();
+    await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('#log-volume')).toHaveValue('150'); // cached from first
+    await page.selectOption('#log-volume', '30');
+    await page.click('[data-action="save-home-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    // History is newest-first, so row 0 = 30mL, row 1 = 150mL.
+    // Edit the older 150mL log to verify it still shows 150, not 30.
+    await page.click('[data-nav="history"]');
+    await page.waitForSelector('.history-view', { timeout: 10000 });
+
+    const histRows = page.locator('.hist-row');
+    await expect(histRows).toHaveCount(2);
+    await histRows.nth(1).click(); // older log (150 mL)
+    await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('#log-volume')).toHaveValue('150');
+  });
 });

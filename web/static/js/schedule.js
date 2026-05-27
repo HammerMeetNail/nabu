@@ -337,7 +337,7 @@ export function renderEditScheduleSheet(chore, sch, date) {
  * @param {object[]}    members   Household members
  * @param {number}      currentUserId  Current auth user's ID
  */
-export function renderLogSheet(chore, log, date, members, currentUserId) {
+export function renderLogSheet(chore, log, date, members, currentUserId, cachedVolumeML = null) {
   const title = `${chore.icon} ${escapeHTML(chore.name)}`;
   const noteVal = log ? escapeHTML(log.note || "") : "";
   const activeIndicators = new Set(log?.indicators || []);
@@ -359,8 +359,9 @@ export function renderLogSheet(chore, log, date, members, currentUserId) {
       <div class="chip-list">${chips}</div>
     </div>` : "";
 
+  const volumeML = log ? (log.volumeML ?? null) : (cachedVolumeML ?? null);
   const volumeSection = chore.hasVolumeML
-    ? renderVolumeSelect(log?.volumeML ?? null)
+    ? renderVolumeSelect(volumeML)
     : "";
 
   const memberSection = renderMemberSelect(members, currentUserId, log?.userId ?? null, "log");
