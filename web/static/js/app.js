@@ -192,17 +192,7 @@ export function render(root) {
   const prevWrapper = root.querySelector(".day-hour-grid-wrapper");
   const savedScroll = prevWrapper ? prevWrapper.scrollTop : -1;
 
-  // When entering or leaving a sheet overlay, morph.js can produce stale
-  // nodes because the outer-wrapper class changes.  Detect this by comparing
-  // the current DOM against what the incoming HTML wants, and do a clean
-  // replace when they mismatch.
-  const hasSheetOverlay = root.querySelector(".sheet-overlay-wrapper") !== null;
-  const wantsSheetOverlay = html.includes("sheet-overlay-wrapper");
-  if (hasSheetOverlay !== wantsSheetOverlay) {
-    root.innerHTML = html;
-  } else {
-    morphInnerHTML(root, html);
-  }
+  morphInnerHTML(root, html);
   updateTabs(tabRoute);
   updateTopBar();
 
@@ -253,8 +243,9 @@ function renderHistoryView() {
     if (chore) {
       const log = logId ? ((state.historyLogs || []).find(l => l.id === logId) || null) : null;
       const cachedVolumeML = state.latestLogs[choreId]?.volumeML ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML);
-      return `<div class="sheet-overlay-wrapper">
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML, { slotHour: state.activeSheetData?.slotHour });
+
+  return `<div class="sheet-overlay-wrapper">
         ${mainView}
         <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
         ${sheetHTML}
@@ -349,7 +340,7 @@ function renderCalendarView() {
         : (state.todayLogs || []);
       const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
       const cachedVolumeML = state.latestLogs[choreId]?.volumeML ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML);
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML, { slotHour: state.activeSheetData?.slotHour });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}
@@ -421,7 +412,7 @@ function renderScheduleView() {
       const allLogs = state.todayLogs || [];
       const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
       const cachedVolumeML = state.latestLogs[choreId]?.volumeML ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML);
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML, { slotHour: state.activeSheetData?.slotHour });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}
@@ -1155,22 +1146,34 @@ export async function init() {
         e.preventDefault();
         const logId   = actionEl.dataset.logId;
         const choreId = parseInt(actionEl.dataset.choreId, 10);
-        let date      = actionEl.dataset.date || "";
         const note    = (document.querySelector('#log-note')?.value || "").trim();
         const indicators = [...document.querySelectorAll('.log-chip--on')]
           .map(el => el.dataset.label);
-        let slotHour = state.activeSheetData?.slotHour ?? null;
         const volumeVal = document.querySelector('#log-volume')?.value;
         const volumeML = volumeVal && volumeVal !== "" ? parseInt(volumeVal, 10) : null;
         const memberVal = document.querySelector('#log-member')?.value;
         const userId = memberVal && memberVal !== "" ? parseInt(memberVal, 10) : null;
 
-        let completedAt = null;
+        let date        = actionEl.dataset.date || "";
+        let completedAt = actionEl.dataset.completedAt || null;
+        let slotHour    = null;
+        if (actionEl.dataset.slotHour && actionEl.dataset.slotHour !== "") {
+          slotHour = parseInt(actionEl.dataset.slotHour, 10);
+        }
+
         const whenInput = document.querySelector('#log-when');
         if (whenInput?.value) {
-          completedAt = new Date(whenInput.value).toISOString();
-          slotHour = new Date(whenInput.value).getHours();
-          date = whenInput.value.split('T')[0];
+          const inputSlotHour = new Date(whenInput.value).getHours();
+          const inputDate = whenInput.value.split('T')[0];
+          const initialSlot = actionEl.dataset.slotHour && actionEl.dataset.slotHour !== ""
+            ? parseInt(actionEl.dataset.slotHour, 10) : null;
+          // Only trust the input if the user intentionally changed it
+          // — otherwise morph.js may have corrupted it.
+          if (inputDate !== actionEl.dataset.date || inputSlotHour !== initialSlot) {
+            completedAt = new Date(whenInput.value).toISOString();
+            slotHour = inputSlotHour;
+            date = inputDate;
+          }
         }
 
         const doLog = logId

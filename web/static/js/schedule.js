@@ -416,7 +416,9 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
         data-action="save-log"
         data-log-id=""
         data-chore-id="${chore.id}"
-        data-date="${escapeHTML(date)}">
+        data-date="${escapeHTML(date)}"
+        data-slot-hour="${opts.slotHour ?? ""}"
+        data-completed-at="${new Date().toISOString()}">
         Log
       </button>`;
 
