@@ -60,8 +60,8 @@ test.describe('Chores tab: display', () => {
   test('shows all seeded chores in the list', async ({ page }) => {
     await setupChoresTab(page);
     const rows = page.locator('.chore-row');
-    // Default seed = 15 chores
-    await expect(rows).toHaveCount(15);
+    // Default seed = 13 chores
+    await expect(rows).toHaveCount(13);
   });
 
   test('shows drag handle, eye toggle, and edit button on each row', async ({ page }) => {
@@ -70,6 +70,30 @@ test.describe('Chores tab: display', () => {
     await expect(firstRow.locator('.chore-row-drag-handle')).toBeVisible();
     await expect(firstRow.locator('[data-action="chore-toggle-home"]')).toBeVisible();
     await expect(firstRow.locator('[data-action="chore-edit"]')).toBeVisible();
+  });
+
+  test('shows Default badge on predefined chores and Custom badge on user-added chores', async ({ page }) => {
+    const { csrf } = await setupChoresTab(page);
+
+    // First row is a seeded default chore — must show "Default"
+    const firstBadge = page.locator('.chore-row').first().locator('.chore-row-badge');
+    await expect(firstBadge).toHaveClass(/chore-row-badge--default/);
+    await expect(firstBadge).toContainText('Default');
+
+    // Add a custom chore via API
+    await page.request.post('/api/chores', {
+      data: { name: 'My Custom Chore' },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    await page.reload();
+    await page.waitForSelector('.home-grid', { timeout: 15000 });
+    await page.click('[data-nav="chores"]');
+    await page.waitForSelector('.chore-list', { timeout: 10000 });
+
+    // Find the custom chore row — it should show "Custom"
+    const customRow = page.locator('.chore-row', { hasText: 'My Custom Chore' });
+    await expect(customRow.locator('.chore-row-badge')).toHaveClass(/chore-row-badge--custom/);
+    await expect(customRow.locator('.chore-row-badge')).toContainText('Custom');
   });
 
   test('FAB + button is visible', async ({ page }) => {
