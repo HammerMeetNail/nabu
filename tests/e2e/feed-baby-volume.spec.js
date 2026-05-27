@@ -289,9 +289,15 @@ test.describe('Feed Baby volume picker', () => {
 
     const card = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
 
-    // Log with 150 mL first (older)
+    // Log with 150 mL first (older). Set time back 5 minutes to ensure
+    // completedAt differs from the second log.
     await card.click();
     await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
+    const now = new Date();
+    const ago = new Date(now.getTime() - 5 * 60000);
+    const pad = n => String(n).padStart(2, '0');
+    const earlier = `${ago.getFullYear()}-${pad(ago.getMonth() + 1)}-${pad(ago.getDate())}T${pad(ago.getHours())}:${pad(ago.getMinutes())}`;
+    await page.fill('#home-log-when', earlier);
     await page.selectOption('#log-volume', '150');
     await page.click('[data-action="save-home-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
