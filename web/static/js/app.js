@@ -81,6 +81,12 @@ function readSheetFreq(prefix, date) {
 let state;
 
 export function render(root) {
+  // Check for service worker updates on every SPA navigation so the user
+  // sees the "App updated" prompt without needing to close and reopen the PWA.
+  if (window.__swReg) {
+    window.__swReg.update().catch(() => {});
+  }
+
   const route = state.currentRoute || window.location.pathname || "/";
   // Effective route for tab highlighting: unknown/auth-only paths fall back to
   // home ("/") so the "today" tab is always active when the home grid renders.
@@ -727,7 +733,9 @@ export async function init() {
 
   if (state.user) {
     if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/service-worker.js').catch(() => {});
+      navigator.serviceWorker.register('/service-worker.js').then(reg => {
+        window.__swReg = reg;
+      }).catch(() => {});
     }
     maybeSubscribePush().catch(() => {});
   }
@@ -763,6 +771,12 @@ export async function init() {
       // Auto-remove after 30 seconds if not dismissed.
       setTimeout(() => { if (!swRefreshing) toast.remove(); }, 30000);
     });
+
+    // Also poll for updates every 5 minutes as a fallback, in case the user
+    // leaves the app open on a single view without navigating.
+    setInterval(() => {
+      if (window.__swReg) window.__swReg.update().catch(() => {});
+    }, 300000);
   }
 
   const app = document.querySelector("#app");
