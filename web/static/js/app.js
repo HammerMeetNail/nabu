@@ -888,6 +888,14 @@ export async function init() {
       longPressJustFired = false;
       if (!e.target.closest(".bottom-sheet")) return;
     }
+
+    // Close the notification panel when clicking outside
+    const notifContainer = document.querySelector("#notif-panel-container");
+    if (notifContainer && !notifContainer.hidden && !e.target.closest("#notif-panel-container") && !e.target.closest("#notifications-bell")) {
+      notifContainer.hidden = true;
+      notifContainer.innerHTML = "";
+    }
+
     const actionEl = e.target.closest("[data-action]");
 
     // data-nav SPA navigation: check first so it works without data-action
@@ -1011,8 +1019,9 @@ export async function init() {
           state.unreadNotifications = 0;
           updateTopBar();
           const container = document.querySelector("#notif-panel-container");
-          if (container && !container.hidden) {
-            container.innerHTML = renderNotificationPanel(state.notifications);
+          if (container) {
+            container.hidden = true;
+            container.innerHTML = "";
           }
         });
         break;
