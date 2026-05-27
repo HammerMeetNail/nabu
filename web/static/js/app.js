@@ -192,7 +192,17 @@ export function render(root) {
   const prevWrapper = root.querySelector(".day-hour-grid-wrapper");
   const savedScroll = prevWrapper ? prevWrapper.scrollTop : -1;
 
-  morphInnerHTML(root, html);
+  // morph.js handles incremental DOM updates well for same-structure renders
+  // (e.g. toggling day pills, updating a counter), but it cannot cleanly
+  // transition between a sheet-overlay and a plain view — stale nodes leak
+  // into the new tree.  Detect this boundary and do a clean replace instead.
+  const currentHasSheet = root.querySelector(".sheet-overlay-wrapper") !== null;
+  const incomingHasSheet = html.includes("sheet-overlay-wrapper");
+  if (currentHasSheet !== incomingHasSheet) {
+    root.innerHTML = html;
+  } else {
+    morphInnerHTML(root, html);
+  }
   updateTabs(tabRoute);
   updateTopBar();
 
@@ -1167,8 +1177,8 @@ export async function init() {
           const inputDate = whenInput.value.split('T')[0];
           const initialSlot = actionEl.dataset.slotHour && actionEl.dataset.slotHour !== ""
             ? parseInt(actionEl.dataset.slotHour, 10) : null;
-          // Only trust the input if the user intentionally changed it
-          // — otherwise morph.js may have corrupted it.
+          // Only trust the input if the user intentionally changed it;
+          // otherwise morph.js may have corrupted it.
           if (inputDate !== actionEl.dataset.date || inputSlotHour !== initialSlot) {
             completedAt = new Date(whenInput.value).toISOString();
             slotHour = inputSlotHour;
@@ -1181,11 +1191,11 @@ export async function init() {
           : logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId);
         doLog.then(async (data) => {
           const newLogId = data?.log?.id;
+          state.activeSheet     = null;
+          state.activeSheetData = {};
           if (state.currentRoute === "/" || state.currentRoute === "/today") {
             await loadLatestLogsData();
           }
-          state.activeSheet     = null;
-          state.activeSheetData = {};
           await reloadViewData();
           render(app);
           if (newLogId) {

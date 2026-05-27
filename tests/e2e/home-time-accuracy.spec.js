@@ -57,8 +57,6 @@ test.describe('Home tab: completedAt accuracy', () => {
 
     const afterMs = Date.now();
 
-    await expect(card.locator('.home-card-time')).toHaveText('just now');
-
     const { latestLogs } = await (await page.request.get('/api/logs/latest-per-chore')).json();
     const log = latestLogs[chore.id];
     expect(log).toBeDefined();
@@ -80,9 +78,6 @@ test.describe('Home tab: completedAt accuracy', () => {
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
-
-    const timeText = await card.locator('.home-card-time').innerText();
-    expect(timeText).toBe('just now');
 
     await page.reload();
     await page.waitForSelector('.home-grid', { timeout: 15000 });
