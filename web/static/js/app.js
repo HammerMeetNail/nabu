@@ -734,15 +734,18 @@ export async function init() {
 
   // When a new service worker takes control (after skipWaiting), show a
   // refresh prompt so the user gets the latest app version without needing
-  // to manually close and reopen.
+  // to manually close and reopen.  Only fire when the page was already
+  // controlled — not on the first-ever activation.
   if ('serviceWorker' in navigator) {
+    let hadController = !!navigator.serviceWorker.controller;
     let swRefreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (swRefreshing) return;
+      if (!hadController) { hadController = true; return; }
       const container = document.querySelector("#toast-container");
       if (!container) return;
       const toast = document.createElement("div");
-      toast.className = "toast toast-info";
+      toast.className = "toast toast-info sw-update-toast";
       toast.style.cssText = "display:flex;align-items:center;gap:8px;";
       const label = document.createElement("span");
       label.textContent = "App updated";
