@@ -56,11 +56,13 @@ export function renderChoresView(state) {
   const rows = sortedChores.map(c => {
     const isHidden = hiddenSet.has(c.id);
     const eyeTitle = isHidden ? "Show on Home" : "Hide from Home";
+    const isDefault = c.isPredefined;
     return `<div class="chore-row${isHidden ? ' chore-row--hidden' : ''}"
       data-chores-tab-reorder-id="${c.id}" draggable="true">
       <span class="chore-row-drag-handle" aria-hidden="true">⋮⋮</span>
       <span class="chore-row-icon" style="background:${escapeHTML(c.color)}">${c.icon}</span>
       <span class="chore-row-name">${escapeHTML(c.name)}</span>
+      <span class="chore-row-badge${isDefault ? ' chore-row-badge--default' : ' chore-row-badge--custom'}">${isDefault ? 'Default' : 'Custom'}</span>
       <div class="chore-row-actions">
         <button type="button"
           class="chore-row-btn chore-row-eye${isHidden ? ' chore-row-eye--off' : ''}"

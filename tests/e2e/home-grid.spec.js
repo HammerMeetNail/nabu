@@ -69,8 +69,8 @@ test.describe('Home Grid: Rendering', () => {
     await setupWithChores(page);
 
     await expect(page.locator('.home-grid')).toBeVisible();
-    // 14 default seeded chores
-    await expect(page.locator('.home-chore-card')).toHaveCount(14);
+    // 13 default seeded chores
+    await expect(page.locator('.home-chore-card')).toHaveCount(13);
 
     // Each card has icon, name, and a time label
     const first = page.locator('.home-chore-card').first();
@@ -94,7 +94,7 @@ test.describe('Home Grid: Rendering', () => {
 
     // Every card should start as "never" before any logging
     const neverCount = await page.locator('.home-card-time--never').count();
-    expect(neverCount).toBe(14);
+    expect(neverCount).toBe(13);
     await expect(page.locator('.home-card-time--never').first()).toContainText('never');
   });
 });
@@ -329,7 +329,7 @@ test.describe('Home Grid: Jiggle Mode', () => {
 
     // Cards in jiggle mode get data-home-reorder-chore-id
     const reorderCards = page.locator('[data-home-reorder-chore-id]');
-    await expect(reorderCards).toHaveCount(14);
+    await expect(reorderCards).toHaveCount(13);
   });
 });
 
