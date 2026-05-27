@@ -116,15 +116,15 @@ test.describe('Log member attribution', () => {
     await expect(ownerPage.locator('.bottom-sheet')).toBeVisible();
 
     // The member dropdown should appear with both users.
-    await expect(ownerPage.locator('#home-log-member')).toBeVisible();
-    const memberOptions = ownerPage.locator('#home-log-member option');
+    await expect(ownerPage.locator('#log-member')).toBeVisible();
+    const memberOptions = ownerPage.locator('#log-member option');
     await expect(memberOptions).toHaveCount(2);
 
     // Select the other member (not the owner).
-    await ownerPage.locator('#home-log-member').selectOption(String(memberId));
+    await ownerPage.locator('#log-member').selectOption(String(memberId));
 
     // Submit the log.
-    await ownerPage.locator('[data-action="save-home-log"]').click();
+    await ownerPage.locator('[data-action="save-log"]').click();
     await ownerPage.waitForTimeout(500);
 
     // Verify the log was attributed to the selected member via API.

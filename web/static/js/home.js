@@ -105,21 +105,6 @@ export function renderHomeView(state) {
   </div>`;
 }
 
-export function renderVolumePicker(selectedML = null) {
-  const options = Array.from({ length: 41 }, (_, i) => i * 5);
-  const optsHTML = options.map(v => {
-    const selected = selectedML === v ? " selected" : "";
-    return `<option value="${v}"${selected}>${v} mL</option>`;
-  }).join("");
-  return `<div class="sheet-volume-row">
-    <label for="log-volume" class="field-label">Volume</label>
-    <select id="log-volume" class="select-input volume-select">
-      <option value=""${selectedML == null ? " selected" : ""}>--</option>
-      ${optsHTML}
-    </select>
-  </div>`;
-}
-
 /**
  * Render the confirmation bottom sheet for removing a chore from the home grid.
  * @param {object} chore
@@ -135,65 +120,5 @@ export function renderConfirmRemoveFromHomeSheet(chore) {
       data-chore-id="${chore.id}">Remove from Home</button>
     <button type="button" class="btn btn-secondary btn-block mt-2"
       data-action="close-sheet">Cancel</button>
-  </div>`;
-}
-
-/**
- * Render the bottom sheet for logging a chore from the home grid.
- * Used for chores that have indicator labels (must choose before logging)
- * and for backdating (datetime-local input).
- * @param {object} chore
- * @param {object[]} members   Household members
- * @param {number}   currentUserId  Current auth user's ID
- * @returns {string}  HTML string
- */
-export function renderHomeLogSheet(chore, members, currentUserId, cachedVolumeML = null) {
-  const labels = chore.indicatorLabels || [];
-  const hasVolume = chore.hasVolumeML === true;
-
-  const now = new Date();
-  const pad = n => String(n).padStart(2, "0");
-  const dtLocal = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
-
-  const chipsHTML = labels.length > 0
-    ? `<div class="sheet-chip-row">
-        <span class="field-label">How did it go?</span>
-        <div class="chip-list">
-          ${labels.map(label =>
-            `<button type="button" class="log-chip" data-action="toggle-indicator" data-label="${escapeHTML(label)}">${escapeHTML(label)}</button>`
-          ).join("")}
-        </div>
-      </div>`
-    : "";
-
-  const volumeHTML = hasVolume
-    ? renderVolumePicker(cachedVolumeML ?? null)
-    : "";
-
-  const memberHTML = renderMemberSelect(members, currentUserId, currentUserId, "home-log");
-
-  return `<div class="bottom-sheet">
-    <div class="sheet-handle"></div>
-    <div class="sheet-title">${chore.icon} ${escapeHTML(chore.name)}</div>
-    ${chipsHTML}
-    ${volumeHTML}
-    ${memberHTML}
-    <div class="sheet-note-row">
-      <span class="field-label">Note (optional)</span>
-      <textarea id="home-log-note" class="text-input" rows="2" placeholder="Any notes..."></textarea>
-    </div>
-    <div class="sheet-time-row">
-      <span class="field-label" style="white-space:nowrap;flex-shrink:0">When</span>
-      <input type="datetime-local" id="home-log-when" class="sheet-time-input text-input" value="${dtLocal}">
-    </div>
-    <button type="button" class="btn btn-primary btn-block mt-3"
-      data-action="save-home-log"
-      data-chore-id="${chore.id}">
-      Log
-    </button>
-    <button type="button" class="btn btn-ghost btn-full sheet-cancel-btn mt-1"
-      data-action="close-sheet">
-      Cancel
-    </button>
   </div>`;
 }

@@ -93,7 +93,7 @@ test.describe('Navigation Tabs: Positioning', () => {
     const firstCard = page.locator('.home-chore-card').first();
     await firstCard.click();
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
-    await page.click('[data-action="save-home-log"]');
+    await page.click('[data-action="save-log"]');
     await page.waitForTimeout(1500);
 
     const result = await tabsBottomGap(page);

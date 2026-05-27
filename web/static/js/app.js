@@ -25,7 +25,7 @@ import { renderStatsView, loadOverview } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, sortChoresByOrder } from "./preferences.js";
-import { loadLatestLogs, renderHomeView as renderHomeViewGrid, renderHomeLogSheet, renderConfirmRemoveFromHomeSheet } from "./home.js";
+import { loadLatestLogs, renderHomeView as renderHomeViewGrid, renderConfirmRemoveFromHomeSheet } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
 import { loadNotifications, markRead, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge } from "./notifications.js";
 import { renderScheduleTab } from "./schedule-tab.js";
@@ -261,7 +261,7 @@ function renderHomeViewWrapper() {
     const chore = (state.chores || []).find(c => c.id === choreId);
     if (chore) {
       const cachedML = state.latestLogs[choreId]?.volumeML ?? null;
-      const sheetHTML = renderHomeLogSheet(chore, state.members || [], state.user?.id, cachedML);
+      const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, cachedML, { showWhen: true });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
@@ -1145,23 +1145,40 @@ export async function init() {
         e.preventDefault();
         const logId   = actionEl.dataset.logId;
         const choreId = parseInt(actionEl.dataset.choreId, 10);
-        const date    = actionEl.dataset.date || "";
+        let date      = actionEl.dataset.date || "";
         const note    = (document.querySelector('#log-note')?.value || "").trim();
         const indicators = [...document.querySelectorAll('.log-chip--on')]
           .map(el => el.dataset.label);
-        const slotHour = state.activeSheetData?.slotHour ?? null;
+        let slotHour = state.activeSheetData?.slotHour ?? null;
         const volumeVal = document.querySelector('#log-volume')?.value;
         const volumeML = volumeVal && volumeVal !== "" ? parseInt(volumeVal, 10) : null;
         const memberVal = document.querySelector('#log-member')?.value;
         const userId = memberVal && memberVal !== "" ? parseInt(memberVal, 10) : null;
+
+        let completedAt = null;
+        const whenInput = document.querySelector('#log-when');
+        if (whenInput?.value) {
+          completedAt = new Date(whenInput.value).toISOString();
+          slotHour = new Date(whenInput.value).getHours();
+          date = whenInput.value.split('T')[0];
+        }
+
         const doLog = logId
           ? updateLog(parseInt(logId, 10), note, indicators, volumeML, userId)
-          : logChore(choreId, note, date, indicators, slotHour, null, volumeML, userId);
-        doLog.then(async () => {
+          : logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId);
+        doLog.then(async (data) => {
+          const newLogId = data?.log?.id;
           state.activeSheet     = null;
           state.activeSheetData = {};
           await reloadViewData();
+          if (state.currentRoute === "/" || state.currentRoute === "/today") {
+            await loadLatestLogsData();
+          }
           render(app);
+          if (newLogId) {
+            const chore = (state.chores || []).find(c => c.id === choreId);
+            showToastWithUndo(`${chore ? chore.icon + " " + chore.name : "Chore"}`, newLogId);
+          }
         }).catch(() => showToast("Failed to save log", "error"));
         break;
       }
@@ -1302,37 +1319,6 @@ export async function init() {
         state.activeSheet     = "home-log";
         state.activeSheetData = { choreId };
         render(app);
-        break;
-      }
-
-      case "save-home-log": {
-        e.preventDefault();
-        const choreId = parseInt(actionEl.dataset.choreId, 10);
-        const note = (document.querySelector('#home-log-note')?.value || "").trim();
-        const indicators = [...document.querySelectorAll('.log-chip--on')].map(el => el.dataset.label);
-        const whenInput = document.querySelector('#home-log-when');
-        const completedAt = whenInput?.value ? new Date(whenInput.value).toISOString() : null;
-        // Extract the hour from the selected time so the calendar places the
-        // log in the correct time slot instead of the catch-all Anytime row.
-        const slotHour = whenInput?.value ? new Date(whenInput.value).getHours() : null;
-        // Extract the local date so the server stores the correct log_date,
-        // preventing UTC-midnight boundary issues in date-based filtering.
-        const logDate = whenInput?.value ? whenInput.value.split('T')[0] : "";
-        const volumeVal = document.querySelector('#log-volume')?.value;
-        const volumeML = volumeVal && volumeVal !== "" ? parseInt(volumeVal, 10) : null;
-        const memberVal = document.querySelector('#home-log-member')?.value;
-        const userId = memberVal && memberVal !== "" ? parseInt(memberVal, 10) : null;
-        logChore(choreId, note, logDate, indicators, slotHour, completedAt, volumeML, userId).then(async (data) => {
-          const logId = data?.log?.id;
-          state.activeSheet     = null;
-          state.activeSheetData = {};
-          await loadLatestLogsData();
-          render(app);
-          if (logId) {
-            const chore = (state.chores || []).find(c => c.id === choreId);
-            showToastWithUndo(`${chore ? chore.icon + " " + chore.name : "Chore"}`, logId);
-          }
-        }).catch(() => showToast("Failed to log chore", "error"));
         break;
       }
 

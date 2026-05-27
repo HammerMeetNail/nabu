@@ -67,7 +67,7 @@ async function saveLogSheet(page) {
   // Toggle the first chip
   const chip = page.locator('.log-chip').first();
   await chip.click();
-  await page.locator('[data-action="save-home-log"]').click();
+  await page.locator('[data-action="save-log"]').click();
   await expect(page.locator('.bottom-sheet')).toHaveCount(0, { timeout: 5000 });
   await page.waitForTimeout(500);
 }
@@ -110,7 +110,7 @@ test.describe('Fix 1: multiple logs per chore per day', () => {
     await tapChangeBaby(page);
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
     await page.locator('.log-chip').first().click();       // first chip on
-    await page.locator('[data-action="save-home-log"]').click();
+    await page.locator('[data-action="save-log"]').click();
     await expect(page.locator('.bottom-sheet')).toHaveCount(0, { timeout: 5000 });
     await page.waitForTimeout(500);
 
@@ -122,7 +122,7 @@ test.describe('Fix 1: multiple logs per chore per day', () => {
     if (chipCount > 1) {
       await chips.nth(1).click(); // second chip on
     }
-    await page.locator('[data-action="save-home-log"]').click();
+    await page.locator('[data-action="save-log"]').click();
     await expect(page.locator('.bottom-sheet')).toHaveCount(0, { timeout: 5000 });
     await page.waitForTimeout(500);
 

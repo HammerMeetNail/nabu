@@ -46,7 +46,7 @@ async function setupWithChores(page) {
 async function logChoreViaSheet(page, card) {
   await card.click();
   await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
-  await page.click('[data-action="save-home-log"]');
+  await page.click('[data-action="save-log"]');
   await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 }
 
@@ -130,14 +130,14 @@ test.describe('Home tab log → calendar visibility', () => {
     const card = page.locator(`.home-chore-card[data-home-chore-id="${chore.id}"]`);
     await expect(card).toBeVisible();
     await card.click();
-    await expect(page.locator('#home-log-when')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('#log-when')).toBeVisible({ timeout: 5000 });
 
     const now = new Date();
     const pad = n => String(n).padStart(2, '0');
     const dtLocal = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T14:00`;
-    await page.fill('#home-log-when', dtLocal);
+    await page.fill('#log-when', dtLocal);
 
-    await page.locator('[data-action="save-home-log"]').click();
+    await page.locator('[data-action="save-log"]').click();
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     await page.click('[data-nav="calendar"]');
@@ -157,13 +157,13 @@ test.describe('Home tab log → calendar visibility', () => {
 
     const card = page.locator(`.home-chore-card[data-home-chore-id="${chore.id}"]`);
     await card.click();
-    await expect(page.locator('#home-log-when')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('#log-when')).toBeVisible({ timeout: 5000 });
 
     const now = new Date();
     const pad = n => String(n).padStart(2, '0');
     const todayISO = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-    await page.fill('#home-log-when', `${todayISO}T14:00`);
-    await page.locator('[data-action="save-home-log"]').click();
+    await page.fill('#log-when', `${todayISO}T14:00`);
+    await page.locator('[data-action="save-log"]').click();
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     await page.click('[data-nav="calendar"]');

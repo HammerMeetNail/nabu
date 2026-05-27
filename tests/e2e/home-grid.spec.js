@@ -110,9 +110,9 @@ test.describe('Home Grid: Log Sheet', () => {
 
     await firstCard.click();
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
-    await expect(page.locator('[data-action="save-home-log"]')).toBeVisible();
+    await expect(page.locator('[data-action="save-log"]')).toBeVisible();
 
-    await page.click('[data-action="save-home-log"]');
+    await page.click('[data-action="save-log"]');
 
     const toast = page.locator('#toast-container .toast');
     await expect(toast).toBeVisible({ timeout: 5000 });
@@ -128,7 +128,8 @@ test.describe('Home Grid: Log Sheet', () => {
 
     await firstCard.click();
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
-    await page.click('[data-action="save-home-log"]');
+    await page.click('[data-action="save-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     // After: "never" class gone; label shows "just now" or a relative time
     await expect(firstCard.locator('.home-card-time--never')).toHaveCount(0);
@@ -144,7 +145,7 @@ test.describe('Home Grid: Log Sheet', () => {
     // Tap first card, save log via sheet
     await page.locator('.home-chore-card').first().click();
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
-    await page.click('[data-action="save-home-log"]');
+    await page.click('[data-action="save-log"]');
 
     // Verify a log was created via latest-per-chore
     let latest = (await (await page.request.get('/api/logs/latest-per-chore')).json()).latestLogs;
@@ -183,7 +184,7 @@ test.describe('Home Grid: Log Sheet Details', () => {
 
     await page.locator('.home-chore-card').first().click();
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
-    await expect(page.locator('[data-action="save-home-log"]')).toBeVisible();
+    await expect(page.locator('[data-action="save-log"]')).toBeVisible();
   });
 
   test('indicator chips are visible and toggleable in the sheet', async ({ page }) => {
@@ -216,7 +217,7 @@ test.describe('Home Grid: Log Sheet Details', () => {
 
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
 
-    const whenInput = page.locator('#home-log-when');
+    const whenInput = page.locator('#log-when');
     await expect(whenInput).toBeVisible();
     const value = await whenInput.inputValue();
     // Should be a valid datetime-local format: "YYYY-MM-DDTHH:MM"
@@ -232,13 +233,13 @@ test.describe('Home Grid: Log Sheet Details', () => {
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
 
     // Fill note
-    await page.fill('#home-log-note', 'E2E test note');
+    await page.fill('#log-note', 'E2E test note');
 
     // Select a chip
     await page.locator('.log-chip').first().click();
 
     // Save
-    await page.locator('[data-action="save-home-log"]').click();
+    await page.locator('[data-action="save-log"]').click();
     await page.waitForTimeout(1500);
 
     // Sheet should be gone
@@ -266,9 +267,9 @@ test.describe('Home Grid: Log Sheet Details', () => {
     const twoHoursAgo = new Date(Date.now() - 2 * 3600 * 1000);
     const pad = n => String(n).padStart(2, '0');
     const dtValue = `${twoHoursAgo.getFullYear()}-${pad(twoHoursAgo.getMonth()+1)}-${pad(twoHoursAgo.getDate())}T${pad(twoHoursAgo.getHours())}:${pad(twoHoursAgo.getMinutes())}`;
-    await page.fill('#home-log-when', dtValue);
+    await page.fill('#log-when', dtValue);
 
-    await page.locator('[data-action="save-home-log"]').click();
+    await page.locator('[data-action="save-log"]').click();
     await page.waitForTimeout(1500);
 
     await expect(page.locator('.bottom-sheet')).toHaveCount(0);

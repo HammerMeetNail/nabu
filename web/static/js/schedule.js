@@ -341,8 +341,10 @@ export function renderEditScheduleSheet(chore, sch, date) {
  * @param {string}      date   ISO date "YYYY-MM-DD"
  * @param {object[]}    members   Household members
  * @param {number}      currentUserId  Current auth user's ID
+ * @param {number|null} cachedVolumeML Volume from previous log or null
+ * @param {object}      opts   { showWhen: bool, slotHour: number|null }
  */
-export function renderLogSheet(chore, log, date, members, currentUserId, cachedVolumeML = null) {
+export function renderLogSheet(chore, log, date, members, currentUserId, cachedVolumeML = null, opts = {}) {
   const title = `${chore.icon} ${escapeHTML(chore.name)}`;
   const noteVal = log ? escapeHTML(log.note || "") : "";
   const activeIndicators = new Set(log?.indicators || []);
@@ -360,7 +362,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
 
   const chipsSection = chips ? `
     <div class="sheet-chip-row">
-      <p class="field-label">Indicators</p>
+      <p class="field-label">How did it go?</p>
       <div class="chip-list">${chips}</div>
     </div>` : "";
 
@@ -369,13 +371,33 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     ? renderVolumeSelect(volumeML)
     : "";
 
-  const memberSection = renderMemberSelect(members, currentUserId, log?.userId ?? null, "log");
+  const selectedMemberId = log?.userId ?? (currentUserId || null);
+  const memberSection = renderMemberSelect(members, currentUserId, selectedMemberId, "log");
 
   const noteSection = `
     <div class="sheet-note-row">
       <label for="log-note" class="field-label">Note (optional)</label>
       <textarea id="log-note" class="text-input" rows="2" placeholder="Add a note…">${noteVal}</textarea>
     </div>`;
+
+  const showWhen = opts.showWhen === true;
+  const whenSection = showWhen ? (() => {
+    const now = new Date();
+    const pad = n => String(n).padStart(2, "0");
+    let whenVal = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    if (log?.completedAt) {
+      const d = new Date(log.completedAt);
+      whenVal = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    } else if (date && opts.slotHour != null) {
+      whenVal = `${date}T${pad(opts.slotHour)}:00`;
+    } else if (date) {
+      whenVal = `${date}T12:00`;
+    }
+    return `<div class="sheet-time-row">
+      <span class="field-label" style="white-space:nowrap;flex-shrink:0">When</span>
+      <input type="datetime-local" id="log-when" class="sheet-time-input text-input" value="${whenVal}">
+    </div>`;
+  })() : "";
 
   const actions = log
     ? `<button type="button" class="btn btn-primary btn-full"
@@ -402,6 +424,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     <div class="bottom-sheet" role="dialog" aria-modal="true" aria-label="${log ? "Edit log" : "Log chore"}">
       <div class="sheet-handle" aria-hidden="true"></div>
       <h2 class="sheet-title">${title}</h2>
+      ${whenSection}
       ${chipsSection}
       ${volumeSection}
       ${memberSection}

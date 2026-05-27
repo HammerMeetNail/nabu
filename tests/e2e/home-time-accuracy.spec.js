@@ -52,7 +52,7 @@ test.describe('Home tab: completedAt accuracy', () => {
 
     await card.click();
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
-    await page.click('[data-action="save-home-log"]');
+    await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     const afterMs = Date.now();
@@ -78,7 +78,7 @@ test.describe('Home tab: completedAt accuracy', () => {
 
     await card.click();
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
-    await page.click('[data-action="save-home-log"]');
+    await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     const timeText = await card.locator('.home-card-time').innerText();

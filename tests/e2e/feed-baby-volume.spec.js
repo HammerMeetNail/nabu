@@ -61,7 +61,7 @@ test.describe('Feed Baby volume picker', () => {
     await expect(page.locator('#log-volume')).toBeVisible();
 
     await page.selectOption('#log-volume', '120');
-    await page.click('[data-action="save-home-log"]');
+    await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     const resp = await page.request.get('/api/logs/latest-per-chore');
@@ -95,7 +95,7 @@ test.describe('Feed Baby volume picker', () => {
     await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
 
     await page.selectOption('#log-volume', '85');
-    await page.click('[data-action="save-home-log"]');
+    await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     await page.click('[data-nav="history"]');
@@ -199,7 +199,7 @@ test.describe('Feed Baby volume picker', () => {
     await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
     await expect(page.locator('#log-volume')).toHaveValue(''); // No prior log
     await page.selectOption('#log-volume', '120');
-    await page.click('[data-action="save-home-log"]');
+    await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     // Open log sheet again: volume should be pre-populated at 120 mL
@@ -216,7 +216,7 @@ test.describe('Feed Baby volume picker', () => {
     await card.click();
     await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
     await page.selectOption('#log-volume', '80');
-    await page.click('[data-action="save-home-log"]');
+    await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     // Reload the page (cold cache) and open the sheet again
@@ -238,7 +238,7 @@ test.describe('Feed Baby volume picker', () => {
     await card.click();
     await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
     await page.selectOption('#log-volume', '--'); // explicitly choose no volume
-    await page.click('[data-action="save-home-log"]');
+    await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     // Open again: should still be empty
@@ -262,7 +262,7 @@ test.describe('Feed Baby volume picker', () => {
     await homeCard.click();
     await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
     await page.selectOption('#log-volume', '65');
-    await page.click('[data-action="save-home-log"]');
+    await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     // Go to calendar and long-press the scheduled card
@@ -297,9 +297,9 @@ test.describe('Feed Baby volume picker', () => {
     const ago = new Date(now.getTime() - 5 * 60000);
     const pad = n => String(n).padStart(2, '0');
     const earlier = `${ago.getFullYear()}-${pad(ago.getMonth() + 1)}-${pad(ago.getDate())}T${pad(ago.getHours())}:${pad(ago.getMinutes())}`;
-    await page.fill('#home-log-when', earlier);
+    await page.fill('#log-when', earlier);
     await page.selectOption('#log-volume', '150');
-    await page.click('[data-action="save-home-log"]');
+    await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     // Log with 30 mL second (newer, this becomes the cached value)
@@ -307,7 +307,7 @@ test.describe('Feed Baby volume picker', () => {
     await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
     await expect(page.locator('#log-volume')).toHaveValue('150'); // cached from first
     await page.selectOption('#log-volume', '30');
-    await page.click('[data-action="save-home-log"]');
+    await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     // History is newest-first, so row 0 = 30mL, row 1 = 150mL.
