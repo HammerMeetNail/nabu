@@ -276,6 +276,11 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	// caches for every module, not just app.js itself.
 	versionedJS := buildVersionedJSCache(staticFS, version.Version)
 
+	// Pre-process the service worker: inject the version into CACHE_NAME so
+	// the browser detects a new service worker file on every deploy and shows
+	// the "App updated" toast without the user needing to close/reopen the PWA.
+	versionedSW := buildVersionedSW(staticFS, version.Version)
+
 	staticFileServer := http.FileServer(http.FS(staticFS))
 	mux.Handle("/static/", http.StripPrefix("/static/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Strip query string to get the bare file path.
@@ -297,9 +302,10 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		staticFileServer.ServeHTTP(w, r)
 	})))
 	mux.HandleFunc("/service-worker.js", func(w http.ResponseWriter, r *http.Request) {
-		r.URL.Path = "/service-worker.js"
+		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-store")
-		http.FileServer(http.FS(staticFS)).ServeHTTP(w, r)
+		w.WriteHeader(http.StatusOK)
+		w.Write(versionedSW) //nolint:errcheck
 	})
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -447,4 +453,17 @@ func buildVersionedJSCache(fsys fs.FS, ver string) map[string][]byte {
 		return nil
 	})
 	return cache
+}
+
+var swCacheNameRE = regexp.MustCompile(`("choresy-static-)v1(")`)
+
+func buildVersionedSW(fsys fs.FS, ver string) []byte {
+	raw, err := fs.ReadFile(fsys, "service-worker.js")
+	if err != nil {
+		panic("service-worker.js not found in embedded FS: " + err.Error())
+	}
+	replacement := []byte("${1}" + ver + "${2}")
+	modified := swCacheNameRE.ReplaceAll(raw, replacement)
+	log.Printf("versioned service worker cache name to %q", ver)
+	return modified
 }
