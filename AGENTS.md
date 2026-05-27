@@ -33,14 +33,27 @@ The main checkout at the workspace root stays clean and is only used for referen
 
 ### Worktree branching and deploy safety
 
-Deploys are triggered by pushing a `v*` tag (see Production section). Tags can live on any branch, **not** only on `main`. This means parallel worktree branches can deploy independently, and whoever pushes a tag last wins — their code overwrites whatever was previously in production.
+**All deploys must happen after a merge to `main`.** Never deploy from a branch. Deploys are triggered by pushing a `v*` tag, and CI enforces that the tagged commit is reachable from `main` (see `deploy` job in `.github/workflows/ci.yaml`). Branch tags are rejected.
 
-**To avoid regressions from parallel work:**
+**Standard deploy flow:**
 
-- **Before starting new work**, always `git fetch origin && git pull origin main` so your worktree is based on the latest state. If you skip this, you may build on stale code and lose changes that landed on `main` since your last session.
-- **If another session has deployed while you were working**, your `v*` tag will overwrite its changes. Before tagging, check `git log --oneline origin/main -10` and compare against your worktree. If there are new commits on `main`, rebase or merge them first.
+1. Create a worktree branch, make changes, run tests.
+2. Commit and push the branch.
+3. Open a PR and merge it to `main` (or merge locally and push `main`).
+4. After the merge lands on `origin/main`, fetch and tag on `main`:
+   ```bash
+   git fetch origin
+   git checkout main && git pull origin main
+   git tag v0.1.X
+   git push origin v0.1.X
+   ```
+5. CI builds, tests, and deploys. The deploy job verifies the tag's commit is an ancestor of `origin/main` before proceeding.
+
+**Rules:**
+
+- **Never tag on a branch.** Always merge to `main` first, then tag.
+- **Before starting new work**, always `git fetch origin && git pull origin main` so your worktree is based on the latest state.
 - **Never re-implement a feature that already exists.** If you need a feature from another branch or tag, cherry-pick or merge it — do not write it again from scratch. Re-implementations drop edge-case fixes, tests, and accompanying infrastructure (e.g. migrations, Cancel buttons).
-- **When merging is not possible** (e.g. the worktree branch was a standalone deploy), ensure the branch is merged back into `main` afterward. Unmerged feature branches leave the door open for someone else to inadvertently revert the work.
 - **Check for orphaned branches** after a deploy: `git branch -a --contains <tag>` will show whether the tag's commit is reachable from `main`. If it is not, the changes live on an orphan branch and are at risk of being lost.
 
 ## Commands

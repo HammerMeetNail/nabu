@@ -336,6 +336,18 @@ jobs:
       )
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag is on main
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          git merge-base --is-ancestor HEAD origin/main || {
+            echo "ERROR: Tag is not reachable from main."
+            echo "All deploys must happen after a merge to main. Never deploy from a branch."
+            echo "Merge your branch to main first, then tag on main."
+            exit 1
+          }
 
       - name: Install cloudflared
         run: |
