@@ -272,7 +272,7 @@ function renderHomeViewWrapper() {
     const chore = (state.chores || []).find(c => c.id === choreId);
     if (chore) {
       const cachedML = state.latestLogs[choreId]?.volumeML ?? null;
-      const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, cachedML, { showWhen: true });
+      const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, cachedML, { showWhen: true, slotHour: new Date().getHours() });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>

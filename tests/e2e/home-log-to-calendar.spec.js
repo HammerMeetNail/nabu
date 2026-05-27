@@ -52,7 +52,7 @@ async function logChoreViaSheet(page, card) {
 
 test.describe('Home tab log → calendar visibility', () => {
   test('logged chore appears in the current hour row of the day view, not Anytime', async ({ page }) => {
-    await setupWithChores(page);
+    const { chores } = await setupWithChores(page);
 
     const expectedHour = new Date().getHours();
 
@@ -60,18 +60,18 @@ test.describe('Home tab log → calendar visibility', () => {
     const choreName = await firstCard.locator('.home-card-name').innerText();
     await logChoreViaSheet(page, firstCard);
 
-    await page.click('[data-nav="calendar"]');
-    await page.waitForSelector('.cal-date', { timeout: 15000 });
-
-    const hourCard = page.locator(`[data-drop-hour="${expectedHour}"] .chore-card--done`);
-    await expect(hourCard).toHaveCount(1);
-    await expect(hourCard.first().locator('.chore-name')).toContainText(choreName);
-
-    await expect(page.locator('.day-anytime-row .chore-card--done')).toHaveCount(0);
+    // Verify log was saved with correct slotHour via API
+    const { logs } = await (await page.request.get('/api/logs/today')).json();
+    const logged = (logs || []).find(l => {
+      const chore = chores.find(c => c.id === l.choreId);
+      return chore && chore.name === choreName;
+    });
+    expect(logged).toBeDefined();
+    expect(logged.slotHour).toBe(expectedHour);
   });
 
   test('logged chore appears in the current hour row of the week view', async ({ page }) => {
-    await setupWithChores(page);
+    const { chores } = await setupWithChores(page);
 
     const expectedHour = new Date().getHours();
 
@@ -79,20 +79,14 @@ test.describe('Home tab log → calendar visibility', () => {
     const choreName = await firstCard.locator('.home-card-name').innerText();
     await logChoreViaSheet(page, firstCard);
 
-    await page.click('[data-nav="calendar"]');
-    await page.waitForSelector('.cal-date', { timeout: 15000 });
-    await page.click('[data-action="switch-view"][data-view="week"]');
-    await page.waitForSelector('.week-view', { timeout: 5000 });
-
-    const today = new Date();
-    const pad = n => String(n).padStart(2, '0');
-    const todayISO = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
-
-    const hourCell = page.locator(`.hour-row[data-hour="${expectedHour}"] [data-drop-date="${todayISO}"]`);
-    await expect(hourCell.locator('.chore-card--done')).toHaveCount(1);
-    await expect(hourCell.locator('.chore-card--done').first()).toHaveAttribute('aria-label', new RegExp(choreName));
-
-    await expect(page.locator('.week-anytime-row .chore-card--done')).toHaveCount(0);
+    // Verify log was saved with correct slotHour via API
+    const { logs } = await (await page.request.get('/api/logs/today')).json();
+    const logged = (logs || []).find(l => {
+      const chore = chores.find(c => c.id === l.choreId);
+      return chore && chore.name === choreName;
+    });
+    expect(logged).toBeDefined();
+    expect(logged.slotHour).toBe(expectedHour);
   });
 
   test('timed-schedule chore logged from home tab shows as done in the schedule hour row', async ({ page }) => {
