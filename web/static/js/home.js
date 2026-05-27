@@ -147,7 +147,7 @@ export function renderConfirmRemoveFromHomeSheet(chore) {
  * @param {number}   currentUserId  Current auth user's ID
  * @returns {string}  HTML string
  */
-export function renderHomeLogSheet(chore, members, currentUserId) {
+export function renderHomeLogSheet(chore, members, currentUserId, cachedVolumeML = null) {
   const labels = chore.indicatorLabels || [];
   const hasVolume = chore.hasVolumeML === true;
 
@@ -167,7 +167,7 @@ export function renderHomeLogSheet(chore, members, currentUserId) {
     : "";
 
   const volumeHTML = hasVolume
-    ? renderVolumeSelect()
+    ? renderVolumePicker(cachedVolumeML ?? null)
     : "";
 
   const memberHTML = renderMemberSelect(members, currentUserId, currentUserId, "home-log");
