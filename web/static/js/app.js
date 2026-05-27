@@ -192,7 +192,17 @@ export function render(root) {
   const prevWrapper = root.querySelector(".day-hour-grid-wrapper");
   const savedScroll = prevWrapper ? prevWrapper.scrollTop : -1;
 
-  morphInnerHTML(root, html);
+  // When entering or leaving a sheet overlay, morph.js can produce stale
+  // nodes because the outer-wrapper class changes.  Detect this by comparing
+  // the current DOM against what the incoming HTML wants, and do a clean
+  // replace when they mismatch.
+  const hasSheetOverlay = root.querySelector(".sheet-overlay-wrapper") !== null;
+  const wantsSheetOverlay = html.includes("sheet-overlay-wrapper");
+  if (hasSheetOverlay !== wantsSheetOverlay) {
+    root.innerHTML = html;
+  } else {
+    morphInnerHTML(root, html);
+  }
   updateTabs(tabRoute);
   updateTopBar();
 
@@ -1170,10 +1180,10 @@ export async function init() {
           const newLogId = data?.log?.id;
           state.activeSheet     = null;
           state.activeSheetData = {};
-          await reloadViewData();
           if (state.currentRoute === "/" || state.currentRoute === "/today") {
             await loadLatestLogsData();
           }
+          await reloadViewData();
           render(app);
           if (newLogId) {
             const chore = (state.chores || []).find(c => c.id === choreId);

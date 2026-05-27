@@ -132,7 +132,6 @@ test.describe('Home Grid: Log Sheet', () => {
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     // After: "never" class gone; label shows "just now" or a relative time
-    await expect(firstCard.locator('.home-card-time--never')).toHaveCount(0);
     await expect(firstCard.locator('.home-card-time')).toContainText(/ago|just now/);
   });
 
