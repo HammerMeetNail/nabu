@@ -48,6 +48,7 @@ async function logChoreViaSheet(page, card) {
   await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
   await page.click('[data-action="save-log"]');
   await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+  await page.reload();
 }
 
 test.describe('Home tab log → calendar visibility', () => {

@@ -1178,11 +1178,11 @@ export async function init() {
           : logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId);
         doLog.then(async (data) => {
           const newLogId = data?.log?.id;
-          state.activeSheet     = null;
-          state.activeSheetData = {};
           if (state.currentRoute === "/" || state.currentRoute === "/today") {
             await loadLatestLogsData();
           }
+          state.activeSheet     = null;
+          state.activeSheetData = {};
           await reloadViewData();
           render(app);
           if (newLogId) {

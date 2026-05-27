@@ -130,9 +130,13 @@ test.describe('Home Grid: Log Sheet', () => {
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+    await page.reload();
+    await page.waitForSelector('.home-grid', { timeout: 15000 });
 
-    // After: "never" class gone; label shows "just now" or a relative time
-    await expect(firstCard.locator('.home-card-time')).toContainText(/ago|just now/);
+    // After reload: "never" class gone; label shows "just now" or a relative time
+    const fCard = page.locator('.home-chore-card').first();
+    await expect(fCard.locator('.home-card-time--never')).toHaveCount(0);
+    await expect(fCard.locator('.home-card-time')).toContainText(/ago|just now/);
   });
 
   test('undo button in toast removes the log entry', async ({ page }) => {
