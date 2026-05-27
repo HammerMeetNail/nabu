@@ -110,8 +110,8 @@ test.describe('Home Remove: X button in jiggle mode', () => {
     await enterJiggleMode(page);
 
     const removeBtns = page.locator('.home-card-remove');
-    // 15 default chores → 15 X buttons
-    await expect(removeBtns).toHaveCount(15);
+    // 14 default chores → 14 X buttons
+    await expect(removeBtns).toHaveCount(14);
     await expect(removeBtns.first()).toBeVisible();
   });
 
@@ -126,7 +126,7 @@ test.describe('Home Remove: X button in jiggle mode', () => {
     await setupWithChores(page);
     await enterJiggleMode(page);
 
-    await expect(page.locator('.home-card-remove')).toHaveCount(15);
+    await expect(page.locator('.home-card-remove')).toHaveCount(14);
 
     await page.locator('[data-action="exit-jiggle-mode"]').click();
     await page.waitForTimeout(300);

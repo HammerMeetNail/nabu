@@ -147,6 +147,5 @@ var PredefinedChores = []Chore{
 	{Name: "Make Bed", Icon: "🛏️", Color: "#14B8A6", Category: "cleaning", SortOrder: 10},
 	{Name: "Baby Bath", Icon: "🛀", Color: "#60A5FA", Category: "care", SortOrder: 11},
 	{Name: "Cat Meds", Icon: "💊", Color: "#A78BFA", Category: "care", SortOrder: 12},
-	{Name: "Cat Wipe", Icon: "🧽", Color: "#34D399", Category: "care", SortOrder: 13},
-	{Name: "Cat Pumpkin", Icon: "🎃", Color: "#F97316", Category: "care", SortOrder: 14},
+	{Name: "Cat Pumpkin", Icon: "🎃", Color: "#F97316", Category: "care", SortOrder: 13},
 }
