@@ -375,7 +375,21 @@ function renderScheduleView() {
     <p>Add chores via settings or the chores tab.</p></div></div>`;
   }
   const mainView = renderScheduleTab(state);
+  const fab = `<button type="button" class="fab" data-action="open-pick-chore-sheet" data-date="${todayISO(0)}" aria-label="Schedule a chore">+</button>`;
 
+  if (state.activeSheet === "pick-chore") {
+    const sheetHTML = renderPickChoreSheet(
+      sortChoresByOrder(state.chores, state.choreOrder),
+      state.activeSheetData || {},
+      state.schedules || []
+    );
+    return `<div class="sheet-overlay-wrapper">
+      ${mainView}
+      ${fab}
+      <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+      ${sheetHTML}
+    </div>`;
+  }
   if (state.activeSheet === "edit-schedule") {
     const { choreId, scheduleId } = state.activeSheetData || {};
     const chore = (state.chores || []).find(c => c.id === choreId);
@@ -384,6 +398,7 @@ function renderScheduleView() {
       const sheetHTML = renderEditScheduleSheet(chore, sch, state.calendarDate);
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
+        ${fab}
         <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
         ${sheetHTML}
       </div>`;
@@ -399,12 +414,13 @@ function renderScheduleView() {
       const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML);
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
+        ${fab}
         <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
         ${sheetHTML}
       </div>`;
     }
   }
-  return mainView;
+  return `<div class="sheet-overlay-wrapper">${mainView}${fab}</div>`;
 }
 
 function renderSettingsView() {

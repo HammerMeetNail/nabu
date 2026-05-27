@@ -192,4 +192,39 @@ test.describe('Schedule Tab', () => {
     expect(updated.recurrenceEnd).toBeTruthy();
     expect(String(updated.recurrenceEnd).slice(0, 10)).toBe(endDate);
   });
+
+  test('FAB button opens pick-chore sheet to schedule a chore', async ({ page }) => {
+    const { feedCats } = await setupWithSchedules(page);
+
+    await page.click('[data-nav="schedule"]');
+    await page.waitForSelector('.schedule-view', { timeout: 5000 });
+
+    await expect(page.locator('.fab')).toBeVisible();
+    await page.locator('.fab').click();
+    await page.waitForTimeout(500);
+
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
+    await expect(page.locator('.sheet-title')).toContainText('Add Chore');
+  });
+
+  test('scheduling a chore from the schedule tab FAB updates the list', async ({ page }) => {
+    await setupWithSchedules(page);
+
+    await page.click('[data-nav="schedule"]');
+    await page.waitForSelector('.fab', { timeout: 5000 });
+
+    const countBefore = await page.locator('.sch-row').count();
+
+    await page.locator('.fab').click();
+    await page.waitForTimeout(500);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
+
+    const choreItem = page.locator('.sheet-chore-item').first();
+    await choreItem.click();
+    await page.waitForTimeout(1000);
+
+    await expect(page.locator('.bottom-sheet')).not.toBeVisible();
+    const countAfter = await page.locator('.sch-row').count();
+    expect(countAfter).toBeGreaterThan(countBefore);
+  });
 });
