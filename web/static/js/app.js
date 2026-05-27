@@ -28,6 +28,7 @@ import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, sortChoresByOrde
 import { loadLatestLogs, renderHomeView as renderHomeViewGrid, renderHomeLogSheet, renderConfirmRemoveFromHomeSheet } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
 import { loadNotifications, markRead, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge } from "./notifications.js";
+import { renderScheduleTab } from "./schedule-tab.js";
 
 /**
  * Reads the current frequency settings from a bottom sheet's freq <select>
@@ -75,6 +76,12 @@ function readSheetFreq(prefix, date) {
     default:
       break;
   }
+  const endInput = document.querySelector(`#${prefix}-end-date`);
+  if (endInput?.value) {
+    payload.recurrenceEnd = new Date(endInput.value + "T00:00:00").toISOString();
+  } else if (endInput) {
+    payload.recurrenceEnd = null;
+  }
   return payload;
 }
 
@@ -90,7 +97,7 @@ export function render(root) {
   const route = state.currentRoute || window.location.pathname || "/";
   // Effective route for tab highlighting: unknown/auth-only paths fall back to
   // home ("/") so the "today" tab is always active when the home grid renders.
-  const knownTabRoutes = ["/", "/today", "/calendar", "/chores", "/history", "/settings", "/stats"];
+  const knownTabRoutes = ["/", "/today", "/calendar", "/schedule", "/chores", "/history", "/settings", "/stats"];
   const tabRoute = knownTabRoutes.includes(route) ? route : "/";
   let html = "";
 
@@ -159,6 +166,9 @@ export function render(root) {
         break;
       case "/calendar":
         html = renderCalendarView();
+        break;
+      case "/schedule":
+        html = renderScheduleView();
         break;
       case "/chores":
         html = renderChoresView();
@@ -349,6 +359,52 @@ function renderCalendarView() {
     </div>`;
   }
   return `<div class="sheet-overlay-wrapper">${mainView}${fab}</div>`;
+}
+
+function renderScheduleView() {
+  const chores = state.chores || [];
+  if (!state.household && state.user) {
+    return `<div class="card mt-3"><h2>Welcome!</h2>
+      <p>Hi ${escapeHTML(state.user.email || '')}! Set up your household to get started.</p>
+      <a class="btn btn-primary mt-2" href="#" data-nav="settings">Set Up Household</a></div>`;
+  }
+  if (chores.length === 0) {
+    return `<div class="schedule-view"><h2>Upcoming</h2>
+    <div class="empty-state"><div class="empty-state-icon">🏠</div>
+    <div class="empty-state-title">No chores set up yet</div>
+    <p>Add chores via settings or the chores tab.</p></div></div>`;
+  }
+  const mainView = renderScheduleTab(state);
+
+  if (state.activeSheet === "edit-schedule") {
+    const { choreId, scheduleId } = state.activeSheetData || {};
+    const chore = (state.chores || []).find(c => c.id === choreId);
+    const sch   = (state.schedules || []).find(s => s.id === scheduleId);
+    if (chore && sch) {
+      const sheetHTML = renderEditScheduleSheet(chore, sch, state.calendarDate);
+      return `<div class="sheet-overlay-wrapper">
+        ${mainView}
+        <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+        ${sheetHTML}
+      </div>`;
+    }
+  }
+  if (state.activeSheet === "log") {
+    const { choreId, logId, date } = state.activeSheetData || {};
+    const chore = (state.chores || []).find(c => c.id === choreId);
+    if (chore) {
+      const allLogs = state.todayLogs || [];
+      const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
+      const cachedVolumeML = state.latestLogs[choreId]?.volumeML ?? null;
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML);
+      return `<div class="sheet-overlay-wrapper">
+        ${mainView}
+        <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+        ${sheetHTML}
+      </div>`;
+    }
+  }
+  return mainView;
 }
 
 function renderSettingsView() {
@@ -834,6 +890,15 @@ export async function init() {
           .then(() => render(app));
         return;
       }
+      if (state.currentRoute === "/schedule") {
+        render(app);
+        Promise.all([loadChoreData(), loadSchedules()]).then(async ([, schedules]) => {
+          state.schedules = schedules;
+          await loadTodayData();
+          render(app);
+        });
+        return;
+      }
       render(app);
       return;
     }
@@ -1022,6 +1087,21 @@ export async function init() {
         break;
       }
 
+      case "schedule-tap-log": {
+        e.preventDefault();
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
+        const date    = actionEl.dataset.date || todayISO(0);
+        const scheduleId = parseInt(actionEl.dataset.scheduleId, 10);
+        const sch = (state.schedules || []).find(s => s.id === scheduleId);
+        const slotHour = sch?.specificTime
+          ? parseInt(sch.specificTime.split(":")[0], 10)
+          : null;
+        logChore(choreId, "", date, [], slotHour, null, null, state.user?.id).then(async () => {
+          await loadTodayData();
+          render(app);
+        }).catch(() => showToast("Failed to log chore", "error"));
+        break;
+      }
       case "edit-schedule": {
         e.preventDefault();
         const choreId    = parseInt(actionEl.dataset.choreId, 10);
@@ -1165,6 +1245,7 @@ export async function init() {
             state.activeSheet     = null;
             state.activeSheetData = {};
             state.schedules = await loadSchedules();
+            await reloadViewData();
             render(app);
           }).catch(() => showToast("Failed to update schedule", "error"));
         break;
@@ -1178,6 +1259,7 @@ export async function init() {
             state.activeSheet     = null;
             state.activeSheetData = {};
             state.schedules = await loadSchedules();
+            await reloadViewData();
             render(app);
           }).catch(() => showToast("Failed to remove schedule", "error"));
         break;
@@ -1463,8 +1545,10 @@ export async function init() {
       const freqVal = actionEl.value;
       const wkRow   = sheet?.querySelector(".sheet-weekday-row");
       const intvRow = sheet?.querySelector(".sheet-interval-row");
+      const endRow  = sheet?.querySelector(".sheet-end-date-row");
       if (wkRow)   wkRow.hidden   = (freqVal !== "weekly");
       if (intvRow) intvRow.hidden = (freqVal !== "every_n_days");
+      if (endRow)  endRow.hidden  = (freqVal === "once");
     }
   });
 
@@ -2060,6 +2144,13 @@ async function reloadViewData() {
       const data = await loadHistory();
       state.historyLogs = data?.logs || [];
       state.historyHasMore = data?.hasMore || false;
+    } catch {}
+  } else if (state.currentRoute === "/schedule") {
+    try {
+      await loadChoreData();
+      const schedules = await loadSchedules();
+      state.schedules = schedules;
+      await loadTodayData();
     } catch {}
   } else if (state.calendarView === "week") {
     await loadWeekData();

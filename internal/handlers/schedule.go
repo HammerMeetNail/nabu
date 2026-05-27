@@ -196,6 +196,16 @@ func (h *ScheduleHandler) Update(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+	if v, ok := raw["recurrenceEnd"]; ok {
+		if string(v) == "null" {
+			req.RecurrenceEnd = nil
+		} else {
+			var t time.Time
+			if json.Unmarshal(v, &t) == nil {
+				req.RecurrenceEnd = &t
+			}
+		}
+	}
 
 	updated, err := h.store.Update(r.Context(), req)
 	if err != nil {

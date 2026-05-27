@@ -212,6 +212,11 @@ export function renderFreqSelect(date, sch, prefix) {
                min="2" max="365" value="${interval}" inputmode="numeric">
         <span class="interval-unit">days</span>
       </div>
+    </div>
+    <div id="${prefix}-end-date-row" class="sheet-end-date-row" ${ft === "once" ? "hidden" : ""}>
+      <label for="${prefix}-end-date" class="field-label">Stop repeating</label>
+      <input type="date" id="${prefix}-end-date" class="text-input"
+        value="${sch?.recurrenceEnd ? String(sch.recurrenceEnd).slice(0, 10) : ""}" />
     </div>`;
 }
 

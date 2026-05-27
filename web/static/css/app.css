@@ -701,6 +701,95 @@ input:focus, select:focus, textarea:focus {
   margin-left: auto;
 }
 
+/* Schedule tab — upcoming list */
+.schedule-view { padding-bottom: 16px; }
+.schedule-view h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; padding: 0 0; }
+
+.sch-list { padding: 0; }
+
+.sch-day-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 10px 12px 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--chore-color, var(--border));
+  margin: 0 0 1px;
+  background: var(--surface);
+}
+
+.sch-row--done { opacity: 0.5; text-decoration: line-through; }
+
+.sch-row-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.sch-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+
+.sch-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+
+.sch-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sch-name { font-size: 14px; font-weight: 500; }
+
+.sch-time {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.sch-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.sch-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.sch-log-btn {
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.sch-edit-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  line-height: 1;
+}
+
+.sch-edit-btn:active { opacity: 0.5; }
+
 /* Stats View */
 .streak-display {
   display: flex;
@@ -1378,6 +1467,25 @@ input:focus, select:focus, textarea:focus {
   font-size: 15px;
   color: var(--text);
   white-space: nowrap;
+}
+
+/* End-date row shown for recurring schedules */
+.sheet-end-date-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sheet-end-date-row .field-label {
+  margin: 0;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.sheet-end-date-row input[type="date"] {
+  width: auto;
+  min-width: 140px;
 }
 
 .sheet-chore-list {

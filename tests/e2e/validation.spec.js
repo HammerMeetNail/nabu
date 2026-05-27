@@ -431,15 +431,16 @@ test.describe('Exhaustive: Authenticated Flow', () => {
 });
 
 test.describe('Exhaustive: SPA-only Navigation', () => {
-  test('all four bottom tabs navigate without page reload', async ({ page }) => {
+  test('all bottom tabs navigate without page reload', async ({ page }) => {
     await setupFullAccount(page);
 
     // Verify each tab click changes the view
     const tabs = [
       { nav: 'history', check: () => page.locator('.history-view').isVisible() },
       { nav: 'chores', check: () => page.locator('h2:has-text("Chores")').isVisible() },
+      { nav: 'calendar', check: () => page.locator('.cal-date').isVisible() },
+      { nav: 'schedule', check: () => page.locator('.schedule-view').isVisible() },
       { nav: 'settings', check: () => page.locator('.settings-view').isVisible() },
-      // "today" tab now shows the home grid (redesign: home grid is the default view)
       { nav: 'today', check: () => page.locator('.home-grid').isVisible() },
     ];
 
