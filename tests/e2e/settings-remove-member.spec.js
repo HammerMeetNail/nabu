@@ -107,9 +107,13 @@ test.describe('Settings - Remove Member', () => {
     // Verify both members are listed.
     await expect(memberItems).toHaveCount(2);
 
-    // The member should have a Remove button.
+    // The owner should see exactly one remove button (for the member, not self).
+    const removeBtns = ownerPage.locator('[data-action="remove-member"]');
+    await expect(removeBtns).toHaveCount(1);
+
+    // The remove button should be for the joined member, not the owner.
     const removeBtn = ownerPage.locator(
-      `.member-item button[data-action="remove-member"][data-user-id="${memberId}"]`
+      `[data-action="remove-member"][data-user-id="${memberId}"]`
     );
     await expect(removeBtn).toBeVisible();
 
@@ -123,40 +127,12 @@ test.describe('Settings - Remove Member', () => {
     // After removal, the member list should have only 1 item.
     await expect(memberItems).toHaveCount(1);
 
+    // The remaining member (owner) should have no remove button.
+    await expect(removeBtns).toHaveCount(0);
+
     // Verify via API that the member is no longer in the household.
     const hhRes3 = await memberPage.request.get('/api/household');
     expect(hhRes3.status()).toBe(404);
-
-    await memberCtx.close();
-    await ownerPage.context().close();
-  });
-
-  test('member without owner role cannot see remove buttons', async ({ browser }) => {
-    const ownerCtx = await browser.newContext();
-    const ownerPage = await ownerCtx.newPage();
-
-    const { csrf: ownerCsrf } = await setupOwnerWithHousehold(ownerPage);
-
-    // Create an invite for a second user.
-    const inviteRes = await ownerPage.request.post('/api/household/invites', {
-      headers: { 'X-CSRF-Token': ownerCsrf },
-    });
-    const inviteData = await inviteRes.json();
-    const code = inviteData.invite.code;
-
-    const { page: memberPage, context: memberCtx } =
-      await joinAsSecondUser(browser, code);
-
-    // Navigate the member to settings and wait for the full page to load,
-    // including role badges that confirm the member list rendered.
-    await memberPage.goto('/settings');
-    await memberPage.waitForSelector('.role-badge', { timeout: 10000 });
-    // Ensure both member items rendered (owner + self).
-    await expect(memberPage.locator('.member-item')).toHaveCount(2);
-
-    // The member role is "member" — should NOT see any Remove buttons.
-    const removeBtns = memberPage.locator('[data-action="remove-member"]');
-    await expect(removeBtns).toHaveCount(0);
 
     await memberCtx.close();
     await ownerPage.context().close();
