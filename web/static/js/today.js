@@ -66,10 +66,13 @@ export async function undoLog(logId) {
   return data;
 }
 
-export async function updateLog(logId, note, indicators = [], volumeML = null, userId = null) {
+export async function updateLog(logId, note, indicators = [], volumeML = null, userId = null, date = "", slotHour = null, completedAt = null) {
   const body = { note, indicators };
   if (volumeML !== null) body.volumeML = volumeML;
   if (userId !== null) body.userId = userId;
+  if (date) body.date = date;
+  if (slotHour !== null) body.hour = slotHour;
+  if (completedAt) body.completedAt = completedAt;
   const { data } = await apiFetch(`/api/logs/${logId}`, {
     method: "PATCH",
     body: JSON.stringify(body),

@@ -51,7 +51,7 @@ func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int
 	})
 }
 
-func (s *Service) UpdateLog(ctx context.Context, logID int64, note string, indicators []string, volumeML *int, userID *int64) error {
+func (s *Service) UpdateLog(ctx context.Context, logID int64, note string, indicators []string, volumeML *int, userID *int64, completedAt *time.Time, slotHour *int, logDate *time.Time) error {
 	log, err := s.store.GetLog(ctx, logID)
 	if err != nil {
 		return err
@@ -64,6 +64,14 @@ func (s *Service) UpdateLog(ctx context.Context, logID int64, note string, indic
 	log.VolumeML = volumeML
 	if userID != nil {
 		log.UserID = *userID
+	}
+	if completedAt != nil {
+		log.CompletedAt = completedAt.UTC()
+	}
+	log.SlotHour = slotHour
+	if logDate != nil {
+		d := logDate.Format("2006-01-02")
+		log.LogDate = &d
 	}
 	return s.store.UpdateLog(ctx, log)
 }

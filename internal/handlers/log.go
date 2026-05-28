@@ -153,10 +153,13 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Note       string   `json:"note"`
-		Indicators []string `json:"indicators"`
-		VolumeML   *int     `json:"volumeML"`
-		UserID     *int64   `json:"userId"` // optional: change who the log is attributed to
+		Note        string   `json:"note"`
+		Indicators  []string `json:"indicators"`
+		VolumeML    *int     `json:"volumeML"`
+		UserID      *int64   `json:"userId"`      // optional: change who the log is attributed to
+		CompletedAt string   `json:"completedAt"`  // optional: new completion timestamp
+		Hour        *int     `json:"hour"`         // optional: new slot hour
+		Date        string   `json:"date"`         // optional: new log date
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -187,7 +190,27 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 		userID = req.UserID
 	}
 
-	if err := h.service.UpdateLog(r.Context(), id, req.Note, req.Indicators, req.VolumeML, userID); err != nil {
+	var logDate *time.Time
+	if req.Date != "" {
+		t, err := time.Parse("2006-01-02", req.Date)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid date format, expected YYYY-MM-DD")
+			return
+		}
+		logDate = &t
+	}
+
+	var logCompletedAt *time.Time
+	if req.CompletedAt != "" {
+		t, err := time.Parse(time.RFC3339, req.CompletedAt)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid completedAt format, expected RFC3339")
+			return
+		}
+		logCompletedAt = &t
+	}
+
+	if err := h.service.UpdateLog(r.Context(), id, req.Note, req.Indicators, req.VolumeML, userID, logCompletedAt, req.Hour, logDate); err != nil {
 		if errors.Is(err, log.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "log not found")
 			return

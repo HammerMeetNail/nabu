@@ -269,7 +269,7 @@ function renderHistoryView() {
     if (chore) {
       const log = logId ? ((state.historyLogs || []).find(l => l.id === logId) || null) : null;
       const cachedVolumeML = state.latestLogs[choreId]?.volumeML ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML, { slotHour: state.activeSheetData?.slotHour });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours() });
 
   return `<div class="sheet-overlay-wrapper">
         ${mainView}
@@ -368,7 +368,7 @@ function renderCalendarView() {
         : (state.todayLogs || []);
       const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
       const cachedVolumeML = state.latestLogs[choreId]?.volumeML ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML, { slotHour: state.activeSheetData?.slotHour });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours() });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}
@@ -440,7 +440,7 @@ function renderScheduleView() {
       const allLogs = state.todayLogs || [];
       const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
       const cachedVolumeML = state.latestLogs[choreId]?.volumeML ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML, { slotHour: state.activeSheetData?.slotHour });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours() });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}
@@ -1209,7 +1209,7 @@ export async function init() {
         }
 
         const doLog = logId
-          ? updateLog(parseInt(logId, 10), note, indicators, volumeML, userId)
+          ? updateLog(parseInt(logId, 10), note, indicators, volumeML, userId, date, slotHour, completedAt)
           : logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId);
         doLog.then(async (data) => {
           const newLogId = data?.log?.id;

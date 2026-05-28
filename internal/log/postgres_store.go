@@ -71,9 +71,13 @@ func (s *PostgresStore) GetLog(ctx context.Context, id int64) (ChoreLog, error) 
 
 func (s *PostgresStore) UpdateLog(ctx context.Context, log ChoreLog) error {
 	indJSON, _ := json.Marshal(nilToEmptyLog(log.Indicators))
+	var logDate *string
+	if log.LogDate != nil {
+		logDate = log.LogDate
+	}
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE chore_logs SET note=$1, indicators=$2, volume_ml=$3, user_id=$4 WHERE id=$5`,
-		log.Note, string(indJSON), ptrToNullInt64(log.VolumeML), log.UserID, log.ID)
+		`UPDATE chore_logs SET note=$1, indicators=$2, volume_ml=$3, user_id=$4, completed_at=$5, slot_hour=$6, log_date=$7 WHERE id=$8`,
+		log.Note, string(indJSON), ptrToNullInt64(log.VolumeML), log.UserID, log.CompletedAt.UTC(), log.SlotHour, logDate, log.ID)
 	return err
 }
 
