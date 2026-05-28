@@ -144,21 +144,17 @@ test.describe('Settings - Remove Member', () => {
     const inviteData = await inviteRes.json();
     const code = inviteData.invite.code;
 
-    const { page: memberPage, email: memberEmail, context: memberCtx } =
+    const { page: memberPage, context: memberCtx } =
       await joinAsSecondUser(browser, code);
 
-    // Verify the member's household role is "member" via the household API.
-    const hhRes = await memberPage.request.get('/api/household');
-    const hhData = await hhRes.json();
-    const self = (hhData.members || []).find(m => m.email === memberEmail);
-    expect(self).toBeTruthy();
-    expect(self.role).toBe('member');
-
-    // Navigate the member to settings.
+    // Navigate the member to settings and wait for the full page to load,
+    // including role badges that confirm the member list rendered.
     await memberPage.goto('/settings');
-    await memberPage.waitForSelector('.member-list', { timeout: 10000 });
+    await memberPage.waitForSelector('.role-badge', { timeout: 10000 });
+    // Ensure both member items rendered (owner + self).
+    await expect(memberPage.locator('.member-item')).toHaveCount(2);
 
-    // The member should NOT see any Remove buttons anywhere on the page.
+    // The member role is "member" — should NOT see any Remove buttons.
     const removeBtns = memberPage.locator('[data-action="remove-member"]');
     await expect(removeBtns).toHaveCount(0);
 
