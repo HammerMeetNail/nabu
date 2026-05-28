@@ -62,7 +62,8 @@ export async function logChore(choreId, note, date = "", indicators = [], slotHo
 }
 
 export async function undoLog(logId) {
-  const { data } = await apiFetch(`/api/logs/${logId}`, { method: "DELETE" });
+  const { response, data } = await apiFetch(`/api/logs/${logId}`, { method: "DELETE" });
+  if (!response.ok) throw new Error(data?.error || `Delete failed (${response.status})`);
   return data;
 }
 
@@ -73,10 +74,11 @@ export async function updateLog(logId, note, indicators = [], volumeML = null, u
   if (date) body.date = date;
   if (slotHour !== null) body.hour = slotHour;
   if (completedAt) body.completedAt = completedAt;
-  const { data } = await apiFetch(`/api/logs/${logId}`, {
+  const { response, data } = await apiFetch(`/api/logs/${logId}`, {
     method: "PATCH",
     body: JSON.stringify(body),
   });
+  if (!response.ok) throw new Error(data?.error || `Update failed (${response.status})`);
   return data;
 }
 

@@ -1119,6 +1119,7 @@ export async function init() {
           render(app);
         }).catch((err) => {
           console.error('undo-chore failed:', err);
+          showToast(err.message || "Failed to remove log", "error");
           reloadViewData().then(() => render(app));
         });
         break;
