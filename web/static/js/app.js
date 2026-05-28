@@ -25,7 +25,7 @@ import { renderStatsView, loadOverview } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, sortChoresByOrder } from "./preferences.js";
-import { loadLatestLogs, renderHomeView as renderHomeViewGrid, renderConfirmRemoveFromHomeSheet } from "./home.js";
+import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeManageView, renderConfirmRemoveFromHomeSheet } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
 import { loadNotifications, markRead, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge } from "./notifications.js";
 import { renderScheduleTab } from "./schedule-tab.js";
@@ -104,7 +104,7 @@ export function render(root) {
   const route = state.currentRoute || window.location.pathname || "/";
   // Effective route for tab highlighting: unknown/auth-only paths fall back to
   // home ("/") so the "today" tab is always active when the home grid renders.
-  const knownTabRoutes = ["/", "/today", "/activity", "/schedule", "/chores", "/settings", "/stats"];
+  const knownTabRoutes = ["/", "/today", "/activity", "/schedule", "/settings", "/stats"];
   const tabRoute = knownTabRoutes.includes(route) ? route : "/";
   let html = "";
 
@@ -177,9 +177,6 @@ export function render(root) {
       case "/schedule":
         html = renderScheduleView();
         break;
-      case "/chores":
-        html = renderChoresView();
-        break;
       case "/settings":
       case "/stats":
         html = renderSettingsView();
@@ -231,24 +228,6 @@ export function render(root) {
   }
 }
 
-function renderChoresView() {
-  const mainView = renderChoresViewList(state);
-  if (state.activeSheet === "chore-edit") {
-    const { choreId } = state.activeSheetData || {};
-    const isNew = choreId === null || choreId === undefined;
-    const chore = isNew ? null : (state.chores || []).find(c => c.id === choreId);
-    if (isNew || chore) {
-      const sheetHTML = renderChoreSheet(isNew ? null : chore);
-      return `<div class="sheet-overlay-wrapper">
-        ${mainView}
-        <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
-        ${sheetHTML}
-      </div>`;
-    }
-  }
-  return mainView;
-}
-
 function renderActivityView() {
   const chores = state.chores || [];
   if (!state.household && state.user) {
@@ -260,7 +239,7 @@ function renderActivityView() {
     return `<div class="today-view"><h2>Activity</h2>
     <div class="empty-state"><div class="empty-state-icon">🏠</div>
     <div class="empty-state-title">No chores set up yet</div>
-    <p>Add chores via settings or the chores tab.</p></div></div>`;
+    <p>Use the Home tab to add chores.</p></div></div>`;
   }
   if (state.activityView === "history") {
     return renderHistoryView();
@@ -289,7 +268,12 @@ function renderHistoryView() {
 }
 
 function renderHomeViewWrapper() {
-  const mainView = renderHomeViewGrid(state);
+  const header = renderHomeHeader(state);
+  const isManage = state.homeView === "manage";
+  const mainView = isManage
+    ? renderHomeManageView(state)
+    : renderHomeViewGrid(state);
+
   if (state.activeSheet === "home-log") {
     const { choreId } = state.activeSheetData || {};
     const chore = (state.chores || []).find(c => c.id === choreId);
@@ -297,6 +281,7 @@ function renderHomeViewWrapper() {
       const cachedML = state.latestLogs[choreId]?.volumeML ?? null;
       const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, cachedML, { showWhen: true });
       return `<div class="sheet-overlay-wrapper">
+        ${header}
         ${mainView}
         <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
         ${sheetHTML}
@@ -309,13 +294,28 @@ function renderHomeViewWrapper() {
     if (chore) {
       const sheetHTML = renderConfirmRemoveFromHomeSheet(chore);
       return `<div class="sheet-overlay-wrapper">
+        ${header}
         ${mainView}
         <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
         ${sheetHTML}
       </div>`;
     }
   }
-  return mainView;
+  if (state.activeSheet === "chore-edit") {
+    const { choreId } = state.activeSheetData || {};
+    const isNew = choreId === null || choreId === undefined;
+    const chore = isNew ? null : (state.chores || []).find(c => c.id === choreId);
+    if (isNew || chore) {
+      const sheetHTML = renderChoreSheet(isNew ? null : chore);
+      return `<div class="sheet-overlay-wrapper">
+        ${header}
+        ${mainView}
+        <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+        ${sheetHTML}
+      </div>`;
+    }
+  }
+  return `<div class="home-wrapper">${header}${mainView}</div>`;
 }
 
 function renderCalendarView() {
@@ -329,7 +329,7 @@ function renderCalendarView() {
     return `<div class="today-view"><h2>Today</h2>
     <div class="empty-state"><div class="empty-state-icon">🏠</div>
     <div class="empty-state-title">No chores set up yet</div>
-    <p>Add chores via settings or the chores tab.</p></div></div>`;
+    <p>Use the Home tab to add chores.</p></div></div>`;
   }
   const mainView = state.calendarView === "week"
     ? renderWeekView(state)
@@ -408,7 +408,7 @@ function renderScheduleView() {
     return `<div class="schedule-view"><h2>Upcoming</h2>
     <div class="empty-state"><div class="empty-state-icon">🏠</div>
     <div class="empty-state-title">No chores set up yet</div>
-    <p>Add chores via settings or the chores tab.</p></div></div>`;
+    <p>Use the Home tab to add chores.</p></div></div>`;
   }
   const mainView = renderScheduleTab(state);
   const fab = `<button type="button" class="fab" data-action="open-pick-chore-sheet" data-date="${todayISO(0)}" aria-label="Schedule a chore">+</button>`;
@@ -943,6 +943,7 @@ export async function init() {
         return;
       }
       if (state.currentRoute === "/today") {
+        state.homeView = "log";
         loadLatestLogsData().then(() => render(app));
         return;
       }
@@ -1444,6 +1445,15 @@ export async function init() {
         break;
 
       // ── Chores tab management ─────────────────────────────────────────────
+
+      case "switch-home-view": {
+        e.preventDefault();
+        state.currentRoute = "/";
+        state.homeView = actionEl.dataset.view || "log";
+        state.jiggleMode = false;
+        loadLatestLogsData().then(() => render(app));
+        break;
+      }
 
       case "chore-add": {
         e.preventDefault();

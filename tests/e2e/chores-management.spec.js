@@ -2,11 +2,11 @@
 // End-to-end tests for the new Chores tab management UI.
 //
 // Covers:
-//   - Chores tab displays all chores (including hidden ones)
+//   - Manage Chores view displays all chores (including hidden ones)
 //   - Add custom chore: happy path, empty-name sad path, cancel
 //   - Edit chore: name/icon/color changes persist
-//   - Delete custom chore: confirmed deletion removes from tab
-//   - Eye toggle: hide/show a chore from Home tab grid
+//   - Delete custom chore: confirmed deletion removes from list
+//   - Eye toggle: hide/show a chore from Home log grid
 //   - Restore-to-default for a predefined chore
 //   - Persistence across full page reload
 
@@ -20,9 +20,10 @@ function uniqueEmail() {
 
 /**
  * Registers a user, creates a household, seeds default chores, and navigates
- * to the Chores tab.  Returns { csrf, page }.
+ * to the Manage Chores view (Home tab → Manage toggle).
+ * Returns { csrf, page }.
  */
-async function setupChoresTab(page) {
+async function setupManageChores(page) {
   const email = uniqueEmail();
 
   await page.goto('/register');
@@ -47,8 +48,8 @@ async function setupChoresTab(page) {
   await page.reload();
   await page.waitForSelector('.home-grid', { timeout: 15000 });
 
-  // Navigate to the Chores tab.
-  await page.click('[data-nav="chores"]');
+  // Switch to Manage view from the Home tab.
+  await page.click('[data-action="switch-home-view"][data-view="manage"]');
   await page.waitForSelector('.chore-list', { timeout: 10000 });
 
   return { csrf };
@@ -56,16 +57,16 @@ async function setupChoresTab(page) {
 
 // ─── Chores tab display ───────────────────────────────────────────────────────
 
-test.describe('Chores tab: display', () => {
+test.describe('Manage Chores: display', () => {
   test('shows all seeded chores in the list', async ({ page }) => {
-    await setupChoresTab(page);
+    await setupManageChores(page);
     const rows = page.locator('.chore-row');
     // Default seed = 13 chores
     await expect(rows).toHaveCount(13);
   });
 
   test('shows drag handle, eye toggle, and edit button on each row', async ({ page }) => {
-    await setupChoresTab(page);
+    await setupManageChores(page);
     const firstRow = page.locator('.chore-row').first();
     await expect(firstRow.locator('.chore-row-drag-handle')).toBeVisible();
     await expect(firstRow.locator('[data-action="chore-toggle-home"]')).toBeVisible();
@@ -73,7 +74,7 @@ test.describe('Chores tab: display', () => {
   });
 
   test('shows Default badge on predefined chores and Custom badge on user-added chores', async ({ page }) => {
-    const { csrf } = await setupChoresTab(page);
+    const { csrf } = await setupManageChores(page);
 
     // First row is a seeded default chore — must show "Default"
     const firstBadge = page.locator('.chore-row').first().locator('.chore-row-badge');
@@ -87,7 +88,7 @@ test.describe('Chores tab: display', () => {
     });
     await page.reload();
     await page.waitForSelector('.home-grid', { timeout: 15000 });
-    await page.click('[data-nav="chores"]');
+    await page.click('[data-action="switch-home-view"][data-view="manage"]');
     await page.waitForSelector('.chore-list', { timeout: 10000 });
 
     // Find the custom chore row — it should show "Custom"
@@ -97,23 +98,23 @@ test.describe('Chores tab: display', () => {
   });
 
   test('FAB + button is visible', async ({ page }) => {
-    await setupChoresTab(page);
+    await setupManageChores(page);
     await expect(page.locator('.fab[data-action="chore-add"]')).toBeVisible();
   });
 });
 
 // ─── Add custom chore ────────────────────────────────────────────────────────
 
-test.describe('Chores tab: add custom chore', () => {
+test.describe('Manage Chores: add custom chore', () => {
   test('tapping + opens the add-chore sheet', async ({ page }) => {
-    await setupChoresTab(page);
+    await setupManageChores(page);
     await page.click('.fab[data-action="chore-add"]');
     await expect(page.locator('.chore-edit-sheet')).toBeVisible({ timeout: 3000 });
     await expect(page.locator('.sheet-title')).toContainText('Add Chore');
   });
 
   test('Cancel closes the sheet without adding a chore', async ({ page }) => {
-    await setupChoresTab(page);
+    await setupManageChores(page);
     const countBefore = await page.locator('.chore-row').count();
 
     await page.click('.fab[data-action="chore-add"]');
@@ -126,7 +127,7 @@ test.describe('Chores tab: add custom chore', () => {
   });
 
   test('saving with empty name does not create a chore', async ({ page }) => {
-    await setupChoresTab(page);
+    await setupManageChores(page);
     const countBefore = await page.locator('.chore-row').count();
 
     await page.click('.fab[data-action="chore-add"]');
@@ -141,7 +142,7 @@ test.describe('Chores tab: add custom chore', () => {
   });
 
   test('adding a new chore appears in the list', async ({ page }) => {
-    await setupChoresTab(page);
+    await setupManageChores(page);
     const countBefore = await page.locator('.chore-row').count();
 
     await page.click('.fab[data-action="chore-add"]');
@@ -156,7 +157,7 @@ test.describe('Chores tab: add custom chore', () => {
   });
 
   test('new chore also appears on the Home tab grid', async ({ page }) => {
-    await setupChoresTab(page);
+    await setupManageChores(page);
 
     await page.click('.fab[data-action="chore-add"]');
     await expect(page.locator('.chore-edit-sheet')).toBeVisible({ timeout: 3000 });
@@ -164,14 +165,14 @@ test.describe('Chores tab: add custom chore', () => {
     await page.click('[data-action="save-chore"]');
     await expect(page.locator('.chore-edit-sheet')).toHaveCount(0, { timeout: 5000 });
 
-    // Switch to Home tab and verify the new chore appears
-    await page.click('[data-nav="today"]');
+    // Switch to Log view and verify the new chore appears
+    await page.click('[data-action="switch-home-view"][data-view="log"]');
     await page.waitForSelector('.home-grid', { timeout: 10000 });
     await expect(page.locator('.home-grid')).toContainText('Feed the fish');
   });
 
   test('new chore persists after page reload', async ({ page }) => {
-    await setupChoresTab(page);
+    await setupManageChores(page);
 
     await page.click('.fab[data-action="chore-add"]');
     await expect(page.locator('.chore-edit-sheet')).toBeVisible({ timeout: 3000 });
@@ -186,14 +187,14 @@ test.describe('Chores tab: add custom chore', () => {
 
     await page.reload();
     await page.waitForSelector('.home-grid', { timeout: 15000 });
-    await page.click('[data-nav="chores"]');
+    await page.click('[data-action="switch-home-view"][data-view="manage"]');
     await page.waitForSelector('.chore-list', { timeout: 10000 });
 
     await expect(page.locator('.chore-list')).toContainText('Water plants');
   });
 
   test('picking a quick-emoji updates the preview', async ({ page }) => {
-    await setupChoresTab(page);
+    await setupManageChores(page);
 
     await page.click('.fab[data-action="chore-add"]');
     await expect(page.locator('.chore-edit-sheet')).toBeVisible({ timeout: 3000 });
@@ -212,9 +213,9 @@ test.describe('Chores tab: add custom chore', () => {
 
 // ─── Edit chore ──────────────────────────────────────────────────────────────
 
-test.describe('Chores tab: edit chore', () => {
+test.describe('Manage Chores: edit chore', () => {
   test('tapping edit opens the edit sheet with existing name', async ({ page }) => {
-    await setupChoresTab(page);
+    await setupManageChores(page);
 
     const firstName = await page.locator('.chore-row-name').first().innerText();
     await page.locator('.chore-row').first().locator('[data-action="chore-edit"]').click();
@@ -225,7 +226,7 @@ test.describe('Chores tab: edit chore', () => {
   });
 
   test('renaming a chore updates the list', async ({ page }) => {
-    await setupChoresTab(page);
+    await setupManageChores(page);
 
     await page.locator('.chore-row').first().locator('[data-action="chore-edit"]').click();
     await expect(page.locator('.chore-edit-sheet')).toBeVisible({ timeout: 3000 });
@@ -238,7 +239,7 @@ test.describe('Chores tab: edit chore', () => {
   });
 
   test('edit persists after page reload', async ({ page }) => {
-    await setupChoresTab(page);
+    await setupManageChores(page);
 
     await page.locator('.chore-row').first().locator('[data-action="chore-edit"]').click();
     await expect(page.locator('.chore-edit-sheet')).toBeVisible({ timeout: 3000 });
@@ -253,7 +254,7 @@ test.describe('Chores tab: edit chore', () => {
 
     await page.reload();
     await page.waitForSelector('.home-grid', { timeout: 15000 });
-    await page.click('[data-nav="chores"]');
+    await page.click('[data-action="switch-home-view"][data-view="manage"]');
     await page.waitForSelector('.chore-list', { timeout: 10000 });
     await expect(page.locator('.chore-list')).toContainText('PersistMe');
   });
@@ -261,7 +262,7 @@ test.describe('Chores tab: edit chore', () => {
 
 // ─── Delete custom chore ─────────────────────────────────────────────────────
 
-test.describe('Chores tab: delete custom chore', () => {
+test.describe('Manage Chores: delete custom chore', () => {
   /**
    * Creates a custom chore via API and returns its id and name.
    */
@@ -275,12 +276,12 @@ test.describe('Chores tab: delete custom chore', () => {
   }
 
   test('editing a custom chore shows Delete button (not Restore)', async ({ page }) => {
-    const { csrf } = await setupChoresTab(page);
+    const { csrf } = await setupManageChores(page);
     await createCustomChore(page, csrf, 'Custom Deletable');
 
     await page.reload();
     await page.waitForSelector('.home-grid', { timeout: 15000 });
-    await page.click('[data-nav="chores"]');
+    await page.click('[data-action="switch-home-view"][data-view="manage"]');
     await page.waitForSelector('.chore-list', { timeout: 10000 });
 
     // Find the custom chore row and click edit
@@ -293,12 +294,12 @@ test.describe('Chores tab: delete custom chore', () => {
   });
 
   test('confirming delete removes the chore from the list', async ({ page }) => {
-    const { csrf } = await setupChoresTab(page);
+    const { csrf } = await setupManageChores(page);
     await createCustomChore(page, csrf, 'Gone Soon');
 
     await page.reload();
     await page.waitForSelector('.home-grid', { timeout: 15000 });
-    await page.click('[data-nav="chores"]');
+    await page.click('[data-action="switch-home-view"][data-view="manage"]');
     await page.waitForSelector('.chore-list', { timeout: 10000 });
 
     const countBefore = await page.locator('.chore-row').count();
@@ -317,9 +318,9 @@ test.describe('Chores tab: delete custom chore', () => {
 
 // ─── Eye toggle (hide/show from Home) ────────────────────────────────────────
 
-test.describe('Chores tab: hide/show from Home', () => {
+test.describe('Manage Chores: hide/show from Home', () => {
   test('toggling eye hides chore from Home grid', async ({ page }) => {
-    await setupChoresTab(page);
+    await setupManageChores(page);
 
     const firstName = await page.locator('.chore-row-name').first().innerText();
     await page.locator('.chore-row').first().locator('[data-action="chore-toggle-home"]').click();
@@ -328,15 +329,15 @@ test.describe('Chores tab: hide/show from Home', () => {
     // Row should gain the --hidden modifier
     await expect(page.locator('.chore-row').first()).toHaveClass(/chore-row--hidden/);
 
-    // Home tab should no longer show that chore
-    await page.click('[data-nav="today"]');
+    // Home log grid should no longer show that chore
+    await page.click('[data-action="switch-home-view"][data-view="log"]');
     await page.waitForSelector('.home-grid', { timeout: 10000 });
     const names = await page.locator('.home-card-name').allInnerTexts();
     expect(names).not.toContain(firstName);
   });
 
   test('toggling eye twice restores chore to Home grid', async ({ page }) => {
-    await setupChoresTab(page);
+    await setupManageChores(page);
     const firstName = await page.locator('.chore-row-name').first().innerText();
 
     // Hide
@@ -349,15 +350,15 @@ test.describe('Chores tab: hide/show from Home', () => {
 
     await expect(page.locator('.chore-row').first()).not.toHaveClass(/chore-row--hidden/);
 
-    // Chore should be back on Home
-    await page.click('[data-nav="today"]');
+    // Chore should be back on Home log grid
+    await page.click('[data-action="switch-home-view"][data-view="log"]');
     await page.waitForSelector('.home-grid', { timeout: 10000 });
     const names = await page.locator('.home-card-name').allInnerTexts();
     expect(names).toContain(firstName);
   });
 
   test('eye toggle persists after page reload', async ({ page }) => {
-    await setupChoresTab(page);
+    await setupManageChores(page);
     const firstName = await page.locator('.chore-row-name').first().innerText();
 
     const patchDone = page.waitForResponse(
@@ -374,23 +375,23 @@ test.describe('Chores tab: hide/show from Home', () => {
     expect(names).not.toContain(firstName);
   });
 
-  test('hidden chore is still visible on the Chores tab', async ({ page }) => {
-    await setupChoresTab(page);
+  test('hidden chore is still visible in Manage Chores', async ({ page }) => {
+    await setupManageChores(page);
     const firstName = await page.locator('.chore-row-name').first().innerText();
 
     await page.locator('.chore-row').first().locator('[data-action="chore-toggle-home"]').click();
     await page.waitForTimeout(400);
 
-    // Still on Chores tab — hidden row should be present (just dimmed)
+    // Still in Manage view — hidden row should be present (just dimmed)
     await expect(page.locator('.chore-list')).toContainText(firstName);
   });
 });
 
 // ─── Restore to default (predefined chore) ───────────────────────────────────
 
-test.describe('Chores tab: restore predefined chore to default', () => {
+test.describe('Manage Chores: restore predefined chore to default', () => {
   test('editing a predefined chore shows Restore button (not Delete)', async ({ page }) => {
-    await setupChoresTab(page);
+    await setupManageChores(page);
 
     // All seeded chores are predefined — open the first one
     await page.locator('.chore-row').first().locator('[data-action="chore-edit"]').click();
@@ -401,7 +402,7 @@ test.describe('Chores tab: restore predefined chore to default', () => {
   });
 
   test('restoring default reverts a renamed predefined chore', async ({ page }) => {
-    await setupChoresTab(page);
+    await setupManageChores(page);
 
     // Get original name
     const originalName = await page.locator('.chore-row-name').first().innerText();

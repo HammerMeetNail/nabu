@@ -135,7 +135,7 @@ export function renderTodayView(state) {
     </div>
     <p class="text-center text-secondary mb-3">${done} of ${total} chores done</p>
     <div class="chore-grid">${choreCards}</div>
-    ${chores.length === 0 ? '<div class="empty-state"><div class="empty-state-icon">📋</div><p>No chores set up yet. <a href="#" data-nav="chores">Add chores</a> to get started.</p></div>' : ''}
+    ${chores.length === 0 ? '<div class="empty-state"><div class="empty-state-icon">📋</div><p>No chores set up yet. <button type="button" class="btn btn-sm btn-primary" data-action="switch-home-view" data-view="manage">Add chores</button></p></div>' : ''}
   </div>`;
 }
 

@@ -4,7 +4,7 @@
 // Feature: long-pressing a home card enters jiggle mode; each card then shows
 // a red X badge.  Tapping X opens a confirmation sheet.  Confirming hides the
 // chore from the home grid for that user (stored in user_preferences).  The
-// chore is NOT deleted — it still appears in the Chores tab.
+// chore is NOT deleted — it still appears in Manage Chores.
 //
 // DOM structure in jiggle mode (post-fix):
 //   <div class="home-card-wrapper" draggable="true" data-home-reorder-chore-id="N">
@@ -204,7 +204,7 @@ test.describe('Home Remove: removing a chore', () => {
     expect(names).not.toContain(removedName);
   });
 
-  test('removed chore still appears in the Chores tab', async ({ page }) => {
+  test('removed chore still appears in Manage Chores', async ({ page }) => {
     await setupWithChores(page);
 
     const removedName = await page.locator('.home-chore-card').nth(4).locator('.home-card-name').innerText();
@@ -215,8 +215,8 @@ test.describe('Home Remove: removing a chore', () => {
     await page.locator('[data-action="confirm-remove-home-chore"]').click();
     await page.waitForTimeout(600);
 
-    // Navigate to Chores tab
-    await page.click('[data-nav="chores"]');
+    // Switch to Manage view
+    await page.click('[data-action="switch-home-view"][data-view="manage"]');
     await page.waitForTimeout(500);
 
     // Chore should still be listed there

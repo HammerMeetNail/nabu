@@ -2,6 +2,7 @@ import { apiFetch } from "./api.js";
 import { escapeHTML } from "./utils.js";
 import { sortChoresByOrder } from "./preferences.js";
 import { renderMemberSelect, renderVolumeSelect } from "./schedule.js";
+import { renderChoresView as renderChoresViewList } from "./chores.js";
 
 /**
  * Fetch the most-recent log for each chore in the household.
@@ -34,6 +35,21 @@ export function formatTimeAgo(iso) {
 }
 
 /**
+ * Render the home header bar with Log / Manage toggle.
+ * @param {object} state  App state
+ * @returns {string}  HTML string
+ */
+export function renderHomeHeader(state) {
+  const isManage = state.homeView === "manage";
+  return `<div class="home-header">
+    <div class="home-header-tabs">
+      <button type="button" class="home-header-tab${isManage ? "" : " home-header-tab--active"}" data-action="switch-home-view" data-view="log">Log</button>
+      <button type="button" class="home-header-tab${isManage ? " home-header-tab--active" : ""}" data-action="switch-home-view" data-view="manage">Manage</button>
+    </div>
+  </div>`;
+}
+
+/**
  * Render the home grid view (iPhone home-screen style chore cards).
  * @param {object} state  App state
  * @returns {string}  HTML string
@@ -56,7 +72,7 @@ export function renderHomeView(state) {
       <div class="empty-state">
         <div class="empty-state-icon">🏠</div>
         <div class="empty-state-title">No chores set up yet</div>
-        <p>Add chores via the <a href="#" data-nav="chores">Chores</a> tab.</p>
+        <p><button type="button" class="btn btn-primary btn-sm" data-action="switch-home-view" data-view="manage">Add chores</button></p>
       </div>
   </div>`;
 }
@@ -110,11 +126,20 @@ export function renderHomeView(state) {
  * @param {object} chore
  * @returns {string}  HTML string
  */
+/**
+ * Render the chores management view for the Home tab.
+ * @param {object} state  App state
+ * @returns {string}  HTML string
+ */
+export function renderHomeManageView(state) {
+  return renderChoresViewList(state);
+}
+
 export function renderConfirmRemoveFromHomeSheet(chore) {
   return `<div class="bottom-sheet">
     <div class="sheet-handle"></div>
     <div class="sheet-title">Remove from Home?</div>
-    <p class="confirm-remove-msg">${escapeHTML(chore.icon)} <strong>${escapeHTML(chore.name)}</strong> will still be available in the Chores tab.</p>
+    <p class="confirm-remove-msg">${escapeHTML(chore.icon)} <strong>${escapeHTML(chore.name)}</strong> will still be available in Manage Chores.</p>
     <button type="button" class="btn btn-danger btn-block"
       data-action="confirm-remove-home-chore"
       data-chore-id="${chore.id}">Remove from Home</button>

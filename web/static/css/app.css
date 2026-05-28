@@ -1746,6 +1746,40 @@ input:focus, select:focus, textarea:focus {
   min-width: 0;
 }
 
+/* ─── Home Header ──────────────────────────────────────────────────────────── */
+
+.home-header {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0 4px;
+}
+
+.home-header-tabs {
+  display: flex;
+  background: var(--color-surface, #E8E2D6);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.home-header-tab {
+  padding: 6px 20px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--color-text-secondary, #6B7280);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.home-header-tab--active {
+  background: #fff;
+  color: var(--color-text, #1F2937);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+}
+
 /* ─── Home Grid View ──────────────────────────────────────────────────────── */
 
 .home-view {

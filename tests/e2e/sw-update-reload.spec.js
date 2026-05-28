@@ -78,8 +78,8 @@ test.describe('SW Update Reload', () => {
     await page.reload();
     await page.waitForSelector('.home-grid', { timeout: 15000 });
 
-    await page.click('[data-nav="chores"]');
-    await expect(page.locator('.chores-view')).toBeVisible({ timeout: 5000 });
+    await page.click('[data-action="switch-home-view"][data-view="manage"]');
+    await expect(page.locator('.chore-list')).toBeVisible({ timeout: 5000 });
 
     await page.click('[data-nav="activity"]');
     await expect(page.locator('.history-view')).toBeVisible({ timeout: 5000 });

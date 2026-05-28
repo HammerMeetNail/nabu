@@ -340,10 +340,12 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     await expect(page.locator('.history-view')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('.view-tabs')).toBeVisible();
 
-    // === Navigate to Chores List ===
-    await page.click('a[data-nav="chores"]');
+    // === Navigate to Manage Chores (Home → Manage toggle) ===
+    await page.click('a[data-nav="today"]');
+    await page.waitForTimeout(500);
+    await page.click('[data-action="switch-home-view"][data-view="manage"]');
     await page.waitForTimeout(700);
-    await expect(page.locator('h2:has-text("Chores")')).toBeVisible();
+    await expect(page.locator('.chores-view')).toBeVisible();
     // Should see chore cards (non-empty since we have chore data)
     const choreListContent = await page.locator('#app').innerHTML();
     expect(choreListContent.length).toBeGreaterThan(50);
@@ -440,7 +442,6 @@ test.describe('Exhaustive: SPA-only Navigation', () => {
     // Verify each tab click changes the view
     const tabs = [
       { nav: 'activity', check: () => page.locator('.history-view').isVisible() },
-      { nav: 'chores', check: () => page.locator('h2:has-text("Chores")').isVisible() },
       { nav: 'schedule', check: () => page.locator('.schedule-view').isVisible() },
       { nav: 'settings', check: () => page.locator('.settings-view').isVisible() },
       { nav: 'today', check: () => page.locator('.home-grid').isVisible() },
