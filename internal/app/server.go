@@ -231,6 +231,9 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	mux.HandleFunc("/api/stats/breakdown", method(http.MethodGet, middleware.RequireAuth(statsHandler.Breakdown)))
 	mux.HandleFunc("/api/stats/recap", method(http.MethodGet, middleware.RequireAuth(statsHandler.Recap)))
 	mux.HandleFunc("/api/stats/overview", method(http.MethodGet, middleware.RequireAuth(statsHandler.Overview)))
+	mux.HandleFunc("/api/stats/busy-hours", method(http.MethodGet, middleware.RequireAuth(statsHandler.BusyHours)))
+	mux.HandleFunc("/api/stats/chores", method(http.MethodGet, middleware.RequireAuth(statsHandler.ChoreStats)))
+	mux.HandleFunc("/api/stats/chores/{id}", method(http.MethodGet, middleware.RequireAuth(statsHandler.ChoreStatsByID)))
 
 	mux.HandleFunc("/api/preferences", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -409,7 +412,7 @@ func (a *choreStatsAdapter) GetChore(ctx context.Context, id int64) (stats.Chore
 	if err != nil {
 		return stats.ChoreInfo{}, err
 	}
-	return stats.ChoreInfo{ID: c.ID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category}, nil
+	return stats.ChoreInfo{ID: c.ID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category, HasVolumeML: c.HasVolumeML, IndicatorLabels: c.IndicatorLabels}, nil
 }
 
 func (a *choreStatsAdapter) ListChores(ctx context.Context, householdID int64) ([]stats.ChoreInfo, error) {
@@ -419,7 +422,7 @@ func (a *choreStatsAdapter) ListChores(ctx context.Context, householdID int64) (
 	}
 	result := make([]stats.ChoreInfo, len(chores))
 	for i, c := range chores {
-		result[i] = stats.ChoreInfo{ID: c.ID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category}
+		result[i] = stats.ChoreInfo{ID: c.ID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category, HasVolumeML: c.HasVolumeML, IndicatorLabels: c.IndicatorLabels}
 	}
 	return result, nil
 }

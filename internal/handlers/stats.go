@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/dave/choresy/internal/middleware"
@@ -161,4 +162,87 @@ func (h *StatsHandler) Overview(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"overview": overview})
+}
+
+func (h *StatsHandler) BusyHours(w http.ResponseWriter, r *http.Request) {
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
+		return
+	}
+
+	now := time.Now().UTC()
+	start := now.AddDate(0, 0, -30)
+	end := now
+
+	startStr := r.URL.Query().Get("start")
+	endStr := r.URL.Query().Get("end")
+	if startStr != "" {
+		if parsed, err := time.Parse("2006-01-02", startStr); err == nil {
+			start = parsed
+		}
+	}
+	if endStr != "" {
+		if parsed, err := time.Parse("2006-01-02", endStr); err == nil {
+			end = parsed
+		}
+	}
+
+	hours, err := h.service.GetBusyHours(r.Context(), *user.HouseholdID, start, end)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"busyHours": hours})
+}
+
+func (h *StatsHandler) ChoreStats(w http.ResponseWriter, r *http.Request) {
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
+		return
+	}
+
+	choreStats, err := h.service.GetChoreStats(r.Context(), *user.HouseholdID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"choreStats": choreStats})
+}
+
+func (h *StatsHandler) ChoreStatsByID(w http.ResponseWriter, r *http.Request) {
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
+		return
+	}
+
+	idStr := r.PathValue("id")
+	if idStr == "" {
+		writeError(w, http.StatusBadRequest, "chore id required")
+		return
+	}
+	choreID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid chore id")
+		return
+	}
+
+	allStats, err := h.service.GetChoreStats(r.Context(), *user.HouseholdID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	for _, cs := range allStats {
+		if cs.ChoreID == choreID {
+			writeJSON(w, http.StatusOK, map[string]any{"choreStats": cs})
+			return
+		}
+	}
+
+	writeError(w, http.StatusNotFound, "chore not found")
 }

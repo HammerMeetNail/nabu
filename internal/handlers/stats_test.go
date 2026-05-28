@@ -99,7 +99,7 @@ func (a *testChoreStore) GetChore(ctx context.Context, id int64) (stats.ChoreInf
 	if err != nil {
 		return stats.ChoreInfo{}, err
 	}
-	return stats.ChoreInfo{ID: c.ID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category}, nil
+	return stats.ChoreInfo{ID: c.ID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category, HasVolumeML: c.HasVolumeML, IndicatorLabels: c.IndicatorLabels}, nil
 }
 
 func (a *testChoreStore) ListChores(ctx context.Context, householdID int64) ([]stats.ChoreInfo, error) {
@@ -109,7 +109,7 @@ func (a *testChoreStore) ListChores(ctx context.Context, householdID int64) ([]s
 	}
 	result := make([]stats.ChoreInfo, len(chores))
 	for i, c := range chores {
-		result[i] = stats.ChoreInfo{ID: c.ID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category}
+		result[i] = stats.ChoreInfo{ID: c.ID, Name: c.Name, Icon: c.Icon, Color: c.Color, Category: c.Category, HasVolumeML: c.HasVolumeML, IndicatorLabels: c.IndicatorLabels}
 	}
 	return result, nil
 }
