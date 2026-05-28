@@ -163,6 +163,7 @@ export function renderHistoryView(state) {
       dayGroups.push({ date: dateKey, label: dayLabel, rows: [] });
     }
     const chore = (state.chores || []).find(c => c.id === l.choreId);
+    const indicatorIcons = (l.indicators || []).map(label => label.split(' ')[0]);
     dayGroups[dayGroups.length - 1].rows.push({
       icon: chore?.icon || '',
       name: chore?.name || `Chore #${l.choreId}`,
@@ -171,6 +172,7 @@ export function renderHistoryView(state) {
       time: timeStr,
       note: l.note || '',
       volumeML: l.volumeML,
+      indicatorIcons,
       logId: l.id,
       choreId: l.choreId,
       date: dateKey,
@@ -228,6 +230,7 @@ export function renderHistoryView(state) {
     const days = chunk.days.map(g => {
       const rows = g.rows.map(r => {
         const volumeStr = r.volumeML != null ? ` · ${r.volumeML}mL` : '';
+        const indicatorIconsStr = r.indicatorIcons.length ? ` · ${r.indicatorIcons.join(' ')}` : '';
         return `
         <button type="button" class="hist-row" style="--chore-color:${r.color}"
           data-action="view-log"
@@ -237,7 +240,7 @@ export function renderHistoryView(state) {
           <span class="hist-icon">${r.icon}</span>
           <div class="hist-body">
             <span class="hist-name">${escapeHTML(r.name)}</span>
-            <span class="hist-meta">${r.time} · ${escapeHTML(r.who)}${r.note ? ` · ${escapeHTML(r.note)}` : ''}${volumeStr}</span>
+            <span class="hist-meta">${r.time} · ${escapeHTML(r.who)}${r.note ? ` · ${escapeHTML(r.note)}` : ''}${volumeStr}${indicatorIconsStr}</span>
           </div>
         </button>`;
       }).join('');

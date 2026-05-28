@@ -429,3 +429,86 @@ test.describe('Feed Baby food type indicators', () => {
     // (Change Baby has its own chips, but other chores shouldn't)
   });
 });
+
+test.describe('History indicator icons', () => {
+  test('feed baby indicators show emoji-only icons in history', async ({ page }) => {
+    const { feedBaby } = await setupWithChores(page);
+
+    const card = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
+    await card.click();
+    await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
+
+    // Toggle breast chip and set volume
+    await page.locator('.log-chip').nth(1).click();
+    await page.selectOption('#log-volume', '60');
+    await page.click('[data-action="save-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    // Navigate to history
+    await page.click('[data-nav="history"]');
+    await page.waitForSelector('.history-view', { timeout: 10000 });
+
+    const meta = page.locator('.hist-meta').first();
+    // Should show emoji 🤱 but not the word "breast"
+    await expect(meta).toContainText('🤱');
+    await expect(meta).toContainText('60mL');
+    await expect(meta).not.toContainText('breast');
+    await expect(meta).not.toContainText('formula');
+  });
+
+  test('change baby indicators show emoji-only icons in history', async ({ page }) => {
+    const { chores } = await setupWithChores(page);
+    const changeBaby = chores.find(c => c.name === 'Change Baby');
+    expect(changeBaby).toBeDefined();
+
+    // Find and tap Change Baby card to log with indicator
+    const cards = page.locator('.home-chore-card');
+    const count = await cards.count();
+    let card = null;
+    for (let i = 0; i < count; i++) {
+      const name = await cards.nth(i).locator('.home-card-name').innerText();
+      if (name === 'Change Baby') {
+        card = cards.nth(i);
+        break;
+      }
+    }
+    expect(card).toBeDefined();
+    await card.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+
+    // Toggle peer chip
+    await page.locator('.log-chip').nth(1).click();
+    await page.click('[data-action="save-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    // Navigate to history
+    await page.click('[data-nav="history"]');
+    await page.waitForSelector('.history-view', { timeout: 10000 });
+
+    const meta = page.locator('.hist-meta').first();
+    await expect(meta).toContainText('💛');
+    await expect(meta).not.toContainText('pee');
+  });
+
+  test('both indicators shown when multiple are selected', async ({ page }) => {
+    const { feedBaby } = await setupWithChores(page);
+
+    const card = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
+    await card.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+
+    // Toggle both chips
+    await page.locator('.log-chip').nth(0).click();
+    await page.locator('.log-chip').nth(1).click();
+
+    await page.click('[data-action="save-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    await page.click('[data-nav="history"]');
+    await page.waitForSelector('.history-view', { timeout: 10000 });
+
+    const meta = page.locator('.hist-meta').first();
+    await expect(meta).toContainText('🍼');
+    await expect(meta).toContainText('🤱');
+  });
+});
