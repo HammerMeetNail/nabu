@@ -295,7 +295,7 @@ function renderHomeViewWrapper() {
     const chore = (state.chores || []).find(c => c.id === choreId);
     if (chore) {
       const cachedML = state.latestLogs[choreId]?.volumeML ?? null;
-      const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, cachedML, { showWhen: true, slotHour: new Date().getHours() });
+      const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, cachedML, { showWhen: true });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
@@ -1224,16 +1224,25 @@ export async function init() {
 
         const whenInput = document.querySelector('#log-when');
         if (whenInput?.value) {
-          const inputSlotHour = new Date(whenInput.value).getHours();
-          const inputDate = whenInput.value.split('T')[0];
-          const initialSlot = actionEl.dataset.slotHour && actionEl.dataset.slotHour !== ""
-            ? parseInt(actionEl.dataset.slotHour, 10) : null;
-          // Only trust the input if the user intentionally changed it;
-          // otherwise morph.js may have corrupted it.
-          if (inputDate !== actionEl.dataset.date || inputSlotHour !== initialSlot) {
+          if (!logId) {
+            // New log: always use the when input value so the submitted
+            // time matches what the user sees in the picker.
             completedAt = new Date(whenInput.value).toISOString();
-            slotHour = inputSlotHour;
-            date = inputDate;
+            slotHour = new Date(whenInput.value).getHours();
+            date = whenInput.value.split('T')[0];
+          } else {
+            // Editing existing log: only override if the user changed
+            // the value — morph.js may have corrupted the input during
+            // re-renders.
+            const inputSlotHour = new Date(whenInput.value).getHours();
+            const inputDate = whenInput.value.split('T')[0];
+            const initialSlot = actionEl.dataset.slotHour && actionEl.dataset.slotHour !== ""
+              ? parseInt(actionEl.dataset.slotHour, 10) : null;
+            if (inputDate !== actionEl.dataset.date || inputSlotHour !== initialSlot) {
+              completedAt = new Date(whenInput.value).toISOString();
+              slotHour = inputSlotHour;
+              date = inputDate;
+            }
           }
         }
 

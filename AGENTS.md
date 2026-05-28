@@ -300,7 +300,7 @@ Name spec files after the feature/area: `<area>-<feature>.spec.js` (e.g. `home-r
 These caused hard-to-diagnose production bugs and are covered by E2E tests:
 
 1. **Home-tab direct tap** (`home-tap-chore` event in `app.js`): must call `logChore(..., new Date().getHours(), new Date().toISOString())` — the `slotHour` from `getHours()` drives calendar placement, and `completedAt` as the current time prevents the home-tab "time ago" from being wrong by the UTC offset. 
-2. **Home-tab sheet log** (`save-home-log` event in `app.js`): must extract `new Date(whenInput.value).getHours()` and pass as `slotHour`.
+2. **Home-tab sheet log** (`save-log` event in `app.js`): for new logs (empty `logId`), the handler must extract `completedAt`, `slotHour`, and `date` from the `#log-when` input value — not from data attributes on the button. `slotHour` is derived via `new Date(whenInput.value).getHours()`. The when input is pre-filled with the current local time (minutes included), not rounded to `:00`. For editing existing logs, the comparison-based guard is retained to protect against morph.js corruption during re-renders.
 3. **`renderWeekView` in `calendar.js`**: ad-hoc logs (those not matching a scheduled slot) must be placed in their `slotHour` row, not forced into the Anytime row — mirrors the `adHocCells` pattern in `renderDayView`.
 4. **No hard-coded `?v=N` in JS import paths** — the server rewrites them all at startup.
 

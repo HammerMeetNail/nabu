@@ -391,7 +391,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     } else if (date && opts.slotHour != null) {
       whenVal = `${date}T${pad(opts.slotHour)}:00`;
     } else if (date) {
-      whenVal = `${date}T12:00`;
+      whenVal = `${date}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
     }
     return `<div class="sheet-time-row">
       <span class="field-label" style="white-space:nowrap;flex-shrink:0">When</span>
