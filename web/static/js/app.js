@@ -87,12 +87,19 @@ function readSheetFreq(prefix, date) {
 
 let state;
 
+let lastSWUpdateCheck = 0;
+const SW_UPDATE_CHECK_MS = 60000;
+
+function maybeCheckSWUpdate() {
+  if (!window.__swReg) return;
+  const now = Date.now();
+  if (now - lastSWUpdateCheck < SW_UPDATE_CHECK_MS) return;
+  lastSWUpdateCheck = now;
+  window.__swReg.update().catch(() => {});
+}
+
 export function render(root) {
-  // Check for service worker updates on every SPA navigation so the user
-  // sees the "App updated" prompt without needing to close and reopen the PWA.
-  if (window.__swReg) {
-    window.__swReg.update().catch(() => {});
-  }
+  maybeCheckSWUpdate();
 
   const route = state.currentRoute || window.location.pathname || "/";
   // Effective route for tab highlighting: unknown/auth-only paths fall back to
@@ -835,6 +842,7 @@ export async function init() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/service-worker.js').then(reg => {
       window.__swReg = reg;
+      lastSWUpdateCheck = Date.now();
     }).catch(() => {});
 
     let hadController = !!navigator.serviceWorker.controller;

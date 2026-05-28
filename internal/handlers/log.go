@@ -157,9 +157,9 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Indicators  []string `json:"indicators"`
 		VolumeML    *int     `json:"volumeML"`
 		UserID      *int64   `json:"userId"`      // optional: change who the log is attributed to
-		CompletedAt string   `json:"completedAt"`  // optional: new completion timestamp
-		Hour        *int     `json:"hour"`         // optional: new slot hour
-		Date        string   `json:"date"`         // optional: new log date
+		CompletedAt string   `json:"completedAt"` // optional: new completion timestamp
+		Hour        *int     `json:"hour"`        // optional: new slot hour
+		Date        string   `json:"date"`        // optional: new log date
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
