@@ -144,13 +144,15 @@ test.describe('Settings - Remove Member', () => {
     const inviteData = await inviteRes.json();
     const code = inviteData.invite.code;
 
-    const { page: memberPage, context: memberCtx } =
+    const { page: memberPage, email: memberEmail, context: memberCtx } =
       await joinAsSecondUser(browser, code);
 
-    // Verify the member's role is "member" via API.
-    const meRes = await memberPage.request.get('/api/me');
-    const meData = await meRes.json();
-    expect(meData.user.role).toBe('member');
+    // Verify the member's household role is "member" via the household API.
+    const hhRes = await memberPage.request.get('/api/household');
+    const hhData = await hhRes.json();
+    const self = (hhData.members || []).find(m => m.email === memberEmail);
+    expect(self).toBeTruthy();
+    expect(self.role).toBe('member');
 
     // Navigate the member to settings.
     await memberPage.goto('/settings');
