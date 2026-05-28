@@ -212,26 +212,26 @@ test.describe('Fix 3: nav tabs are a static flex item at the page bottom', () =>
     // All tab spans should be rendered (not display:none)
     const allVisible = await page.evaluate(() => {
       const spans = [...document.querySelectorAll('#bottom-tabs .tab-item span')];
-      return spans.length === 4 && spans.every(s => window.getComputedStyle(s).display !== 'none');
+      return spans.length === 5 && spans.every(s => window.getComputedStyle(s).display !== 'none');
     });
 
     expect(allVisible).toBe(true);
   });
 
-  test('tab order is activity, schedule, home, settings', async ({ page }) => {
+  test('tab order is stats, activity, schedule, home, settings', async ({ page }) => {
     await setupWithChores(page);
 
     const order = await page.evaluate(() => {
       return [...document.querySelectorAll('#bottom-tabs .tab-item')].map(el => el.dataset.nav);
     });
 
-    expect(order).toEqual(['activity', 'schedule', 'today', 'settings']);
+    expect(order).toEqual(['stats', 'activity', 'today', 'schedule', 'settings']);
   });
 
-  test('all four nav icon buttons are visible after login', async ({ page }) => {
+  test('all five nav icon buttons are visible after login', async ({ page }) => {
     await setupWithChores(page);
 
-    const navItems = ['today', 'activity', 'schedule', 'settings'];
+    const navItems = ['stats', 'today', 'activity', 'schedule', 'settings'];
     for (const nav of navItems) {
       await expect(page.locator(`.tab-item[data-nav="${nav}"]`)).toBeVisible();
     }

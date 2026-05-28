@@ -53,10 +53,10 @@ test.describe('Schedule Tab', () => {
     await page.waitForSelector('#bottom-tabs', { timeout: 5000 });
 
     const tabs = page.locator('#bottom-tabs .tab-item');
-    await expect(tabs).toHaveCount(4);
+    await expect(tabs).toHaveCount(5);
 
     const labels = await tabs.locator('span').allInnerTexts();
-    expect(labels).toEqual(['Activity', 'Schedule', 'Home', 'Settings']);
+    expect(labels).toEqual(['Stats', 'Activity', 'Home', 'Schedule', 'Settings']);
   });
 
   test('navigating to Schedule tab shows upcoming list with heading', async ({ page }) => {
