@@ -147,12 +147,17 @@ test.describe('Settings - Remove Member', () => {
     const { page: memberPage, context: memberCtx } =
       await joinAsSecondUser(browser, code);
 
+    // Verify the member's role is "member" via API.
+    const meRes = await memberPage.request.get('/api/me');
+    const meData = await meRes.json();
+    expect(meData.user.role).toBe('member');
+
     // Navigate the member to settings.
     await memberPage.goto('/settings');
     await memberPage.waitForSelector('.member-list', { timeout: 10000 });
 
-    // The member should NOT see any Remove buttons (only appear in the Members list).
-    const removeBtns = memberPage.locator('.member-list').last().locator('[data-action="remove-member"]');
+    // The member should NOT see any Remove buttons anywhere on the page.
+    const removeBtns = memberPage.locator('[data-action="remove-member"]');
     await expect(removeBtns).toHaveCount(0);
 
     await memberCtx.close();
