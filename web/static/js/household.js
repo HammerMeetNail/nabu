@@ -73,7 +73,7 @@ export function renderJoinView(code) {
   </div>`;
 }
 
-export function renderHouseholdView(household, members, invites) {
+export function renderHouseholdView(household, members, invites, currentUser) {
   if (!household) {
     return `<div class="card mt-3">
       <h3>Household</h3>
@@ -98,17 +98,22 @@ export function renderHouseholdView(household, members, invites) {
     </div>`;
   }
 
+  const canManage = currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin');
   const memberList = (members || []).map(m => {
     const initial = (m.displayName || m.email || '?')[0].toUpperCase();
+    const removeBtn = canManage && m.userId !== currentUser.id
+      ? `<button type="button" class="btn btn-sm btn-danger" data-action="remove-member" data-user-id="${m.userId}">Remove</button>`
+      : '';
     return `<li class="member-item">
     <span class="avatar-circle-sm" style="background:${m.avatarColor || '#19323C'}">${initial}</span>
     <span>${m.email || m.displayName || 'Unknown'}</span>
     <span class="role-badge">${m.role}</span>
+    ${removeBtn}
   </li>`;}).join("");
 
   const inviteList = (invites || []).map(inv => {
     const invUrl = `${window.location.origin}/join?code=${inv.code}`;
-    return `<li class="member-item">
+    return `<li class="invite-item">
     <code class="invite-link-url">${invUrl}</code>
     <button type="button" class="btn btn-sm btn-secondary" data-action="copy-invite-link" data-code="${inv.code}">Copy</button>
     <span class="text-secondary">${inv.usedCount}/${inv.maxUses || '∞'} uses</span>
@@ -127,7 +132,7 @@ export function renderHouseholdView(household, members, invites) {
     <div class="mt-2">
       <button type="button" class="btn btn-sm btn-primary" data-action="create-invite">New tracked link</button>
     </div>
-    ${invites && invites.length ? `<h4 class="mt-3">Active Invites</h4><ul class="member-list">${inviteList}</ul><div class="auth-divider"></div>` : ''}
+    ${invites && invites.length ? `<h4 class="mt-3">Active Invites</h4><ul class="invite-list">${inviteList}</ul><div class="auth-divider"></div>` : ''}
     <h4 class="mt-3">Members</h4>
     <ul class="member-list">${memberList}</ul>
     <div class="mt-3">

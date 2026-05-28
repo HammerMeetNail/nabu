@@ -19,7 +19,7 @@ import {
   renderForgotPasswordView,
   renderResetPasswordView,
 } from "./auth.js";
-import { loadHousehold, createHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, renderHouseholdView, renderJoinView } from "./household.js?v=2";
+import { loadHousehold, createHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, renderHouseholdView, renderJoinView } from "./household.js?v=2";
 import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, loadMoreHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
 import { renderStatsView, loadOverview } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
@@ -497,9 +497,9 @@ function renderSettingsView() {
   `;
 
   if (!hh) {
-    return `<div class="settings-view">${renderHouseholdView(null)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}<button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div></div>`;
+    return `<div class="settings-view">${renderHouseholdView(null, null, null, state.user)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}<button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div></div>`;
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}<button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div>${statsHTML}</div>`;
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}<button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div>${statsHTML}</div>`;
 }
 
 async function loadStatsData() {
@@ -1099,6 +1099,24 @@ export async function init() {
           render(app);
         });
         break;
+      case "remove-member": {
+        e.preventDefault();
+        const userId = parseInt(actionEl.dataset.userId, 10);
+        const member = (state.members || []).find(m => m.userId === userId);
+        const name = member ? (member.displayName || member.email) : "this member";
+        // eslint-disable-next-line no-alert
+        if (!confirm(`Remove ${name} from this household?`)) break;
+        removeMember(userId).then(async (data) => {
+          if (data.status === "removed") {
+            await loadHouseholdData();
+            render(app);
+            showToast(`${name} removed`, "info");
+          } else {
+            showToast(data.error || "Failed to remove member", "error");
+          }
+        }).catch(() => showToast("Failed to remove member", "error"));
+        break;
+      }
       case "log-chore": {
         e.preventDefault();
         const choreId = parseInt(actionEl.dataset.choreId, 10);
