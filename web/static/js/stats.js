@@ -283,11 +283,16 @@ function renderChoreStatsList(choreStats, choreMap) {
       </div>`);
     }
 
-    if (detailParts.length > 0) {
+    const expandable = detailParts.length > 0;
+    if (expandable) {
       detailHTML = `<div class="chore-stat-details">${detailParts.join("")}</div>`;
     }
 
-    return `<details class="chore-stat-card">
+    const chevron = expandable
+      ? `<svg class="chore-stat-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>`
+      : "";
+
+    return `<details class="chore-stat-card"${expandable ? "" : " open"}>
       <summary class="chore-stat-summary">
         <span class="chore-stat-icon">${icon}</span>
         <span class="chore-stat-name">${escapeHTML(cs.choreName)}</span>
@@ -295,6 +300,7 @@ function renderChoreStatsList(choreStats, choreMap) {
           <span class="chore-stat-week">${totalThisWeek}/wk</span>
           <span class="chore-stat-month">${totalThisMonth}/mo</span>
         </span>
+        ${chevron}
       </summary>
       ${detailHTML}
     </details>`;
