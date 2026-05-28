@@ -82,7 +82,7 @@ test.describe('SW Update Reload', () => {
     await expect(page.locator('.chores-view')).toBeVisible({ timeout: 5000 });
 
     await page.click('[data-nav="activity"]');
-    await expect(page.locator('.today-view')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('.day-view')).toBeVisible({ timeout: 5000 });
 
     await page.click('[data-nav="today"]');
     await expect(page.locator('.home-grid')).toBeVisible({ timeout: 5000 });
