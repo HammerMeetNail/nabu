@@ -583,11 +583,15 @@ input:focus, select:focus, textarea:focus {
 }
 
 /* Member List */
-.member-list {
+.member-list,
+.invite-list,
+.stat-list {
   list-style: none;
 }
 
-.member-item {
+.member-item,
+.invite-item,
+.stat-item {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -596,7 +600,9 @@ input:focus, select:focus, textarea:focus {
   font-size: 14px;
 }
 
-.member-item:last-child { border-bottom: none; }
+.member-item:last-child,
+.invite-item:last-child,
+.stat-item:last-child { border-bottom: none; }
 
 .hist-table { display: none; } /* replaced by hist-group/hist-row */
 

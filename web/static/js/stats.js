@@ -46,7 +46,7 @@ export function renderStatsView(state) {
     const name = member ? (member.displayName || member.email) : `User ${entry.userId}`;
     const initial = name.charAt(0).toUpperCase();
     const color = member ? member.avatarColor : "#19323C";
-    return `<li class="member-item">
+    return `<li class="stat-item">
       <span class="avatar-circle-sm" style="background:${color}">${initial}</span>
       <span>${escapeHTML(name)}</span>
       <span class="text-secondary">${entry.count} chores</span>
@@ -77,7 +77,7 @@ export function renderStatsView(state) {
 
     <div class="card mb-3">
       <h3>Leaderboard</h3>
-      <ul class="member-list">${lbItems}</ul>
+      <ul class="stat-list">${lbItems}</ul>
     </div>
 
     <div class="card mb-3">
