@@ -387,3 +387,75 @@ describe("Calendar: renderDayView", () => {
   });
 });
 
+// ─── Service Worker update toast ──────────────────────────────────────────────
+
+describe("Service Worker: update toast", () => {
+  it("shows toast on controllerchange when previously controlled", async () => {
+    // Simulate the controllerchange listener pattern from init().
+    // Set up navigator.serviceWorker with a controller already active,
+    // fire controllerchange, and verify the toast DOM is created.
+    const ctors = [];
+    const container = dom.window.document.createElement("div");
+    container.id = "toast-container";
+    dom.window.document.body.appendChild(container);
+
+    globalThis.navigator.serviceWorker = {
+      controller: { state: "activated" },
+      addEventListener: (type, fn) => { ctors.push(fn); },
+      register: async () => ({ update: async () => {} }),
+    };
+
+    let hadController = !!navigator.serviceWorker.controller;
+    let swRefreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (swRefreshing) return;
+      if (!hadController) { hadController = true; return; }
+      const toast = dom.window.document.createElement("div");
+      toast.className = "toast toast-info sw-update-toast";
+      toast.textContent = "App updated";
+      container.appendChild(toast);
+    });
+
+    // First fire: page was already controlled → toast shows immediately
+    ctors[0]();
+    assert.equal(container.children.length, 1);
+    assert.equal(container.children[0].textContent, "App updated");
+
+    // Clean up and simulate another controllerchange (subsequent deploy)
+    container.innerHTML = "";
+    ctors[0]();
+    assert.equal(container.children.length, 1);
+  });
+
+  it("does not show toast on first-ever controller activation", async () => {
+    const ctors = [];
+    const container = dom.window.document.createElement("div");
+    container.id = "toast-container";
+    dom.window.document.body.appendChild(container);
+
+    globalThis.navigator.serviceWorker = {
+      controller: null, // no controller yet (fresh load)
+      addEventListener: (type, fn) => { ctors.push(fn); },
+      register: async () => ({ update: async () => {} }),
+    };
+
+    let hadController = !!navigator.serviceWorker.controller;
+    let swRefreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (swRefreshing) return;
+      if (!hadController) { hadController = true; return; }
+      const toast = dom.window.document.createElement("div");
+      toast.textContent = "App updated";
+      container.appendChild(toast);
+    });
+
+    // First fire: no controller at init → skip and set hadController
+    ctors[0]();
+    assert.equal(container.children.length, 0);
+
+    // Second fire: now hadController is true → should show toast
+    ctors[0]();
+    assert.equal(container.children.length, 1);
+  });
+});
+

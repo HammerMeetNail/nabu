@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/fstest"
 
 	"github.com/dave/choresy/internal/config"
 )
@@ -132,6 +133,36 @@ func TestMethodWrapperEnforcesHTTPVerb(t *testing.T) {
 
 	if rec.Code != http.StatusMethodNotAllowed {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusMethodNotAllowed)
+	}
+}
+
+func TestBuildVersionedSWInjectsVersion(t *testing.T) {
+	// Use a MapFS to simulate the embedded service-worker.js without relying
+	// on the real //go:embed FS (which only works at build time).
+	swSource := []byte(`const CACHE_NAME = "choresy-static-v1";`)
+	fsys := fstest.MapFS{
+		"service-worker.js": {Data: swSource},
+	}
+
+	// buildVersionedSW should replace "v1" with the given version.
+	result := buildVersionedSW(fsys, "0.1.99")
+	expected := `const CACHE_NAME = "choresy-static-0.1.99";`
+	if string(result) != expected {
+		t.Fatalf("got  %q\nwant %q", string(result), expected)
+	}
+}
+
+func TestBuildVersionedSWHandlesArbitraryBaseVersion(t *testing.T) {
+	// The regex must match any numeric base version (v1, v2, v99, etc.)
+	// so a future source change doesn't silently break version injection.
+	swSource := []byte(`const CACHE_NAME = "choresy-static-v99";`)
+	fsys := fstest.MapFS{
+		"service-worker.js": {Data: swSource},
+	}
+	result := buildVersionedSW(fsys, "2.0.0")
+	expected := `const CACHE_NAME = "choresy-static-2.0.0";`
+	if string(result) != expected {
+		t.Fatalf("got  %q\nwant %q", string(result), expected)
 	}
 }
 

@@ -455,7 +455,7 @@ func buildVersionedJSCache(fsys fs.FS, ver string) map[string][]byte {
 	return cache
 }
 
-var swCacheNameRE = regexp.MustCompile(`("choresy-static-)v1(")`)
+var swCacheNameRE = regexp.MustCompile(`("choresy-static-)v\d+(")`)
 
 func buildVersionedSW(fsys fs.FS, ver string) []byte {
 	raw, err := fs.ReadFile(fsys, "service-worker.js")

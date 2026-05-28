@@ -811,26 +811,14 @@ export async function init() {
 
   state.googleOAuthEnabled = document.body?.dataset?.googleOauthEnabled === "true";
 
-  try {
-    state.user = await loadSession();
-  } catch {
-    state.user = null;
-  }
-
-  if (state.user) {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/service-worker.js').then(reg => {
-        window.__swReg = reg;
-      }).catch(() => {});
-    }
-    maybeSubscribePush().catch(() => {});
-  }
-
-  // When a new service worker takes control (after skipWaiting), show a
-  // refresh prompt so the user gets the latest app version without needing
-  // to manually close and reopen.  Only fire when the page was already
-  // controlled — not on the first-ever activation.
+  // Register the service worker and set up the controllerchange listener early,
+  // before any async work, so the "App updated" toast fires reliably on every
+  // deploy regardless of session-load timing.
   if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/service-worker.js').then(reg => {
+      window.__swReg = reg;
+    }).catch(() => {});
+
     let hadController = !!navigator.serviceWorker.controller;
     let swRefreshing = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -854,15 +842,24 @@ export async function init() {
       toast.appendChild(label);
       toast.appendChild(btn);
       container.appendChild(toast);
-      // Auto-remove after 30 seconds if not dismissed.
       setTimeout(() => { if (!swRefreshing) toast.remove(); }, 30000);
     });
 
-    // Also poll for updates every 5 minutes as a fallback, in case the user
+    // Poll for updates every 5 minutes as a fallback, in case the user
     // leaves the app open on a single view without navigating.
     setInterval(() => {
       if (window.__swReg) window.__swReg.update().catch(() => {});
     }, 300000);
+  }
+
+  try {
+    state.user = await loadSession();
+  } catch {
+    state.user = null;
+  }
+
+  if (state.user) {
+    maybeSubscribePush().catch(() => {});
   }
 
   const app = document.querySelector("#app");
