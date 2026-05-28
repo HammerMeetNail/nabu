@@ -64,7 +64,8 @@ test.describe('Navigation Tabs: Positioning', () => {
     await setupWithChores(page);
 
     // Navigate to Calendar
-    await page.click('[data-nav="calendar"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="day"]');
     await expect(page.locator('.cal-date')).toBeVisible({ timeout: 10000 });
 
     const result = await tabsBottomGap(page);
@@ -76,7 +77,8 @@ test.describe('Navigation Tabs: Positioning', () => {
     await setupWithChores(page);
 
     // Navigate away and back
-    await page.click('[data-nav="calendar"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="day"]');
     await page.waitForSelector('.cal-date', { timeout: 10000 });
     await page.click('[data-nav="today"]');
     await expect(page.locator('.home-grid')).toBeVisible({ timeout: 5000 });

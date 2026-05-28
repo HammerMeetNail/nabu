@@ -129,6 +129,7 @@ export function renderDayView(state) {
           data-action="navigate-day" data-date="${next}" aria-label="Next day">→</button>
       </div>
       <div class="view-tabs">
+        <button type="button" class="view-tab" data-action="switch-view" data-view="history">History</button>
         <button type="button" class="view-tab view-tab--active" data-action="switch-view" data-view="day">Day</button>
         <button type="button" class="view-tab" data-action="switch-view" data-view="week">Week</button>
       </div>
@@ -302,6 +303,7 @@ export function renderWeekView(state) {
           data-action="navigate-week" data-date="${nextWeek}" aria-label="Next week">→</button>
       </div>
       <div class="view-tabs">
+        <button type="button" class="view-tab" data-action="switch-view" data-view="history">History</button>
         <button type="button" class="view-tab" data-action="switch-view" data-view="day">Day</button>
         <button type="button" class="view-tab view-tab--active" data-action="switch-view" data-view="week">Week</button>
       </div>

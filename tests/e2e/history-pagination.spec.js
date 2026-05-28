@@ -68,7 +68,7 @@ test.describe('History: Reverse-chronological order', () => {
     });
 
     // Navigate to history tab
-    await page.click('[data-nav="history"]');
+    await page.click('[data-nav="activity"]');
     await page.waitForSelector('.history-view', { timeout: 10000 });
     await page.waitForSelector('.hist-row', { timeout: 10000 });
 
@@ -109,7 +109,7 @@ test.describe('History: Reverse-chronological order', () => {
     });
 
     // Navigate to history tab
-    await page.click('[data-nav="history"]');
+    await page.click('[data-nav="activity"]');
     await page.waitForSelector('.history-view', { timeout: 10000 });
     await page.waitForSelector('.hist-row', { timeout: 10000 });
 
@@ -155,7 +155,7 @@ test.describe('History: Reverse-chronological order', () => {
     });
 
     // Navigate to history tab
-    await page.click('[data-nav="history"]');
+    await page.click('[data-nav="activity"]');
     await page.waitForSelector('.history-view', { timeout: 10000 });
     await page.waitForSelector('.hist-row', { timeout: 10000 });
 

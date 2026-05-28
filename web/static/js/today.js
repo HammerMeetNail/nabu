@@ -138,7 +138,11 @@ export function renderHistoryView(state) {
   const logs = state.historyLogs || [];
   if (logs.length === 0) {
     return `<div class="history-view">
-      <h2>History</h2>
+      <div class="view-tabs">
+        <button type="button" class="view-tab view-tab--active" data-action="switch-view" data-view="history">History</button>
+        <button type="button" class="view-tab" data-action="switch-view" data-view="day">Day</button>
+        <button type="button" class="view-tab" data-action="switch-view" data-view="week">Week</button>
+      </div>
       <p class="text-secondary">No completed chores yet.</p>
     </div>`;
   }
@@ -257,7 +261,11 @@ export function renderHistoryView(state) {
     : '';
 
   return `<div class="history-view">
-    <h2>History</h2>
+    <div class="view-tabs">
+      <button type="button" class="view-tab view-tab--active" data-action="switch-view" data-view="history">History</button>
+      <button type="button" class="view-tab" data-action="switch-view" data-view="day">Day</button>
+      <button type="button" class="view-tab" data-action="switch-view" data-view="week">Week</button>
+    </div>
     ${html}
     ${loadMore}
   </div>`;

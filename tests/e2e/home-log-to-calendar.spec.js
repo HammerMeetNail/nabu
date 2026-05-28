@@ -105,7 +105,8 @@ test.describe('Home tab log → calendar visibility', () => {
     const choreName = await firstCard.locator('.home-card-name').innerText();
     await logChoreViaSheet(page, firstCard);
 
-    await page.click('[data-nav="calendar"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="day"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     const hourRowCard = page.locator('[data-drop-hour="8"] .chore-card');
@@ -134,7 +135,8 @@ test.describe('Home tab log → calendar visibility', () => {
     await page.locator('[data-action="save-log"]').click();
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
-    await page.click('[data-nav="calendar"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="day"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     const slotCards = page.locator('[data-drop-hour="14"] .chore-card--done');
@@ -160,7 +162,8 @@ test.describe('Home tab log → calendar visibility', () => {
     await page.locator('[data-action="save-log"]').click();
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
-    await page.click('[data-nav="calendar"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="day"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
     await page.click('[data-action="switch-view"][data-view="week"]');
     await page.waitForSelector('.week-view', { timeout: 5000 });

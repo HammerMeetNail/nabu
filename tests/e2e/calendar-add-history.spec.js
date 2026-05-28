@@ -27,7 +27,8 @@ async function setupWithChores(page) {
   });
 
   await page.reload();
-  await page.click('[data-nav="calendar"]');
+  await page.click('[data-nav="activity"]');
+  await page.click('[data-action="switch-view"][data-view="day"]');
   await page.waitForSelector('.cal-date', { timeout: 15000 });
 }
 
@@ -48,7 +49,8 @@ test.describe('Calendar add writes history', () => {
     await expect(doneCards).toHaveCount(1);
     await expect(doneCards.first().locator('.chore-name')).toContainText(choreName);
 
-    await page.click('[data-nav="history"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="history"]');
     await page.waitForSelector('.history-view', { timeout: 10000 });
     await expect(page.locator('.hist-row')).toHaveCount(1);
     await expect(page.locator('.hist-row .hist-name').first()).toContainText(choreName);

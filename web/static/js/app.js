@@ -97,7 +97,7 @@ export function render(root) {
   const route = state.currentRoute || window.location.pathname || "/";
   // Effective route for tab highlighting: unknown/auth-only paths fall back to
   // home ("/") so the "today" tab is always active when the home grid renders.
-  const knownTabRoutes = ["/", "/today", "/calendar", "/schedule", "/chores", "/history", "/settings", "/stats"];
+  const knownTabRoutes = ["/", "/today", "/activity", "/schedule", "/chores", "/settings", "/stats"];
   const tabRoute = knownTabRoutes.includes(route) ? route : "/";
   let html = "";
 
@@ -164,17 +164,14 @@ export function render(root) {
       case "/today":
         html = renderHomeViewWrapper();
         break;
-      case "/calendar":
-        html = renderCalendarView();
+      case "/activity":
+        html = renderActivityView();
         break;
       case "/schedule":
         html = renderScheduleView();
         break;
       case "/chores":
         html = renderChoresView();
-        break;
-      case "/history":
-        html = renderHistoryView();
         break;
       case "/settings":
       case "/stats":
@@ -245,6 +242,25 @@ function renderChoresView() {
   return mainView;
 }
 
+function renderActivityView() {
+  const chores = state.chores || [];
+  if (!state.household && state.user) {
+    return `<div class="card mt-3"><h2>Welcome!</h2>
+      <p>Hi ${escapeHTML(state.user.email || '')}! Set up your household to get started.</p>
+      <a class="btn btn-primary mt-2" href="#" data-nav="settings">Set Up Household</a></div>`;
+  }
+  if (chores.length === 0) {
+    return `<div class="today-view"><h2>Activity</h2>
+    <div class="empty-state"><div class="empty-state-icon">🏠</div>
+    <div class="empty-state-title">No chores set up yet</div>
+    <p>Add chores via settings or the chores tab.</p></div></div>`;
+  }
+  if (state.activityView === "history") {
+    return renderHistoryView();
+  }
+  return renderCalendarView();
+}
+
 function renderHistoryView() {
   const mainView = renderHistoryPage(state);
   if (state.activeSheet === "log") {
@@ -312,7 +328,9 @@ function renderCalendarView() {
     ? renderWeekView(state)
     : renderDayView(state);
 
-  const fab = `<button type="button" class="fab" data-action="open-quick-log" aria-label="Log a chore">+</button>`;
+  // TODO: reinstate FAB when quick-log is needed from Activity tab
+  // const fab = `<button type="button" class="fab" data-action="open-quick-log" aria-label="Log a chore">+</button>`;
+  const fab = "";
 
   if (state.activeSheet === "pick-chore") {
     const sheetHTML = renderPickChoreSheet(
@@ -901,25 +919,23 @@ export async function init() {
       if (state.currentRoute === "/settings") {
         state._loadedHousehold = true;
       }
-      if (state.currentRoute === "/history") {
-        loadHistory().then(data => {
-          state.historyLogs = data.logs || [];
-          state.historyHasMore = data.hasMore;
-          state.historyBefore = data.start || null;
+      if (state.currentRoute === "/activity") {
+        if (state.activityView === "history") {
+          loadHistory().then(data => {
+            state.historyLogs = data?.logs || [];
+            state.historyHasMore = data?.hasMore || false;
+            state.historyBefore = data?.start || null;
+            render(app);
+          }).catch(() => render(app));
+        } else {
           render(app);
-        });
+          (state.calendarView === "week" ? loadWeekData() : loadTodayData())
+            .then(() => render(app));
+        }
         return;
       }
       if (state.currentRoute === "/today") {
         loadLatestLogsData().then(() => render(app));
-        return;
-      }
-      // Navigating to the calendar tab: always refresh log data so that chores
-      // logged from the home tab (or any other source) are immediately visible.
-      if (state.currentRoute === "/calendar") {
-        render(app); // render immediately with current state (shows skeleton)
-        (state.calendarView === "week" ? loadWeekData() : loadTodayData())
-          .then(() => render(app));
         return;
       }
       if (state.currentRoute === "/schedule") {
@@ -1243,11 +1259,21 @@ export async function init() {
 
       case "switch-view":
         e.preventDefault();
-        state.calendarView = actionEl.dataset.view;
-        if (state.calendarView === "week") {
-          loadWeekData().then(() => render(app));
+        state.activityView = actionEl.dataset.view;
+        if (state.activityView === "history") {
+          loadHistory().then(data => {
+            state.historyLogs = data?.logs || [];
+            state.historyHasMore = data?.hasMore || false;
+            state.historyBefore = data?.start || null;
+            render(app);
+          }).catch(() => render(app));
         } else {
-          loadTodayData().then(() => render(app));
+          state.calendarView = state.activityView;
+          if (state.calendarView === "week") {
+            loadWeekData().then(() => render(app));
+          } else {
+            loadTodayData().then(() => render(app));
+          }
         }
         break;
 
@@ -2186,12 +2212,18 @@ async function loadWeekData() {
 }
 
 async function reloadViewData() {
-  if (state.currentRoute === "/history") {
-    try {
-      const data = await loadHistory();
-      state.historyLogs = data?.logs || [];
-      state.historyHasMore = data?.hasMore || false;
-    } catch {}
+  if (state.currentRoute === "/activity") {
+    if (state.activityView === "history") {
+      try {
+        const data = await loadHistory();
+        state.historyLogs = data?.logs || [];
+        state.historyHasMore = data?.hasMore || false;
+      } catch {}
+    } else if (state.calendarView === "week") {
+      await loadWeekData();
+    } else {
+      await loadTodayData();
+    }
   } else if (state.currentRoute === "/schedule") {
     try {
       await loadChoreData();

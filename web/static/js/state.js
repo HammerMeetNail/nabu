@@ -10,6 +10,7 @@ export function createAppState() {
     notifications: [],
     unreadNotifications: 0,
     schedules: [],
+    activityView: "history",
     calendarView: "day",
     calendarDate: null,    // null = use today
     weekLogs: [],
@@ -32,6 +33,7 @@ export function resetAuthedState(state) {
   state.members = [];
   state.invites = [];
   state.schedules = [];
+  state.activityView = "history";
   state.calendarView = "day";
   state.calendarDate = null;
   state.weekLogs = [];
