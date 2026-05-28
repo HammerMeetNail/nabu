@@ -224,6 +224,10 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 func (h *LogHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
+		return
+	}
 
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -232,7 +236,7 @@ func (h *LogHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.UndoLog(r.Context(), user.ID, id); err != nil {
+	if err := h.service.UndoLog(r.Context(), *user.HouseholdID, id); err != nil {
 		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}

@@ -1119,8 +1119,10 @@ export async function init() {
           render(app);
         }).catch((err) => {
           console.error('undo-chore failed:', err);
-          showToast(err.message || "Failed to remove log", "error");
+          state.activeSheet     = null;
+          state.activeSheetData = {};
           reloadViewData().then(() => render(app));
+          showToast(err.message || "Failed to remove log", "error");
         });
         break;
       case "view-log": {

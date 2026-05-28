@@ -76,13 +76,13 @@ func (s *Service) UpdateLog(ctx context.Context, logID int64, note string, indic
 	return s.store.UpdateLog(ctx, log)
 }
 
-func (s *Service) UndoLog(ctx context.Context, userID, logID int64) error {
+func (s *Service) UndoLog(ctx context.Context, householdID, logID int64) error {
 	log, err := s.store.GetLog(ctx, logID)
 	if err != nil {
 		return err
 	}
-	if log.UserID != userID {
-		return errors.New("can only undo your own logs")
+	if log.HouseholdID != householdID {
+		return errors.New("can only undo logs in your own household")
 	}
 	return s.store.DeleteLog(ctx, logID)
 }
