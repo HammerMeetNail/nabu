@@ -191,4 +191,53 @@ test.describe("Stats tab", () => {
       "settings",
     ]);
   });
+
+  test("expandable chore sections show chevron that rotates on open", async ({
+    page,
+  }) => {
+    const { chores, csrf } = await setupWithChores(page);
+
+    const feedBaby = chores.find((c) => c.name === "Feed Baby");
+    if (feedBaby) {
+      await postLog(page, csrf, feedBaby.id, {
+        indicators: ["🍼 formula"],
+        hour: 8,
+        volumeML: 120,
+      });
+    }
+    const changeBaby = chores.find((c) => c.name === "Change Baby");
+    if (changeBaby) {
+      await postLog(page, csrf, changeBaby.id, {
+        indicators: ["💩 poo"],
+        hour: 9,
+      });
+    }
+
+    await page.click("a[data-nav=\"stats\"]");
+    await page.waitForSelector(".stats-page", { timeout: 10000 });
+
+    const feedBabyChevron = page.locator(
+      ".chore-stat-summary:has(.chore-stat-name:text-is(\"Feed Baby\")) .chore-stat-chevron"
+    );
+    await expect(feedBabyChevron).toBeVisible({ timeout: 5000 });
+
+    const changeBabyChevron = page.locator(
+      ".chore-stat-summary:has(.chore-stat-name:text-is(\"Change Baby\")) .chore-stat-chevron"
+    );
+    await expect(changeBabyChevron).toBeVisible({ timeout: 5000 });
+
+    // Non-indicator, non-volume chores should not have a chevron
+    const takeTrash = chores.find((c) => c.name === "Take Out Trash");
+    if (takeTrash) {
+      await postLog(page, csrf, takeTrash.id, { hour: 10 });
+    }
+    await page.reload();
+    await page.click("a[data-nav=\"stats\"]");
+    await page.waitForSelector(".stats-page", { timeout: 10000 });
+
+    const trashChevron = page.locator(
+      ".chore-stat-summary:has(.chore-stat-name:text-is(\"Take Out Trash\")) .chore-stat-chevron"
+    );
+    await expect(trashChevron).toHaveCount(0);
+  });
 });
