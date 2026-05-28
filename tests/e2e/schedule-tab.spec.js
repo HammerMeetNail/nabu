@@ -48,15 +48,15 @@ async function setupWithSchedules(page) {
 }
 
 test.describe('Schedule Tab', () => {
-  test('Schedule tab is present in bottom nav between Calendar and Home', async ({ page }) => {
+  test('Schedule tab is present in bottom nav between Activity and Home', async ({ page }) => {
     await setupWithSchedules(page);
     await page.waitForSelector('#bottom-tabs', { timeout: 5000 });
 
     const tabs = page.locator('#bottom-tabs .tab-item');
-    await expect(tabs).toHaveCount(6);
+    await expect(tabs).toHaveCount(5);
 
     const labels = await tabs.locator('span').allInnerTexts();
-    expect(labels).toEqual(['Chores', 'Calendar', 'Schedule', 'Home', 'History', 'Settings']);
+    expect(labels).toEqual(['Chores', 'Activity', 'Schedule', 'Home', 'Settings']);
   });
 
   test('navigating to Schedule tab shows upcoming list with heading', async ({ page }) => {

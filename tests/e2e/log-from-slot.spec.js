@@ -38,7 +38,8 @@ async function setupWithChores(page) {
   });
 
   await page.reload();
-  await page.click('[data-nav=\"calendar\"]');
+  await page.click('[data-nav="activity"]');
+  await page.click('[data-action="switch-view"][data-view="day"]');
   await page.waitForSelector('.cal-date', { timeout: 15000 });
 
   return { email, csrf };
@@ -134,7 +135,8 @@ test.describe('Log from time slot', () => {
     // Reload and confirm the chore appears in the Anytime row (not in any
     // timed hour row), since it has no slotHour and no schedule.
     await page.reload();
-    await page.click('[data-nav=\"calendar\"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="day"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
     await expect(page.locator('.day-hour-row .chore-card')).toHaveCount(0);
     await expect(page.locator('.day-anytime-row .chore-card')).toHaveCount(1);
@@ -248,7 +250,8 @@ test.describe('Log from time slot', () => {
     });
 
     await page.reload();
-    await page.click('[data-nav=\"calendar\"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="day"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     const testHourNum = parseInt(testHour.split(':')[0], 10);
@@ -289,7 +292,8 @@ test.describe('Log from time slot', () => {
     });
 
     await page.reload();
-    await page.click('[data-nav=\"calendar\"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="day"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     // Switch to week view.

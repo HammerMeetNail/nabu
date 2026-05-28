@@ -243,7 +243,8 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     // Wait for household creation to finish and home grid to appear before
     // navigating to calendar (avoids race with doCreateHousehold's final render).
     await page.waitForSelector('.home-grid', { timeout: 15000 });
-    await page.click('[data-nav="calendar"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="day"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     // Schedule the first chore at 08:00 so a card is visible in the day view
@@ -254,7 +255,8 @@ test.describe('Exhaustive: Authenticated Flow', () => {
       headers: { 'X-CSRF-Token': csrf2 },
     });
     await page.reload();
-    await page.click('[data-nav="calendar"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="day"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     await expect(page.locator('.chore-card').first()).toBeVisible({ timeout: 8000 });
@@ -331,11 +333,12 @@ test.describe('Exhaustive: Authenticated Flow', () => {
       await page.waitForTimeout(500);
     }
 
-    // === Navigate to History ===
-    await page.click('a[data-nav="history"]');
+    // === Navigate to Activity (history view is default) ===
+    await page.click('a[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="history"]');
     await page.waitForTimeout(700);
-    await expect(page.locator('.history-view')).toBeVisible({ timeout: 3000 });
-    await expect(page.locator('h2:has-text("History")')).toBeVisible();
+    await expect(page.locator('.history-view')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.view-tabs')).toBeVisible();
 
     // === Navigate to Chores List ===
     await page.click('a[data-nav="chores"]');
@@ -436,9 +439,8 @@ test.describe('Exhaustive: SPA-only Navigation', () => {
 
     // Verify each tab click changes the view
     const tabs = [
-      { nav: 'history', check: () => page.locator('.history-view').isVisible() },
+      { nav: 'activity', check: () => page.locator('.history-view').isVisible() },
       { nav: 'chores', check: () => page.locator('h2:has-text("Chores")').isVisible() },
-      { nav: 'calendar', check: () => page.locator('.cal-date').isVisible() },
       { nav: 'schedule', check: () => page.locator('.schedule-view').isVisible() },
       { nav: 'settings', check: () => page.locator('.settings-view').isVisible() },
       { nav: 'today', check: () => page.locator('.home-grid').isVisible() },

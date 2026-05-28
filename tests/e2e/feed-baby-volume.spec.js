@@ -98,7 +98,7 @@ test.describe('Feed Baby volume picker', () => {
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
-    await page.click('[data-nav="history"]');
+    await page.click('[data-nav="activity"]');
     await page.waitForSelector('.history-view', { timeout: 10000 });
 
     const meta = page.locator('.hist-meta').first();
@@ -120,7 +120,8 @@ test.describe('Feed Baby volume picker', () => {
   test('calendar log sheet shows volume picker for Feed Baby', async ({ page }) => {
     const { feedBaby } = await setupWithChores(page);
 
-    await page.click('[data-nav="calendar"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="day"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     // Schedule Feed Baby at 10 AM so we have a card to long-press.
@@ -130,7 +131,8 @@ test.describe('Feed Baby volume picker', () => {
       headers: { 'X-CSRF-Token': csrf },
     });
     await page.reload();
-    await page.click('[data-nav="calendar"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="day"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     // Long-press the scheduled card to open the log sheet.
@@ -152,7 +154,8 @@ test.describe('Feed Baby volume picker', () => {
   test('calendar log sheet saves volumeML via API', async ({ page }) => {
     const { feedBaby } = await setupWithChores(page);
 
-    await page.click('[data-nav="calendar"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="day"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     const csrf = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
@@ -161,7 +164,8 @@ test.describe('Feed Baby volume picker', () => {
       headers: { 'X-CSRF-Token': csrf },
     });
     await page.reload();
-    await page.click('[data-nav="calendar"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="day"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     const card = page.locator('[data-drop-hour="10"] .chore-card').first();
@@ -269,7 +273,8 @@ test.describe('Feed Baby volume picker', () => {
     // Go to calendar and long-press the scheduled card
     await page.reload();
     await page.waitForSelector('.home-grid', { timeout: 15000 });
-    await page.click('[data-nav="calendar"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="day"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     const card = page.locator('[data-drop-hour="10"] .chore-card').first();
@@ -445,7 +450,7 @@ test.describe('History indicator icons', () => {
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     // Navigate to history
-    await page.click('[data-nav="history"]');
+    await page.click('[data-nav="activity"]');
     await page.waitForSelector('.history-view', { timeout: 10000 });
 
     const meta = page.locator('.hist-meta').first();
@@ -482,7 +487,7 @@ test.describe('History indicator icons', () => {
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     // Navigate to history
-    await page.click('[data-nav="history"]');
+    await page.click('[data-nav="activity"]');
     await page.waitForSelector('.history-view', { timeout: 10000 });
 
     const meta = page.locator('.hist-meta').first();
@@ -504,7 +509,7 @@ test.describe('History indicator icons', () => {
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
-    await page.click('[data-nav="history"]');
+    await page.click('[data-nav="activity"]');
     await page.waitForSelector('.history-view', { timeout: 10000 });
 
     const meta = page.locator('.hist-meta').first();

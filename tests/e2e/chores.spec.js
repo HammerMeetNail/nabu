@@ -38,7 +38,8 @@ async function setupWithChores(page) {
   });
 
   await page.reload();
-  await page.click('[data-nav=\"calendar\"]');
+  await page.click('[data-nav="activity"]');
+  await page.click('[data-action="switch-view"][data-view="day"]');
   await page.waitForSelector('.cal-date', { timeout: 15000 });
 
   return { email, csrf };
@@ -282,7 +283,8 @@ test.describe('Drag and Drop: Week View', () => {
     const scheduleId = (await createResp.json()).schedule.id;
 
     await page.reload();
-    await page.click('[data-nav=\"calendar\"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="day"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     await page.locator('.view-tab[data-view="week"]').click();

@@ -137,7 +137,7 @@ test.describe('Log member attribution', () => {
     expect(ourLog.userId).toBe(memberId);
 
     // ── Test: edit the log from history and change the member back ──────
-    await ownerPage.locator('[data-nav="history"]').click();
+    await ownerPage.locator('[data-nav="activity"]').click();
     await ownerPage.waitForSelector('.hist-row', { timeout: 10000 });
 
     // Tap the history row to open the edit sheet.
@@ -176,7 +176,8 @@ test.describe('Log member attribution', () => {
     });
 
     // Navigate to calendar day view.
-    await ownerPage.locator('[data-nav="calendar"]').click();
+    await ownerPage.locator('[data-nav="activity"]').click();
+    await ownerPage.locator('[data-action="switch-view"][data-view="day"]').click();
     await ownerPage.waitForSelector('.day-hour-grid', { timeout: 10000 });
 
     // Tap an hour label to open the pick-chore sheet.

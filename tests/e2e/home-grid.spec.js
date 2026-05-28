@@ -85,7 +85,7 @@ test.describe('Home Grid: Rendering', () => {
     const todayTab = page.locator('.tab-item[data-nav="today"]');
     await expect(todayTab).toHaveClass(/active/);
 
-    const calTab = page.locator('.tab-item[data-nav="calendar"]');
+    const calTab = page.locator('.tab-item[data-nav="activity"]');
     await expect(calTab).not.toHaveClass(/active/);
   });
 
@@ -343,7 +343,8 @@ test.describe('Home Grid: Tab Navigation', () => {
   test('Calendar tab navigates to the calendar view (.cal-date visible)', async ({ page }) => {
     await setupWithChores(page);
 
-    await page.click('[data-nav="calendar"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="day"]');
     await expect(page.locator('.cal-date')).toBeVisible({ timeout: 10000 });
   });
 
@@ -351,7 +352,8 @@ test.describe('Home Grid: Tab Navigation', () => {
     await setupWithChores(page);
 
     // Navigate to calendar
-    await page.click('[data-nav="calendar"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="day"]');
     await page.waitForSelector('.cal-date', { timeout: 10000 });
 
     // Navigate back

@@ -212,7 +212,7 @@ test.describe('Fix 3: nav tabs are a static flex item at the page bottom', () =>
     // All six tab spans should be rendered (not display:none)
     const allVisible = await page.evaluate(() => {
       const spans = [...document.querySelectorAll('#bottom-tabs .tab-item span')];
-      return spans.length === 6 && spans.every(s => window.getComputedStyle(s).display !== 'none');
+      return spans.length === 5 && spans.every(s => window.getComputedStyle(s).display !== 'none');
     });
 
     expect(allVisible).toBe(true);
@@ -225,13 +225,13 @@ test.describe('Fix 3: nav tabs are a static flex item at the page bottom', () =>
       return [...document.querySelectorAll('#bottom-tabs .tab-item')].map(el => el.dataset.nav);
     });
 
-    expect(order).toEqual(['chores', 'calendar', 'schedule', 'today', 'history', 'settings']);
+    expect(order).toEqual(['chores', 'activity', 'schedule', 'today', 'settings']);
   });
 
   test('all six nav icon buttons are visible after login', async ({ page }) => {
     await setupWithChores(page);
 
-    const navItems = ['today', 'chores', 'calendar', 'schedule', 'history', 'settings'];
+    const navItems = ['today', 'chores', 'activity', 'schedule', 'settings'];
     for (const nav of navItems) {
       await expect(page.locator(`.tab-item[data-nav="${nav}"]`)).toBeVisible();
     }
@@ -244,9 +244,10 @@ test.describe('Fix 3: nav tabs are a static flex item at the page bottom', () =>
     await expect(page.locator('.tab-item[data-nav="today"]')).toHaveClass(/active/);
 
     // Navigate to calendar
-    await page.click('[data-nav="calendar"]');
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="day"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
-    await expect(page.locator('.tab-item[data-nav="calendar"]')).toHaveClass(/active/);
+    await expect(page.locator('.tab-item[data-nav="activity"]')).toHaveClass(/active/);
     await expect(page.locator('.tab-item[data-nav="today"]')).not.toHaveClass(/active/);
   });
 });
