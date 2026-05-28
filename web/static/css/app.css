@@ -860,6 +860,252 @@ input:focus, select:focus, textarea:focus {
   color: var(--text-secondary);
 }
 
+/* ─── Stats Page ──────────────────────────────────────────────────── */
+
+.stats-page {
+  padding-bottom: 16px;
+}
+
+.overview-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+.overview-card {
+  background: var(--surface);
+  border-radius: var(--radius-card);
+  padding: 12px 8px;
+  text-align: center;
+  box-shadow: var(--shadow);
+}
+
+.overview-card-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--primary);
+  line-height: 1.2;
+}
+
+.overview-card-value--small {
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.overview-card-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+/* Heatmap */
+.heatmap-grid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.heatmap-day-labels {
+  display: flex;
+  gap: 3px;
+  padding-left: 0;
+  margin-bottom: 2px;
+}
+
+.heatmap-day-label {
+  width: 12px;
+  height: 12px;
+  font-size: 9px;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.heatmap-weeks {
+  display: flex;
+  gap: 3px;
+}
+
+.heatmap-week {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.heatmap-cell {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+.heatmap-legend {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
+.heatmap-legend-cell {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+/* Busy Hours */
+.busy-hours-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.busy-hour-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.busy-hour-label {
+  width: 28px;
+  text-align: right;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.busy-hour-track {
+  flex: 1;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.busy-hour-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 3px;
+  min-width: 2px;
+}
+
+.busy-hour-count {
+  width: 20px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* Chore Stats */
+.chore-stat-card {
+  border-bottom: 1px solid var(--border);
+}
+
+.chore-stat-card:last-child {
+  border-bottom: none;
+}
+
+.chore-stat-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  cursor: pointer;
+  list-style: none;
+  font-size: 14px;
+}
+
+.chore-stat-summary::-webkit-details-marker {
+  display: none;
+}
+
+.chore-stat-icon {
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.chore-stat-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.chore-stat-counts {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.chore-stat-week {
+  color: var(--primary);
+  font-weight: 600;
+}
+
+.chore-stat-month {
+  color: var(--text-secondary);
+}
+
+.chore-stat-details {
+  padding: 0 0 12px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chore-stat-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chore-stat-detail-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ind-tag {
+  display: inline-block;
+  background: var(--bg);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  margin: 2px 4px 2px 0;
+  border: 1px solid var(--border);
+}
+
+/* Volume mini chart */
+.vol-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 44px;
+}
+
+.vol-bar-wrap {
+  flex: 1;
+  display: flex;
+  align-items: flex-end;
+  height: 100%;
+}
+
+.vol-bar {
+  width: 100%;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
+  min-height: 1px;
+}
+
 /* ─── Calendar: shared nav ─────────────────────────────────────────────────── */
 
 .cal-nav {

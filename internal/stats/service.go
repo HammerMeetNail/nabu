@@ -58,11 +58,31 @@ type choreStore interface {
 }
 
 type ChoreInfo struct {
-	ID       int64
-	Name     string
-	Icon     string
-	Color    string
-	Category string
+	ID              int64
+	Name            string
+	Icon            string
+	Color           string
+	Category        string
+	HasVolumeML     bool
+	IndicatorLabels []string
+}
+
+type ChoreStats struct {
+	ChoreID         int64          `json:"choreId"`
+	ChoreName       string         `json:"choreName"`
+	ChoreIcon       string         `json:"choreIcon"`
+	TotalThisWeek   int            `json:"totalThisWeek"`
+	TotalThisMonth  int            `json:"totalThisMonth"`
+	IndicatorCounts map[string]int `json:"indicatorCounts,omitempty"`
+	VolumeHistory   []VolumeDay    `json:"volumeHistory,omitempty"`
+	AvgVolume       *float64       `json:"avgVolume,omitempty"`
+	HasVolume       bool           `json:"hasVolume"`
+	HasIndicators   bool           `json:"hasIndicators"`
+}
+
+type VolumeDay struct {
+	Date    string `json:"date"`
+	TotalML int    `json:"totalML"`
 }
 
 func NewService(logStore log.Store, choreStore choreStore) *Service {
@@ -277,6 +297,83 @@ func wkStart(t time.Time) time.Time {
 	}
 	start := t.AddDate(0, 0, -int(wd)+1)
 	return time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
+}
+
+func (s *Service) GetChoreStats(ctx context.Context, householdID int64) ([]ChoreStats, error) {
+	now := time.Now().UTC()
+	weekStart := wkStart(now)
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	days30Start := now.AddDate(0, 0, -29)
+
+	logs, err := s.logStore.ListLogsRange(ctx, householdID, days30Start, now.AddDate(0, 0, 1))
+	if err != nil {
+		return nil, err
+	}
+
+	chores, err := s.choreStore.ListChores(ctx, householdID)
+	if err != nil {
+		return nil, err
+	}
+
+	var result []ChoreStats
+	for _, ch := range chores {
+		var weekCount, monthCount int
+		indicatorCounts := map[string]int{}
+		volumeByDay := map[string]int{}
+		var totalVolume, volumeLogs int
+
+		for _, l := range logs {
+			if l.ChoreID != ch.ID {
+				continue
+			}
+			if !l.CompletedAt.Before(weekStart) {
+				weekCount++
+			}
+			if !l.CompletedAt.Before(monthStart) {
+				monthCount++
+			}
+			for _, ind := range l.Indicators {
+				indicatorCounts[ind]++
+			}
+			if l.VolumeML != nil && *l.VolumeML > 0 {
+				dayKey := l.CompletedAt.UTC().Format("2006-01-02")
+				volumeByDay[dayKey] += *l.VolumeML
+				totalVolume += *l.VolumeML
+				volumeLogs++
+			}
+		}
+
+		cs := ChoreStats{
+			ChoreID:        ch.ID,
+			ChoreName:      ch.Name,
+			ChoreIcon:      ch.Icon,
+			TotalThisWeek:  weekCount,
+			TotalThisMonth: monthCount,
+			HasVolume:      ch.HasVolumeML,
+			HasIndicators:  len(ch.IndicatorLabels) > 0,
+		}
+
+		if len(indicatorCounts) > 0 {
+			cs.IndicatorCounts = indicatorCounts
+		}
+
+		if ch.HasVolumeML && volumeLogs > 0 {
+			avg := float64(totalVolume) / float64(volumeLogs)
+			cs.AvgVolume = &avg
+			for d := days30Start; !d.After(now); d = d.AddDate(0, 0, 1) {
+				key := d.Format("2006-01-02")
+				cs.VolumeHistory = append(cs.VolumeHistory, VolumeDay{Date: key, TotalML: volumeByDay[key]})
+			}
+		}
+
+		result = append(result, cs)
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].TotalThisMonth > result[j].TotalThisMonth
+	})
+
+	return result, nil
 }
 
 func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int64) (WeeklyOverview, error) {

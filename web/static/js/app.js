@@ -21,7 +21,7 @@ import {
 } from "./auth.js";
 import { loadHousehold, createHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, renderHouseholdView, renderJoinView } from "./household.js?v=2";
 import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, loadMoreHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
-import { renderStatsView, loadOverview } from "./stats.js";
+import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, sortChoresByOrder } from "./preferences.js";
@@ -178,8 +178,10 @@ export function render(root) {
         html = renderScheduleView();
         break;
       case "/settings":
-      case "/stats":
         html = renderSettingsView();
+        break;
+      case "/stats":
+        html = renderStatsPageView();
         break;
       default:
         html = renderHomeViewWrapper();
@@ -462,16 +464,6 @@ function renderScheduleView() {
 function renderSettingsView() {
   const hh = state.household;
   const user = state.user;
-  let statsHTML = '';
-  try {
-    if (state.stats && state.stats.leaderboard) {
-      statsHTML = renderStatsView(state);
-    } else {
-      statsHTML = '<p class="text-center text-secondary">Loading stats...</p>';
-    }
-  } catch {
-    statsHTML = '<p class="text-center text-secondary">Stats unavailable</p>';
-  }
 
   const verificationSection = user && !user.emailVerified ? `
     <div class="card mt-3" style="border-left: 4px solid #F4A261;">
@@ -506,14 +498,15 @@ function renderSettingsView() {
   if (!hh) {
     return `<div class="settings-view">${renderHouseholdView(null, null, null, state.user)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}<button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div></div>`;
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}<button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div>${statsHTML}</div>`;
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}<button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div></div>`;
 }
 
 async function loadStatsData() {
   try {
     const data = await loadOverview();
     if (data && data.overview) {
-      state.stats = {
+      state.stats = state.stats || {};
+      state.stats.overview = {
         leaderboard: data.overview.leaderboard || [],
         streaks: data.overview.streaks || {},
         breakdown: data.overview.breakdown || [],
@@ -521,6 +514,63 @@ async function loadStatsData() {
       };
     }
   } catch {}
+}
+
+async function loadAllStatsData() {
+  try {
+    const overviewData = await loadOverview();
+    if (overviewData && overviewData.overview) {
+      state.stats = state.stats || {};
+      state.stats.overview = {
+        leaderboard: overviewData.overview.leaderboard || [],
+        streaks: overviewData.overview.streaks || {},
+        breakdown: overviewData.overview.breakdown || [],
+        recap: overviewData.overview.recap || {},
+      };
+    }
+  } catch {}
+  try {
+    const heatmapData = await loadHeatmap();
+    if (heatmapData && heatmapData.heatmap) {
+      state.stats = state.stats || {};
+      state.stats.heatmap = heatmapData.heatmap;
+    }
+  } catch {}
+  try {
+    const busyData = await loadBusyHours();
+    if (busyData && busyData.busyHours) {
+      state.stats = state.stats || {};
+      state.stats.busyHours = busyData.busyHours;
+    }
+  } catch {}
+  try {
+    const csData = await loadChoreStats();
+    if (csData && csData.choreStats) {
+      state.stats = state.stats || {};
+      state.stats.choreStats = csData.choreStats;
+    }
+  } catch {}
+}
+
+function renderStatsPageView() {
+  try {
+    if (state.stats && state.stats.overview) {
+      return renderStatsPage(state);
+    }
+    return '<div class="stats-page"><h2>Stats</h2><p class="text-center text-secondary">Loading...</p></div>';
+  } catch {
+    return '<div class="stats-page"><h2>Stats</h2><p class="text-center text-secondary">Stats unavailable</p></div>';
+  }
+}
+
+function countTodayLogs() {
+  if (!state.todayLogs) return 0;
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
+  return state.todayLogs.filter(l => {
+    const d = l.completedAt ? new Date(l.completedAt).toISOString().slice(0, 10) : "";
+    return d === todayStr;
+  }).length;
 }
 
 async function loadLatestLogsData() {
@@ -945,6 +995,12 @@ export async function init() {
       if (state.currentRoute === "/today") {
         state.homeView = "log";
         loadLatestLogsData().then(() => render(app));
+        return;
+      }
+      if (state.currentRoute === "/stats") {
+        state.stats = state.stats || {};
+        state.stats.todayCount = countTodayLogs();
+        loadAllStatsData().then(() => render(app));
         return;
       }
       if (state.currentRoute === "/schedule") {
