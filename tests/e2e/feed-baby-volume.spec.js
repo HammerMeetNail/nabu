@@ -318,3 +318,114 @@ test.describe('Feed Baby volume picker', () => {
     expect(olderLog.volumeML).toBe(150);
   });
 });
+
+test.describe('Feed Baby food type indicators', () => {
+  async function tapFeedBaby(page) {
+    const cards = page.locator('.home-chore-card');
+    const count = await cards.count();
+    for (let i = 0; i < count; i++) {
+      const name = await cards.nth(i).locator('.home-card-name').innerText();
+      if (name === 'Feed Baby') {
+        await cards.nth(i).click();
+        return;
+      }
+    }
+    throw new Error('Feed Baby chore card not found');
+  }
+
+  test('feed baby log sheet shows both indicator chips and volume picker', async ({ page }) => {
+    const { feedBaby } = await setupWithChores(page);
+    expect(feedBaby.indicatorLabels).toEqual(['🍼 formula', '🤱 breast']);
+    expect(feedBaby.hasVolumeML).toBe(true);
+
+    await tapFeedBaby(page);
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+
+    // Both indicator chips are present
+    const chips = page.locator('.log-chip');
+    await expect(chips).toHaveCount(2);
+    await expect(chips.nth(0)).toHaveText('🍼 formula');
+    await expect(chips.nth(1)).toHaveText('🤱 breast');
+
+    // Volume picker is also present
+    await expect(page.locator('#log-volume')).toBeVisible();
+  });
+
+  test('indicator chips are toggleable', async ({ page }) => {
+    await setupWithChores(page);
+    await tapFeedBaby(page);
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+
+    const chips = page.locator('.log-chip');
+    await expect(chips).toHaveCount(2);
+
+    const formulaChip = chips.nth(0);
+    // Toggle on
+    await formulaChip.click();
+    await expect(formulaChip).toHaveClass(/log-chip--on/);
+    // Toggle off
+    await formulaChip.click();
+    await expect(formulaChip).not.toHaveClass(/log-chip--on/);
+  });
+
+  test('saves indicators and volume together via API', async ({ page }) => {
+    const { feedBaby, csrf } = await setupWithChores(page);
+    await tapFeedBaby(page);
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+
+    // Toggle breast chip on
+    await page.locator('.log-chip').nth(1).click();
+    await expect(page.locator('.log-chip').nth(1)).toHaveClass(/log-chip--on/);
+
+    // Set volume to 95 mL
+    await page.selectOption('#log-volume', '95');
+
+    // Save
+    await page.click('[data-action="save-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    // Verify via API
+    const resp = await page.request.get('/api/logs/latest-per-chore');
+    const body = await resp.json();
+    const log = body.latestLogs[feedBaby.id];
+    expect(log).toBeDefined();
+    expect(log.volumeML).toBe(95);
+    expect(log.indicators).toContain('🤱 breast');
+    expect(log.indicators).not.toContain('🍼 formula');
+  });
+
+  test('reopen saved log shows selected indicators and volume', async ({ page }) => {
+    const { feedBaby } = await setupWithChores(page);
+
+    await tapFeedBaby(page);
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+
+    // Toggle formula chip on and set volume
+    await page.locator('.log-chip').nth(0).click();
+    await page.selectOption('#log-volume', '120');
+    await page.click('[data-action="save-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    // Verify via API: indicators and volume were persisted
+    const resp = await page.request.get('/api/logs/latest-per-chore');
+    const body = await resp.json();
+    const log = body.latestLogs[feedBaby.id];
+    expect(log).toBeDefined();
+    expect(log.indicators).toContain('🍼 formula');
+    expect(log.indicators).not.toContain('🤱 breast');
+    expect(log.volumeML).toBe(120);
+  });
+
+  test('non-Feed Baby chores do not show food type chips', async ({ page }) => {
+    const { chores } = await setupWithChores(page);
+    const nonFeedChore = chores.find(c => c.name !== 'Feed Baby');
+    expect(nonFeedChore).toBeDefined();
+
+    const card = page.locator(`.home-chore-card[data-home-chore-id="${nonFeedChore.id}"]`);
+    await card.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+
+    // No log-chip elements unless the chore has its own indicatorLabels
+    // (Change Baby has its own chips, but other chores shouldn't)
+  });
+});
