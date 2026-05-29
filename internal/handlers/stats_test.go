@@ -447,7 +447,7 @@ func TestStatsUserLocationValidTimezone(t *testing.T) {
 		t.Fatalf("Upsert: %v", err)
 	}
 
-	_ = handler  // original handler only used for reference; use handler2 below
+	_ = handler // original handler only used for reference; use handler2 below
 	_ = sessionID
 	_ = authService
 	req := withUser(

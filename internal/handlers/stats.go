@@ -99,7 +99,7 @@ func (h *StatsHandler) Heatmap(w http.ResponseWriter, r *http.Request) {
 	loc := h.userLocation(r)
 	now := nowInLoc(loc)
 	start := now.AddDate(0, -3, 0)
-	end := now
+	end := now.AddDate(0, 0, 1)
 
 	if startStr != "" {
 		if parsed, err := time.ParseInLocation("2006-01-02", startStr, loc); err == nil {
@@ -134,7 +134,7 @@ func (h *StatsHandler) Breakdown(w http.ResponseWriter, r *http.Request) {
 	loc := h.userLocation(r)
 	now := nowInLoc(loc)
 	start := now.AddDate(0, 0, -7)
-	end := now
+	end := now.AddDate(0, 0, 1)
 
 	if startStr != "" {
 		if parsed, err := time.ParseInLocation("2006-01-02", startStr, loc); err == nil {
@@ -198,7 +198,7 @@ func (h *StatsHandler) BusyHours(w http.ResponseWriter, r *http.Request) {
 	loc := h.userLocation(r)
 	now := nowInLoc(loc)
 	start := now.AddDate(0, 0, -30)
-	end := now
+	end := now.AddDate(0, 0, 1)
 
 	startStr := r.URL.Query().Get("start")
 	endStr := r.URL.Query().Get("end")
