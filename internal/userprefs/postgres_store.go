@@ -18,10 +18,11 @@ func NewPostgresStore(db *sql.DB) Store {
 func (s *postgresStore) Get(ctx context.Context, userID int64) (Preferences, error) {
 	var rawOrder []byte
 	var rawHidden []byte
+	var tz string
 	err := s.db.QueryRowContext(ctx,
-		`SELECT chore_order, hidden_home_chore_ids FROM user_preferences WHERE user_id = $1`,
+		`SELECT chore_order, hidden_home_chore_ids, COALESCE(timezone, '') FROM user_preferences WHERE user_id = $1`,
 		userID,
-	).Scan(&rawOrder, &rawHidden)
+	).Scan(&rawOrder, &rawHidden, &tz)
 	if err == sql.ErrNoRows {
 		return Preferences{ChoreOrder: []int64{}, HiddenHomeChoreIDs: []int64{}}, nil
 	}
@@ -45,7 +46,7 @@ func (s *postgresStore) Get(ctx context.Context, userID int64) (Preferences, err
 		hidden = []int64{}
 	}
 
-	return Preferences{ChoreOrder: order, HiddenHomeChoreIDs: hidden}, nil
+	return Preferences{ChoreOrder: order, HiddenHomeChoreIDs: hidden, Timezone: tz}, nil
 }
 
 func (s *postgresStore) Upsert(ctx context.Context, userID int64, p Preferences) error {
@@ -66,13 +67,14 @@ func (s *postgresStore) Upsert(ctx context.Context, userID int64, p Preferences)
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO user_preferences (user_id, chore_order, hidden_home_chore_ids, updated_at)
-		VALUES ($1, $2, $3, NOW())
+		INSERT INTO user_preferences (user_id, chore_order, hidden_home_chore_ids, timezone, updated_at)
+		VALUES ($1, $2, $3, $4, NOW())
 		ON CONFLICT (user_id)
 		DO UPDATE SET chore_order           = EXCLUDED.chore_order,
 		              hidden_home_chore_ids = EXCLUDED.hidden_home_chore_ids,
+		              timezone              = EXCLUDED.timezone,
 		              updated_at            = EXCLUDED.updated_at`,
-		userID, rawOrder, rawHidden,
+		userID, rawOrder, rawHidden, p.Timezone,
 	)
 	return err
 }

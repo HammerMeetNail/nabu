@@ -1,7 +1,7 @@
 import { createAppState, resetAuthedState } from "./state.js";
 import { morphInnerHTML } from "./morph.js";
 import { apiMe, apiFetch } from "./api.js";
-import { escapeHTML } from "./utils.js";
+import { escapeHTML, localDateStr } from "./utils.js";
 import {
   loadSession,
   handleLogin,
@@ -24,7 +24,7 @@ import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHist
 import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
-import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, sortChoresByOrder } from "./preferences.js";
+import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, sortChoresByOrder, syncTimezone } from "./preferences.js";
 import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeManageView, renderConfirmRemoveFromHomeSheet } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
 import { loadNotifications, markRead, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge } from "./notifications.js";
@@ -566,10 +566,10 @@ function renderStatsPageView() {
 function countTodayLogs() {
   if (!state.todayLogs) return 0;
   const today = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
+  const todayStr = localDateStr(today);
   return state.todayLogs.filter(l => {
-    const d = l.completedAt ? new Date(l.completedAt).toISOString().slice(0, 10) : "";
-    return d === todayStr;
+    const d = l.completedAt ? new Date(l.completedAt) : null;
+    return d ? localDateStr(d) === todayStr : false;
   }).length;
 }
 
@@ -724,6 +724,7 @@ async function doLogin(form) {
 async function reloadAfterAuth() {
   try {
     await Promise.all([loadHouseholdData(), loadPreferences(state)]);
+    await syncTimezone(state);
     if (state.household) {
       await Promise.all([
         loadChoreData(),
@@ -1864,6 +1865,7 @@ export async function init() {
 
   try {
     await Promise.all([loadHouseholdData(), loadPreferences(state)]);
+    await syncTimezone(state);
     if (state.household) {
       await Promise.all([
         loadChoreData(),

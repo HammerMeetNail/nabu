@@ -101,7 +101,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	userPrefsService := userprefs.NewService(userPrefsStore)
 	preferencesHandler := handlers.NewPreferencesHandler(userPrefsService)
 	statsService := stats.NewService(logStore, &choreStatsAdapter{choreStore})
-	statsHandler := handlers.NewStatsHandler(statsService)
+	statsHandler := handlers.NewStatsHandler(statsService, userPrefsStore)
 
 	var scheduleStore schedule.Store
 	if db != nil {

@@ -29,7 +29,7 @@ func setupStatsTest(t *testing.T) (*StatsHandler, string, *auth.Service) {
 	logStore := logsvc.NewMemoryStore()
 	choreStore := chore.NewMemoryStore()
 	statsService := stats.NewService(logStore, &testChoreStore{s: choreStore})
-	handler := NewStatsHandler(statsService)
+	handler := NewStatsHandler(statsService, nil)
 
 	user, session, _ := authService.Register(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),

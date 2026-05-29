@@ -8,6 +8,13 @@ import (
 	"github.com/dave/choresy/internal/log"
 )
 
+func nowIn(loc *time.Location) time.Time {
+	if loc == nil {
+		loc = time.UTC
+	}
+	return time.Now().In(loc)
+}
+
 type LeaderboardEntry struct {
 	UserID int64 `json:"userId"`
 	Count  int   `json:"count"`
@@ -89,27 +96,29 @@ func NewService(logStore log.Store, choreStore choreStore) *Service {
 	return &Service{logStore: logStore, choreStore: choreStore}
 }
 
-func (s *Service) GetWeeklyLeaderboard(ctx context.Context, householdID int64) ([]LeaderboardEntry, error) {
-	now := time.Now().UTC()
-	weekStart := wkStart(now)
+func (s *Service) GetWeeklyLeaderboard(ctx context.Context, householdID int64, loc *time.Location) ([]LeaderboardEntry, error) {
+	now := nowIn(loc)
+	weekStart := wkStart(now, loc)
 	weekEnd := weekStart.AddDate(0, 0, 7)
-	return s.getLeaderboard(ctx, householdID, weekStart, weekEnd)
+	return s.getLeaderboard(ctx, householdID, weekStart, weekEnd, loc)
 }
 
-func (s *Service) GetMonthlyLeaderboard(ctx context.Context, householdID int64, year int, month time.Month) ([]LeaderboardEntry, error) {
-	start := time.Date(year, month, 1, 0, 0, 0, 0, time.UTC)
+func (s *Service) GetMonthlyLeaderboard(ctx context.Context, householdID int64, year int, month time.Month, loc *time.Location) ([]LeaderboardEntry, error) {
+	start := time.Date(year, month, 1, 0, 0, 0, 0, loc)
 	end := start.AddDate(0, 1, 0)
-	return s.getLeaderboard(ctx, householdID, start, end)
+	return s.getLeaderboard(ctx, householdID, start, end, loc)
 }
 
-func (s *Service) getLeaderboard(ctx context.Context, householdID int64, start, end time.Time) ([]LeaderboardEntry, error) {
-	logs, err := s.logStore.ListLogsRange(ctx, householdID, start, end)
+func (s *Service) getLeaderboard(ctx context.Context, householdID int64, start, end time.Time, loc *time.Location) ([]LeaderboardEntry, error) {
+	logs, err := s.fetchLogsInRange(ctx, householdID, start, end, loc)
 	if err != nil {
 		return nil, err
 	}
 	counts := map[int64]int{}
 	for _, l := range logs {
-		counts[l.UserID]++
+		if logInRange(l, start, end, loc) {
+			counts[l.UserID]++
+		}
 	}
 	var entries []LeaderboardEntry
 	for uid, c := range counts {
@@ -119,22 +128,23 @@ func (s *Service) getLeaderboard(ctx context.Context, householdID int64, start, 
 	return entries, nil
 }
 
-func (s *Service) GetUserStreaks(ctx context.Context, householdID, userID int64) (StreakInfo, error) {
-	now := time.Now().UTC()
+func (s *Service) GetUserStreaks(ctx context.Context, householdID, userID int64, loc *time.Location) (StreakInfo, error) {
+	now := nowIn(loc)
 	start := now.AddDate(-1, 0, 0)
-	logs, err := s.logStore.ListLogsRange(ctx, householdID, start, now.AddDate(0, 0, 1))
+	end := now.AddDate(0, 0, 1)
+	logs, err := s.fetchLogsInRange(ctx, householdID, start, end, loc)
 	if err != nil {
 		return StreakInfo{}, err
 	}
 
 	daySet := map[string]bool{}
 	for _, l := range logs {
-		if l.UserID == userID {
-			daySet[l.CompletedAt.UTC().Format("2006-01-02")] = true
+		if l.UserID == userID && logInRange(l, start, end, loc) {
+			daySet[l.CompletedAt.In(loc).Format("2006-01-02")] = true
 		}
 	}
 
-	checkNow := time.Now().UTC()
+	checkNow := nowIn(loc)
 	current := 0
 	for i := 0; i < 365; i++ {
 		d := checkNow.AddDate(0, 0, -i).Format("2006-01-02")
@@ -147,7 +157,7 @@ func (s *Service) GetUserStreaks(ctx context.Context, householdID, userID int64)
 
 	longest := 0
 	streak := 0
-	streakStart := now.AddDate(-1, 0, 0)
+	streakStart := start
 	for d := streakStart; !d.After(checkNow); d = d.AddDate(0, 0, 1) {
 		if daySet[d.Format("2006-01-02")] {
 			streak++
@@ -165,14 +175,16 @@ func (s *Service) GetUserStreaks(ctx context.Context, householdID, userID int64)
 	return StreakInfo{Current: current, Longest: longest}, nil
 }
 
-func (s *Service) GetHeatmap(ctx context.Context, householdID int64, start, end time.Time) ([]HeatmapCell, error) {
-	logs, err := s.logStore.ListLogsRange(ctx, householdID, start, end)
+func (s *Service) GetHeatmap(ctx context.Context, householdID int64, start, end time.Time, loc *time.Location) ([]HeatmapCell, error) {
+	logs, err := s.fetchLogsInRange(ctx, householdID, start, end, loc)
 	if err != nil {
 		return nil, err
 	}
 	dayCount := map[string]int{}
 	for _, l := range logs {
-		dayCount[l.CompletedAt.UTC().Format("2006-01-02")]++
+		if logInRange(l, start, end, loc) {
+			dayCount[l.CompletedAt.In(loc).Format("2006-01-02")]++
+		}
 	}
 	var cells []HeatmapCell
 	for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
@@ -182,7 +194,7 @@ func (s *Service) GetHeatmap(ctx context.Context, householdID int64, start, end 
 	return cells, nil
 }
 
-func (s *Service) GetCategoryBreakdown(ctx context.Context, householdID int64, start, end time.Time) ([]CategoryBreakdown, error) {
+func (s *Service) GetCategoryBreakdown(ctx context.Context, householdID int64, start, end time.Time, loc *time.Location) ([]CategoryBreakdown, error) {
 	chores, err := s.choreStore.ListChores(ctx, householdID)
 	if err != nil {
 		return nil, err
@@ -192,17 +204,19 @@ func (s *Service) GetCategoryBreakdown(ctx context.Context, householdID int64, s
 		choreCat[c.ID] = c.Category
 	}
 
-	logs, err := s.logStore.ListLogsRange(ctx, householdID, start, end)
+	logs, err := s.fetchLogsInRange(ctx, householdID, start, end, loc)
 	if err != nil {
 		return nil, err
 	}
 	catCount := map[string]int{}
 	for _, l := range logs {
-		cat := choreCat[l.ChoreID]
-		if cat == "" {
-			cat = "custom"
+		if logInRange(l, start, end, loc) {
+			cat := choreCat[l.ChoreID]
+			if cat == "" {
+				cat = "custom"
+			}
+			catCount[cat]++
 		}
-		catCount[cat]++
 	}
 
 	var breakdown []CategoryBreakdown
@@ -213,14 +227,16 @@ func (s *Service) GetCategoryBreakdown(ctx context.Context, householdID int64, s
 	return breakdown, nil
 }
 
-func (s *Service) GetBusyHours(ctx context.Context, householdID int64, start, end time.Time) ([]BusyHour, error) {
-	logs, err := s.logStore.ListLogsRange(ctx, householdID, start, end)
+func (s *Service) GetBusyHours(ctx context.Context, householdID int64, start, end time.Time, loc *time.Location) ([]BusyHour, error) {
+	logs, err := s.fetchLogsInRange(ctx, householdID, start, end, loc)
 	if err != nil {
 		return nil, err
 	}
 	hourCount := map[int]int{}
 	for _, l := range logs {
-		hourCount[l.CompletedAt.UTC().Hour()]++
+		if logInRange(l, start, end, loc) {
+			hourCount[l.CompletedAt.In(loc).Hour()]++
+		}
 	}
 
 	var hours []BusyHour
@@ -230,23 +246,29 @@ func (s *Service) GetBusyHours(ctx context.Context, householdID int64, start, en
 	return hours, nil
 }
 
-func (s *Service) GetWeeklyRecap(ctx context.Context, householdID int64) (WeeklyRecap, error) {
-	now := time.Now().UTC()
-	weekStart := wkStart(now)
+func (s *Service) GetWeeklyRecap(ctx context.Context, householdID int64, loc *time.Location) (WeeklyRecap, error) {
+	now := nowIn(loc)
+	weekStart := wkStart(now, loc)
 	weekEnd := weekStart.AddDate(0, 0, 7)
 
-	logs, err := s.logStore.ListLogsRange(ctx, householdID, weekStart, weekEnd)
+	logs, err := s.fetchLogsInRange(ctx, householdID, weekStart, weekEnd, loc)
 	if err != nil {
 		return WeeklyRecap{}, err
 	}
 
-	recap := WeeklyRecap{TotalChores: len(logs)}
+	recap := WeeklyRecap{}
 
 	counts := map[int64]int{}
 	dayCounts := map[string]int{}
 	for _, l := range logs {
-		counts[l.UserID]++
-		dayCounts[l.CompletedAt.UTC().Weekday().String()]++
+		if logInRange(l, weekStart, weekEnd, loc) {
+			counts[l.UserID]++
+			dayCounts[l.CompletedAt.In(loc).Weekday().String()]++
+		}
+	}
+	recap.TotalChores = 0
+	for _, c := range counts {
+		recap.TotalChores += c
 	}
 
 	var top *LeaderboardEntry
@@ -277,11 +299,13 @@ func (s *Service) GetWeeklyRecap(ctx context.Context, householdID int64) (Weekly
 	}
 	catCount := map[string]int{}
 	for _, l := range logs {
-		cat := choreCat[l.ChoreID]
-		if cat == "" {
-			cat = "custom"
+		if logInRange(l, weekStart, weekEnd, loc) {
+			cat := choreCat[l.ChoreID]
+			if cat == "" {
+				cat = "custom"
+			}
+			catCount[cat]++
 		}
-		catCount[cat]++
 	}
 	for cat, c := range catCount {
 		recap.ByCategory = append(recap.ByCategory, CategoryBreakdown{Category: cat, Count: c})
@@ -290,22 +314,23 @@ func (s *Service) GetWeeklyRecap(ctx context.Context, householdID int64) (Weekly
 	return recap, nil
 }
 
-func wkStart(t time.Time) time.Time {
+func wkStart(t time.Time, loc *time.Location) time.Time {
 	wd := t.Weekday()
 	if wd == time.Sunday {
 		wd = 7
 	}
 	start := t.AddDate(0, 0, -int(wd)+1)
-	return time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, time.UTC)
+	return time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, loc)
 }
 
-func (s *Service) GetChoreStats(ctx context.Context, householdID int64) ([]ChoreStats, error) {
-	now := time.Now().UTC()
-	weekStart := wkStart(now)
-	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+func (s *Service) GetChoreStats(ctx context.Context, householdID int64, loc *time.Location) ([]ChoreStats, error) {
+	now := nowIn(loc)
+	weekStart := wkStart(now, loc)
+	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
 	days30Start := now.AddDate(0, 0, -29)
+	end := now.AddDate(0, 0, 1)
 
-	logs, err := s.logStore.ListLogsRange(ctx, householdID, days30Start, now.AddDate(0, 0, 1))
+	logs, err := s.fetchLogsInRange(ctx, householdID, days30Start, end, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -326,17 +351,17 @@ func (s *Service) GetChoreStats(ctx context.Context, householdID int64) ([]Chore
 			if l.ChoreID != ch.ID {
 				continue
 			}
-			if !l.CompletedAt.Before(weekStart) {
+			if !l.CompletedAt.In(loc).Before(weekStart) {
 				weekCount++
 			}
-			if !l.CompletedAt.Before(monthStart) {
+			if !l.CompletedAt.In(loc).Before(monthStart) {
 				monthCount++
 			}
 			for _, ind := range l.Indicators {
 				indicatorCounts[ind]++
 			}
 			if l.VolumeML != nil && *l.VolumeML > 0 {
-				dayKey := l.CompletedAt.UTC().Format("2006-01-02")
+				dayKey := l.CompletedAt.In(loc).Format("2006-01-02")
 				volumeByDay[dayKey] += *l.VolumeML
 				totalVolume += *l.VolumeML
 				volumeLogs++
@@ -376,12 +401,12 @@ func (s *Service) GetChoreStats(ctx context.Context, householdID int64) ([]Chore
 	return result, nil
 }
 
-func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int64) (WeeklyOverview, error) {
-	now := time.Now().UTC()
-	weekStart := wkStart(now)
+func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int64, loc *time.Location) (WeeklyOverview, error) {
+	now := nowIn(loc)
+	weekStart := wkStart(now, loc)
 	weekEnd := weekStart.AddDate(0, 0, 7)
 
-	logs, err := s.logStore.ListLogsRange(ctx, householdID, weekStart, weekEnd)
+	logs, err := s.fetchLogsInRange(ctx, householdID, weekStart, weekEnd, loc)
 	if err != nil {
 		return WeeklyOverview{}, err
 	}
@@ -396,7 +421,9 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 	// Leaderboard
 	counts := map[int64]int{}
 	for _, l := range logs {
-		counts[l.UserID]++
+		if logInRange(l, weekStart, weekEnd, loc) {
+			counts[l.UserID]++
+		}
 	}
 	overview.Leaderboard = []LeaderboardEntry{}
 	for uid, c := range counts {
@@ -407,7 +434,7 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 	})
 
 	// Streaks (for the requesting user)
-	overview.Streaks, _ = s.GetUserStreaks(ctx, householdID, userID)
+	overview.Streaks, _ = s.GetUserStreaks(ctx, householdID, userID, loc)
 
 	// Breakdown
 	choreCat := map[int64]string{}
@@ -416,11 +443,13 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 	}
 	catCount := map[string]int{}
 	for _, l := range logs {
-		cat := choreCat[l.ChoreID]
-		if cat == "" {
-			cat = "custom"
+		if logInRange(l, weekStart, weekEnd, loc) {
+			cat := choreCat[l.ChoreID]
+			if cat == "" {
+				cat = "custom"
+			}
+			catCount[cat]++
 		}
-		catCount[cat]++
 	}
 	overview.Breakdown = []CategoryBreakdown{}
 	for cat, c := range catCount {
@@ -431,7 +460,10 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 	})
 
 	// Recap
-	overview.Recap.TotalChores = len(logs)
+	overview.Recap.TotalChores = 0
+	for _, c := range counts {
+		overview.Recap.TotalChores += c
+	}
 
 	var top *LeaderboardEntry
 	for uid, c := range counts {
@@ -443,7 +475,9 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 
 	dayCounts := map[string]int{}
 	for _, l := range logs {
-		dayCounts[l.CompletedAt.UTC().Weekday().String()]++
+		if logInRange(l, weekStart, weekEnd, loc) {
+			dayCounts[l.CompletedAt.In(loc).Weekday().String()]++
+		}
 	}
 	var bestDay string
 	bestCount := 0
@@ -460,4 +494,24 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 	}
 
 	return overview, nil
+}
+
+// fetchLogsInRange fetches logs with widened bounds to account for timezone
+// offsets, so that the caller can filter by local date in Go.
+func (s *Service) fetchLogsInRange(ctx context.Context, householdID int64, start, end time.Time, loc *time.Location) ([]log.ChoreLog, error) {
+	bufStart := start.Add(-48 * time.Hour)
+	bufEnd := end.Add(48 * time.Hour)
+	return s.logStore.ListLogsRange(ctx, householdID, bufStart, bufEnd)
+}
+
+// logInRange returns true if the log's local date falls within [start, end).
+// Uses LogDate if present (mirroring the SQL COALESCE), otherwise derives
+// the date from CompletedAt in the given location.
+func logInRange(l log.ChoreLog, start, end time.Time, loc *time.Location) bool {
+	if l.LogDate != nil && *l.LogDate != "" {
+		return *l.LogDate >= start.Format("2006-01-02") &&
+			*l.LogDate < end.Format("2006-01-02")
+	}
+	local := l.CompletedAt.In(loc)
+	return !local.Before(start) && local.Before(end)
 }
