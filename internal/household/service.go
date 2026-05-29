@@ -11,7 +11,7 @@ type Service struct {
 }
 
 type AuthStore interface {
-	SetUserHousehold(ctx context.Context, userID, householdID int64) error
+	SetUserHousehold(ctx context.Context, userID, householdID int64, role string) error
 }
 
 func NewService(store Store, authStore AuthStore) *Service {
@@ -31,7 +31,7 @@ func (s *Service) CreateHousehold(ctx context.Context, name string, ownerID int6
 		return Household{}, err
 	}
 	if s.authStore != nil {
-		_ = s.authStore.SetUserHousehold(ctx, ownerID, hh.ID)
+		_ = s.authStore.SetUserHousehold(ctx, ownerID, hh.ID, RoleOwner)
 	}
 	return hh, nil
 }
@@ -132,7 +132,7 @@ func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode st
 			return Household{}, addErr
 		}
 		if s.authStore != nil {
-			_ = s.authStore.SetUserHousehold(ctx, userID, hh.ID)
+			_ = s.authStore.SetUserHousehold(ctx, userID, hh.ID, RoleMember)
 		}
 		return hh, nil
 	}
@@ -157,7 +157,7 @@ func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode st
 		return Household{}, err
 	}
 	if s.authStore != nil {
-		_ = s.authStore.SetUserHousehold(ctx, userID, hh.ID)
+		_ = s.authStore.SetUserHousehold(ctx, userID, hh.ID, RoleMember)
 	}
 	return hh, nil
 }

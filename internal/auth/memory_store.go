@@ -125,7 +125,7 @@ func (s *MemoryStore) UpdatePassword(_ context.Context, userID int64, passwordHa
 	return nil
 }
 
-func (s *MemoryStore) SetUserHousehold(_ context.Context, userID, householdID int64) error {
+func (s *MemoryStore) SetUserHousehold(_ context.Context, userID, householdID int64, role string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -134,7 +134,7 @@ func (s *MemoryStore) SetUserHousehold(_ context.Context, userID, householdID in
 		return ErrUserNotFound
 	}
 	user.HouseholdID = &householdID
-	user.Role = "owner"
+	user.Role = role
 	s.usersByID[userID] = user
 	s.usersByEmail[user.Email] = user
 	return nil

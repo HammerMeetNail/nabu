@@ -42,7 +42,7 @@ type Store interface {
 	FindUserByEmail(ctx context.Context, email string) (User, error)
 	VerifyEmail(ctx context.Context, userID int64) (User, error)
 	UpdatePassword(ctx context.Context, userID int64, passwordHash string) error
-	SetUserHousehold(ctx context.Context, userID, householdID int64) error
+	SetUserHousehold(ctx context.Context, userID, householdID int64, role string) error
 	CreateSession(ctx context.Context, userID int64, tokenHash string, expiresAt time.Time) (Session, error)
 	GetSession(ctx context.Context, tokenHash string) (Session, error)
 	DeleteSession(ctx context.Context, tokenHash string) error
