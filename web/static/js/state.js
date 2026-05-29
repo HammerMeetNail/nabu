@@ -21,6 +21,8 @@ export function createAppState() {
     jiggleMode: false,         // home grid reorder mode
     homeView: "log",           // "log" | "manage"
     latestLogs: {},            // map of choreId -> ChoreLog (most recent per chore)
+    notificationPrefs: null,
+    availableNotificationTypes: [],
   };
 }
 
@@ -45,4 +47,6 @@ export function resetAuthedState(state) {
   state.jiggleMode = false;
   state.homeView = "log";
   state.latestLogs = {};
+  state.notificationPrefs = null;
+  state.availableNotificationTypes = [];
 }

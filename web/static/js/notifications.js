@@ -88,9 +88,28 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 /**
- * Fetch the current user's notifications + unread count from the server.
- * @returns {{ notifications: Array, unreadCount: number }}
+ * Fetch the current user's notification preferences.
+ * @returns {{ preferences: object, availableTypes: Array }}
  */
+export async function loadNotificationPreferences() {
+  const res = await fetch("/api/notification-preferences", { credentials: "same-origin" });
+  if (!res.ok) return { preferences: { enabledPushTypes: [] }, availableTypes: [] };
+  return res.json();
+}
+
+/**
+ * Save notification preferences.
+ * @param {{ pushEnabled?: boolean, enabledPushTypes?: string[] }} prefs
+ * @returns {Promise<object>} The updated preferences
+ */
+export async function saveNotificationPreferences(prefs) {
+  const { response, data } = await apiFetch("/api/notification-preferences", {
+    method: "PATCH",
+    body: JSON.stringify(prefs),
+  });
+  if (!response.ok) throw new Error("Failed to save notification preferences");
+  return data;
+}
 export async function loadNotifications() {
   const res = await fetch("/api/notifications", { credentials: "same-origin" });
   if (!res.ok) return { notifications: [], unreadCount: 0 };

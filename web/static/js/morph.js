@@ -86,5 +86,8 @@ function morphAttributes(existing, incoming) {
     if (document.activeElement !== input) {
       input.value = incoming.value || "";
     }
+    if (input.type === "checkbox") {
+      input.checked = incoming.hasAttribute("checked");
+    }
   }
 }
