@@ -27,6 +27,7 @@ func (s *memoryStore) Get(ctx context.Context, userID int64) (Preferences, error
 	out := Preferences{
 		ChoreOrder:         make([]int64, len(p.ChoreOrder)),
 		HiddenHomeChoreIDs: make([]int64, len(p.HiddenHomeChoreIDs)),
+		Timezone:           p.Timezone,
 	}
 	copy(out.ChoreOrder, p.ChoreOrder)
 	copy(out.HiddenHomeChoreIDs, p.HiddenHomeChoreIDs)
@@ -39,6 +40,7 @@ func (s *memoryStore) Upsert(ctx context.Context, userID int64, p Preferences) e
 	cp := Preferences{
 		ChoreOrder:         make([]int64, len(p.ChoreOrder)),
 		HiddenHomeChoreIDs: make([]int64, len(p.HiddenHomeChoreIDs)),
+		Timezone:           p.Timezone,
 	}
 	copy(cp.ChoreOrder, p.ChoreOrder)
 	copy(cp.HiddenHomeChoreIDs, p.HiddenHomeChoreIDs)

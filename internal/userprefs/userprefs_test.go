@@ -159,7 +159,7 @@ func TestPostgresStore_GetMissing(t *testing.T) {
 	defer db.Close()
 
 	store := userprefs.NewPostgresStore(db)
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT chore_order, hidden_home_chore_ids FROM user_preferences WHERE user_id = $1`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT chore_order, hidden_home_chore_ids, COALESCE(timezone, '') FROM user_preferences WHERE user_id = $1`)).
 		WithArgs(int64(1)).
 		WillReturnError(sql.ErrNoRows)
 
@@ -173,6 +173,9 @@ func TestPostgresStore_GetMissing(t *testing.T) {
 	if len(p.HiddenHomeChoreIDs) != 0 {
 		t.Fatalf("expected empty HiddenHomeChoreIDs, got %v", p.HiddenHomeChoreIDs)
 	}
+	if p.Timezone != "" {
+		t.Fatalf("expected empty Timezone, got %q", p.Timezone)
+	}
 }
 
 func TestPostgresStore_GetExisting(t *testing.T) {
@@ -185,9 +188,9 @@ func TestPostgresStore_GetExisting(t *testing.T) {
 	store := userprefs.NewPostgresStore(db)
 	rawOrder, _ := json.Marshal([]int64{3, 1, 2})
 	rawHidden, _ := json.Marshal([]int64{7})
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT chore_order, hidden_home_chore_ids FROM user_preferences WHERE user_id = $1`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT chore_order, hidden_home_chore_ids, COALESCE(timezone, '') FROM user_preferences WHERE user_id = $1`)).
 		WithArgs(int64(5)).
-		WillReturnRows(sqlmock.NewRows([]string{"chore_order", "hidden_home_chore_ids"}).AddRow(rawOrder, rawHidden))
+		WillReturnRows(sqlmock.NewRows([]string{"chore_order", "hidden_home_chore_ids", "coalesce"}).AddRow(rawOrder, rawHidden, "America/New_York"))
 
 	p, err := store.Get(context.Background(), 5)
 	if err != nil {
@@ -198,6 +201,9 @@ func TestPostgresStore_GetExisting(t *testing.T) {
 	}
 	if len(p.HiddenHomeChoreIDs) != 1 || p.HiddenHomeChoreIDs[0] != 7 {
 		t.Fatalf("HiddenHomeChoreIDs = %v, want [7]", p.HiddenHomeChoreIDs)
+	}
+	if p.Timezone != "America/New_York" {
+		t.Fatalf("Timezone = %q, want %q", p.Timezone, "America/New_York")
 	}
 }
 
@@ -212,10 +218,10 @@ func TestPostgresStore_Upsert(t *testing.T) {
 	rawOrder, _ := json.Marshal([]int64{10, 20})
 	rawHidden, _ := json.Marshal([]int64{})
 	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO user_preferences`)).
-		WithArgs(int64(9), rawOrder, rawHidden).
+		WithArgs(int64(9), rawOrder, rawHidden, "UTC").
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
-	if err := store.Upsert(context.Background(), 9, userprefs.Preferences{ChoreOrder: []int64{10, 20}, HiddenHomeChoreIDs: []int64{}}); err != nil {
+	if err := store.Upsert(context.Background(), 9, userprefs.Preferences{ChoreOrder: []int64{10, 20}, HiddenHomeChoreIDs: []int64{}, Timezone: "UTC"}); err != nil {
 		t.Fatalf("Upsert: %v", err)
 	}
 }

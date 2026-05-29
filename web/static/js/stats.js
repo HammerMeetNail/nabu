@@ -1,5 +1,5 @@
 import { apiFetch } from "./api.js";
-import { escapeHTML } from "./utils.js";
+import { escapeHTML, localDateStr } from "./utils.js";
 
 export async function loadOverview() {
   const { data } = await apiFetch("/api/stats/overview");
@@ -142,7 +142,6 @@ function renderHeatmapGrid(heatmap) {
 
   // Build a GitHub-style grid: columns = weeks, rows = days (Sun-Sat)
   const now = new Date();
-  // Start from 19 weeks ago (Sunday), go through today
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const dayOfWeek = today.getDay();
   const endDate = new Date(today);
@@ -154,7 +153,7 @@ function renderHeatmapGrid(heatmap) {
   while (current <= endDate) {
     const week = [];
     for (let d = 0; d < 7; d++) {
-      const dateStr = current.toISOString().slice(0, 10);
+      const dateStr = localDateStr(current);
       const count = cellMap[dateStr] || 0;
       week.push({ date: dateStr, count });
       current.setDate(current.getDate() + 1);

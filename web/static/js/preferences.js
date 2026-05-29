@@ -2,7 +2,7 @@ import { apiFetch } from "./api.js";
 
 /**
  * Load the current user's preferences from the server and store the
- * choreOrder and hiddenHomeChoreIDs into the provided state object.
+ * choreOrder, hiddenHomeChoreIDs, and timezone into the provided state object.
  *
  * @param {object} state - The global app state (mutated in place).
  */
@@ -11,9 +11,11 @@ export async function loadPreferences(state) {
     const { data } = await apiFetch("/api/preferences");
     state.choreOrder = data?.preferences?.choreOrder ?? [];
     state.hiddenHomeChoreIDs = data?.preferences?.hiddenHomeChoreIds ?? [];
+    state.timezone = data?.preferences?.timezone ?? "";
   } catch {
     state.choreOrder = [];
     state.hiddenHomeChoreIDs = [];
+    state.timezone = "";
   }
 }
 
@@ -54,6 +56,29 @@ export async function saveHiddenHomeChores(state, hiddenIds) {
     state.hiddenHomeChoreIDs = data?.preferences?.hiddenHomeChoreIds ?? hiddenIds;
   } catch {
     // Keep the optimistic in-memory value even if the save fails.
+  }
+}
+
+/**
+ * Detect the browser's IANA timezone and sync it to the server if it differs
+ * from the stored value.  Called once on page load after house data is ready.
+ *
+ * @param {object} state - The global app state (mutated in place).
+ */
+export async function syncTimezone(state) {
+  try {
+    const browserTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    const storedTz = state.timezone || "";
+    if (browserTz !== storedTz) {
+      state.timezone = browserTz;
+      const { data } = await apiFetch("/api/preferences", {
+        method: "PATCH",
+        body: JSON.stringify({ timezone: browserTz }),
+      });
+      state.timezone = data?.preferences?.timezone ?? browserTz;
+    }
+  } catch {
+    // Silently ignore; stats will fall back to UTC.
   }
 }
 

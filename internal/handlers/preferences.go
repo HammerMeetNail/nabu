@@ -35,7 +35,8 @@ func (h *PreferencesHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 // Update patches the current user's preferences.  Only fields present in the
-// request body are updated; choreOrder and hiddenHomeChoreIds are supported.
+// request body are updated; choreOrder, hiddenHomeChoreIds, and timezone are
+// supported.
 func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.CurrentUser(r.Context())
 	if !ok {
@@ -46,6 +47,7 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ChoreOrder         *[]int64 `json:"choreOrder"`
 		HiddenHomeChoreIDs *[]int64 `json:"hiddenHomeChoreIds"`
+		Timezone           *string  `json:"timezone"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -61,6 +63,13 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	if req.HiddenHomeChoreIDs != nil {
 		if err := h.service.UpdateHiddenHomeChores(r.Context(), user.ID, *req.HiddenHomeChoreIDs); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
+	if req.Timezone != nil {
+		if err := h.service.UpdateTimezone(r.Context(), user.ID, *req.Timezone); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}

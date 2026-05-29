@@ -14,6 +14,10 @@ type Preferences struct {
 	// accessible from the Chores tab; they are simply not shown on the home
 	// screen for this user.
 	HiddenHomeChoreIDs []int64 `json:"hiddenHomeChoreIds"`
+
+	// Timezone is the IANA timezone name (e.g. "America/New_York") used for
+	// stats aggregation.  Empty means UTC.
+	Timezone string `json:"timezone"`
 }
 
 // Store is the persistence interface for user preferences.

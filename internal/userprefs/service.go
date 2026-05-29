@@ -46,3 +46,14 @@ func (s *Service) UpdateHiddenHomeChores(ctx context.Context, userID int64, hidd
 	prefs.HiddenHomeChoreIDs = hiddenIDs
 	return s.store.Upsert(ctx, userID, prefs)
 }
+
+// UpdateTimezone persists the user's IANA timezone name (e.g.
+// "America/New_York") for stats aggregation.  An empty string means UTC.
+func (s *Service) UpdateTimezone(ctx context.Context, userID int64, tz string) error {
+	prefs, err := s.store.Get(ctx, userID)
+	if err != nil {
+		return err
+	}
+	prefs.Timezone = tz
+	return s.store.Upsert(ctx, userID, prefs)
+}
