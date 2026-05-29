@@ -138,6 +138,75 @@ test.describe("Stats timezone awareness", () => {
     expect(hour23?.count || 0).toBe(1);
   });
 
+  test("heatmap includes today when using default end date", async ({ page }) => {
+    const email = uniqueEmail();
+
+    await page.goto("/register");
+    await page.waitForSelector("#register-form");
+    await page.fill("#reg-email", email);
+    await page.fill("#reg-password", "test123456");
+    await page.fill("#reg-confirm", "test123456");
+    await page.click("button[type=\"submit\"]");
+    await page.waitForSelector("#user-avatar:not([hidden])", { timeout: 10000 });
+
+    const csrf =
+      (await page.context().cookies()).find((c) => c.name === "choresy_csrf")
+        ?.value || "";
+
+    // Reload the page to get a fresh session with the household state
+    await page.goto("/today");
+    await page.waitForSelector("#app");
+
+    await page.request.post("/api/household", {
+      data: { name: `TZ Today Test ${Date.now()}` },
+      headers: { "X-CSRF-Token": csrf },
+    });
+
+    await page.request.post("/api/chores/seed-defaults", {
+      headers: { "X-CSRF-Token": csrf },
+    });
+
+    const choresResp = await page.request.get("/api/chores");
+    const chores = (await choresResp.json()).chores || [];
+    const feedCats = chores.find((c) => c.name === "Feed Cats");
+
+    // Set timezone to America/New_York (EDT/EST)
+    await page.request.patch("/api/preferences", {
+      data: { timezone: "America/New_York" },
+      headers: { "X-CSRF-Token": csrf },
+    });
+
+    // Use a fixed log time that is definitely today in America/New_York.
+    // noon UTC = 8 AM EDT, which is safely within today for any EDT day.
+    const now = new Date();
+    const logTime = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 16, 0, 0)
+    );
+    const completedAt = logTime.toISOString();
+    const todayNY = logTime.toLocaleString("en-CA", {
+      timeZone: "America/New_York",
+    }).slice(0, 10);
+
+    await page.request.post("/api/logs", {
+      data: {
+        choreId: feedCats.id,
+        note: "",
+        date: todayNY,
+        completedAt,
+        hour: 12,
+        indicators: [],
+      },
+      headers: { "X-CSRF-Token": csrf },
+    });
+
+    // Query heatmap without explicit start/end (default behavior)
+    const heatmapResp = await page.request.get("/api/stats/heatmap");
+    const heatmap = (await heatmapResp.json()).heatmap || [];
+
+    const todayCell = heatmap.find((c) => c.date === todayNY);
+    expect(todayCell?.count || 0).toBeGreaterThanOrEqual(1);
+  });
+
   test("no timezone set falls back to UTC", async ({ page }) => {
     const email = uniqueEmail();
 

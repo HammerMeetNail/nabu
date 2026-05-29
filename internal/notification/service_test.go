@@ -268,10 +268,10 @@ func TestNotifyChoreLogged_WithPushSender_PushDisabled(t *testing.T) {
 	ctx := context.Background()
 
 	// Disable push for user 2
-		_ = store.UpdateReminderPreferences(ctx, notification.ReminderPreference{
-			UserID:      2,
-			PushEnabled: false,
-		})
+	_ = store.UpdateReminderPreferences(ctx, notification.ReminderPreference{
+		UserID:      2,
+		PushEnabled: false,
+	})
 
 	members := []notification.MemberInfo{
 		{UserID: 1, DisplayName: "Alice"},
@@ -292,11 +292,11 @@ func TestNotifyChoreLogged_PushRespectesEnabledTypes(t *testing.T) {
 	ctx := context.Background()
 
 	// User 2 has push enabled but only for a different type
-		_ = store.UpdateReminderPreferences(ctx, notification.ReminderPreference{
-			UserID:           2,
-			PushEnabled:      true,
-			EnabledPushTypes: []string{"reminders_only"},
-		})
+	_ = store.UpdateReminderPreferences(ctx, notification.ReminderPreference{
+		UserID:           2,
+		PushEnabled:      true,
+		EnabledPushTypes: []string{"reminders_only"},
+	})
 
 	members := []notification.MemberInfo{
 		{UserID: 1, DisplayName: "Alice"},
@@ -319,11 +319,11 @@ func TestNotifyChoreLogged_PushSentWhenTypeMatches(t *testing.T) {
 	ctx := context.Background()
 
 	// User 2 has push enabled with "chore_logged" explicitly in the list
-		_ = store.UpdateReminderPreferences(ctx, notification.ReminderPreference{
-			UserID:           2,
-			PushEnabled:      true,
-			EnabledPushTypes: []string{"chore_logged"},
-		})
+	_ = store.UpdateReminderPreferences(ctx, notification.ReminderPreference{
+		UserID:           2,
+		PushEnabled:      true,
+		EnabledPushTypes: []string{"chore_logged"},
+	})
 
 	members := []notification.MemberInfo{
 		{UserID: 1, DisplayName: "Alice"},
