@@ -161,8 +161,9 @@ function renderHeatmapGrid(heatmap) {
     weeks.push(week);
   }
 
-  const dayLabels = ["", "M", "", "W", "", "F", ""];
+  const dayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   let html = '<div class="heatmap-grid">';
+  html += '<div class="heatmap-inner">';
   html += '<div class="heatmap-day-labels">';
   dayLabels.forEach(l => {
     html += `<span class="heatmap-day-label">${l}</span>`;
@@ -177,6 +178,7 @@ function renderHeatmapGrid(heatmap) {
     });
     html += '</div>';
   });
+  html += '</div>';
   html += '</div>';
   html += '<div class="heatmap-legend">';
   html += '<span>Less</span>';

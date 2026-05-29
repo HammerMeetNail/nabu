@@ -988,23 +988,30 @@ details[open] .member-chevron {
   flex-direction: column;
   align-items: center;
   gap: 4px;
+  overflow-x: auto;
+}
+
+.heatmap-inner {
+  display: flex;
+  gap: 3px;
 }
 
 .heatmap-day-labels {
   display: flex;
+  flex-direction: column;
   gap: 3px;
-  padding-left: 0;
-  margin-bottom: 2px;
+  padding-right: 4px;
 }
 
 .heatmap-day-label {
-  width: 12px;
+  width: 28px;
   height: 12px;
   font-size: 9px;
   color: var(--text-secondary);
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
+  line-height: 1;
 }
 
 .heatmap-weeks {
