@@ -47,7 +47,7 @@ func TestUnreadCount_AfterCreateAndMarkRead(t *testing.T) {
 	ctx := context.Background()
 
 	// Create two notifications for user 1 directly via the store
-	store.CreateNotification(ctx, notification.Notification{UserID: 1, Type: "chore_logged", Title: "T1", Body: "B1"})
+	_, _ = store.CreateNotification(ctx, notification.Notification{UserID: 1, Type: "chore_logged", Title: "T1", Body: "B1"})
 	n2, _ := store.CreateNotification(ctx, notification.Notification{UserID: 1, Type: "chore_logged", Title: "T2", Body: "B2"})
 
 	count, err := svc.UnreadCount(ctx, 1)
@@ -73,8 +73,8 @@ func TestMarkAllRead(t *testing.T) {
 	svc := notification.NewService(store)
 	ctx := context.Background()
 
-	store.CreateNotification(ctx, notification.Notification{UserID: 1, Type: "chore_logged", Title: "T1"})
-	store.CreateNotification(ctx, notification.Notification{UserID: 1, Type: "chore_logged", Title: "T2"})
+	_, _ = store.CreateNotification(ctx, notification.Notification{UserID: 1, Type: "chore_logged", Title: "T1"})
+	_, _ = store.CreateNotification(ctx, notification.Notification{UserID: 1, Type: "chore_logged", Title: "T2"})
 
 	if err := svc.MarkAllRead(ctx, 1); err != nil {
 		t.Fatalf("MarkAllRead: %v", err)
@@ -268,10 +268,10 @@ func TestNotifyChoreLogged_WithPushSender_PushDisabled(t *testing.T) {
 	ctx := context.Background()
 
 	// Disable push for user 2
-	store.UpdateReminderPreferences(ctx, notification.ReminderPreference{
-		UserID:      2,
-		PushEnabled: false,
-	})
+		_ = store.UpdateReminderPreferences(ctx, notification.ReminderPreference{
+			UserID:      2,
+			PushEnabled: false,
+		})
 
 	members := []notification.MemberInfo{
 		{UserID: 1, DisplayName: "Alice"},
@@ -292,11 +292,11 @@ func TestNotifyChoreLogged_PushRespectesEnabledTypes(t *testing.T) {
 	ctx := context.Background()
 
 	// User 2 has push enabled but only for a different type
-	store.UpdateReminderPreferences(ctx, notification.ReminderPreference{
-		UserID:           2,
-		PushEnabled:      true,
-		EnabledPushTypes: []string{"reminders_only"},
-	})
+		_ = store.UpdateReminderPreferences(ctx, notification.ReminderPreference{
+			UserID:           2,
+			PushEnabled:      true,
+			EnabledPushTypes: []string{"reminders_only"},
+		})
 
 	members := []notification.MemberInfo{
 		{UserID: 1, DisplayName: "Alice"},
@@ -319,11 +319,11 @@ func TestNotifyChoreLogged_PushSentWhenTypeMatches(t *testing.T) {
 	ctx := context.Background()
 
 	// User 2 has push enabled with "chore_logged" explicitly in the list
-	store.UpdateReminderPreferences(ctx, notification.ReminderPreference{
-		UserID:           2,
-		PushEnabled:      true,
-		EnabledPushTypes: []string{"chore_logged"},
-	})
+		_ = store.UpdateReminderPreferences(ctx, notification.ReminderPreference{
+			UserID:           2,
+			PushEnabled:      true,
+			EnabledPushTypes: []string{"chore_logged"},
+		})
 
 	members := []notification.MemberInfo{
 		{UserID: 1, DisplayName: "Alice"},
@@ -364,7 +364,7 @@ func TestMemoryStore_ListNotifications_OffsetBeyondTotal(t *testing.T) {
 	store := notification.NewMemoryStore()
 	ctx := context.Background()
 	// Create only 1 notification; offset 5 > len → start clamped to 1
-	store.CreateNotification(ctx, notification.Notification{UserID: 1, Type: "chore_logged", Title: "T"})
+	_, _ = store.CreateNotification(ctx, notification.Notification{UserID: 1, Type: "chore_logged", Title: "T"})
 	result, err := store.ListNotifications(ctx, 1, 10, 5)
 	if err != nil {
 		t.Fatalf("ListNotifications: %v", err)
@@ -380,7 +380,7 @@ func TestList_PaginationLimit(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 60; i++ {
-		store.CreateNotification(ctx, notification.Notification{
+		_, _ = store.CreateNotification(ctx, notification.Notification{
 			UserID:    1,
 			Type:      "chore_logged",
 			Title:     "T",

@@ -30,7 +30,7 @@ func setupNotifPrefsTest(t *testing.T) (*NotificationPreferencesHandler, string,
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"notifprefs@example.com", "password123",
 	)
-	householdService.CreateHousehold(
+	_, _ = householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"My Home", user.ID,
 	)

@@ -230,7 +230,7 @@ func TestChoreStatsAdapterListChores_Empty(t *testing.T) {
 func TestChoreStatsAdapterListChores_WithChore(t *testing.T) {
 	store := chore.NewMemoryStore()
 	ctx := context.Background()
-	store.CreateChore(ctx, chore.Chore{HouseholdID: 1, Name: "Mop", Icon: "🫧", Color: "#112233"})
+	_, _ = store.CreateChore(ctx, chore.Chore{HouseholdID: 1, Name: "Mop", Icon: "🫧", Color: "#112233"})
 	adapter := &choreStatsAdapter{store}
 	chores, err := adapter.ListChores(ctx, 1)
 	if err != nil {

@@ -47,9 +47,9 @@ func TestMemoryStore_ListByHousehold(t *testing.T) {
 	store := NewMemoryStore()
 	ctx := context.Background()
 
-	store.Create(ctx, ChoreSchedule{HouseholdID: 1, ChoreID: 10, FrequencyType: "daily"})
-	store.Create(ctx, ChoreSchedule{HouseholdID: 1, ChoreID: 11, FrequencyType: "weekly"})
-	store.Create(ctx, ChoreSchedule{HouseholdID: 2, ChoreID: 20, FrequencyType: "daily"})
+	_, _ = store.Create(ctx, ChoreSchedule{HouseholdID: 1, ChoreID: 10, FrequencyType: "daily"})
+	_, _ = store.Create(ctx, ChoreSchedule{HouseholdID: 1, ChoreID: 11, FrequencyType: "weekly"})
+	_, _ = store.Create(ctx, ChoreSchedule{HouseholdID: 2, ChoreID: 20, FrequencyType: "daily"})
 
 	list, err := store.ListByHousehold(ctx, 1)
 	if err != nil {

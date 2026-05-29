@@ -30,7 +30,7 @@ func setupNotificationTest(t *testing.T) (*NotificationHandler, string, *auth.Se
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"notif@example.com", "password123",
 	)
-	householdService.CreateHousehold(
+	_, _ = householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"My Home", user.ID,
 	)

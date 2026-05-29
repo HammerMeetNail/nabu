@@ -250,7 +250,7 @@ func TestService_UpdateTimezoneEmpty(t *testing.T) {
 	ctx := context.Background()
 
 	// Set a timezone first
-	svc.UpdateTimezone(ctx, 1, "Europe/London")
+	_ = svc.UpdateTimezone(ctx, 1, "Europe/London")
 
 	// Clear it
 	if err := svc.UpdateTimezone(ctx, 1, ""); err != nil {

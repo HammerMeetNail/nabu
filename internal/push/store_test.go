@@ -31,11 +31,11 @@ func TestMemoryStore_SaveUpdatesExisting(t *testing.T) {
 	ctx := context.Background()
 
 	sub := Subscription{Endpoint: "https://push.example.com/1", P256DH: "key1", Auth: "auth1"}
-	store.SaveSubscription(ctx, 1, sub)
+	_ = store.SaveSubscription(ctx, 1, sub)
 
 	// Update with same endpoint but new keys
 	sub2 := Subscription{Endpoint: "https://push.example.com/1", P256DH: "key2", Auth: "auth2"}
-	store.SaveSubscription(ctx, 1, sub2)
+	_ = store.SaveSubscription(ctx, 1, sub2)
 
 	subs, _ := store.GetSubscriptions(ctx, 1)
 	if len(subs) != 1 {
@@ -61,8 +61,8 @@ func TestMemoryStore_DeleteSubscription(t *testing.T) {
 	store := NewMemoryStore()
 	ctx := context.Background()
 
-	store.SaveSubscription(ctx, 1, Subscription{Endpoint: "https://a.example.com", P256DH: "k", Auth: "a"})
-	store.SaveSubscription(ctx, 1, Subscription{Endpoint: "https://b.example.com", P256DH: "k2", Auth: "a2"})
+	_ = store.SaveSubscription(ctx, 1, Subscription{Endpoint: "https://a.example.com", P256DH: "k", Auth: "a"})
+	_ = store.SaveSubscription(ctx, 1, Subscription{Endpoint: "https://b.example.com", P256DH: "k2", Auth: "a2"})
 
 	if err := store.DeleteSubscription(ctx, 1, "https://a.example.com"); err != nil {
 		t.Fatalf("DeleteSubscription: %v", err)
@@ -80,7 +80,7 @@ func TestMemoryStore_DeleteSubscription(t *testing.T) {
 func TestMemoryStore_DeleteNonExistentEndpoint(t *testing.T) {
 	store := NewMemoryStore()
 	ctx := context.Background()
-	store.SaveSubscription(ctx, 1, Subscription{Endpoint: "https://a.example.com", P256DH: "k", Auth: "a"})
+	_ = store.SaveSubscription(ctx, 1, Subscription{Endpoint: "https://a.example.com", P256DH: "k", Auth: "a"})
 
 	// Deleting a non-existent endpoint should not error and should not remove existing ones
 	if err := store.DeleteSubscription(ctx, 1, "https://nonexistent.example.com"); err != nil {
@@ -96,8 +96,8 @@ func TestMemoryStore_MultipleUsers(t *testing.T) {
 	store := NewMemoryStore()
 	ctx := context.Background()
 
-	store.SaveSubscription(ctx, 1, Subscription{Endpoint: "https://user1.example.com", P256DH: "k1", Auth: "a1"})
-	store.SaveSubscription(ctx, 2, Subscription{Endpoint: "https://user2.example.com", P256DH: "k2", Auth: "a2"})
+	_ = store.SaveSubscription(ctx, 1, Subscription{Endpoint: "https://user1.example.com", P256DH: "k1", Auth: "a1"})
+	_ = store.SaveSubscription(ctx, 2, Subscription{Endpoint: "https://user2.example.com", P256DH: "k2", Auth: "a2"})
 
 	subs1, _ := store.GetSubscriptions(ctx, 1)
 	subs2, _ := store.GetSubscriptions(ctx, 2)

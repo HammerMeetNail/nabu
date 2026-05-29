@@ -336,7 +336,7 @@ func TestLogCreateWithNotification_FanOut(t *testing.T) {
 
 	// Seed chores so choreId=1 exists
 	seedReq := withUser(httptest.NewRequest(http.MethodPost, "/", nil), authService, session.ID)
-	choreService.SeedDefaultChores(seedReq.Context(), 1)
+	_ = choreService.SeedDefaultChores(seedReq.Context(), 1)
 
 	req := withUser(httptest.NewRequest(http.MethodPost, "/api/logs", strings.NewReader(
 		`{"choreId":1,"note":"fan out test"}`,

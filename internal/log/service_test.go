@@ -8,8 +8,6 @@ import (
 	chorelog "github.com/dave/choresy/internal/log"
 )
 
-func ptr[T any](v T) *T { return &v }
-
 // ─── Service tests ────────────────────────────────────────────────────────────
 
 func TestLogService_LogChore_Basic(t *testing.T) {
@@ -186,8 +184,8 @@ func TestLogService_GetTodayLogs(t *testing.T) {
 	svc := chorelog.NewService(chorelog.NewMemoryStore())
 	ctx := context.Background()
 
-	svc.LogChore(ctx, 1, 10, 100, "", nil, nil, nil, nil, nil)
-	svc.LogChore(ctx, 1, 10, 101, "", nil, nil, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, "", nil, nil, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 101, "", nil, nil, nil, nil, nil)
 
 	logs, err := svc.GetTodayLogs(ctx, 1)
 	if err != nil {
@@ -205,8 +203,8 @@ func TestLogService_GetDayLogs(t *testing.T) {
 	day1 := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 	day2 := time.Date(2026, 4, 2, 0, 0, 0, 0, time.UTC)
 
-	svc.LogChore(ctx, 1, 10, 100, "", nil, &day1, nil, nil, nil)
-	svc.LogChore(ctx, 1, 10, 101, "", nil, &day2, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, "", nil, &day1, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 101, "", nil, &day2, nil, nil, nil)
 
 	logs, err := svc.GetDayLogs(ctx, 1, day1)
 	if err != nil {
@@ -228,8 +226,8 @@ func TestLogService_GetWeekLogs(t *testing.T) {
 	inRange := time.Date(2026, 4, 9, 0, 0, 0, 0, time.UTC)
 	outRange := time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC)
 
-	svc.LogChore(ctx, 1, 10, 100, "", nil, &inRange, nil, nil, nil)
-	svc.LogChore(ctx, 1, 10, 101, "", nil, &outRange, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, "", nil, &inRange, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 101, "", nil, &outRange, nil, nil, nil)
 
 	logs, err := svc.GetWeekLogs(ctx, 1, start)
 	if err != nil {
@@ -247,8 +245,8 @@ func TestLogService_GetMonthLogs(t *testing.T) {
 	apr := time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC)
 	may := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 
-	svc.LogChore(ctx, 1, 10, 100, "", nil, &apr, nil, nil, nil)
-	svc.LogChore(ctx, 1, 10, 101, "", nil, &may, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, "", nil, &apr, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 101, "", nil, &may, nil, nil, nil)
 
 	logs, err := svc.GetMonthLogs(ctx, 1, 2026, time.April)
 	if err != nil {
@@ -264,8 +262,8 @@ func TestLogService_GetDailySummary(t *testing.T) {
 	ctx := context.Background()
 
 	day := time.Date(2026, 4, 10, 0, 0, 0, 0, time.UTC)
-	svc.LogChore(ctx, 1, 10, 100, "", nil, &day, nil, nil, nil)
-	svc.LogChore(ctx, 1, 11, 101, "", nil, &day, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, "", nil, &day, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 11, 101, "", nil, &day, nil, nil, nil)
 
 	summary, err := svc.GetDailySummary(ctx, 1, day)
 	if err != nil {
@@ -307,9 +305,9 @@ func TestLogService_LatestPerChore(t *testing.T) {
 	earlier := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 	later := time.Date(2026, 4, 5, 0, 0, 0, 0, time.UTC)
 
-	svc.LogChore(ctx, 1, 10, 100, "old", nil, &earlier, nil, &earlier, nil)
-	svc.LogChore(ctx, 1, 10, 100, "new", nil, &later, nil, &later, nil)
-	svc.LogChore(ctx, 1, 10, 200, "only", nil, &later, nil, &later, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, "old", nil, &earlier, nil, &earlier, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, "new", nil, &later, nil, &later, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 200, "only", nil, &later, nil, &later, nil)
 
 	result, err := svc.LatestPerChore(ctx, 1)
 	if err != nil {
@@ -331,9 +329,9 @@ func TestLogService_GetHistoryLogs(t *testing.T) {
 	mid := time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC)
 	recent := time.Date(2026, 4, 10, 0, 0, 0, 0, time.UTC)
 
-	svc.LogChore(ctx, 1, 10, 100, "old", nil, &old, nil, &old, nil)
-	svc.LogChore(ctx, 1, 10, 101, "mid", nil, &mid, nil, &mid, nil)
-	svc.LogChore(ctx, 1, 10, 102, "recent", nil, &recent, nil, &recent, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, "old", nil, &old, nil, &old, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 101, "mid", nil, &mid, nil, &mid, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 102, "recent", nil, &recent, nil, &recent, nil)
 
 	start := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
@@ -372,7 +370,7 @@ func TestLogService_GetHistoryLogs_NoMore(t *testing.T) {
 	ctx := context.Background()
 
 	d := time.Date(2026, 4, 10, 0, 0, 0, 0, time.UTC)
-	svc.LogChore(ctx, 1, 10, 100, "", nil, &d, nil, &d, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, "", nil, &d, nil, &d, nil)
 
 	start := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)

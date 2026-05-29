@@ -82,8 +82,8 @@ func TestService_ListChores_MultipleHouseholds(t *testing.T) {
 	svc := chore.NewService(chore.NewMemoryStore())
 	ctx := context.Background()
 
-	svc.CreateChore(ctx, 1, 10, "HH1 Chore", "", "", "", nil)
-	svc.CreateChore(ctx, 2, 20, "HH2 Chore", "", "", "", nil)
+	_, _ = svc.CreateChore(ctx, 1, 10, "HH1 Chore", "", "", "", nil)
+	_, _ = svc.CreateChore(ctx, 2, 20, "HH2 Chore", "", "", "", nil)
 
 	h1, _ := svc.ListChores(ctx, 1)
 	h2, _ := svc.ListChores(ctx, 2)
@@ -187,7 +187,7 @@ func TestService_DeleteChore_Predefined(t *testing.T) {
 	ctx := context.Background()
 
 	// Seed predefined chores then try to delete one
-	svc.SeedDefaultChores(ctx, 1)
+	_ = svc.SeedDefaultChores(ctx, 1)
 	chores, _ := svc.ListChores(ctx, 1)
 	var predefined *chore.Chore
 	for i := range chores {
@@ -285,7 +285,7 @@ func TestService_RestoreDefaultChore(t *testing.T) {
 	svc := chore.NewService(chore.NewMemoryStore())
 	ctx := context.Background()
 
-	svc.SeedDefaultChores(ctx, 1)
+	_ = svc.SeedDefaultChores(ctx, 1)
 	chores, _ := svc.ListChores(ctx, 1)
 
 	// Find a predefined chore
@@ -299,7 +299,7 @@ func TestService_RestoreDefaultChore(t *testing.T) {
 	originalName := target.Name
 
 	// Mutate it via UpdateChore
-	svc.UpdateChore(ctx, target.ID, "Modified Name", "", "", "", nil)
+	_ = svc.UpdateChore(ctx, target.ID, "Modified Name", "", "", "", nil)
 
 	// Restore it
 	err := svc.RestoreDefaultChore(ctx, target.ID)
@@ -366,7 +366,7 @@ func TestMemoryStore_DuplicateName(t *testing.T) {
 	store := chore.NewMemoryStore()
 	ctx := context.Background()
 
-	store.CreateChore(ctx, chore.Chore{HouseholdID: 1, Name: "Dishes"})
+	_, _ = store.CreateChore(ctx, chore.Chore{HouseholdID: 1, Name: "Dishes"})
 	_, err := store.CreateChore(ctx, chore.Chore{HouseholdID: 1, Name: "Dishes"})
 	if err != chore.ErrDuplicateName {
 		t.Errorf("expected ErrDuplicateName, got %v", err)
@@ -377,7 +377,7 @@ func TestMemoryStore_DuplicateName_DifferentHousehold(t *testing.T) {
 	store := chore.NewMemoryStore()
 	ctx := context.Background()
 
-	store.CreateChore(ctx, chore.Chore{HouseholdID: 1, Name: "Dishes"})
+	_, _ = store.CreateChore(ctx, chore.Chore{HouseholdID: 1, Name: "Dishes"})
 	_, err := store.CreateChore(ctx, chore.Chore{HouseholdID: 2, Name: "Dishes"})
 	if err != nil {
 		t.Errorf("same name in different household should be allowed, got %v", err)

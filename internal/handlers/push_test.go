@@ -30,7 +30,7 @@ func setupPushTest(t *testing.T) (*PushHandler, string, *auth.Service) {
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"push@example.com", "password123",
 	)
-	householdService.CreateHousehold(
+	_, _ = householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"My Home", user.ID,
 	)

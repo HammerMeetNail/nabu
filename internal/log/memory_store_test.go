@@ -49,7 +49,7 @@ func TestMemoryStore_FindLogWrongDate(t *testing.T) {
 	ctx := context.Background()
 
 	date := time.Date(2026, 3, 15, 12, 0, 0, 0, time.UTC)
-	store.CreateLog(ctx, chorelog.ChoreLog{
+	_, _ = store.CreateLog(ctx, chorelog.ChoreLog{
 		HouseholdID: 1,
 		UserID:      10,
 		ChoreID:     5,
@@ -154,8 +154,8 @@ func TestMemoryStore_HistoryLogs_WithCompletedAt(t *testing.T) {
 	beforeRange := time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC)
 
 	// Both logs have LogDate=nil so logInRange/logBeforeRange use CompletedAt
-	store.CreateLog(ctx, chorelog.ChoreLog{HouseholdID: 1, ChoreID: 1, CompletedAt: inRange})
-	store.CreateLog(ctx, chorelog.ChoreLog{HouseholdID: 1, ChoreID: 2, CompletedAt: beforeRange})
+	_, _ = store.CreateLog(ctx, chorelog.ChoreLog{HouseholdID: 1, ChoreID: 1, CompletedAt: inRange})
+	_, _ = store.CreateLog(ctx, chorelog.ChoreLog{HouseholdID: 1, ChoreID: 2, CompletedAt: beforeRange})
 
 	result, hasOlder, err := store.HistoryLogs(ctx, 1, start, end)
 	if err != nil {
@@ -175,7 +175,7 @@ func TestMemoryStore_LatestPerChore_NilIndicators(t *testing.T) {
 	store := chorelog.NewMemoryStore()
 	ctx := context.Background()
 
-	store.CreateLog(ctx, chorelog.ChoreLog{
+	_, _ = store.CreateLog(ctx, chorelog.ChoreLog{
 		HouseholdID: 1,
 		ChoreID:     5,
 		Indicators:  nil,
@@ -201,7 +201,7 @@ func TestMemoryStore_LatestPerChore_DifferentHousehold(t *testing.T) {
 	ctx := context.Background()
 
 	// Log for HH2 – must not appear in HH1 results
-	store.CreateLog(ctx, chorelog.ChoreLog{HouseholdID: 2, ChoreID: 5, CompletedAt: time.Now()})
+	_, _ = store.CreateLog(ctx, chorelog.ChoreLog{HouseholdID: 2, ChoreID: 5, CompletedAt: time.Now()})
 
 	result, err := store.LatestPerChore(ctx, 1)
 	if err != nil {

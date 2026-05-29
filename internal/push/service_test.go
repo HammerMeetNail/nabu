@@ -27,7 +27,7 @@ func TestSendPushToUser_NoSigner(t *testing.T) {
 
 	ctx := context.Background()
 	// Save a subscription to ensure the no-signer short circuit runs
-	store.SaveSubscription(ctx, 1, Subscription{Endpoint: "https://push.example.com", P256DH: "k", Auth: "a"})
+	_ = store.SaveSubscription(ctx, 1, Subscription{Endpoint: "https://push.example.com", P256DH: "k", Auth: "a"})
 
 	if err := svc.SendPushToUser(ctx, 1, "Hello", "World"); err != nil {
 		t.Fatalf("SendPushToUser with nil signer: %v", err)
@@ -71,7 +71,7 @@ func TestSendPushToUser_SuccessfulSend(t *testing.T) {
 
 	store := NewMemoryStore()
 	ctx := context.Background()
-	store.SaveSubscription(ctx, 2, Subscription{
+	_ = store.SaveSubscription(ctx, 2, Subscription{
 		Endpoint: ts.URL,
 		P256DH:   validP256DH,
 		Auth:     validAuth,
@@ -98,7 +98,7 @@ func TestSendPushToUser_InvalidEndpoint(t *testing.T) {
 
 	store := NewMemoryStore()
 	ctx := context.Background()
-	store.SaveSubscription(ctx, 4, Subscription{
+	_ = store.SaveSubscription(ctx, 4, Subscription{
 		Endpoint: "://invalid-url", // will fail NewRequestWithContext
 		P256DH:   validP256DH,
 		Auth:     validAuth,
@@ -130,7 +130,7 @@ func TestSendPushToUser_NetworkError(t *testing.T) {
 
 	store := NewMemoryStore()
 	ctx := context.Background()
-	store.SaveSubscription(ctx, 5, Subscription{
+	_ = store.SaveSubscription(ctx, 5, Subscription{
 		Endpoint: ts.URL,
 		P256DH:   validP256DH,
 		Auth:     validAuth,
@@ -158,7 +158,7 @@ func TestSendPushToUser_StaleEndpointCleanup(t *testing.T) {
 
 	store := NewMemoryStore()
 	ctx := context.Background()
-	store.SaveSubscription(ctx, 1, Subscription{
+	_ = store.SaveSubscription(ctx, 1, Subscription{
 		Endpoint: ts.URL,
 		P256DH:   validP256DH,
 		Auth:     validAuth,

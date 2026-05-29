@@ -359,7 +359,7 @@ func TestAuthConsumeMagicLink(t *testing.T) {
 	svc.SetMailer(mailer, "http://localhost:8080")
 
 	ctx := httptest.NewRequest(http.MethodGet, "/", nil).Context()
-	svc.Register(ctx, "alice@example.com", "password123")
+	_, _, _ = svc.Register(ctx, "alice@example.com", "password123")
 
 	err := svc.RequestMagicLink(ctx, "alice@example.com")
 	if err != nil {
@@ -411,8 +411,8 @@ func TestAuthResetPassword(t *testing.T) {
 	svc.SetMailer(mailer, "http://localhost:8080")
 
 	ctx := httptest.NewRequest(http.MethodGet, "/", nil).Context()
-	svc.Register(ctx, "alice@example.com", "password123")
-	svc.RequestPasswordReset(ctx, "alice@example.com")
+	_, _, _ = svc.Register(ctx, "alice@example.com", "password123")
+	_ = svc.RequestPasswordReset(ctx, "alice@example.com")
 
 	if len(mailer.Messages) == 0 {
 		t.Skip("no reset email sent")

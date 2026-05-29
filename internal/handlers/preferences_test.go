@@ -31,7 +31,7 @@ func setupPrefsTest(t *testing.T) (*PreferencesHandler, string, *auth.Service) {
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"prefs@example.com", "password123",
 	)
-	householdService.CreateHousehold(
+	_, _ = householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"My Home", user.ID,
 	)
