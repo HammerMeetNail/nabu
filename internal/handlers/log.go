@@ -35,9 +35,10 @@ func (h *LogHandler) WithNotification(ns *notification.Service, cs chore.Store, 
 }
 
 // fanOutNotification creates notifications for all household members except
-// the one who logged the chore.  It is always called in a goroutine so that
-// push / DB latency never delays the HTTP response.
-func (h *LogHandler) fanOutNotification(householdID, loggerID, choreID int64) {
+// the one attributed on the log and the one who performed the action.
+// It is always called in a goroutine so that push / DB latency never delays
+// the HTTP response.
+func (h *LogHandler) fanOutNotification(householdID, loggerID, actorID, choreID int64) {
 	if h.notifService == nil {
 		return
 	}
@@ -55,7 +56,7 @@ func (h *LogHandler) fanOutNotification(householdID, loggerID, choreID int64) {
 	for i, m := range members {
 		mi[i] = notification.MemberInfo{UserID: m.UserID, DisplayName: m.DisplayName}
 	}
-	h.notifService.NotifyChoreLogged(ctx, mi, loggerID, c.Name, c.Icon)
+	h.notifService.NotifyChoreLogged(ctx, mi, loggerID, actorID, c.Name, c.Icon)
 }
 
 func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -135,7 +136,7 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		hhID := *user.HouseholdID
 		loggerID := logUserID
 		choreID := req.ChoreID
-		go h.fanOutNotification(hhID, loggerID, choreID)
+		go h.fanOutNotification(hhID, loggerID, user.ID, choreID)
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{"log": entry})

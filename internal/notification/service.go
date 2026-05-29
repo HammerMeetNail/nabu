@@ -67,12 +67,13 @@ func (s *Service) Delete(ctx context.Context, id, userID int64) error {
 }
 
 // NotifyChoreLogged creates a "chore_logged" notification for every household
-// member except the one who did the logging.  It also sends a Web Push to
-// each recipient if a PushSender is configured.
+// member except the one attributed on the log and the one who performed the
+// action.  It also sends a Web Push to each recipient if a PushSender is
+// configured.
 //
 // This is intentionally fire-and-forget: callers should invoke it in a
 // goroutine so individual push failures do not block the HTTP response.
-func (s *Service) NotifyChoreLogged(ctx context.Context, members []MemberInfo, loggerID int64, choreName, choreIcon string) {
+func (s *Service) NotifyChoreLogged(ctx context.Context, members []MemberInfo, loggerID, actorID int64, choreName, choreIcon string) {
 	loggerName := "Someone"
 	for _, m := range members {
 		if m.UserID == loggerID {
@@ -87,7 +88,7 @@ func (s *Service) NotifyChoreLogged(ctx context.Context, members []MemberInfo, l
 	body := fmt.Sprintf("%s logged this", loggerName)
 
 	for _, m := range members {
-		if m.UserID == loggerID {
+		if m.UserID == loggerID || m.UserID == actorID {
 			continue
 		}
 		n, err := s.store.CreateNotification(ctx, Notification{
