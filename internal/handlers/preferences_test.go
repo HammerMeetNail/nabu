@@ -27,10 +27,7 @@ func setupPrefsTest(t *testing.T) (*PreferencesHandler, string, *auth.Service) {
 	prefsService := userprefs.NewService(prefsStore)
 	handler := NewPreferencesHandler(prefsService)
 
-	user, session, _ := authService.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"prefs@example.com", "password123",
-	)
+	user, session := quickRegister(authService, "prefs@example.com")
 	_, _ = householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"My Home", user.ID,

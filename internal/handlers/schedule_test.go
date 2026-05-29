@@ -30,10 +30,7 @@ func setupScheduleTest(t *testing.T) (*ScheduleHandler, string, *auth.Service) {
 	scheduleService := schedule.NewService()
 	handler := NewScheduleHandler(scheduleStore, scheduleService)
 
-	user, session, _ := authService.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"alice@example.com", "password123",
-	)
+	user, session := quickRegister(authService, "alice@example.com")
 	if _, err := householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"My Home", user.ID,

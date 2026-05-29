@@ -26,10 +26,7 @@ func setupNotifPrefsTest(t *testing.T) (*NotificationPreferencesHandler, string,
 	notifService := notification.NewService(notification.NewMemoryStore())
 	handler := NewNotificationPreferencesHandler(notifService)
 
-	user, session, _ := authService.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"notifprefs@example.com", "password123",
-	)
+	user, session := quickRegister(authService, "notifprefs@example.com")
 	_, _ = householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"My Home", user.ID,

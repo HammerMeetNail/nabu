@@ -117,7 +117,7 @@ func TestAuthLoginInvalid(t *testing.T) {
 func TestAuthLogout(t *testing.T) {
 	handler, svc := setupAuthHandler(t)
 
-	_, session, _ := svc.Register(httptest.NewRequest(http.MethodGet, "/", nil).Context(), "alice@example.com", "password123")
+	_, session := quickRegister(svc, "alice@example.com")
 
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
 	req.AddCookie(&http.Cookie{Name: "choresy_session", Value: session.ID})
@@ -138,7 +138,7 @@ func TestAuthLogout(t *testing.T) {
 func TestAuthMe(t *testing.T) {
 	handler, svc := setupAuthHandler(t)
 
-	_, session, _ := svc.Register(httptest.NewRequest(http.MethodGet, "/", nil).Context(), "alice@example.com", "password123")
+	_, session := quickRegister(svc, "alice@example.com")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
 	req.AddCookie(&http.Cookie{Name: "choresy_session", Value: session.ID})
@@ -254,10 +254,7 @@ func TestAuthForgotPassword(t *testing.T) {
 
 func TestAuthResendVerification(t *testing.T) {
 	handler, svc := setupAuthHandler(t)
-	_, session, _ := svc.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"alice@example.com", "password123",
-	)
+	_, session := quickRegister(svc, "alice@example.com")
 
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/verify/resend", nil)
 	req.AddCookie(&http.Cookie{Name: "choresy_session", Value: session.ID})
@@ -359,7 +356,7 @@ func TestAuthConsumeMagicLink(t *testing.T) {
 	svc.SetMailer(mailer, "http://localhost:8080")
 
 	ctx := httptest.NewRequest(http.MethodGet, "/", nil).Context()
-	_, _, _ = svc.Register(ctx, "alice@example.com", "password123")
+	_, _ = quickRegister(svc, "alice@example.com")
 
 	err := svc.RequestMagicLink(ctx, "alice@example.com")
 	if err != nil {
@@ -411,7 +408,7 @@ func TestAuthResetPassword(t *testing.T) {
 	svc.SetMailer(mailer, "http://localhost:8080")
 
 	ctx := httptest.NewRequest(http.MethodGet, "/", nil).Context()
-	_, _, _ = svc.Register(ctx, "alice@example.com", "password123")
+	_, _ = quickRegister(svc, "alice@example.com")
 	_ = svc.RequestPasswordReset(ctx, "alice@example.com")
 
 	if len(mailer.Messages) == 0 {

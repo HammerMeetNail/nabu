@@ -86,6 +86,12 @@ func (s *Service) Register(ctx context.Context, email, password string) (User, S
 		return User{}, Session{}, fmt.Errorf("hash password: %w", err)
 	}
 
+	return s.RegisterWithHash(ctx, normalizedEmail, passwordHash)
+}
+
+// RegisterWithHash creates a user and session using a pre-computed password
+// hash, skipping the expensive bcrypt step. Useful for test setup.
+func (s *Service) RegisterWithHash(ctx context.Context, normalizedEmail, passwordHash string) (User, Session, error) {
 	user, err := s.store.CreateUser(ctx, normalizedEmail, passwordHash)
 	if err != nil {
 		return User{}, Session{}, err

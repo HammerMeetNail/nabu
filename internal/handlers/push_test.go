@@ -26,10 +26,7 @@ func setupPushTest(t *testing.T) (*PushHandler, string, *auth.Service) {
 	pushStore := push.NewMemoryStore()
 	handler := NewPushHandler(pushStore)
 
-	user, session, _ := authService.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"push@example.com", "password123",
-	)
+	user, session := quickRegister(authService, "push@example.com")
 	_, _ = householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"My Home", user.ID,

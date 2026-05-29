@@ -28,10 +28,7 @@ func setupChoreTest(t *testing.T) (*ChoreHandler, string, *auth.Service, *househ
 	choreService := chore.NewService(choreStore)
 	handler := NewChoreHandler(choreService)
 
-	user, session, _ := authService.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"alice@example.com", "password123",
-	)
+	user, session := quickRegister(authService, "alice@example.com")
 	if _, err := householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"My Home", user.ID,

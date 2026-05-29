@@ -29,10 +29,7 @@ func setupLogTest(t *testing.T) (*LogHandler, string, *auth.Service) {
 	logService := logsvc.NewService(logStore)
 	handler := NewLogHandler(logService)
 
-	user, session, _ := authService.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"alice@example.com", "password123",
-	)
+	user, session := quickRegister(authService, "alice@example.com")
 	if _, err := householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"My Home", user.ID,
@@ -323,10 +320,7 @@ func TestLogCreateWithNotification_FanOut(t *testing.T) {
 	handler := NewLogHandler(logService)
 	handler.WithNotification(notifService, choreStore, householdStore)
 
-	user, session, _ := authService.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"alice@example.com", "password123",
-	)
+	user, session := quickRegister(authService, "alice@example.com")
 	if _, err := householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"My Home", user.ID,
@@ -418,10 +412,7 @@ func TestLogCreateUserNotMember(t *testing.T) {
 	handler := NewLogHandler(logService)
 	handler.WithNotification(notifService, chore.NewMemoryStore(), householdStore)
 
-	user, session, _ := authService.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"bob@example.com", "password123",
-	)
+	user, session := quickRegister(authService, "bob@example.com")
 	if _, err := householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"Bob's Home", user.ID,

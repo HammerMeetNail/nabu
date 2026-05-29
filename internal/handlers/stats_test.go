@@ -32,10 +32,7 @@ func setupStatsTest(t *testing.T) (*StatsHandler, string, *auth.Service) {
 	statsService := stats.NewService(logStore, &testChoreStore{s: choreStore})
 	handler := NewStatsHandler(statsService, nil)
 
-	user, session, _ := authService.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"alice@example.com", "password123",
-	)
+	user, session := quickRegister(authService, "alice@example.com")
 	if _, err := householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"My Home", user.ID,
@@ -205,10 +202,7 @@ func TestStatsNoHousehold(t *testing.T) {
 	handler := NewStatsHandler(statsService, nil)
 
 	// Register without creating household
-	_, session, _ := authService.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"nohousehold@example.com", "password123",
-	)
+	_, session := quickRegister(authService, "nohousehold@example.com")
 
 	for _, name := range []string{"leaderboard", "streaks", "heatmap", "breakdown", "recap", "busyhours", "chorestats"} {
 		var rec *httptest.ResponseRecorder
@@ -293,10 +287,7 @@ func setupStatsTestWithPrefs(t *testing.T) (*StatsHandler, string, *auth.Service
 	prefsStore := userprefs.NewMemoryStore()
 	handler := NewStatsHandler(statsService, prefsStore)
 
-	user, session, _ := authService.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"prefuser@example.com", "password123",
-	)
+	user, session := quickRegister(authService, "prefuser@example.com")
 	if _, err := householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"Pref Home", user.ID,
@@ -363,10 +354,7 @@ func TestStatsOverviewNoHousehold(t *testing.T) {
 	statsService := stats.NewService(logStore, &testChoreStore{s: choreStore})
 	handler := NewStatsHandler(statsService, nil)
 
-	_, session, _ := authService.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"nohh2@example.com", "password123",
-	)
+	_, session := quickRegister(authService, "nohh2@example.com")
 	req := withUser(httptest.NewRequest(http.MethodGet, "/api/stats/overview", nil),
 		authService, session.ID)
 	rec := httptest.NewRecorder()
@@ -388,10 +376,7 @@ func TestStatsChoreStatsByIDNoHousehold(t *testing.T) {
 	statsService := stats.NewService(logStore, &testChoreStore{s: choreStore})
 	handler := NewStatsHandler(statsService, nil)
 
-	_, session, _ := authService.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"nohh3@example.com", "password123",
-	)
+	_, session := quickRegister(authService, "nohh3@example.com")
 	req := withUser(httptest.NewRequest(http.MethodGet, "/api/stats/chores/1", nil),
 		authService, session.ID)
 	req.SetPathValue("id", "1")
@@ -446,10 +431,7 @@ func TestStatsUserLocationValidTimezone(t *testing.T) {
 	choreStore2 := chore.NewMemoryStore()
 	statsService2 := stats.NewService(logStore2, &testChoreStore{s: choreStore2})
 	handler2 := NewStatsHandler(statsService2, prefsStore)
-	user2, session2, _ := authService2.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"tz@example.com", "password123",
-	)
+	user2, session2 := quickRegister(authService2, "tz@example.com")
 	if _, err := householdService2.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"TZ Home", user2.ID,
@@ -493,10 +475,7 @@ func TestStatsUserLocationInvalidTimezone(t *testing.T) {
 	choreStore := chore.NewMemoryStore()
 	statsService := stats.NewService(logStore, &testChoreStore{s: choreStore})
 	handler := NewStatsHandler(statsService, prefsStore)
-	user, session, _ := authService.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"badtz@example.com", "password123",
-	)
+	user, session := quickRegister(authService, "badtz@example.com")
 	if _, err := householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"Bad TZ Home", user.ID,

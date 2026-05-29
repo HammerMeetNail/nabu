@@ -26,10 +26,7 @@ func setupNotificationTest(t *testing.T) (*NotificationHandler, string, *auth.Se
 	notifService := notification.NewService(notification.NewMemoryStore())
 	handler := NewNotificationHandler(notifService)
 
-	user, session, _ := authService.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"notif@example.com", "password123",
-	)
+	user, session := quickRegister(authService, "notif@example.com")
 	_, _ = householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
 		"My Home", user.ID,

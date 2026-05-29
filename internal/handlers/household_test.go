@@ -24,10 +24,7 @@ func setupHouseholdTest(t *testing.T) (*HouseholdHandler, string, *auth.Service)
 	householdService := household.NewService(householdStore, authService)
 	handler := NewHouseholdHandler(householdService)
 
-	user, session, _ := authService.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"alice@example.com", "password123",
-	)
+	user, session := quickRegister(authService, "alice@example.com")
 	_ = user
 
 	return handler, session.ID, authService
@@ -245,10 +242,7 @@ func TestHouseholdJoin(t *testing.T) {
 	handler2 := NewHouseholdHandler(householdService2)
 
 	// The invite lookup is against owner's service — reuse ownerHandler
-	_, session2, _ := ownerAuth.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"bob@example.com", "password123",
-	)
+	_, session2 := quickRegister(ownerAuth, "bob@example.com")
 
 	joinReq := withUser(httptest.NewRequest(http.MethodPost, "/api/household/join", strings.NewReader(
 		`{"inviteCode":"`+inviteCode+`"}`,
@@ -347,13 +341,7 @@ func setupTwoMemberHousehold(t *testing.T) (*HouseholdHandler, string, string, *
 	t.Helper()
 	handler, ownerSession, authService := setupHouseholdWithHome(t)
 
-	_, user2Session, err := authService.Register(
-		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"bob@example.com", "password123",
-	)
-	if err != nil {
-		t.Fatalf("Register user2: %v", err)
-	}
+	_, user2Session := quickRegister(authService, "carol@example.com")
 
 	invReq := withUser(httptest.NewRequest(http.MethodPost, "/api/household/invites", nil), authService, ownerSession)
 	invRec := httptest.NewRecorder()
