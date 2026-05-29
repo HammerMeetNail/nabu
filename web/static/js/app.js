@@ -19,7 +19,7 @@ import {
   renderForgotPasswordView,
   renderResetPasswordView,
 } from "./auth.js";
-import { loadHousehold, createHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, renderHouseholdView, renderJoinView } from "./household.js?v=2";
+import { loadHousehold, createHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, transferOwnership, renderHouseholdView, renderJoinView } from "./household.js";
 import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, loadMoreHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
 import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
@@ -1154,7 +1154,10 @@ export async function init() {
       }
       case "delete-invite":
         e.preventDefault();
-        deleteInvite(parseInt(actionEl.dataset.inviteId)).then(() => render(app));
+        deleteInvite(parseInt(actionEl.dataset.inviteId)).then(async () => {
+          await loadHouseholdData();
+          render(app);
+        });
         break;
       case "leave-household":
         e.preventDefault();
@@ -1180,6 +1183,37 @@ export async function init() {
             showToast(data.error || "Failed to remove member", "error");
           }
         }).catch(() => showToast("Failed to remove member", "error"));
+        break;
+      }
+      case "update-member-role": {
+        e.preventDefault();
+        const userId = parseInt(actionEl.dataset.userId, 10);
+        const newRole = actionEl.value;
+        updateMemberRole(userId, newRole).then(async (data) => {
+          if (data.status === "updated") {
+            await loadHouseholdData();
+            render(app);
+          } else {
+            showToast(data.error || "Failed to update role", "error");
+          }
+        }).catch(() => showToast("Failed to update role", "error"));
+        break;
+      }
+      case "transfer-ownership": {
+        e.preventDefault();
+        const userId = parseInt(actionEl.dataset.userId, 10);
+        const member = (state.members || []).find(m => m.userId === userId);
+        const name = member ? (member.displayName || member.email) : "this member";
+        if (!confirm(`Transfer ownership to ${name}?`)) break;
+        transferOwnership(userId).then(async (data) => {
+          if (data.status === "transferred") {
+            await loadHouseholdData();
+            render(app);
+            showToast(`Ownership transferred to ${name}`, "info");
+          } else {
+            showToast(data.error || "Failed to transfer ownership", "error");
+          }
+        }).catch(() => showToast("Failed to transfer ownership", "error"));
         break;
       }
       case "log-chore": {
@@ -1723,6 +1757,18 @@ export async function init() {
       if (wkRow)   wkRow.hidden   = (freqVal !== "weekly");
       if (intvRow) intvRow.hidden = (freqVal !== "every_n_days");
       if (endRow)  endRow.hidden  = (freqVal === "once");
+    }
+    if (actionEl?.dataset?.action === "update-member-role") {
+      const userId = parseInt(actionEl.dataset.userId, 10);
+      const newRole = actionEl.value;
+      updateMemberRole(userId, newRole).then(async (data) => {
+        if (data.status === "updated") {
+          await loadHouseholdData();
+          render(app);
+        } else {
+          showToast(data.error || "Failed to update role", "error");
+        }
+      }).catch(() => showToast("Failed to update role", "error"));
     }
   });
 

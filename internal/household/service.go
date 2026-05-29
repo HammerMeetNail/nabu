@@ -75,7 +75,7 @@ func (s *Service) CreateInvite(ctx context.Context, userID int64) (Invite, error
 	if err != nil {
 		return Invite{}, err
 	}
-	if role != RoleOwner && role != RoleAdmin {
+	if role != RoleOwner {
 		return Invite{}, ErrNotAuthorized
 	}
 	code := GenerateInviteCode()
@@ -83,9 +83,12 @@ func (s *Service) CreateInvite(ctx context.Context, userID int64) (Invite, error
 }
 
 func (s *Service) GetInvites(ctx context.Context, userID int64) ([]Invite, error) {
-	hhID, _, err := s.store.GetMembership(ctx, userID)
+	hhID, role, err := s.store.GetMembership(ctx, userID)
 	if err != nil {
 		return nil, err
+	}
+	if role != RoleOwner {
+		return nil, ErrNotAuthorized
 	}
 	return s.store.GetInvites(ctx, hhID)
 }
@@ -95,7 +98,7 @@ func (s *Service) DeleteInvite(ctx context.Context, userID, inviteID int64) erro
 	if err != nil {
 		return err
 	}
-	if role != RoleOwner && role != RoleAdmin {
+	if role != RoleOwner {
 		return ErrNotAuthorized
 	}
 	return s.store.DeleteInvite(ctx, inviteID)
@@ -182,7 +185,7 @@ func (s *Service) RemoveMember(ctx context.Context, actorUserID, targetUserID in
 	if err != nil {
 		return err
 	}
-	if actorRole != RoleOwner && actorRole != RoleAdmin {
+	if actorRole != RoleOwner {
 		return ErrNotAuthorized
 	}
 	if actorUserID == targetUserID {

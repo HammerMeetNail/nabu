@@ -31,6 +31,9 @@ func (h *HouseholdHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	invites, _ := h.service.GetInvites(r.Context(), user.ID)
+	if invites == nil {
+		invites = []household.Invite{}
+	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"household": hh,

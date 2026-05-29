@@ -707,6 +707,16 @@ input:focus, select:focus, textarea:focus {
   margin-left: auto;
 }
 
+.role-select {
+  font-size: 11px;
+  padding: 2px 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+  color: var(--text-primary);
+  margin-left: auto;
+}
+
 /* Schedule tab — upcoming list */
 .schedule-view { padding-bottom: 16px; }
 .schedule-view h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; padding: 0 0; }

@@ -98,17 +98,30 @@ export function renderHouseholdView(household, members, invites, currentUser) {
     </div>`;
   }
 
-  const canManage = currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin');
-  const memberList = (members || []).map(m => {
+  const isOwner = currentUser && currentUser.role === 'owner';  const memberList = (members || []).map(m => {
     const initial = (m.displayName || m.email || '?')[0].toUpperCase();
-    const removeBtn = canManage && m.userId !== currentUser.id
-      ? `<button type="button" class="btn btn-sm btn-danger" data-action="remove-member" data-user-id="${m.userId}">Remove</button>`
-      : '';
+    let controls = '';
+    if (isOwner && m.userId !== currentUser.id) {
+      const removeBtn = `<button type="button" class="btn btn-sm btn-danger" data-action="remove-member" data-user-id="${m.userId}">Remove</button>`;
+      if (m.role === 'owner') {
+        controls = `<span class="role-badge">owner</span>
+          ${removeBtn}`;
+      } else {
+        controls = `<select data-action="update-member-role" data-user-id="${m.userId}" class="role-select">
+          <option value="admin" ${m.role === 'admin' ? 'selected' : ''}>Admin</option>
+          <option value="member" ${m.role === 'member' ? 'selected' : ''}>Member</option>
+        </select>
+        <button type="button" class="btn btn-sm btn-secondary" data-action="transfer-ownership" data-user-id="${m.userId}">Make Owner</button>
+        ${removeBtn}`;
+      }
+    } else {
+      controls = `<span class="role-badge">${m.role}</span>`;
+    }
+
     return `<li class="member-item">
     <span class="avatar-circle-sm" style="background:${m.avatarColor || '#19323C'}">${initial}</span>
     <span>${m.email || m.displayName || 'Unknown'}</span>
-    <span class="role-badge">${m.role}</span>
-    ${removeBtn}
+    ${controls}
   </li>`;}).join("");
 
   const inviteList = (invites || []).map(inv => {
@@ -122,8 +135,7 @@ export function renderHouseholdView(household, members, invites, currentUser) {
 
   const inviteLink = `${window.location.origin}/join?code=${household.inviteCode}`;
 
-  return `<div class="card mt-3">
-    <h3>${escapeHTML(household.name)}</h3>
+  const inviteSection = isOwner ? `
     <p class="text-secondary mb-1">Invite Link</p>
     <div class="invite-link-row">
       <code class="invite-link-url">${inviteLink}</code>
@@ -132,7 +144,11 @@ export function renderHouseholdView(household, members, invites, currentUser) {
     <div class="mt-2">
       <button type="button" class="btn btn-sm btn-primary" data-action="create-invite">New tracked link</button>
     </div>
-    ${invites && invites.length ? `<h4 class="mt-3">Active Invites</h4><ul class="invite-list">${inviteList}</ul><div class="auth-divider"></div>` : ''}
+    ${invites && invites.length ? `<h4 class="mt-3">Active Invites</h4><ul class="invite-list">${inviteList}</ul><div class="auth-divider"></div>` : ''}` : '';
+
+  return `<div class="card mt-3">
+    <h3>${escapeHTML(household.name)}</h3>
+    ${inviteSection}
     <h4 class="mt-3">Members</h4>
     <ul class="member-list">${memberList}</ul>
     <div class="mt-3">
