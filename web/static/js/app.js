@@ -1161,6 +1161,8 @@ export async function init() {
         break;
       case "leave-household":
         e.preventDefault();
+        // eslint-disable-next-line no-alert
+        if (!confirm("Are you sure you want to leave this household? All your data will remain with the household.")) break;
         leaveHousehold().then(() => {
           state.household = null;
           state.chores = [];

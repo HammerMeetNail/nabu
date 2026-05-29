@@ -97,22 +97,32 @@ export function renderHouseholdView(household, members, invites, currentUser) {
       </div>
     </div>`;
   }
+  const isOwner = currentUser && currentUser.role === 'owner';
 
-  const isOwner = currentUser && currentUser.role === 'owner';  const memberList = (members || []).map(m => {
+  const memberList = (members || []).map(m => {
     const initial = (m.displayName || m.email || '?')[0].toUpperCase();
     let controls = '';
     if (isOwner && m.userId !== currentUser.id) {
-      const removeBtn = `<button type="button" class="btn btn-sm btn-danger" data-action="remove-member" data-user-id="${m.userId}">Remove</button>`;
       if (m.role === 'owner') {
         controls = `<span class="role-badge">owner</span>
-          ${removeBtn}`;
+          <details class="member-actions">
+            <summary class="member-actions-toggle">Manage</summary>
+            <div class="member-actions-menu">
+              <button type="button" class="btn btn-sm btn-danger" data-action="remove-member" data-user-id="${m.userId}">Remove</button>
+            </div>
+          </details>`;
       } else {
         controls = `<select data-action="update-member-role" data-user-id="${m.userId}" class="role-select">
           <option value="admin" ${m.role === 'admin' ? 'selected' : ''}>Admin</option>
           <option value="member" ${m.role === 'member' ? 'selected' : ''}>Member</option>
         </select>
-        <button type="button" class="btn btn-sm btn-secondary" data-action="transfer-ownership" data-user-id="${m.userId}">Make Owner</button>
-        ${removeBtn}`;
+        <details class="member-actions">
+          <summary class="member-actions-toggle">Manage</summary>
+          <div class="member-actions-menu">
+            <button type="button" class="btn btn-sm btn-secondary" data-action="transfer-ownership" data-user-id="${m.userId}">Make Owner</button>
+            <button type="button" class="btn btn-sm btn-danger" data-action="remove-member" data-user-id="${m.userId}">Remove</button>
+          </div>
+        </details>`;
       }
     } else {
       controls = `<span class="role-badge">${m.role}</span>`;
@@ -123,7 +133,6 @@ export function renderHouseholdView(household, members, invites, currentUser) {
     <span>${m.email || m.displayName || 'Unknown'}</span>
     ${controls}
   </li>`;}).join("");
-
   const inviteList = (invites || []).map(inv => {
     const invUrl = `${window.location.origin}/join?code=${inv.code}`;
     return `<li class="invite-item">
@@ -149,11 +158,13 @@ export function renderHouseholdView(household, members, invites, currentUser) {
   return `<div class="card mt-3">
     <h3>${escapeHTML(household.name)}</h3>
     ${inviteSection}
-    <h4 class="mt-3">Members</h4>
+    <h4 class="mt-4">Members</h4>
     <ul class="member-list">${memberList}</ul>
-    <div class="mt-3">
-      <button type="button" class="btn btn-sm btn-danger" data-action="leave-household">Leave Household</button>
-    </div>
+  </div>
+  <div class="card mt-3">
+    <h4>Danger Zone</h4>
+    <p class="text-secondary mb-2">Leave this household. You can rejoin later with an invite link.</p>
+    <button type="button" class="btn btn-sm btn-danger" data-action="leave-household">Leave Household</button>
   </div>`;
 }
 

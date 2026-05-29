@@ -230,7 +230,9 @@ test.describe('Household Roles', () => {
     await ownerPage.click('[data-nav="settings"]');
     await ownerPage.waitForSelector('.member-list', { timeout: 10000 });
 
-    // Click "Make Owner" button and confirm dialog.
+    // Expand the Manage dropdown for the member, then click Make Owner.
+    const memberItem = ownerPage.locator(`.member-item:has(button[data-user-id="${memberId}"])`);
+    await memberItem.locator('.member-actions-toggle').click();
     const makeOwnerBtn = ownerPage.locator(`[data-action="transfer-ownership"][data-user-id="${memberId}"]`);
     await expect(makeOwnerBtn).toBeVisible();
 
@@ -273,8 +275,9 @@ test.describe('Household Roles', () => {
     await memberPage.click('[data-nav="settings"]');
     await memberPage.waitForSelector('.member-list', { timeout: 10000 });
 
-    // Member should NOT see remove buttons.
-    await expect(memberPage.locator('[data-action="remove-member"]')).not.toBeVisible();
+    // Member should NOT see Manage toggles or remove buttons.
+    await expect(memberPage.locator('.member-actions-toggle')).toHaveCount(0);
+    await expect(memberPage.locator('[data-action="remove-member"]')).toHaveCount(0);
     // Member should NOT see the invite link section.
     await expect(memberPage.locator('.invite-link-url')).not.toBeVisible();
     // Member should NOT see "New tracked link" button.

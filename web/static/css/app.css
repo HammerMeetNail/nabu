@@ -717,6 +717,50 @@ input:focus, select:focus, textarea:focus {
   margin-left: auto;
 }
 
+.member-actions {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.member-actions-toggle {
+  font-size: 11px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.member-actions-toggle::-webkit-details-marker { display: none; }
+
+.member-actions-toggle::after {
+  content: " ▾";
+  font-size: 9px;
+}
+
+.member-actions[open] .member-actions-toggle::after {
+  content: " ▴";
+}
+
+.member-actions-menu {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  z-index: 10;
+  white-space: nowrap;
+}
+
 /* Schedule tab — upcoming list */
 .schedule-view { padding-bottom: 16px; }
 .schedule-view h2 { font-size: 20px; font-weight: 700; margin-bottom: 16px; padding: 0 0; }
