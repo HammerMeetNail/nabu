@@ -270,7 +270,7 @@ export function renderPickChoreSheet(chores, slot, _schedules) {
       <div class="sheet-time-row">
         <label for="sheet-time" class="field-label">Time</label>
         <input type="time" id="sheet-time" class="text-input sheet-time-input"
-          step="900" value="${defaultTime}" />
+          step="300" value="${defaultTime}" />
       </div>
       ${freqHTML}
       <div class="sheet-chore-list">${items}</div>
@@ -312,7 +312,7 @@ export function renderEditScheduleSheet(chore, sch, date) {
       <div class="sheet-time-row">
         <label for="edit-sheet-time" class="field-label">Time</label>
         <input type="time" id="edit-sheet-time" class="text-input sheet-time-input"
-          step="900" value="${escapeHTML(currentTime)}" />
+          step="300" value="${escapeHTML(currentTime)}" />
       </div>
       ${freqHTML}
       <button type="button" class="btn btn-primary btn-full"
@@ -395,7 +395,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     }
     return `<div class="sheet-time-row">
       <span class="field-label" style="white-space:nowrap;flex-shrink:0">When</span>
-      <input type="datetime-local" id="log-when" class="sheet-time-input text-input" value="${whenVal}">
+      <input type="datetime-local" id="log-when" class="sheet-time-input text-input" value="${whenVal}" step="300">
     </div>`;
   })() : "";
 
@@ -529,7 +529,7 @@ export function renderRecurrencePicker(sch) {
       <div id="specific-time-row">
         <label class="field-label" for="specific-time">Specific time (optional)</label>
         <input id="specific-time" type="time" class="text-input"
-          value="${sch?.specificTime || ""}" />
+          value="${sch?.specificTime || ""}" step="300" />
       </div>
 
       <button type="button" class="btn btn-primary btn-full" data-action="save-recurrence">
