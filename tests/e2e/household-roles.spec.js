@@ -177,11 +177,15 @@ test.describe('Household Roles', () => {
     await ownerPage.reload();
     await ownerPage.waitForSelector('.home-grid', { timeout: 15000 });
 
-    // Navigate to settings and change role via the select dropdown.
+    // Navigate to settings, expand the member row, and change role.
     await ownerPage.click('[data-nav="settings"]');
     await ownerPage.waitForSelector('.member-list', { timeout: 10000 });
 
-    const roleSelect = ownerPage.locator(`[data-action="update-member-role"][data-user-id="${memberId}"]`);
+    // Expand the member's row.
+    const memberRow = ownerPage.locator(`.member-row[data-user-id="${memberId}"]`);
+    await memberRow.locator('.member-row-summary').click();
+
+    const roleSelect = memberRow.locator('[data-action="update-member-role"]');
     await expect(roleSelect).toBeVisible();
     await expect(roleSelect).toHaveValue('member');
 
@@ -191,8 +195,9 @@ test.describe('Household Roles', () => {
     // Wait for API response and page re-render.
     await ownerPage.waitForTimeout(2000);
 
-    // After the API call + re-render, the select value should reflect admin.
-    await expect(ownerPage.locator(`[data-action="update-member-role"][data-user-id="${memberId}"]`)).toHaveValue('admin', { timeout: 5000 });
+    // After re-render, expand again and verify the select value.
+    await ownerPage.locator(`.member-row[data-user-id="${memberId}"] .member-row-summary`).click();
+    await expect(ownerPage.locator(`.member-row[data-user-id="${memberId}"] [data-action="update-member-role"]`)).toHaveValue('admin', { timeout: 5000 });
     const verifyRes = await ownerPage.request.get('/api/household');
     const verifyData = await verifyRes.json();
     const updatedMember = verifyData.members.find(m => m.userId === memberId);
@@ -226,21 +231,23 @@ test.describe('Household Roles', () => {
     await ownerPage.reload();
     await ownerPage.waitForSelector('.home-grid', { timeout: 15000 });
 
-    // Owner navigates to settings.
+    // Owner navigates to settings, expands the member row, and selects Owner role.
     await ownerPage.click('[data-nav="settings"]');
     await ownerPage.waitForSelector('.member-list', { timeout: 10000 });
 
-    // Expand the Manage dropdown for the member, then click Make Owner.
-    const memberItem = ownerPage.locator(`.member-item:has(button[data-user-id="${memberId}"])`);
-    await memberItem.locator('.member-actions-toggle').click();
-    const makeOwnerBtn = ownerPage.locator(`[data-action="transfer-ownership"][data-user-id="${memberId}"]`);
-    await expect(makeOwnerBtn).toBeVisible();
+    // Expand the member's row.
+    const memberRow = ownerPage.locator(`.member-row[data-user-id="${memberId}"]`);
+    await memberRow.locator('.member-row-summary').click();
+
+    // Select "owner" from the role dropdown, confirm the dialog.
+    const roleSelect = memberRow.locator('[data-action="update-member-role"]');
+    await expect(roleSelect).toBeVisible();
 
     ownerPage.on('dialog', async (dialog) => {
       expect(dialog.type()).toBe('confirm');
       await dialog.accept();
     });
-    await makeOwnerBtn.click();
+    await roleSelect.selectOption('owner');
 
     // Wait for re-render.
     await ownerPage.waitForTimeout(1000);
@@ -275,9 +282,9 @@ test.describe('Household Roles', () => {
     await memberPage.click('[data-nav="settings"]');
     await memberPage.waitForSelector('.member-list', { timeout: 10000 });
 
-    // Member should NOT see Manage toggles or remove buttons.
-    await expect(memberPage.locator('.member-actions-toggle')).toHaveCount(0);
+    // Member should NOT see remove buttons or role-select dropdowns.
     await expect(memberPage.locator('[data-action="remove-member"]')).toHaveCount(0);
+    await expect(memberPage.locator('[data-action="update-member-role"]')).toHaveCount(0);
     // Member should NOT see the invite link section.
     await expect(memberPage.locator('.invite-link-url')).not.toBeVisible();
     // Member should NOT see "New tracked link" button.

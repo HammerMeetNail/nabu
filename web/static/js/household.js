@@ -98,41 +98,56 @@ export function renderHouseholdView(household, members, invites, currentUser) {
     </div>`;
   }
   const isOwner = currentUser && currentUser.role === 'owner';
+  const ownerCount = (members || []).filter(m => m.role === 'owner').length;
+
+  const chevronSVG = `<svg class="member-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
 
   const memberList = (members || []).map(m => {
     const initial = (m.displayName || m.email || '?')[0].toUpperCase();
-    let controls = '';
-    if (isOwner && m.userId !== currentUser.id) {
-      if (m.role === 'owner') {
-        controls = `<span class="role-badge">owner</span>
-          <details class="member-actions">
-            <summary class="member-actions-toggle">Manage</summary>
-            <div class="member-actions-menu">
-              <button type="button" class="btn btn-sm btn-danger" data-action="remove-member" data-user-id="${m.userId}">Remove</button>
-            </div>
-          </details>`;
+    const label = m.displayName || m.email || 'Unknown';
+    const isSelf = m.userId === currentUser.id;
+    const isLastOwner = m.role === 'owner' && ownerCount <= 1;
+
+    let detailsHTML = '';
+    if (isOwner && !isSelf) {
+      let roleOptions = '';
+
+      // If they're the last owner, only show owner as an option.
+      if (isLastOwner) {
+        roleOptions = `
+          <p class="text-secondary mb-2" style="font-size:12px">This is the only owner. Their role cannot be changed.</p>`;
       } else {
-        controls = `<select data-action="update-member-role" data-user-id="${m.userId}" class="role-select">
-          <option value="admin" ${m.role === 'admin' ? 'selected' : ''}>Admin</option>
-          <option value="member" ${m.role === 'member' ? 'selected' : ''}>Member</option>
-        </select>
-        <details class="member-actions">
-          <summary class="member-actions-toggle">Manage</summary>
-          <div class="member-actions-menu">
-            <button type="button" class="btn btn-sm btn-secondary" data-action="transfer-ownership" data-user-id="${m.userId}">Make Owner</button>
-            <button type="button" class="btn btn-sm btn-danger" data-action="remove-member" data-user-id="${m.userId}">Remove</button>
+        roleOptions = `
+          <div class="member-role-row">
+            <label class="form-label" style="font-size:11px">Role</label>
+            <select data-action="update-member-role" data-user-id="${m.userId}" data-is-owner="${m.role === 'owner' ? '1' : '0'}" class="role-select role-select--wide">
+              <option value="owner" ${m.role === 'owner' ? 'selected' : ''}>Owner</option>
+              <option value="admin" ${m.role === 'admin' ? 'selected' : ''}>Admin</option>
+              <option value="member" ${m.role === 'member' ? 'selected' : ''}>Member</option>
+            </select>
           </div>
-        </details>`;
+          <button type="button" class="btn btn-sm btn-danger mt-2" data-action="remove-member" data-user-id="${m.userId}">Remove from household</button>`;
       }
-    } else {
-      controls = `<span class="role-badge">${m.role}</span>`;
+
+      detailsHTML = `<div class="member-row-details">
+        ${roleOptions}
+      </div>`;
+    } else if (isOwner && isSelf) {
+      detailsHTML = `<div class="member-row-details">
+        <p class="text-secondary" style="font-size:12px">You are the owner${ownerCount > 1 ? ' (one of ' + ownerCount + ')' : ''} of this household.</p>
+      </div>`;
     }
 
-    return `<li class="member-item">
-    <span class="avatar-circle-sm" style="background:${m.avatarColor || '#19323C'}">${initial}</span>
-    <span>${m.email || m.displayName || 'Unknown'}</span>
-    ${controls}
-  </li>`;}).join("");
+    return `<details class="member-row" data-user-id="${m.userId}">
+      <summary class="member-row-summary">
+        <span class="avatar-circle-sm" style="background:${m.avatarColor || '#19323C'}">${initial}</span>
+        <span class="member-name">${escapeHTML(label)}</span>
+        <span class="role-badge">${m.role}</span>
+        ${chevronSVG}
+      </summary>
+      ${detailsHTML}
+    </details>`;
+  }).join("");
   const inviteList = (invites || []).map(inv => {
     const invUrl = `${window.location.origin}/join?code=${inv.code}`;
     return `<li class="invite-item">
@@ -159,7 +174,7 @@ export function renderHouseholdView(household, members, invites, currentUser) {
     <h3>${escapeHTML(household.name)}</h3>
     ${inviteSection}
     <h4 class="mt-4">Members</h4>
-    <ul class="member-list">${memberList}</ul>
+    <div class="member-list">${memberList}</div>
   </div>
   <div class="card mt-3">
     <h4>Danger Zone</h4>

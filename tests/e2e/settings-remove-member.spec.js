@@ -102,20 +102,17 @@ test.describe('Settings - Remove Member', () => {
     // Target only the Members list (the last .member-list on the page;
     // the first one is the Active Invites list).
     const membersList = ownerPage.locator('.member-list').last();
-    const memberItems = membersList.locator('.member-item');
 
     // Verify both members are listed.
-    await expect(memberItems).toHaveCount(2);
+    const memberRows = membersList.locator('.member-row');
+    await expect(memberRows).toHaveCount(2);
 
-    // The owner should see exactly one Manage toggle (for the member, not self).
-    const manageToggles = ownerPage.locator('.member-actions-toggle');
-    await expect(manageToggles).toHaveCount(1);
+    // Expand the member's row (click the summary).
+    const memberRow = membersList.locator(`.member-row[data-user-id="${memberId}"]`);
+    await memberRow.locator('.member-row-summary').click();
 
-    // Expand the Manage dropdown for the member, then click Remove.
-    await manageToggles.click();
-    const removeBtn = ownerPage.locator(
-      `[data-action="remove-member"][data-user-id="${memberId}"]`
-    );
+    // Click Remove inside the expanded details.
+    const removeBtn = memberRow.locator('[data-action="remove-member"]');
     await expect(removeBtn).toBeVisible();
 
     // Click Remove and confirm the dialog.
@@ -126,10 +123,7 @@ test.describe('Settings - Remove Member', () => {
     await removeBtn.click();
 
     // After removal, the member list should have only 1 item.
-    await expect(memberItems).toHaveCount(1);
-
-    // The remaining member (owner) should have no Manage toggle.
-    await expect(manageToggles).toHaveCount(0);
+    await expect(memberRows).toHaveCount(1);
 
     // Verify via API that the member is no longer in the household.
     const hhRes3 = await memberPage.request.get('/api/household');
@@ -153,10 +147,7 @@ test.describe('Settings - Remove Member', () => {
     const membersList = ownerPage.locator('.member-list').last();
 
     // There should be only one member (the owner).
-    await expect(membersList.locator('.member-item')).toHaveCount(1);
-
-    // No Manage toggle should exist since the only member is the owner.
-    await expect(membersList.locator('.member-actions-toggle')).toHaveCount(0);
+    await expect(membersList.locator('.member-row')).toHaveCount(1);
 
     // Verify via API that removing the last owner is rejected.
     const csrf = await getCSRF(ownerPage);

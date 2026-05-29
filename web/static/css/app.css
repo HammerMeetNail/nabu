@@ -589,7 +589,6 @@ input:focus, select:focus, textarea:focus {
   list-style: none;
 }
 
-.member-item,
 .invite-item,
 .stat-item {
   display: flex;
@@ -600,7 +599,6 @@ input:focus, select:focus, textarea:focus {
   font-size: 14px;
 }
 
-.member-item:last-child,
 .invite-item:last-child,
 .stat-item:last-child { border-bottom: none; }
 
@@ -708,57 +706,66 @@ input:focus, select:focus, textarea:focus {
 }
 
 .role-select {
-  font-size: 11px;
-  padding: 2px 4px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--bg);
-  color: var(--text-primary);
-  margin-left: auto;
-}
-
-.member-actions {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.member-actions-toggle {
-  font-size: 11px;
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--bg);
-  color: var(--text-secondary);
-  cursor: pointer;
-  list-style: none;
-  user-select: none;
-}
-
-.member-actions-toggle::-webkit-details-marker { display: none; }
-
-.member-actions-toggle::after {
-  content: " ▾";
-  font-size: 9px;
-}
-
-.member-actions[open] .member-actions-toggle::after {
-  content: " ▴";
-}
-
-.member-actions-menu {
-  position: absolute;
-  right: 0;
-  top: 100%;
-  margin-top: 4px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 6px;
-  background: var(--card-bg);
+  font-size: 13px;
+  padding: 4px 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  z-index: 10;
+  background: var(--input-bg, var(--bg));
+  color: var(--text-primary);
+}
+
+.role-select--wide {
+  width: 100%;
+}
+
+.member-row {
+  border-bottom: 1px solid var(--border);
+}
+
+.member-row:last-child {
+  border-bottom: none;
+}
+
+.member-row-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 0;
+  cursor: pointer;
+  list-style: none;
+  font-size: 14px;
+}
+
+.member-row-summary::-webkit-details-marker {
+  display: none;
+}
+
+.member-name {
+  flex: 1;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.member-chevron {
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  transition: transform 0.2s ease;
+}
+
+details[open] .member-chevron {
+  transform: rotate(180deg);
+}
+
+.member-row-details {
+  padding: 0 0 12px 28px;
+}
+
+.member-role-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* Schedule tab — upcoming list */

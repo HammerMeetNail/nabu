@@ -173,9 +173,24 @@ func (s *Service) UpdateMemberRole(ctx context.Context, actorUserID, targetUserI
 	if newRole != RoleAdmin && newRole != RoleMember {
 		return fmt.Errorf("invalid role: %s", newRole)
 	}
-	hhID, _, err := s.store.GetMembership(ctx, targetUserID)
+	hhID, targetRole, err := s.store.GetMembership(ctx, targetUserID)
 	if err != nil {
 		return err
+	}
+	if targetRole == RoleOwner {
+		members, err := s.store.GetMembers(ctx, hhID)
+		if err != nil {
+			return err
+		}
+		owners := 0
+		for _, m := range members {
+			if m.Role == RoleOwner {
+				owners++
+			}
+		}
+		if owners <= 1 {
+			return fmt.Errorf("cannot change the role of the last owner")
+		}
 	}
 	return s.store.UpdateMemberRole(ctx, hhID, targetUserID, newRole)
 }

@@ -382,7 +382,7 @@ test.describe('Exhaustive: Authenticated Flow', () => {
 
     // Members section
     await expect(page.locator('text=Members')).toBeVisible();
-    await expect(page.locator('.member-list li').first()).toBeVisible();
+    await expect(page.locator('.member-list .member-row').first()).toBeVisible();
 
     // Leave Household button
     const leaveBtn = page.locator('button[data-action="leave-household"]');

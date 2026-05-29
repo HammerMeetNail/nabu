@@ -1763,14 +1763,30 @@ export async function init() {
     if (actionEl?.dataset?.action === "update-member-role") {
       const userId = parseInt(actionEl.dataset.userId, 10);
       const newRole = actionEl.value;
-      updateMemberRole(userId, newRole).then(async (data) => {
-        if (data.status === "updated") {
-          await loadHouseholdData();
-          render(app);
-        } else {
-          showToast(data.error || "Failed to update role", "error");
-        }
-      }).catch(() => showToast("Failed to update role", "error"));
+      if (newRole === "owner") {
+        const member = (state.members || []).find(m => m.userId === userId);
+        const name = member ? (member.displayName || member.email) : "this member";
+        // eslint-disable-next-line no-alert
+        if (!confirm(`Transfer ownership to ${name}? You will become an admin.`)) return;
+        transferOwnership(userId).then(async (data) => {
+          if (data.status === "transferred") {
+            await loadHouseholdData();
+            render(app);
+            showToast(`Ownership transferred to ${name}`, "info");
+          } else {
+            showToast(data.error || "Failed to transfer ownership", "error");
+          }
+        }).catch(() => showToast("Failed to transfer ownership", "error"));
+      } else {
+        updateMemberRole(userId, newRole).then(async (data) => {
+          if (data.status === "updated") {
+            await loadHouseholdData();
+            render(app);
+          } else {
+            showToast(data.error || "Failed to update role", "error");
+          }
+        }).catch(() => showToast("Failed to update role", "error"));
+      }
     }
   });
 
