@@ -1,7 +1,7 @@
 // web/static/js/schedule.js
 
 import { apiFetch } from "./api.js";
-import { escapeHTML } from "./utils.js";
+import { escapeHTML, roundMinutesTo5 } from "./utils.js";
 
 // ─── API calls ────────────────────────────────────────────────────────────────
 
@@ -385,6 +385,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     const now = new Date();
     const pad = n => String(n).padStart(2, "0");
     let whenVal = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    whenVal = roundMinutesTo5(whenVal);
     if (log?.completedAt) {
       const d = new Date(log.completedAt);
       whenVal = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
