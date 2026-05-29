@@ -27,7 +27,7 @@ import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPi
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, sortChoresByOrder, syncTimezone } from "./preferences.js";
 import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeManageView, renderConfirmRemoveFromHomeSheet } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
-import { loadNotifications, markRead, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge } from "./notifications.js";
+import { loadNotifications, markRead, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences } from "./notifications.js";
 import { renderScheduleTab } from "./schedule-tab.js";
 
 /**
@@ -495,10 +495,42 @@ function renderSettingsView() {
     </div>
   `;
 
-  if (!hh) {
-    return `<div class="settings-view">${renderHouseholdView(null, null, null, state.user)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}<button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div></div>`;
+  const notifTypes = state.availableNotificationTypes || [];
+  const enabledTypes = state.notificationPrefs?.enabledPushTypes || [];
+  const notifPrefsLoaded = !!state.notificationPrefs;
+
+  let notifPrefsCard = "";
+  if (notifPrefsLoaded && notifTypes.length > 0) {
+    const pushEnabled = state.notificationPrefs?.pushEnabled;
+    const rows = notifTypes.map(t => {
+      const enabledTypes = state.notificationPrefs?.enabledPushTypes || [];
+      // No explicit prefs set yet (pushEnabled defaults to true, empty list).
+      const allEnabled = enabledTypes.length === 0 && pushEnabled !== false;
+      const isEnabled = allEnabled || enabledTypes.includes(t.type);
+      const checked = isEnabled ? " checked" : "";
+      return `<div class="notif-pref-row">
+        <label class="notif-pref-label">
+          <span class="notif-pref-title">${escapeHTML(t.label)}</span>
+          <span class="notif-pref-desc">${escapeHTML(t.description)}</span>
+        </label>
+        <label class="notif-pref-toggle">
+          <input type="checkbox" data-action="toggle-notif-pref" data-notif-type="${escapeHTML(t.type)}"${checked}>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>`;
+    }).join("");
+
+    notifPrefsCard = `<div class="card mt-3">
+      <h3>Notifications</h3>
+      <p class="text-secondary">Choose which notifications you receive via push.</p>
+      <div class="notif-pref-list">${rows}</div>
+    </div>`;
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}<button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div></div>`;
+
+  if (!hh) {
+    return `<div class="settings-view">${renderHouseholdView(null, null, null, state.user)}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}<button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div></div>`;
+  }
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}<button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div></div>`;
 }
 
 async function loadStatsData() {
@@ -514,53 +546,6 @@ async function loadStatsData() {
       };
     }
   } catch {}
-}
-
-async function loadAllStatsData() {
-  try {
-    const overviewData = await loadOverview();
-    if (overviewData && overviewData.overview) {
-      state.stats = state.stats || {};
-      state.stats.overview = {
-        leaderboard: overviewData.overview.leaderboard || [],
-        streaks: overviewData.overview.streaks || {},
-        breakdown: overviewData.overview.breakdown || [],
-        recap: overviewData.overview.recap || {},
-      };
-    }
-  } catch {}
-  try {
-    const heatmapData = await loadHeatmap();
-    if (heatmapData && heatmapData.heatmap) {
-      state.stats = state.stats || {};
-      state.stats.heatmap = heatmapData.heatmap;
-    }
-  } catch {}
-  try {
-    const busyData = await loadBusyHours();
-    if (busyData && busyData.busyHours) {
-      state.stats = state.stats || {};
-      state.stats.busyHours = busyData.busyHours;
-    }
-  } catch {}
-  try {
-    const csData = await loadChoreStats();
-    if (csData && csData.choreStats) {
-      state.stats = state.stats || {};
-      state.stats.choreStats = csData.choreStats;
-    }
-  } catch {}
-}
-
-function renderStatsPageView() {
-  try {
-    if (state.stats && state.stats.overview) {
-      return renderStatsPage(state);
-    }
-    return '<div class="stats-page"><h2>Stats</h2><p class="text-center text-secondary">Loading...</p></div>';
-  } catch {
-    return '<div class="stats-page"><h2>Stats</h2><p class="text-center text-secondary">Stats unavailable</p></div>';
-  }
 }
 
 function countTodayLogs() {
@@ -589,7 +574,6 @@ async function loadNotifData() {
     state.unreadNotifications = data.unreadCount || 0;
   } catch {}
 
-  // Check push diagnostic from service worker
   if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
     try {
       const mc = new MessageChannel();
@@ -604,6 +588,15 @@ async function loadNotifData() {
       }
     } catch {}
   }
+}
+
+async function loadNotificationPrefs() {
+  if (!state.user) return;
+  try {
+    const data = await loadNotificationPreferences();
+    state.notificationPrefs = data.preferences;
+    state.availableNotificationTypes = data.availableTypes;
+  } catch {}
 }
 
 function showToastWithUndo(message, logId) {
@@ -977,6 +970,9 @@ export async function init() {
       state.currentRoute = `/${navEl.dataset.nav}`;
       if (state.currentRoute === "/settings") {
         state._loadedHousehold = true;
+        render(app);
+        loadNotificationPrefs().then(() => render(app));
+        return;
       }
       if (state.currentRoute === "/activity") {
         if (state.activityView === "history") {
@@ -1731,6 +1727,38 @@ export async function init() {
           btn.disabled = false;
           btn.textContent = "Load more";
         });
+        break;
+      }
+
+      case "toggle-notif-pref": {
+        e.preventDefault();
+        const notifType = actionEl.dataset.notifType;
+        const isChecked = actionEl.checked;
+        let enabledTypes = [...(state.notificationPrefs?.enabledPushTypes || [])];
+        const prevPushEnabled = state.notificationPrefs?.pushEnabled;
+        const allTypes = (state.availableNotificationTypes || []).map(t => t.type);
+
+        // If no explicit preferences have been set yet (pushEnabled defaults
+        // to true and enabledTypes is empty), start from all types.
+        if (enabledTypes.length === 0 && prevPushEnabled !== false) {
+          enabledTypes = [...allTypes];
+        }
+
+        if (isChecked) {
+          if (!enabledTypes.includes(notifType)) enabledTypes.push(notifType);
+        } else {
+          enabledTypes = enabledTypes.filter(t => t !== notifType);
+        }
+
+        const pushEnabled = enabledTypes.length > 0;
+        saveNotificationPreferences({ enabledPushTypes: enabledTypes, pushEnabled })
+          .then(data => {
+            state.notificationPrefs = data.preferences;
+            render(app);
+          })
+          .catch(() => {
+            actionEl.checked = !isChecked;
+          });
         break;
       }
     }

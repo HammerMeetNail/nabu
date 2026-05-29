@@ -222,6 +222,19 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	mux.HandleFunc("/api/notifications/{id}/read", method(http.MethodPost, middleware.RequireAuth(notifHandler.MarkRead)))
 	mux.HandleFunc("/api/notifications/{id}", method(http.MethodDelete, middleware.RequireAuth(notifHandler.Delete)))
 
+	notifPrefsHandler := handlers.NewNotificationPreferencesHandler(notifService)
+	mux.HandleFunc("/api/notification-preferences", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			notifPrefsHandler.Get(w, r)
+		case http.MethodPatch:
+			notifPrefsHandler.Update(w, r)
+		default:
+			w.Header().Set("Allow", "GET, PATCH")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+
 	mux.HandleFunc("/api/push/subscribe", method(http.MethodPost, middleware.RequireAuth(pushHandler.Subscribe)))
 	mux.HandleFunc("/api/push/unsubscribe", method(http.MethodPost, middleware.RequireAuth(pushHandler.Unsubscribe)))
 

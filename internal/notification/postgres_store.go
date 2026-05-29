@@ -3,6 +3,7 @@ package notification
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 )
 
 type PostgresStore struct {
@@ -82,31 +83,53 @@ func (s *PostgresStore) DeleteNotification(ctx context.Context, id, userID int64
 
 func (s *PostgresStore) GetReminderPreferences(ctx context.Context, userID int64) (ReminderPreference, error) {
 	var p ReminderPreference
+	var rawTypes []byte
 	err := s.db.QueryRowContext(ctx,
 		`SELECT user_id, push_enabled, email_enabled,
-		        COALESCE(quiet_hours_start, ''), COALESCE(quiet_hours_end, ''), timezone
+		        COALESCE(quiet_hours_start, ''), COALESCE(quiet_hours_end, ''), timezone,
+		        COALESCE(enabled_push_types, '[]')
 		 FROM reminder_preferences WHERE user_id = $1`,
 		userID,
-	).Scan(&p.UserID, &p.PushEnabled, &p.EmailEnabled, &p.QuietHoursStart, &p.QuietHoursEnd, &p.Timezone)
+	).Scan(&p.UserID, &p.PushEnabled, &p.EmailEnabled, &p.QuietHoursStart, &p.QuietHoursEnd, &p.Timezone, &rawTypes)
 	if err == sql.ErrNoRows {
-		return ReminderPreference{UserID: userID, Timezone: "UTC"}, nil
+		return ReminderPreference{UserID: userID, PushEnabled: true, Timezone: "UTC", EnabledPushTypes: []string{}}, nil
 	}
-	return p, err
+	if err != nil {
+		return p, err
+	}
+	if len(rawTypes) > 0 {
+		if err := json.Unmarshal(rawTypes, &p.EnabledPushTypes); err != nil {
+			p.EnabledPushTypes = []string{}
+		}
+	}
+	if p.EnabledPushTypes == nil {
+		p.EnabledPushTypes = []string{}
+	}
+	return p, nil
 }
 
 func (s *PostgresStore) UpdateReminderPreferences(ctx context.Context, prefs ReminderPreference) error {
 	qhs := nullStr(prefs.QuietHoursStart)
 	qhe := nullStr(prefs.QuietHoursEnd)
-	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO reminder_preferences (user_id, push_enabled, email_enabled, quiet_hours_start, quiet_hours_end, timezone)
-		 VALUES ($1, $2, $3, $4, $5, $6)
+	types := prefs.EnabledPushTypes
+	if types == nil {
+		types = []string{}
+	}
+	rawTypes, err := json.Marshal(types)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx,
+		`INSERT INTO reminder_preferences (user_id, push_enabled, email_enabled, quiet_hours_start, quiet_hours_end, timezone, enabled_push_types)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 ON CONFLICT (user_id) DO UPDATE SET
 		   push_enabled = EXCLUDED.push_enabled,
 		   email_enabled = EXCLUDED.email_enabled,
 		   quiet_hours_start = EXCLUDED.quiet_hours_start,
 		   quiet_hours_end = EXCLUDED.quiet_hours_end,
-		   timezone = EXCLUDED.timezone`,
-		prefs.UserID, prefs.PushEnabled, prefs.EmailEnabled, qhs, qhe, prefs.Timezone,
+		   timezone = EXCLUDED.timezone,
+		   enabled_push_types = EXCLUDED.enabled_push_types`,
+		prefs.UserID, prefs.PushEnabled, prefs.EmailEnabled, qhs, qhe, prefs.Timezone, rawTypes,
 	)
 	return err
 }

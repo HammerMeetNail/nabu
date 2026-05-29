@@ -46,6 +46,38 @@ func (s *Service) List(ctx context.Context, userID int64) ([]Notification, int, 
 	return notifs, unread, err
 }
 
+// GetNotificationPreferences returns the current user's reminder/notification
+// preferences, defaulting to all types enabled if no row exists yet.
+func (s *Service) GetNotificationPreferences(ctx context.Context, userID int64) (ReminderPreference, error) {
+	return s.store.GetReminderPreferences(ctx, userID)
+}
+
+// UpdateNotificationPreferences patches the notification preferences for a
+// user.  Only fields present in the request struct (non-nil pointers) are
+// applied; others are left unchanged.
+func (s *Service) UpdateNotificationPreferences(ctx context.Context, prefs ReminderPreference) error {
+	return s.store.UpdateReminderPreferences(ctx, prefs)
+}
+
+// AvailableNotificationTypes returns the list of notification types that can
+// be toggled on/off by the user.
+func AvailableNotificationTypes() []NotificationTypeInfo {
+	return []NotificationTypeInfo{
+		{
+			Type:        "chore_logged",
+			Label:       "Chore Logged",
+			Description: "When someone else in your household logs a chore.",
+		},
+	}
+}
+
+// NotificationTypeInfo describes a notification type for the settings UI.
+type NotificationTypeInfo struct {
+	Type        string `json:"type"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
+}
+
 // UnreadCount returns the number of unread notifications for a user.
 func (s *Service) UnreadCount(ctx context.Context, userID int64) (int, error) {
 	return s.store.GetUnreadCount(ctx, userID)
@@ -100,11 +132,30 @@ func (s *Service) NotifyChoreLogged(ctx context.Context, members []MemberInfo, l
 		if err != nil {
 			continue
 		}
-		if s.pushSender != nil {
+		if s.pushSender != nil && s.shouldSendPush(ctx, m.UserID, "chore_logged") {
 			log.Printf("notif: sending push to user %d title=%q", n.UserID, n.Title)
-			// Best-effort — ignore push errors so a failed push device
-			// doesn't stop other recipients from being notified.
 			_ = s.pushSender.SendPushToUser(ctx, n.UserID, n.Title, n.Body)
 		}
 	}
+}
+
+// shouldSendPush checks whether a push notification of the given type should be
+// sent to the user, respecting their notification preferences.
+func (s *Service) shouldSendPush(ctx context.Context, userID int64, notifType string) bool {
+	prefs, err := s.store.GetReminderPreferences(ctx, userID)
+	if err != nil {
+		return true
+	}
+	if !prefs.PushEnabled {
+		return false
+	}
+	if len(prefs.EnabledPushTypes) == 0 {
+		return true
+	}
+	for _, t := range prefs.EnabledPushTypes {
+		if t == notifType {
+			return true
+		}
+	}
+	return false
 }

@@ -16,12 +16,13 @@ type Notification struct {
 }
 
 type ReminderPreference struct {
-	UserID          int64  `json:"userId"`
-	PushEnabled     bool   `json:"pushEnabled"`
-	EmailEnabled    bool   `json:"emailEnabled"`
-	QuietHoursStart string `json:"quietHoursStart"`
-	QuietHoursEnd   string `json:"quietHoursEnd"`
-	Timezone        string `json:"timezone"`
+	UserID           int64    `json:"userId"`
+	PushEnabled      bool     `json:"pushEnabled"`
+	EmailEnabled     bool     `json:"emailEnabled"`
+	QuietHoursStart  string   `json:"quietHoursStart"`
+	QuietHoursEnd    string   `json:"quietHoursEnd"`
+	Timezone         string   `json:"timezone"`
+	EnabledPushTypes []string `json:"enabledPushTypes"`
 }
 
 type Store interface {
@@ -115,7 +116,10 @@ func (s *MemoryStore) DeleteNotification(_ context.Context, id, userID int64) er
 func (s *MemoryStore) GetReminderPreferences(_ context.Context, userID int64) (ReminderPreference, error) {
 	p, ok := s.prefs[userID]
 	if !ok {
-		return ReminderPreference{UserID: userID, Timezone: "UTC"}, nil
+		return ReminderPreference{UserID: userID, PushEnabled: true, Timezone: "UTC", EnabledPushTypes: []string{}}, nil
+	}
+	if p.EnabledPushTypes == nil {
+		p.EnabledPushTypes = []string{}
 	}
 	return p, nil
 }
