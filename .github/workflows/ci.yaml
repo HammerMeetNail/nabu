@@ -112,7 +112,7 @@ jobs:
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
-    needs: [changes, test-go, test-js]
+    needs: [changes]
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.tests == 'true'
     services:
       mailpit:
