@@ -481,8 +481,7 @@ test.describe('History indicator icons', () => {
     await card.click();
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
 
-    // Toggle peer chip
-    await page.locator('.log-chip').nth(1).click();
+    // Pee is autoselected by default — no toggle needed
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
