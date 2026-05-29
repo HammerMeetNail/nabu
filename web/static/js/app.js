@@ -548,6 +548,42 @@ async function loadStatsData() {
   } catch {}
 }
 
+async function loadAllStatsData() {
+  try {
+    const overviewData = await loadOverview();
+    if (overviewData && overviewData.overview) {
+      state.stats = state.stats || {};
+      state.stats.overview = {
+        leaderboard: overviewData.overview.leaderboard || [],
+        streaks: overviewData.overview.streaks || {},
+        breakdown: overviewData.overview.breakdown || [],
+        recap: overviewData.overview.recap || {},
+      };
+    }
+  } catch {}
+  try {
+    const heatmapData = await loadHeatmap();
+    if (heatmapData && heatmapData.heatmap) {
+      state.stats = state.stats || {};
+      state.stats.heatmap = heatmapData.heatmap;
+    }
+  } catch {}
+  try {
+    const busyData = await loadBusyHours();
+    if (busyData && busyData.busyHours) {
+      state.stats = state.stats || {};
+      state.stats.busyHours = busyData.busyHours;
+    }
+  } catch {}
+  try {
+    const csData = await loadChoreStats();
+    if (csData && csData.choreStats) {
+      state.stats = state.stats || {};
+      state.stats.choreStats = csData.choreStats;
+    }
+  } catch {}
+}
+
 function countTodayLogs() {
   if (!state.todayLogs) return 0;
   const today = new Date();
@@ -556,6 +592,17 @@ function countTodayLogs() {
     const d = l.completedAt ? new Date(l.completedAt) : null;
     return d ? localDateStr(d) === todayStr : false;
   }).length;
+}
+
+function renderStatsPageView() {
+  try {
+    if (state.stats && state.stats.overview) {
+      return renderStatsPage(state);
+    }
+    return '<div class="stats-page"><h2>Stats</h2><p class="text-center text-secondary">Loading...</p></div>';
+  } catch {
+    return '<div class="stats-page"><h2>Stats</h2><p class="text-center text-secondary">Stats unavailable</p></div>';
+  }
 }
 
 async function loadLatestLogsData() {
