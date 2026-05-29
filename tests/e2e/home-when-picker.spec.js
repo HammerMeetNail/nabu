@@ -73,7 +73,7 @@ test.describe('Home tab: when picker time accuracy', () => {
     // The completedAt should match the when input exactly, which was
     // pre-filled with the current local time (truncated to minutes).
     const expectedMs = new Date(whenVal).getTime();
-    const tolerance = 200000; // 200s covers 5-min rounding + test overhead
+    const tolerance = 65000; // 65 s tolerance covers the pre-fill-to-save round-trip
     expect(completedAtMs).toBeGreaterThanOrEqual(expectedMs - tolerance);
     expect(completedAtMs).toBeLessThanOrEqual(expectedMs + tolerance);
 

@@ -62,7 +62,7 @@ test.describe('Home tab: completedAt accuracy', () => {
     expect(log).toBeDefined();
     const completedAtMs = new Date(log.completedAt).getTime();
 
-    const tolerance = 200000; // 200s covers 5-min rounding + test overhead
+    const tolerance = 70000;
     expect(completedAtMs).toBeGreaterThanOrEqual(beforeMs - tolerance);
     expect(completedAtMs).toBeLessThanOrEqual(afterMs + tolerance);
   });
