@@ -1,7 +1,7 @@
 import { createAppState, resetAuthedState } from "./state.js";
 import { morphInnerHTML } from "./morph.js";
 import { apiMe, apiFetch } from "./api.js";
-import { escapeHTML, localDateStr } from "./utils.js";
+import { escapeHTML, localDateStr, roundMinutesTo5 } from "./utils.js";
 import {
   loadSession,
   handleLogin,
@@ -1318,22 +1318,23 @@ export async function init() {
 
         const whenInput = document.querySelector('#log-when');
         if (whenInput?.value) {
+          const rawWhen = roundMinutesTo5(whenInput.value);
           if (!logId) {
             // New log: always use the when input value so the submitted
             // time matches what the user sees in the picker.
-            completedAt = new Date(whenInput.value).toISOString();
-            slotHour = new Date(whenInput.value).getHours();
-            date = whenInput.value.split('T')[0];
+            completedAt = new Date(rawWhen).toISOString();
+            slotHour = new Date(rawWhen).getHours();
+            date = rawWhen.split('T')[0];
           } else {
             // Editing existing log: only override if the user changed
             // the value — morph.js may have corrupted the input during
             // re-renders.
-            const inputSlotHour = new Date(whenInput.value).getHours();
-            const inputDate = whenInput.value.split('T')[0];
+            const inputSlotHour = new Date(rawWhen).getHours();
+            const inputDate = rawWhen.split('T')[0];
             const initialSlot = actionEl.dataset.slotHour && actionEl.dataset.slotHour !== ""
               ? parseInt(actionEl.dataset.slotHour, 10) : null;
             if (inputDate !== actionEl.dataset.date || inputSlotHour !== initialSlot) {
-              completedAt = new Date(whenInput.value).toISOString();
+              completedAt = new Date(rawWhen).toISOString();
               slotHour = inputSlotHour;
               date = inputDate;
             }
