@@ -11,10 +11,11 @@ type AuthHandler struct {
 	authService *auth.Service
 	cookieName  string
 	secure      bool
+	appBaseURL  string
 }
 
-func NewAuthHandler(authService *auth.Service, cookieName string, secure bool) *AuthHandler {
-	return &AuthHandler{authService: authService, cookieName: cookieName, secure: secure}
+func NewAuthHandler(authService *auth.Service, cookieName string, secure bool, appBaseURL string) *AuthHandler {
+	return &AuthHandler{authService: authService, cookieName: cookieName, secure: secure, appBaseURL: appBaseURL}
 }
 
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
@@ -271,7 +272,9 @@ func (h *AuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.SetSessionCookie(w, session.ID)
-	writeJSON(w, http.StatusOK, h.authResponse(user, session))
+
+	_ = user
+	http.Redirect(w, r, h.appBaseURL, http.StatusFound)
 }
 
 func (h *AuthHandler) authResponse(user auth.User, session auth.Session) map[string]any {

@@ -73,7 +73,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	authService.SetAuditLogger(audit.NewStdLogger(log.Default()))
 	authService.SetMailer(newMailer(cfg), cfg.AppBaseURL)
 	authService.SetOIDCProvider(newOIDCProvider(cfg))
-	authHandler := handlers.NewAuthHandler(authService, "choresy_session", cfg.ServerSecure)
+	authHandler := handlers.NewAuthHandler(authService, "choresy_session", cfg.ServerSecure, cfg.AppBaseURL)
 	householdService := household.NewService(householdStore, authService)
 	householdHandler := handlers.NewHouseholdHandler(householdService)
 	choreService := chore.NewService(choreStore)

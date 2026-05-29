@@ -17,7 +17,7 @@ func setupAuthHandler(t *testing.T) (*AuthHandler, *auth.Service) {
 	svc := auth.NewService(store)
 	mailer := mail.NewMemorySender()
 	svc.SetMailer(mailer, "http://localhost:8080")
-	handler := NewAuthHandler(svc, "choresy_session", false)
+	handler := NewAuthHandler(svc, "choresy_session", false, "http://localhost:8080")
 	return handler, svc
 }
 
