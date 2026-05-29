@@ -101,6 +101,8 @@ export function renderHouseholdView(household, members, invites, currentUser) {
   const ownerCount = (members || []).filter(m => m.role === 'owner').length;
 
   const chevronSVG = `<svg class="member-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
+  const verifiedSVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#386641" stroke-width="2.5" aria-label="Email verified"><polyline points="20 6 9 17 4 12"></polyline></svg>`;
+  const unverifiedSVG = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#BC4742" stroke-width="2.5" aria-label="Email not verified"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>`;
 
   const memberList = (members || []).map(m => {
     const initial = (m.displayName || m.email || '?')[0].toUpperCase();
@@ -120,7 +122,7 @@ export function renderHouseholdView(household, members, invites, currentUser) {
         roleOptions = `
           <div class="member-role-row">
             <label class="form-label" style="font-size:11px">Role</label>
-            <select data-action="update-member-role" data-user-id="${m.userId}" data-is-owner="${m.role === 'owner' ? '1' : '0'}" class="role-select role-select--wide">
+            <select data-action="update-member-role" data-user-id="${m.userId}" data-is-owner="${m.role === 'owner' ? '1' : '0'}" class="role-select role-select--wide" onmousedown="event.stopPropagation()">
               <option value="owner" ${m.role === 'owner' ? 'selected' : ''}>Owner</option>
               <option value="admin" ${m.role === 'admin' ? 'selected' : ''}>Admin</option>
               <option value="member" ${m.role === 'member' ? 'selected' : ''}>Member</option>
@@ -143,6 +145,7 @@ export function renderHouseholdView(household, members, invites, currentUser) {
         <span class="avatar-circle-sm" style="background:${m.avatarColor || '#19323C'}">${initial}</span>
         <span class="member-name">${escapeHTML(label)}</span>
         <span class="role-badge">${m.role}</span>
+        ${m.emailVerified ? verifiedSVG : unverifiedSVG}
         ${chevronSVG}
       </summary>
       ${detailsHTML}

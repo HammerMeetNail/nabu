@@ -56,7 +56,7 @@ func (s *PostgresStore) UpdateHousehold(ctx context.Context, id int64, name stri
 }
 
 func (s *PostgresStore) GetMembers(ctx context.Context, householdID int64) ([]Member, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, email, display_name, avatar_color, role FROM users WHERE household_id = $1`, householdID)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, email, display_name, avatar_color, email_verified, role FROM users WHERE household_id = $1`, householdID)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (s *PostgresStore) GetMembers(ctx context.Context, householdID int64) ([]Me
 	var members []Member
 	for rows.Next() {
 		var m Member
-		if err := rows.Scan(&m.UserID, &m.Email, &m.DisplayName, &m.AvatarColor, &m.Role); err != nil {
+		if err := rows.Scan(&m.UserID, &m.Email, &m.DisplayName, &m.AvatarColor, &m.EmailVerified, &m.Role); err != nil {
 			return nil, err
 		}
 		members = append(members, m)

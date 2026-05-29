@@ -83,10 +83,10 @@ func TestPostgresHouseholdStore_GetMembers(t *testing.T) {
 	defer db.Close()
 	store := NewPostgresStore(db)
 
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, email, display_name, avatar_color, role FROM users WHERE household_id = $1`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, email, display_name, avatar_color, email_verified, role FROM users WHERE household_id = $1`)).
 		WithArgs(int64(1)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "display_name", "avatar_color", "role"}).
-			AddRow(1, "a@b.com", "Alice", "#F00", "owner"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "display_name", "avatar_color", "email_verified", "role"}).
+			AddRow(1, "a@b.com", "Alice", "#F00", true, "owner"))
 
 	members, err := store.GetMembers(context.Background(), 1)
 	if err != nil {

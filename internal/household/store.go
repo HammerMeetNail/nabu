@@ -15,11 +15,12 @@ type Household struct {
 }
 
 type Member struct {
-	UserID      int64  `json:"userId"`
-	Email       string `json:"email"`
-	DisplayName string `json:"displayName"`
-	AvatarColor string `json:"avatarColor"`
-	Role        string `json:"role"`
+	UserID        int64  `json:"userId"`
+	Email         string `json:"email"`
+	DisplayName   string `json:"displayName"`
+	AvatarColor   string `json:"avatarColor"`
+	EmailVerified bool   `json:"emailVerified"`
+	Role          string `json:"role"`
 }
 
 const (
