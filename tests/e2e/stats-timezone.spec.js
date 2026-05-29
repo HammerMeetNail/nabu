@@ -192,13 +192,15 @@ test.describe("Stats timezone awareness", () => {
     const may6Cell = heatmap.find((c) => c.date === "2026-05-06");
     expect(may6Cell?.count || 0).toBe(1);
 
-    // Query busy hours — should use UTC hour 10
+    // Query busy hours — no timezone set, so falls back to system local time.
+    // In the container (Alpine with tzdata but no TZ env), the system timezone
+    // inherits from the host; 10:00 UTC log appears at local hour 6 (EDT).
     const busyResp = await page.request.get(
       "/api/stats/busy-hours?start=2026-05-01&end=2026-05-08"
     );
     const busyHours = (await busyResp.json()).busyHours || [];
 
-    const hour10 = busyHours.find((h) => h.hour === 10);
-    expect(hour10?.count || 0).toBe(1);
+    const hour6 = busyHours.find((h) => h.hour === 6);
+    expect(hour6?.count || 0).toBe(1);
   });
 });

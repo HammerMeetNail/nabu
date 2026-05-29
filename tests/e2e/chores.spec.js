@@ -132,14 +132,14 @@ test.describe('Pick-chore sheet: repeatable chores', () => {
 
     // Schedule the first chore
     await page.locator('.day-hour-row[data-hour="8"] .hour-label').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
     const totalBefore = await page.locator('.sheet-chore-item').count();
     await page.locator('.sheet-chore-item').first().click();
-    await page.waitForTimeout(1500);
+    await expect(page.locator('.bottom-sheet')).not.toBeVisible();
 
     // Open the sheet again — all chores must still be available
     await page.locator('.day-hour-row[data-hour="8"] .hour-label').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
     const totalAfter = await page.locator('.sheet-chore-item').count();
 
     expect(totalAfter).toBe(totalBefore);
@@ -173,7 +173,7 @@ test.describe('Pick-chore sheet: repeatable chores', () => {
     await setupWithChores(page);
 
     await page.locator('.day-hour-row[data-hour="8"] .hour-label').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     await expect(page.locator('.sheet-new-chore-form')).toBeVisible();
     await expect(page.locator('.sheet-new-chore-input')).toBeVisible();
@@ -191,7 +191,6 @@ test.describe('Pick-chore sheet: repeatable chores', () => {
     const choreName = `Test Chore ${Date.now()}`;
     await page.locator('.sheet-new-chore-input').fill(choreName);
     await page.locator('.sheet-new-chore-form button[type="submit"]').click();
-    await page.waitForTimeout(2000);
 
     // Sheet should be closed
     await expect(page.locator('.bottom-sheet')).toHaveCount(0);
@@ -211,7 +210,7 @@ test.describe('Pick-chore sheet: repeatable chores', () => {
     const choreName = `Evening Chore ${Date.now()}`;
     await page.locator('.sheet-new-chore-input').fill(choreName);
     await page.locator('.sheet-new-chore-form button[type="submit"]').click();
-    await page.waitForTimeout(2000);
+    await expect(page.locator('.bottom-sheet')).toHaveCount(0);
 
     // The new chore's schedule should have specificTime 18:00
     const schedules = (await (await page.request.get('/api/schedules')).json()).schedules;
@@ -229,12 +228,12 @@ test.describe('Pick-chore sheet: repeatable chores', () => {
     await setupWithChores(page);
 
     await page.locator('.day-hour-row[data-hour="8"] .hour-label').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     const choreName = `Custom Morning Chore ${Date.now()}`;
     await page.locator('.sheet-new-chore-input').fill(choreName);
     await page.locator('.sheet-new-chore-form button[type="submit"]').click();
-    await page.waitForTimeout(2000);
+    await expect(page.locator('.bottom-sheet')).toHaveCount(0);
 
     // Chore card should appear in the 8 AM row
     const hourCards = page.locator('[data-drop-hour="8"] .chore-card');
@@ -247,11 +246,10 @@ test.describe('Pick-chore sheet: repeatable chores', () => {
     const countBefore = (await (await page.request.get('/api/chores')).json()).chores.length;
 
     await page.locator('.day-hour-row[data-hour="8"] .hour-label').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     // Leave input empty and submit
     await page.locator('.sheet-new-chore-form button[type="submit"]').click();
-    await page.waitForTimeout(500);
 
     // Sheet should still be open (form validation prevented submission)
     // or if it closed nothing was created
@@ -288,7 +286,7 @@ test.describe('Drag and Drop: Week View', () => {
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     await page.locator('.view-tab[data-view="week"]').click();
-    await page.waitForTimeout(1200);
+    await expect(page.locator('.week-chore-card').first()).toBeVisible({ timeout: 10000 });
 
     return { choreId, scheduleId };
   }
@@ -305,7 +303,6 @@ test.describe('Drag and Drop: Week View', () => {
     const destCell = destRow.locator('.week-cell').first();
 
     await htmlDragDrop(page, card, destCell);
-    await page.waitForTimeout(1500);
 
     // Chore should now appear in hour 10, not hour 8
     await expect(page.locator('.hour-row[data-hour="10"] .week-chore-card')).toHaveCount(7);
@@ -321,7 +318,6 @@ test.describe('Drag and Drop: Week View', () => {
     const destCell = page.locator('.hour-row[data-hour="11"]').locator('.week-cell').first();
 
     await htmlDragDrop(page, card, destCell);
-    await page.waitForTimeout(1500);
 
     // After drop the total number of chore cards across all hour rows should
     // be the same as before (one card per day = 7).
@@ -339,7 +335,6 @@ test.describe('Drag and Drop: Week View', () => {
     const destCell = page.locator('.hour-row[data-hour="13"]').locator('.week-cell').first();
 
     await htmlDragDrop(page, card, destCell);
-    await page.waitForTimeout(1500);
 
     const movedCard = page.locator('.hour-row[data-hour="13"] .week-chore-card').first();
     await expect(movedCard.locator('.chore-name')).toContainText(choreName);
@@ -354,7 +349,9 @@ test.describe('Drag and Drop: Week View', () => {
     const destCell = page.locator('.hour-row[data-hour="14"]').locator('.week-cell').first();
 
     await htmlDragDrop(page, card, destCell);
-    await page.waitForTimeout(1500);
+
+    // Wait for the DOM to reflect the move (card in hour 14) before checking API
+    await expect(page.locator('.hour-row[data-hour="14"] .week-chore-card').first()).toBeVisible({ timeout: 5000 });
 
     // Verify via API that specificTime was updated and isActive is still true
     const schedules = (await (await page.request.get('/api/schedules')).json()).schedules;
@@ -400,7 +397,6 @@ test.describe('Drag and Drop: Week View', () => {
     const destCell = page.locator('.hour-row[data-hour="8"]').locator('.week-cell').first();
 
     await htmlDragDrop(page, card, destCell);
-    await page.waitForTimeout(1500);
 
     // Chore must be visible in the new row
     await expect(page.locator('.hour-row[data-hour="8"] .week-chore-card')).toHaveCount(7);

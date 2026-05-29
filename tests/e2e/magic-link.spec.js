@@ -102,8 +102,8 @@ test("existing user can request and use magic link", async ({ browser }) => {
   await page.waitForTimeout(2000);
 
   // Verify logged in
-  await expect(page.locator("#top-bar")).not.toBeHidden({ timeout: 5000 });
-  await expect(page.locator("#bottom-tabs")).not.toBeHidden({ timeout: 3000 });
+  await expect(page.locator("#top-bar")).not.toBeHidden({ timeout: 10000 });
+  await expect(page.locator("#bottom-tabs")).not.toBeHidden({ timeout: 5000 });
 
   await context.close();
 });

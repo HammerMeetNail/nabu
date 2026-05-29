@@ -3,7 +3,9 @@ package auth
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/dave/choresy/internal/audit"
 	"github.com/dave/choresy/internal/mail"
 )
 
@@ -386,5 +388,123 @@ func TestChangePasswordWeak(t *testing.T) {
 	_, _, err = svc.ChangePassword(context.Background(), user.ID, "password123", "short")
 	if err != ErrWeakPassword {
 		t.Fatalf("error = %v, want ErrWeakPassword", err)
+	}
+}
+
+func TestSetAuditLogger(t *testing.T) {
+	svc := NewService(NewMemoryStore())
+	// nil logger should be a no-op
+	svc.SetAuditLogger(nil)
+
+	// NopLogger should not panic
+	svc.SetAuditLogger(audit.NopLogger{})
+}
+
+func TestSetUserHousehold(t *testing.T) {
+	store := NewMemoryStore()
+	svc := NewService(store)
+	mailer := mail.NewMemorySender()
+	svc.SetMailer(mailer, "http://localhost:8080")
+
+	user, _, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	if err := svc.SetUserHousehold(context.Background(), user.ID, 42, "owner"); err != nil {
+		t.Fatalf("SetUserHousehold: %v", err)
+	}
+
+	// Verify via Authenticate
+	// Re-login to get fresh session
+	_, session, err := svc.Login(context.Background(), "alice@example.com", "password123")
+	if err != nil {
+		t.Fatalf("Login: %v", err)
+	}
+	updated, err := svc.Authenticate(context.Background(), session.ID)
+	if err != nil {
+		t.Fatalf("Authenticate: %v", err)
+	}
+	if updated.HouseholdID == nil || *updated.HouseholdID != 42 {
+		t.Errorf("HouseholdID = %v, want 42", updated.HouseholdID)
+	}
+	if updated.Role != "owner" {
+		t.Errorf("Role = %q, want owner", updated.Role)
+	}
+}
+
+func TestSetUserHousehold_NotFound(t *testing.T) {
+	svc := NewService(NewMemoryStore())
+	err := svc.SetUserHousehold(context.Background(), 9999, 1, "owner")
+	if err == nil {
+		t.Fatal("expected error for non-existent user")
+	}
+}
+
+func TestLogoutUnknownSession(t *testing.T) {
+	svc := NewService(NewMemoryStore())
+	// Logout with an unknown token should be a no-op (no error).
+	if err := svc.Logout(context.Background(), "unknown-token"); err != nil {
+		t.Fatalf("Logout with unknown token: %v", err)
+	}
+}
+
+func TestAuthenticateExpiredSession(t *testing.T) {
+	store := NewMemoryStore()
+	svc := NewService(store)
+
+	_, session, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	// Wind the clock forward past session expiry.
+	svc.now = func() time.Time { return time.Now().UTC().Add(365 * 24 * time.Hour) }
+
+	_, err = svc.Authenticate(context.Background(), session.ID)
+	if err != ErrSessionNotFound {
+		t.Fatalf("error = %v, want ErrSessionNotFound", err)
+	}
+}
+
+func TestRequestPasswordResetUnknownEmail(t *testing.T) {
+	svc := NewService(NewMemoryStore())
+	mailer := mail.NewMemorySender()
+	svc.SetMailer(mailer, "http://localhost:8080")
+
+	// Unknown email should be silent (no error, no email sent).
+	if err := svc.RequestPasswordReset(context.Background(), "nobody@example.com"); err != nil {
+		t.Fatalf("RequestPasswordReset unknown email: %v", err)
+	}
+	if len(mailer.Messages) != 0 {
+		t.Fatalf("expected no emails, got %d", len(mailer.Messages))
+	}
+}
+
+func TestResendVerificationAlreadyVerified(t *testing.T) {
+	store := NewMemoryStore()
+	svc := NewService(store)
+	mailer := mail.NewMemorySender()
+	svc.SetMailer(mailer, "http://localhost:8080")
+
+	user, _, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	// Verify email first.
+	body := mailer.Messages[0].Body
+	token := extractToken(body, "token=")
+	if _, err := svc.VerifyEmail(context.Background(), token); err != nil {
+		t.Fatalf("VerifyEmail: %v", err)
+	}
+	mailer.Messages = nil
+
+	// ResendVerification for already-verified user should be a no-op.
+	if err := svc.ResendVerification(context.Background(), user.ID); err != nil {
+		t.Fatalf("ResendVerification already verified: %v", err)
+	}
+	if len(mailer.Messages) != 0 {
+		t.Fatalf("expected no emails sent, got %d", len(mailer.Messages))
 	}
 }

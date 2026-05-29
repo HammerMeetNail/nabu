@@ -332,7 +332,7 @@ test.describe('Pick-chore Bottom Sheet', () => {
     await setupWithChores(page);
 
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     await expect(page.locator('.bottom-sheet')).toBeVisible();
     await expect(page.locator('.sheet-title')).toContainText('8 AM');
@@ -342,7 +342,7 @@ test.describe('Pick-chore Bottom Sheet', () => {
     await setupWithChores(page);
 
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     await expect(page.locator('.sheet-chore-item')).toHaveCount(13);
     await expect(page.locator('.sheet-chore-item').first()).toContainText('Feed Cats');
@@ -352,7 +352,7 @@ test.describe('Pick-chore Bottom Sheet', () => {
     await setupWithChores(page);
 
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     await page.locator('.bottom-sheet button[data-action="close-sheet"]').click();
     await page.waitForTimeout(400);
@@ -364,7 +364,7 @@ test.describe('Pick-chore Bottom Sheet', () => {
     await setupWithChores(page);
 
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     await page.locator('.sheet-backdrop').click({ force: true });
     await page.waitForTimeout(400);
@@ -376,7 +376,7 @@ test.describe('Pick-chore Bottom Sheet', () => {
     await setupWithChores(page);
 
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     const sheet = page.locator('.bottom-sheet');
     await expect(sheet).toHaveAttribute('role', 'dialog');
@@ -387,7 +387,7 @@ test.describe('Pick-chore Bottom Sheet', () => {
     await setupWithChores(page);
 
     await page.locator('[data-drop-hour="18"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     const item = page.locator('.sheet-chore-item').first();
     await expect(item).toHaveAttribute('data-action', 'schedule-chore-here');
@@ -402,10 +402,8 @@ test.describe('Pick-chore Bottom Sheet', () => {
     await setupWithChores(page);
 
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
     await page.locator('.sheet-chore-item').first().click();
-    await page.waitForTimeout(1500);
-
     await expect(page.locator('.bottom-sheet')).toHaveCount(0);
   });
 
@@ -414,7 +412,7 @@ test.describe('Pick-chore Bottom Sheet', () => {
 
     // Schedule first chore at 8 AM via the sheet
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
     await page.locator('.sheet-chore-item').first().click();
     await page.waitForTimeout(1500);
 
@@ -427,14 +425,14 @@ test.describe('Pick-chore Bottom Sheet', () => {
 
     // Open hour-8 sheet and capture the name of the first item before scheduling
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
     const firstName = await page.locator('.sheet-chore-item').first().locator('.chore-name').innerText();
     await page.locator('.sheet-chore-item').first().click();
     await page.waitForTimeout(1500);
 
     // Open hour-8 sheet again — the previously scheduled chore should still appear
     await page.locator('.day-hour-row[data-hour="8"] .hour-label').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     const items = page.locator('.sheet-chore-item');
     const count = await items.count();
@@ -467,7 +465,7 @@ test.describe('Pick-chore Bottom Sheet', () => {
 
     // Open the 8 AM sheet — all chores should still be visible
     await page.locator('.day-hour-row[data-hour="8"] .hour-label').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     await expect(page.locator('.sheet-chore-item')).toHaveCount(chores.length);
     // The old "all chores scheduled" empty-state message should not appear
@@ -497,7 +495,7 @@ test.describe('Pick-chore Bottom Sheet', () => {
     await expect(page.locator('[data-drop-hour="9"] .chore-card')).toHaveCount(1);
 
     await page.locator('.day-hour-row[data-hour="9"] .hour-label').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     await expect(page.locator('.bottom-sheet')).toBeVisible();
     await expect(page.locator('.sheet-title')).toContainText('9 AM');
@@ -544,7 +542,7 @@ test.describe('Chore Logging: Day View', () => {
     await page.waitForTimeout(500);
     await expect(page.locator('.bottom-sheet')).toBeVisible();
     await page.locator('[data-action="undo-chore"]').click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(400);
     await expect(card).not.toHaveClass(/chore-card--done/);
     await expect(card).toHaveAttribute('data-action', 'log-chore');
   });
@@ -563,7 +561,7 @@ test.describe('Chore Logging: Day View', () => {
     await card.click();
     await page.waitForTimeout(500);
     await page.locator('[data-action="undo-chore"]').click();
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(400);
     await expect(label).toContainText(/0 of \d+ done/);
   });
 
@@ -748,24 +746,18 @@ test.describe('Drag and Drop: Day View', () => {
 
     // Schedule the first chore at 8 AM so it appears as a draggable card
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
     await page.locator('.sheet-chore-item').first().click();
-    await page.waitForTimeout(1500);
-
     await expect(page.locator('[data-drop-hour="8"] .chore-card')).toHaveCount(1);
 
     // Log the chore explicitly so it is marked done
     await page.locator('[data-drop-hour="8"] .chore-card').click();
-    await page.waitForTimeout(1500);
     await expect(page.locator('[data-drop-hour="8"] .chore-card--done')).toHaveCount(1);
-
     // Drag from 8 AM to 6 PM
     const card     = page.locator('[data-drop-hour="8"] [data-drag-chore-id]').first();
     const target18 = page.locator('[data-drop-hour="18"]');
 
     await htmlDragDrop(page, card, target18);
-    await page.waitForTimeout(1500);
-
     await expect(page.locator('[data-drop-hour="18"] .chore-card')).toHaveCount(1);
     await expect(page.locator('[data-drop-hour="8"] .chore-card--done')).toHaveCount(1);
   });
@@ -775,7 +767,7 @@ test.describe('Drag and Drop: Day View', () => {
 
     // Schedule a chore at 8 AM so it appears as a draggable card
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
     const choreItem = page.locator('.sheet-chore-item').first();
     const choreName = await choreItem.locator('.chore-name').innerText();
     await choreItem.click();
@@ -795,24 +787,18 @@ test.describe('Drag and Drop: Day View', () => {
 
     // First schedule the chore at 8 AM via the sheet
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
     await page.locator('.sheet-chore-item').first().click();
-    await page.waitForTimeout(1500);
-
     await expect(page.locator('[data-drop-hour="8"] .chore-card')).toHaveCount(1);
 
     // Log the chore explicitly so it is marked done
     await page.locator('[data-drop-hour="8"] .chore-card').click();
-    await page.waitForTimeout(1500);
     await expect(page.locator('[data-drop-hour="8"] .chore-card--done')).toHaveCount(1);
-
     // Drag from 8 AM to 6 PM
     const card     = page.locator('[data-drop-hour="8"] [data-drag-chore-id]').first();
     const target18 = page.locator('[data-drop-hour="18"]');
 
     await htmlDragDrop(page, card, target18);
-    await page.waitForTimeout(1500);
-
     await expect(page.locator('[data-drop-hour="18"] .chore-card')).toHaveCount(1);
     await expect(page.locator('[data-drop-hour="8"] .chore-card--done')).toHaveCount(1);
   });
@@ -1060,7 +1046,7 @@ test.describe('Week View: Scheduled chores appear in grid cells', () => {
 
     // Switch to week view
     await page.locator('.view-tab[data-view="week"]').click();
-    await page.waitForTimeout(1200);
+    await expect(page.locator('.week-chore-card').first()).toBeVisible({ timeout: 10000 });
 
     // The 5 AM row should contain at least one week-chore-card
     const row = page.locator('.hour-row[data-hour="5"]');
@@ -1298,7 +1284,7 @@ test.describe('Day View: Multiple chores per hour row', () => {
     // The hour-label button should still open the pick sheet regardless of how
     // many cards fill the cell.
     await page.locator('.day-hour-row[data-hour="9"] .hour-label').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
     await expect(page.locator('.bottom-sheet')).toBeVisible();
   });
 });
@@ -1315,7 +1301,7 @@ test.describe('Week View: Clicking a cell opens pick-chore sheet', () => {
 
     // Click the first week cell at hour 8 (empty — no schedules created).
     await page.locator('.week-cell[data-drop-hour="8"]').first().click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     await expect(page.locator('.bottom-sheet')).toBeVisible();
     // Sheet should be pre-targeted at hour 8.
@@ -1343,7 +1329,7 @@ test.describe('Week View: Clicking a cell opens pick-chore sheet', () => {
     // may land on the card.  Instead use the first week cell at an adjacent empty hour
     // on the same row to confirm the mechanism works without card interference.
     await page.locator('.week-cell[data-drop-hour="11"]').first().click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     await expect(page.locator('.bottom-sheet')).toBeVisible();
     await expect(page.locator('#sheet-time')).toHaveValue('11:00');
@@ -1357,7 +1343,7 @@ test.describe('Frequency selector: pick-chore sheet', () => {
     await setupWithChores(page);
 
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     // The freq <select> must be visible with "once" pre-selected.
     const sel = page.locator('#sheet-freq');
@@ -1369,7 +1355,7 @@ test.describe('Frequency selector: pick-chore sheet', () => {
     await setupWithChores(page);
 
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     // Row must be present in the DOM but hidden via the "hidden" attribute.
     const wkRow = page.locator('#sheet-weekday-row');
@@ -1380,7 +1366,7 @@ test.describe('Frequency selector: pick-chore sheet', () => {
     await setupWithChores(page);
 
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     await page.locator('#sheet-freq').selectOption('weekly');
 
@@ -1394,7 +1380,7 @@ test.describe('Frequency selector: pick-chore sheet', () => {
     await setupWithChores(page);
 
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     await page.locator('#sheet-freq').selectOption('weekly');
     await expect(page.locator('#sheet-weekday-row')).toBeVisible();
@@ -1419,7 +1405,7 @@ test.describe('Frequency selector: pick-chore sheet', () => {
 
     // Open hour-8 sheet and pick the first chore (freq defaults to "once").
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
     await page.locator('.sheet-chore-item').first().click();
     await page.waitForTimeout(1500);
 
@@ -1479,7 +1465,7 @@ test.describe('Frequency selector: pick-chore sheet', () => {
     const { csrf } = await setupWithChores(page);
 
     await page.locator('[data-drop-hour="9"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     // Switch freq to "weekly".
     await page.locator('#sheet-freq').selectOption('weekly');
@@ -1631,7 +1617,7 @@ test.describe('Drag-and-drop: default "once" frequency', () => {
 
     // Schedule a chore at 8 AM via pick-chore sheet (defaults to "once" frequency).
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
     await page.locator('.sheet-chore-item').first().click();
     await page.waitForTimeout(1500);
 
@@ -1674,7 +1660,7 @@ test.describe('Frequency selector: every_n_days', () => {
 
     // Click an hour slot to open the pick-chore sheet.
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
     await expect(page.locator('#sheet-freq')).toBeVisible();
 
     // The "every_n_days" option must exist.
@@ -1686,7 +1672,7 @@ test.describe('Frequency selector: every_n_days', () => {
     await setupWithChores(page);
 
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
     await expect(page.locator('#sheet-freq')).toBeVisible();
 
     // Interval row should be hidden initially (default is "once").
@@ -1708,7 +1694,7 @@ test.describe('Frequency selector: every_n_days', () => {
 
     // Open pick-chore sheet for hour 8.
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
     await expect(page.locator('#sheet-freq')).toBeVisible();
 
     // Select "every_n_days" and set interval to 3.
@@ -1732,7 +1718,7 @@ test.describe('Frequency selector: every_n_days', () => {
     await setupWithChores(page);
 
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
     await expect(page.locator('#sheet-freq')).toBeVisible();
 
     await page.locator('#sheet-freq').selectOption('every_n_days');
@@ -1847,7 +1833,7 @@ test.describe('Long-press on sheet chore items', () => {
 
     // Open pick-chore sheet by clicking an hour cell.
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
     await expect(page.locator('.bottom-sheet')).toBeVisible();
     await expect(page.locator('.sheet-title')).toContainText('8 AM');
 
@@ -1912,7 +1898,7 @@ test.describe('Long-press on sheet chore items', () => {
     await setupWithChores(page);
 
     await page.locator('[data-drop-hour="8"]').click();
-    await page.waitForTimeout(400);
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
 
     await expect(page.locator('.sheet-hint')).toContainText('Hold to log');
   });

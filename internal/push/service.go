@@ -73,7 +73,8 @@ func (s *Service) SendPushToUser(ctx context.Context, userID int64, title, body 
 		}
 		resp.Body.Close() //nolint:errcheck
 
-		log.Printf("push: sent to user %d endpoint %s status=%d", userID, sub.Endpoint[:40], resp.StatusCode)
+		epLog := sub.Endpoint[:min(40, len(sub.Endpoint))]
+		log.Printf("push: sent to user %d endpoint %s status=%d", userID, epLog, resp.StatusCode)
 
 		// Clean up stale subscriptions
 		if resp.StatusCode == 404 || resp.StatusCode == 410 {

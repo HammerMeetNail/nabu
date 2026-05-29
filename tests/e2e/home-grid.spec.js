@@ -150,6 +150,9 @@ test.describe('Home Grid: Log Sheet', () => {
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
     await page.click('[data-action="save-log"]');
 
+    // Wait for the sheet to close, confirming the log was persisted
+    await expect(page.locator('.bottom-sheet')).toHaveCount(0, { timeout: 5000 });
+
     // Verify a log was created via latest-per-chore
     let latest = (await (await page.request.get('/api/logs/latest-per-chore')).json()).latestLogs;
     expect(latest[String(choreId)]).toBeDefined();

@@ -195,3 +195,183 @@ func TestScheduleRequiresHousehold(t *testing.T) {
 		t.Fatalf("expected 401, got %d", rec.Code)
 	}
 }
+
+func TestScheduleForDateNoHousehold(t *testing.T) {
+	handler, _, _ := setupScheduleTest(t)
+	req := httptest.NewRequest(http.MethodGet, "/api/schedules/for-date?date=2026-01-01", nil)
+	rec := httptest.NewRecorder()
+	handler.ForDate(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestScheduleCreateNoHousehold(t *testing.T) {
+	handler, _, _ := setupScheduleTest(t)
+	req := httptest.NewRequest(http.MethodPost, "/api/schedules",
+		strings.NewReader(`{"choreId":1,"frequencyType":"daily","timePeriod":"morning"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestScheduleCreateInvalidBody(t *testing.T) {
+	handler, sessionID, authService := setupScheduleTest(t)
+	req := withUser(httptest.NewRequest(http.MethodPost, "/api/schedules",
+		strings.NewReader(`{{{invalid`)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestScheduleUpdateNoHousehold(t *testing.T) {
+	handler, _, _ := setupScheduleTest(t)
+	req := httptest.NewRequest(http.MethodPatch, "/api/schedules/1",
+		strings.NewReader(`{"timePeriod":"morning"}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "1")
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestScheduleUpdateInvalidID(t *testing.T) {
+	handler, sessionID, authService := setupScheduleTest(t)
+	req := withUser(httptest.NewRequest(http.MethodPatch, "/api/schedules/abc",
+		strings.NewReader(`{"timePeriod":"morning"}`)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "abc")
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestScheduleUpdateNotFound(t *testing.T) {
+	handler, sessionID, authService := setupScheduleTest(t)
+	req := withUser(httptest.NewRequest(http.MethodPatch, "/api/schedules/9999",
+		strings.NewReader(`{"timePeriod":"morning"}`)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "9999")
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestScheduleUpdateInvalidBody(t *testing.T) {
+	// Create a schedule first so store.Get succeeds
+	handler, sessionID, authService := setupScheduleTest(t)
+	createReq := withUser(httptest.NewRequest(http.MethodPost, "/api/schedules",
+		strings.NewReader(`{"choreId":3,"frequencyType":"daily","timePeriod":"morning"}`)),
+		authService, sessionID)
+	createReq.Header.Set("Content-Type", "application/json")
+	handler.Create(httptest.NewRecorder(), createReq)
+
+	req := withUser(httptest.NewRequest(http.MethodPatch, "/api/schedules/1",
+		strings.NewReader(`{{{invalid`)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "1")
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestScheduleUpdateAllFields(t *testing.T) {
+	handler, sessionID, authService := setupScheduleTest(t)
+	createReq := withUser(httptest.NewRequest(http.MethodPost, "/api/schedules",
+		strings.NewReader(`{"choreId":7,"frequencyType":"daily","timePeriod":"morning"}`)),
+		authService, sessionID)
+	createReq.Header.Set("Content-Type", "application/json")
+	handler.Create(httptest.NewRecorder(), createReq)
+
+	body := `{
+		"choreId":8,
+		"timePeriod":"evening",
+		"specificTime":"20:00",
+		"frequencyType":"weekly",
+		"isActive":false,
+		"daysOfWeek":[1,3,5],
+		"intervalDays":3,
+		"dayOfMonth":15,
+		"monthOfYear":6,
+		"startDate":"2026-01-01",
+		"recurrenceEnd":"2026-12-31T00:00:00Z"
+	}`
+	req := withUser(httptest.NewRequest(http.MethodPatch, "/api/schedules/1",
+		strings.NewReader(body)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "1")
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestScheduleUpdateNullFields(t *testing.T) {
+	handler, sessionID, authService := setupScheduleTest(t)
+	createReq := withUser(httptest.NewRequest(http.MethodPost, "/api/schedules",
+		strings.NewReader(`{"choreId":9,"frequencyType":"daily","timePeriod":"morning"}`)),
+		authService, sessionID)
+	createReq.Header.Set("Content-Type", "application/json")
+	handler.Create(httptest.NewRecorder(), createReq)
+
+	body := `{"specificTime":null,"startDate":null,"recurrenceEnd":null}`
+	req := withUser(httptest.NewRequest(http.MethodPatch, "/api/schedules/1",
+		strings.NewReader(body)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "1")
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestScheduleDeleteNoHousehold(t *testing.T) {
+	handler, _, _ := setupScheduleTest(t)
+	req := httptest.NewRequest(http.MethodDelete, "/api/schedules/1", nil)
+	req.SetPathValue("id", "1")
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestScheduleDeleteInvalidID(t *testing.T) {
+	handler, sessionID, authService := setupScheduleTest(t)
+	req := withUser(httptest.NewRequest(http.MethodDelete, "/api/schedules/abc", nil),
+		authService, sessionID)
+	req.SetPathValue("id", "abc")
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestScheduleDeleteNotFound(t *testing.T) {
+	handler, sessionID, authService := setupScheduleTest(t)
+	req := withUser(httptest.NewRequest(http.MethodDelete, "/api/schedules/9999", nil),
+		authService, sessionID)
+	req.SetPathValue("id", "9999")
+	rec := httptest.NewRecorder()
+	handler.Delete(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d, body=%s", rec.Code, rec.Body.String())
+	}
+}

@@ -151,3 +151,82 @@ func TestRequireAuthRejectsUnauthenticated(t *testing.T) {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusUnauthorized)
 	}
 }
+
+func TestRequireHouseholdRejectsUnauthenticated(t *testing.T) {
+	handler := RequireHousehold(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", rec.Code)
+	}
+}
+
+func TestRequireHouseholdRejectsNoHousehold(t *testing.T) {
+	handler := RequireHousehold(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	user := auth.User{ID: 1, Email: "alice@example.com", HouseholdID: nil}
+	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	req = req.WithContext(WithUser(req.Context(), user))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
+}
+
+func TestRequireHouseholdPassesWithHousehold(t *testing.T) {
+	handler := RequireHousehold(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	householdID := int64(5)
+	user := auth.User{ID: 1, Email: "alice@example.com", HouseholdID: &householdID}
+	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
+	req = req.WithContext(WithUser(req.Context(), user))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", rec.Code)
+	}
+}
+
+func TestWithUser_SetsAndRetrieves(t *testing.T) {
+	householdID := int64(42)
+	user := auth.User{ID: 99, Email: "bob@example.com", HouseholdID: &householdID}
+	ctx := WithUser(context.Background(), user)
+	got, ok := CurrentUser(ctx)
+	if !ok {
+		t.Fatal("expected user in context after WithUser")
+	}
+	if got.ID != 99 {
+		t.Errorf("user ID = %d, want 99", got.ID)
+	}
+	if got.HouseholdID == nil || *got.HouseholdID != 42 {
+		t.Errorf("household ID = %v, want 42", got.HouseholdID)
+	}
+}
+
+func TestSessionMiddlewareSkipsStaticPaths(t *testing.T) {
+	called := false
+	svc := auth.NewService(auth.NewMemoryStore())
+	handler := Session(svc, "choresy_session")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusNoContent)
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/static/js/app.js", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !called {
+		t.Fatal("handler should have been called for static path")
+	}
+	// No user should be in context for static path
+	_, ok := CurrentUser(req.Context())
+	if ok {
+		t.Fatal("should not set user for static path")
+	}
+}

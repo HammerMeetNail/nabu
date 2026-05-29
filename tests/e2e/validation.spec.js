@@ -12,7 +12,7 @@ async function setupFullAccount(page) {
   await page.fill('#reg-password', 'test123456');
   await page.fill('#reg-confirm', 'test123456');
   await page.click('button[type="submit"]');
-  await page.waitForTimeout(2000);
+  await page.waitForSelector('#user-avatar:not([hidden])', { timeout: 10000 });
 
   const csrf = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
   const hhResp = await page.request.post('/api/household', {
@@ -30,7 +30,7 @@ async function setupFullAccount(page) {
   await page.request.post('/api/household/invites', { headers: { 'X-CSRF-Token': csrf } });
 
   await page.reload();
-  await page.waitForTimeout(2000);
+  await page.waitForSelector('.home-grid', { timeout: 15000 });
   return { email, csrf, household: hh };
 }
 
@@ -65,7 +65,6 @@ test.describe('Exhaustive: Auth Pages', () => {
     await page.fill('#login-email', 'fake@no.com');
     await page.fill('#login-password', 'wrongpass');
     await signInBtn.click();
-    await page.waitForTimeout(500);
     await expect(page.locator('#login-error')).not.toHaveClass(/hidden/);
   });
 
@@ -95,7 +94,6 @@ test.describe('Exhaustive: Auth Pages', () => {
     await page.fill('#reg-password', 'test123456');
     await page.fill('#reg-confirm', 'different');
     await createBtn.click();
-    await page.waitForTimeout(500);
     await expect(page.locator('#register-error')).not.toHaveClass(/hidden/);
   });
 
@@ -118,7 +116,6 @@ test.describe('Exhaustive: Auth Pages', () => {
     // Submit magic link
     await page.fill('#magic-email', 'test@example.com');
     await sendBtn.click();
-    await page.waitForTimeout(500);
     await expect(page.locator('text=Check your email')).toBeVisible();
   });
 
@@ -141,8 +138,7 @@ test.describe('Exhaustive: Auth Pages', () => {
     // Submit — should show toast
     await page.fill('#forgot-email', 'test@example.com');
     await sendBtn.click();
-    await page.waitForTimeout(500);
-    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
   });
 
   test('reset password page — all elements', async ({ page }) => {
@@ -161,7 +157,6 @@ test.describe('Exhaustive: Auth Pages', () => {
     await page.fill('#reset-password', 'test123456');
     await page.fill('#reset-confirm', 'different');
     await resetBtn.click();
-    await page.waitForTimeout(500);
     await expect(page.locator('#reset-error')).not.toHaveClass(/hidden/);
   });
 
@@ -176,7 +171,6 @@ test.describe('Exhaustive: Auth Pages', () => {
 
     // Click sign in → should show login
     await signInBtn.click();
-    await page.waitForTimeout(300);
     await expect(page.locator('#login-form')).toBeVisible();
   });
 
@@ -215,7 +209,7 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     await page.fill('#reg-password', 'test123456');
     await page.fill('#reg-confirm', 'test123456');
     await page.click('button[type="submit"]');
-    await page.waitForTimeout(2000);
+    await page.waitForSelector('#user-avatar:not([hidden])', { timeout: 10000 });
 
     // Should see top bar and bottom tabs
     await expect(page.locator('#top-bar')).not.toBeHidden({ timeout: 5000 });
@@ -227,10 +221,9 @@ test.describe('Exhaustive: Authenticated Flow', () => {
 
     // Click "Set Up Household" button
     await page.locator('a[data-nav="settings"]').first().click();
-    await page.waitForTimeout(700);
 
     // Should be on settings page with household creation form
-    await expect(page.locator('#create-household-form')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('#create-household-form')).toBeVisible({ timeout: 5000 });
     // Should also see join household form
     await expect(page.locator('#join-household-form')).toBeVisible();
     // Should see Sign Out button
@@ -288,24 +281,20 @@ test.describe('Exhaustive: Authenticated Flow', () => {
 
     // Click right arrow → tomorrow
     await arrows.last().click();
-    await page.waitForTimeout(1000);
-    const tomorrowDate = await page.locator('.cal-date').innerText();
-    expect(tomorrowDate).not.toBe(todayDate);
+    await expect(page.locator('.cal-date')).not.toHaveText(todayDate, { timeout: 5000 });
 
     // Click left arrow → back to today
     await arrows.first().click();
-    await page.waitForTimeout(500);
-    expect(await page.locator('.cal-date').innerText()).toBe(todayDate);
+    await expect(page.locator('.cal-date')).toHaveText(todayDate, { timeout: 5000 });
 
     // === Log a Chore ===
     const firstChore = choreCards.first();
     await expect(firstChore).toHaveAttribute('data-action', 'log-chore');
     await firstChore.click();
-    await page.waitForTimeout(1500);
 
     // Chore should now show as done (new class is chore-card--done)
     const doneCards = page.locator('.chore-card.chore-card--done');
-    expect(await doneCards.count()).toBeGreaterThan(0);
+    await expect(doneCards.first()).toBeVisible({ timeout: 5000 });
     // Done card opens the log detail sheet (view-log), not direct undo.
     await expect(doneCards.first()).toHaveAttribute('data-action', 'view-log');
 
@@ -316,35 +305,27 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     // === Undo the Chore ===
     // Tapping a done card opens the log sheet; the undo button lives inside.
     await doneCards.first().click();
-    await page.waitForTimeout(500);
     await expect(page.locator('.bottom-sheet')).toBeVisible();
     await page.locator('[data-action="undo-chore"]').click();
-    await page.waitForTimeout(1500);
 
     // Done count should decrease
-    const doneAfterUndo = await page.locator('.chore-card.chore-card--done').count();
-    expect(doneAfterUndo).toBeLessThan(1);
+    await expect(page.locator('.chore-card.chore-card--done')).toHaveCount(0, { timeout: 5000 });
 
     // === Log Multiple Chores ===
     await firstChore.click();
-    await page.waitForTimeout(500);
     if (totalChores > 1) {
       await choreCards.nth(1).click();
-      await page.waitForTimeout(500);
     }
 
     // === Navigate to Activity (history view is default) ===
     await page.click('a[data-nav="activity"]');
     await page.click('[data-action="switch-view"][data-view="history"]');
-    await page.waitForTimeout(700);
     await expect(page.locator('.history-view')).toBeVisible({ timeout: 10000 });
     await expect(page.locator('.view-tabs')).toBeVisible();
 
     // === Navigate to Manage Chores (Home → Manage toggle) ===
     await page.click('a[data-nav="today"]');
-    await page.waitForTimeout(500);
     await page.click('[data-action="switch-home-view"][data-view="manage"]');
-    await page.waitForTimeout(700);
     await expect(page.locator('.chores-view')).toBeVisible();
     // Should see chore cards (non-empty since we have chore data)
     const choreListContent = await page.locator('#app').innerHTML();
@@ -352,10 +333,9 @@ test.describe('Exhaustive: Authenticated Flow', () => {
 
     // === Navigate to Settings ===
     await page.click('a[data-nav="settings"]');
-    await page.waitForTimeout(1000);
 
     // === Settings View Elements ===
-    await expect(page.locator('h2:has-text("Settings")')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('h2:has-text("Settings")')).toBeVisible({ timeout: 5000 });
 
     // Household section
     await expect(page.locator('.settings-view h3').first()).toBeVisible();
@@ -366,18 +346,15 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     
     // Click Create Invite
     await createInviteBtn.click();
-    await page.waitForTimeout(700);
     // Toast should appear with the invite code
-    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 2000 });
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     // Active invites section should now be visible (after reload)
     // The render after create-invite should show the invite list
-    await page.waitForTimeout(500);
     const revokeBtn = page.locator('button[data-action="delete-invite"]');
-    if (await revokeBtn.first().isVisible()) {
+    if ((await revokeBtn.count()) > 0) {
       // Click revoke on the invite
       await revokeBtn.first().click();
-      await page.waitForTimeout(500);
     }
 
     // Members section
@@ -390,9 +367,6 @@ test.describe('Exhaustive: Authenticated Flow', () => {
 
     // Account section — Sign Out
     await expect(page.locator('button[data-action="logout"]')).toBeVisible();
-
-    // Stats section
-    await page.waitForTimeout(2000);
 
     // === Test Top Bar Buttons ===
     
@@ -408,23 +382,20 @@ test.describe('Exhaustive: Authenticated Flow', () => {
 
     // Click avatar → settings
     await avatar.click();
-    await page.waitForTimeout(700);
-    await expect(page.locator('.settings-view')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('.settings-view')).toBeVisible({ timeout: 5000 });
 
     // Go to today view
     await page.click('a[data-nav="today"]');
-    await page.waitForTimeout(500);
+    await expect(page.locator('.home-grid')).toBeVisible({ timeout: 5000 });
 
     // Click notifications bell → notification panel
     await bell.click();
-    await page.waitForTimeout(700);
-    await expect(page.locator('.notif-panel')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('.notif-panel')).toBeVisible({ timeout: 5000 });
 
     // === Logout ===
     await page.click('a[data-nav="settings"]');
-    await page.waitForTimeout(700);
+    await expect(page.locator('button[data-action="logout"]')).toBeVisible({ timeout: 5000 });
     await page.locator('button[data-action="logout"]').click();
-    await page.waitForTimeout(1000);
 
     // Should return to login
     await expect(page.locator('#login-form')).toBeVisible({ timeout: 5000 });
@@ -440,18 +411,16 @@ test.describe('Exhaustive: SPA-only Navigation', () => {
     await setupFullAccount(page);
 
     // Verify each tab click changes the view
-    const tabs = [
-      { nav: 'activity', check: () => page.locator('.history-view').isVisible() },
-      { nav: 'schedule', check: () => page.locator('.schedule-view').isVisible() },
-      { nav: 'settings', check: () => page.locator('.settings-view').isVisible() },
-      { nav: 'today', check: () => page.locator('.home-grid').isVisible() },
+    const views = [
+      { nav: 'activity', selector: '.history-view' },
+      { nav: 'schedule', selector: '.schedule-view' },
+      { nav: 'settings', selector: '.settings-view' },
+      { nav: 'today', selector: '.home-grid' },
     ];
 
-    for (const tab of tabs) {
+    for (const tab of views) {
       await page.click(`a[data-nav="${tab.nav}"]`);
-      await page.waitForTimeout(400);
-      const result = await tab.check();
-      expect(result).toBeTruthy();
+      await expect(page.locator(tab.selector)).toBeVisible({ timeout: 5000 });
     }
   });
 });
@@ -465,12 +434,12 @@ test.describe('Exhaustive: Settings Page States', () => {
     await page.fill('#reg-password', 'test123456');
     await page.fill('#reg-confirm', 'test123456');
     await page.click('button[type="submit"]');
-    await page.waitForTimeout(2000);
+    await page.waitForSelector('#user-avatar:not([hidden])', { timeout: 10000 });
     await expect(page.locator('#bottom-tabs')).not.toBeHidden();
 
     // Go to settings
     await page.click('a[data-nav="settings"]');
-    await page.waitForTimeout(700);
+    await expect(page.locator('#create-household-form')).toBeVisible({ timeout: 5000 });
 
     // Should see create household form
     await expect(page.locator('#create-household-form')).toBeVisible({ timeout: 3000 });
@@ -488,7 +457,6 @@ test.describe('Exhaustive: Settings Page States', () => {
 
     // Logout
     await page.locator('button[data-action="logout"]').click();
-    await page.waitForTimeout(1000);
     await expect(page.locator('#login-form')).toBeVisible({ timeout: 5000 });
   });
 });

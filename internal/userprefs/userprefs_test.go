@@ -225,3 +225,40 @@ func TestPostgresStore_Upsert(t *testing.T) {
 		t.Fatalf("Upsert: %v", err)
 	}
 }
+
+func TestService_UpdateTimezone(t *testing.T) {
+	store := userprefs.NewMemoryStore()
+	svc := userprefs.NewService(store)
+	ctx := context.Background()
+
+	if err := svc.UpdateTimezone(ctx, 1, "America/New_York"); err != nil {
+		t.Fatalf("UpdateTimezone: %v", err)
+	}
+
+	prefs, err := svc.GetPreferences(ctx, 1)
+	if err != nil {
+		t.Fatalf("GetPreferences: %v", err)
+	}
+	if prefs.Timezone != "America/New_York" {
+		t.Errorf("Timezone = %q, want America/New_York", prefs.Timezone)
+	}
+}
+
+func TestService_UpdateTimezoneEmpty(t *testing.T) {
+	store := userprefs.NewMemoryStore()
+	svc := userprefs.NewService(store)
+	ctx := context.Background()
+
+	// Set a timezone first
+	svc.UpdateTimezone(ctx, 1, "Europe/London")
+
+	// Clear it
+	if err := svc.UpdateTimezone(ctx, 1, ""); err != nil {
+		t.Fatalf("UpdateTimezone (empty): %v", err)
+	}
+
+	prefs, _ := svc.GetPreferences(ctx, 1)
+	if prefs.Timezone != "" {
+		t.Errorf("Timezone = %q, want empty", prefs.Timezone)
+	}
+}

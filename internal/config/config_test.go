@@ -90,3 +90,18 @@ func TestLoadAppliesDefaultsForEmptyEnv(t *testing.T) {
 		t.Fatalf("AppBaseURL = %q", cfg.AppBaseURL)
 	}
 }
+
+// TestLoad_RateLimitAuthMaxFromEnv covers the getenvInt success path (return n).
+func TestLoad_RateLimitAuthMaxFromEnv(t *testing.T) {
+	t.Setenv("PORT", "8080")
+	t.Setenv("APP_BASE_URL", "http://localhost:8080")
+	t.Setenv("RATE_LIMIT_AUTH_MAX", "50")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if cfg.RateLimitAuthMax != 50 {
+		t.Errorf("RateLimitAuthMax = %d, want 50", cfg.RateLimitAuthMax)
+	}
+}
