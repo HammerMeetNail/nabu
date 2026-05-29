@@ -705,6 +705,24 @@ input:focus, select:focus, textarea:focus {
   margin-left: auto;
 }
 
+.verify-badge {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+.verify-badge--ok {
+  color: var(--success);
+  background: rgba(56, 102, 65, 0.1);
+}
+.verify-badge--no {
+  color: var(--danger);
+  background: rgba(188, 71, 66, 0.1);
+}
+
 .role-select {
   font-size: 13px;
   padding: 4px 8px;

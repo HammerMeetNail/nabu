@@ -1746,6 +1746,20 @@ export async function init() {
     }
   });
 
+  // Prevent taps/clicks on select elements inside member rows from
+  // propagating to the <details> / <summary> and toggling them closed.
+  // capture=true so we intercept before the browser's native toggle.
+  document.addEventListener("touchstart", (e) => {
+    if (e.target.closest(".member-row-details select")) {
+      e.stopPropagation();
+    }
+  }, { capture: true });
+  document.addEventListener("click", (e) => {
+    if (e.target.closest(".member-row-details select")) {
+      e.stopPropagation();
+    }
+  }, { capture: true });
+
   // ── Frequency selector: show/hide weekday pill row ─────────────────────────
   // Uses "change" (not "click") because <select> fires "change" on selection.
   document.addEventListener("change", (e) => {
