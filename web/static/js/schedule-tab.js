@@ -100,6 +100,7 @@ export function renderScheduleTab(state) {
           <button type="button" class="sch-row-main"
             data-action="schedule-open-log"
             data-chore-id="${r.chore.id}"
+            data-schedule-id="${r.sch.id}"
             data-date="${r.iso}"
             data-slot-hour="${r.sch.specificTime ? r.sch.specificTime.split(':')[0] : ''}">
             <span class="sch-icon">${r.chore.icon}</span>

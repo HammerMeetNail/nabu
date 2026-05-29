@@ -443,13 +443,13 @@ function renderScheduleView() {
     }
   }
   if (state.activeSheet === "log") {
-    const { choreId, logId, date } = state.activeSheetData || {};
+    const { choreId, logId, date, scheduleId } = state.activeSheetData || {};
     const chore = (state.chores || []).find(c => c.id === choreId);
     if (chore) {
       const allLogs = state.todayLogs || [];
       const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
       const cachedVolumeML = state.latestLogs[choreId]?.volumeML ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours() });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), scheduleId });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}
@@ -1261,14 +1261,15 @@ export async function init() {
 
       case "schedule-open-log": {
         e.preventDefault();
-        const choreId = parseInt(actionEl.dataset.choreId, 10);
-        const date    = actionEl.dataset.date || "";
+        const choreId    = parseInt(actionEl.dataset.choreId, 10);
+        const date       = actionEl.dataset.date || "";
+        const scheduleId = actionEl.dataset.scheduleId ? parseInt(actionEl.dataset.scheduleId, 10) : null;
         const slotHourVal = actionEl.dataset.slotHour;
         const slotHour = slotHourVal && slotHourVal !== ""
           ? parseInt(slotHourVal, 10)
           : null;
         state.activeSheet     = "log";
-        state.activeSheetData = { choreId, logId: null, date, slotHour };
+        state.activeSheetData = { choreId, logId: null, date, slotHour, scheduleId };
         render(app);
         break;
       }
@@ -1432,11 +1433,6 @@ export async function init() {
         const timeInput    = document.querySelector("#sheet-time");
         const specificTime = timeInput?.value || null;
         const freqPayload  = readSheetFreq("sheet", slotDate);
-        const frequencyType = freqPayload?.frequencyType || "once";
-        const shouldLogNow = frequencyType === "once" && !!slotDate;
-        const slotHour = specificTime
-          ? parseInt(specificTime.split(":")[0], 10)
-          : (state.activeSheetData?.hour ?? null);
         createSchedule({
           choreId,
           timePeriod:    "anytime",
@@ -1444,13 +1440,6 @@ export async function init() {
           isActive:      true,
           ...freqPayload,
         }).then(async () => {
-          if (shouldLogNow) {
-            try {
-              await logChore(choreId, "", slotDate, [], Number.isNaN(slotHour) ? null : slotHour);
-            } catch {
-              showToast("Scheduled chore but failed to log history", "error");
-            }
-          }
           state.activeSheet = null;
           state.activeSheetData = {};
           state.schedules = await loadSchedules();

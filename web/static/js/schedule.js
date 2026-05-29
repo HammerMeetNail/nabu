@@ -422,6 +422,14 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
         Log
       </button>`;
 
+  const removeScheduleBtn = !log && opts.scheduleId
+    ? `<button type="button" class="btn btn-danger btn-full mt-2"
+        data-action="delete-schedule"
+        data-schedule-id="${opts.scheduleId}">
+        Remove from schedule
+      </button>`
+    : "";
+
   return `
     <div class="bottom-sheet" role="dialog" aria-modal="true" aria-label="${log ? "Edit log" : "Log chore"}">
       <div class="sheet-handle" aria-hidden="true"></div>
@@ -432,6 +440,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
       ${memberSection}
       ${noteSection}
       ${actions}
+      ${removeScheduleBtn}
       <button type="button" class="btn btn-ghost btn-full sheet-cancel-btn" data-action="close-sheet">
         Cancel
       </button>
