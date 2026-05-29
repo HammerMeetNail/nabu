@@ -131,18 +131,19 @@ func (s *MemoryStore) SeedPredefinedChores(_ context.Context, householdID int64)
 		}
 		if !exists {
 			chore := Chore{
-				ID:              s.nextID(),
-				HouseholdID:     householdID,
-				Name:            pc.Name,
-				Icon:            pc.Icon,
-				Color:           pc.Color,
-				SortOrder:       pc.SortOrder,
-				Category:        pc.Category,
-				IsPredefined:    true,
-				PredefinedKey:   pc.Name,
-				CreatedAt:       time.Now().UTC(),
-				IndicatorLabels: pc.IndicatorLabels,
-				HasVolumeML:     pc.HasVolumeML,
+				ID:                s.nextID(),
+				HouseholdID:       householdID,
+				Name:              pc.Name,
+				Icon:              pc.Icon,
+				Color:             pc.Color,
+				SortOrder:         pc.SortOrder,
+				Category:          pc.Category,
+				IsPredefined:      true,
+				PredefinedKey:     pc.Name,
+				CreatedAt:         time.Now().UTC(),
+				IndicatorLabels:   pc.IndicatorLabels,
+				IndicatorDefaults: pc.IndicatorDefaults,
+				HasVolumeML:       pc.HasVolumeML,
 			}
 			s.chores[chore.ID] = chore
 		}

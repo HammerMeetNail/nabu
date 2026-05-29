@@ -347,7 +347,7 @@ export function renderEditScheduleSheet(chore, sch, date) {
 export function renderLogSheet(chore, log, date, members, currentUserId, cachedVolumeML = null, opts = {}) {
   const title = `${chore.icon} ${escapeHTML(chore.name)}`;
   const noteVal = log ? escapeHTML(log.note || "") : "";
-  const activeIndicators = new Set(log?.indicators || []);
+  const activeIndicators = new Set(log?.indicators || (chore.indicatorDefaults || []));
 
   const chips = (chore.indicatorLabels || []).map(label => {
     const on = activeIndicators.has(label);

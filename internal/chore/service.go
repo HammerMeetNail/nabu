@@ -102,9 +102,13 @@ func (s *Service) RestoreDefaultChore(ctx context.Context, choreID int64) error 
 			existing.Color = pc.Color
 			existing.Category = pc.Category
 			existing.IndicatorLabels = pc.IndicatorLabels
+			existing.IndicatorDefaults = pc.IndicatorDefaults
 			existing.HasVolumeML = pc.HasVolumeML
 			if existing.IndicatorLabels == nil {
 				existing.IndicatorLabels = []string{}
+			}
+			if existing.IndicatorDefaults == nil {
+				existing.IndicatorDefaults = []string{}
 			}
 			return s.store.UpdateChore(ctx, existing)
 		}
@@ -116,14 +120,15 @@ func (s *Service) GetSystemDefaults() []Chore {
 	var result []Chore
 	for _, pc := range PredefinedChores {
 		result = append(result, Chore{
-			Name:            pc.Name,
-			Icon:            pc.Icon,
-			Color:           pc.Color,
-			Category:        pc.Category,
-			IsPredefined:    true,
-			SortOrder:       pc.SortOrder,
-			IndicatorLabels: pc.IndicatorLabels,
-			HasVolumeML:     pc.HasVolumeML,
+			Name:              pc.Name,
+			Icon:              pc.Icon,
+			Color:             pc.Color,
+			Category:          pc.Category,
+			IsPredefined:      true,
+			SortOrder:         pc.SortOrder,
+			IndicatorLabels:   pc.IndicatorLabels,
+			IndicatorDefaults: pc.IndicatorDefaults,
+			HasVolumeML:       pc.HasVolumeML,
 		})
 	}
 	return result
@@ -136,7 +141,7 @@ func (s *Service) SeedDefaultChores(ctx context.Context, householdID int64) erro
 var PredefinedChores = []Chore{
 	{Name: "Feed Cats", Icon: "🐱", Color: "#F59E0B", Category: "feeding", SortOrder: 0},
 	{Name: "Feed Baby", Icon: "🍼", Color: "#EC4899", Category: "feeding", SortOrder: 1, HasVolumeML: true, IndicatorLabels: []string{"🍼 formula", "🤱 breast"}},
-	{Name: "Change Baby", Icon: "👶", Color: "#8B5CF6", Category: "care", SortOrder: 2, IndicatorLabels: []string{"💩 poo", "💛 pee"}},
+	{Name: "Change Baby", Icon: "👶", Color: "#8B5CF6", Category: "care", SortOrder: 2, IndicatorLabels: []string{"💩 poo", "💛 pee"}, IndicatorDefaults: []string{"💛 pee"}},
 	{Name: "Water Plants", Icon: "🌱", Color: "#10B981", Category: "plants", SortOrder: 3},
 	{Name: "Clean Litter Box", Icon: "🧹", Color: "#6366F1", Category: "cleaning", SortOrder: 4},
 	{Name: "Take Out Trash", Icon: "🗑️", Color: "#6B7280", Category: "cleaning", SortOrder: 5},
