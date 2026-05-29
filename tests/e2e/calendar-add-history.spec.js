@@ -33,7 +33,7 @@ async function setupWithChores(page) {
 }
 
 test.describe('Calendar add writes history', () => {
-  test('adding a chore from a calendar hour slot creates a done log and appears in history', async ({ page }) => {
+  test('adding a chore from a calendar hour slot schedules it but does not auto-log', async ({ page }) => {
     await setupWithChores(page);
 
     await page.locator('[data-drop-hour="14"]').click();
@@ -45,9 +45,36 @@ test.describe('Calendar add writes history', () => {
 
     await expect(page.locator('.bottom-sheet')).toHaveCount(0, { timeout: 5000 });
 
-    const doneCards = page.locator('[data-drop-hour="14"] .chore-card--done');
-    await expect(doneCards).toHaveCount(1);
-    await expect(doneCards.first().locator('.chore-name')).toContainText(choreName);
+    // Chore is scheduled (appears in the slot) but NOT auto-logged as done
+    const cards = page.locator('[data-drop-hour="14"] .chore-card');
+    await expect(cards).toHaveCount(1);
+    await expect(cards.first().locator('.chore-name')).toContainText(choreName);
+    await expect(page.locator('[data-drop-hour="14"] .chore-card--done')).toHaveCount(0);
+
+    // History should be empty since the chore was not logged
+    await page.click('[data-nav="activity"]');
+    await page.click('[data-action="switch-view"][data-view="history"]');
+    await page.waitForSelector('.history-view', { timeout: 10000 });
+    await expect(page.locator('.hist-row')).toHaveCount(0);
+  });
+
+  test('logging a scheduled chore from the calendar creates history entry', async ({ page }) => {
+    await setupWithChores(page);
+
+    await page.locator('[data-drop-hour="14"]').click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+
+    const firstItem = page.locator('.sheet-chore-item').first();
+    const choreName = (await firstItem.locator('.chore-name').innerText()).trim();
+    await firstItem.click();
+
+    await expect(page.locator('.bottom-sheet')).toHaveCount(0, { timeout: 5000 });
+
+    // Now explicitly log the scheduled chore by tapping the card
+    await page.locator('[data-drop-hour="14"] .chore-card').click();
+    await page.waitForTimeout(1500);
+
+    await expect(page.locator('[data-drop-hour="14"] .chore-card--done')).toHaveCount(1);
 
     await page.click('[data-nav="activity"]');
     await page.click('[data-action="switch-view"][data-view="history"]');

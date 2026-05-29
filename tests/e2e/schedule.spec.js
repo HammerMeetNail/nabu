@@ -754,15 +754,19 @@ test.describe('Drag and Drop: Day View', () => {
 
     await expect(page.locator('[data-drop-hour="8"] .chore-card')).toHaveCount(1);
 
-    const card = page.locator('[data-drop-hour="8"] [data-drag-chore-id]').first();
-    const hourCell = page.locator('[data-drop-hour="14"]');
+    // Log the chore explicitly so it is marked done
+    await page.locator('[data-drop-hour="8"] .chore-card').click();
+    await page.waitForTimeout(1500);
+    await expect(page.locator('[data-drop-hour="8"] .chore-card--done')).toHaveCount(1);
 
-    await htmlDragDrop(page, card, hourCell);
+    // Drag from 8 AM to 6 PM
+    const card     = page.locator('[data-drop-hour="8"] [data-drag-chore-id]').first();
+    const target18 = page.locator('[data-drop-hour="18"]');
+
+    await htmlDragDrop(page, card, target18);
     await page.waitForTimeout(1500);
 
-    // Schedule moves to 2 PM, while the already-logged completion remains at
-    // the original 8 AM slot for history accuracy.
-    await expect(page.locator('[data-drop-hour="14"] .chore-card')).toHaveCount(1);
+    await expect(page.locator('[data-drop-hour="18"] .chore-card')).toHaveCount(1);
     await expect(page.locator('[data-drop-hour="8"] .chore-card--done')).toHaveCount(1);
   });
 
@@ -796,6 +800,11 @@ test.describe('Drag and Drop: Day View', () => {
     await page.waitForTimeout(1500);
 
     await expect(page.locator('[data-drop-hour="8"] .chore-card')).toHaveCount(1);
+
+    // Log the chore explicitly so it is marked done
+    await page.locator('[data-drop-hour="8"] .chore-card').click();
+    await page.waitForTimeout(1500);
+    await expect(page.locator('[data-drop-hour="8"] .chore-card--done')).toHaveCount(1);
 
     // Drag from 8 AM to 6 PM
     const card     = page.locator('[data-drop-hour="8"] [data-drag-chore-id]').first();
