@@ -1941,7 +1941,9 @@ export async function init() {
         e.preventDefault();
         const g = e.target.closest("[data-action=\"chart-tap\"]");
         if (!g) break;
-        const val = g.querySelector(".chart-bar-val");
+        const barIdx = g.dataset.bar;
+        const svg = g.closest("svg");
+        const val = svg?.querySelector(`.chart-bar-val[data-bar="${barIdx}"]`);
         if (!val) break;
         const visible = val.classList.contains("chart-bar-val--visible");
         document.querySelectorAll(".chart-bar-val--visible").forEach(el => el.classList.remove("chart-bar-val--visible"));

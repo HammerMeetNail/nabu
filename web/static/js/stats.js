@@ -438,6 +438,8 @@ function renderVolumeChart(periods, period) {
   });
   if (stackKeys.length === 0) stackKeys.push("total");
 
+  const labelData = [];
+
   periods.forEach((p, i) => {
     const x = leftM + i * colW;
     const totalH_ = Math.round((p.totalML / maxML) * chartH);
@@ -456,10 +458,11 @@ function renderVolumeChart(periods, period) {
 
     const valText = parts.join(", ") || (p.totalML > 0 ? `${p.totalML} mL` : "");
     const fullLabel = formatPeriodLabel(p, period);
-
     const barH = Math.max(totalH_, 0.5);
+    const labelX = Math.max(leftM + 4, Math.min(totalW - rightM - 40, x + colW / 2));
+    const labelY = Math.max(topM + 10, baseY - barH - 4);
 
-    svg += `<g data-action="chart-tap" role="button" aria-label="${fullLabel}: ${p.totalML} mL">`;
+    svg += `<g data-action="chart-tap" data-bar="${i}" role="button" aria-label="${fullLabel}: ${p.totalML} mL">`;
 
     if (p.totalML > 0) {
       stackKeys.forEach(key => {
@@ -478,16 +481,19 @@ function renderVolumeChart(periods, period) {
       svg += `<rect x="${x + 2}" y="${baseY - barH}" width="${colW - 4}" height="${barH}" rx="2" fill="#EC4899" opacity="0.85"/>`;
     }
 
-    const labelX = Math.max(leftM + 4, Math.min(totalW - rightM - 40, x + colW / 2));
-    const labelY = Math.max(topM + 10, baseY - barH - 4);
-    svg += `<text class="chart-bar-val" x="${labelX}" y="${labelY}" text-anchor="middle" font-size="10" fill="#fff" stroke="#374151" stroke-width="1.5" paint-order="stroke fill" font-weight="700" font-family="system-ui, sans-serif">${valText}</text>`;
     svg += `</g>`;
+
+    labelData.push({ i, valText, labelX, labelY });
 
     const labelInt = period === "daily" ? 2 : 1;
     if (i % labelInt === 0) {
       const xl = formatXLabel(p, period);
       svg += `<text x="${x + colW / 2}" y="${topM + chartH + 13}" text-anchor="middle" font-size="8" fill="#9ca3af" font-family="system-ui, sans-serif">${xl}</text>`;
     }
+  });
+
+  labelData.forEach(d => {
+    svg += `<text class="chart-bar-val" data-bar="${d.i}" x="${d.labelX}" y="${d.labelY}" text-anchor="middle" font-size="10" fill="#fff" stroke="#374151" stroke-width="1.5" paint-order="stroke fill" font-weight="700" font-family="system-ui, sans-serif">${d.valText}</text>`;
   });
 
   svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="#d1d5db" stroke-width="1"/>`;
@@ -572,6 +578,8 @@ function renderIndicatorChart(periods, period) {
 
   svg += `<text x="12" y="${topM + chartH / 2}" text-anchor="middle" font-size="9" fill="#9ca3af" font-family="system-ui, sans-serif" transform="rotate(-90, 12, ${topM + chartH / 2})">count</text>`;
 
+  const ilabelData = [];
+
   periods.forEach((p, i) => {
     const baseY = topM + chartH;
     let offset = 0;
@@ -584,8 +592,11 @@ function renderIndicatorChart(periods, period) {
     });
     const valText = parts.join(", ");
     const fullLabel = formatPeriodLabel(p, period);
+    const totalH_ = Math.round((periodTotal / maxCount) * chartH);
+    const labelX = Math.max(leftM + 4, Math.min(totalW - rightM - 40, leftM + i * colW + colW / 2));
+    const labelY = Math.max(topM + 10, baseY - totalH_ - 4);
 
-    svg += `<g data-action="chart-tap" role="button" aria-label="${fullLabel}: ${valText || '0'}">`;
+    svg += `<g data-action="chart-tap" data-bar="${i}" role="button" aria-label="${fullLabel}: ${valText || '0'}">`;
 
     if (indicatorKeys.length > 1) {
       indicatorKeys.forEach(key => {
@@ -604,17 +615,19 @@ function renderIndicatorChart(periods, period) {
       svg += `<rect x="${leftM + i * colW + 2}" y="${baseY - segH}" width="${colW - 4}" height="${Math.max(segH, 0.5)}" rx="2" fill="${color}" opacity="0.85"/>`;
     }
 
-    const totalH_ = Math.round((periodTotal / maxCount) * chartH);
-    const labelX = Math.max(leftM + 4, Math.min(totalW - rightM - 40, leftM + i * colW + colW / 2));
-    const labelY = Math.max(topM + 10, baseY - totalH_ - 4);
-    svg += `<text class="chart-bar-val" x="${labelX}" y="${labelY}" text-anchor="middle" font-size="10" fill="#fff" stroke="#374151" stroke-width="1.5" paint-order="stroke fill" font-weight="700" font-family="system-ui, sans-serif">${valText}</text>`;
     svg += `</g>`;
+
+    ilabelData.push({ i, valText, labelX, labelY });
 
     const labelInt = period === "daily" ? 2 : 1;
     if (i % labelInt === 0) {
       const xl = formatXLabel(p, period);
       svg += `<text x="${leftM + i * colW + colW / 2}" y="${topM + chartH + 13}" text-anchor="middle" font-size="8" fill="#9ca3af" font-family="system-ui, sans-serif">${xl}</text>`;
     }
+  });
+
+  ilabelData.forEach(d => {
+    svg += `<text class="chart-bar-val" data-bar="${d.i}" x="${d.labelX}" y="${d.labelY}" text-anchor="middle" font-size="10" fill="#fff" stroke="#374151" stroke-width="1.5" paint-order="stroke fill" font-weight="700" font-family="system-ui, sans-serif">${d.valText}</text>`;
   });
 
   svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="#d1d5db" stroke-width="1"/>`;
