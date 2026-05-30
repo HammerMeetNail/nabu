@@ -304,6 +304,49 @@ These caused hard-to-diagnose production bugs and are covered by E2E tests:
 3. **`renderWeekView` in `calendar.js`**: ad-hoc logs (those not matching a scheduled slot) must be placed in their `slotHour` row, not forced into the Anytime row — mirrors the `adHocCells` pattern in `renderDayView`.
 4. **No hard-coded `?v=N` in JS import paths** — the server rewrites them all at startup.
 
+## Security
+
+**Every code change must consider these rules.**  Security regressions are as important as functional regressions — write tests and run `go vet` / `make lint` before committing.
+
+### Principle of least authority
+
+Every operation that reads or mutates data must verify the actor is authorized for that data.
+
+- **Service-layer ownership checks (defense in depth).**  Handlers extract the user from the request context; services re-verify that the requested resource belongs to the user's household.  Never assume the handler's guard is sufficient — add the check in the service too.
+- **Cross-resource isolation.**  When two users interact (e.g. one member changes another's role), verify they belong to the same household.  Compare both household IDs; a mismatch is an immediate reject.
+- **Resource deletion and mutation must pass the owning household ID.**  Methods like `DeleteChore`, `UpdateChore`, `UpdateLog` accept a `householdID` parameter and the service verifies `resource.HouseholdID == householdID`.
+
+### Authentication and session safety
+
+- **Constant-time comparison for all security tokens.**  CSRF cookie vs header, OIDC state parameter — use `crypto/subtle.ConstantTimeCompare`.  Never use `==` or `!=`.
+- **Session cookies must set `HttpOnly`, `Secure` (when behind TLS), and `SameSite=Lax`.**  This applies to the set-cookie on login/register *and* the clear-cookie on logout.
+- **Sessions expire.**  Hard expiry is set at creation; an idle timeout automatically deletes sessions that haven't been touched within a sliding window.
+- **Password minimum length is 8 characters; maximum is 72 (bcrypt limit).**  Reject anything outside this range before hashing.
+- **bcrypt cost factor: 13** for new hashes.  Pre-compute hashes in tests with `bcrypt.MinCost` to keep tests fast.
+
+### OIDC / JWT verification
+
+- **Verify JWT signatures.**  Fetch the provider's JWKS, validate `alg: RS256`, rebuild the RSA public key from `n`/`e`, verify the signature, then check `iss`, `aud`, `exp`, and `nonce`.
+- **The `nonce` claim is mandatory.**  An absent or empty nonce is a rejection.
+- **VAPID JWTs (ES256) use raw r∥s format (64 bytes).**  DER encoding is rejected by push services.  Pad each component to exactly 32 bytes.
+
+### Input validation and output escaping
+
+- **Server-side validation is mandatory.**  Client-side validation is a UX convenience only.  Check field lengths, required-ness, and format (e.g. hex colour regex) on every create and update handler.
+- **Escape all user-controlled strings in HTML templates.**  Emoji, names, notes, display names — anything that came from user input or the database.  Use `escapeHTML()` from `utils.js` (not a local copy).  Never duplicate the function.
+- **Colour fields must match `^#[0-9A-Fa-f]{6}$`.**  Reject any other value at the handler level.
+
+### HTTP security
+
+- **Strict-Transport-Security header** must be set when the request arrived over TLS (direct or via a trusted proxy).
+- **Rate-limit authentication endpoints.**  The default is conservative — extend with `RATE_LIMIT_AUTH_MAX` in production if needed.
+- **`429 Too Many Requests` responses must carry a `Retry-After` header.**
+
+### Error handling prevents enumeration
+
+- **Never reveal whether an email address is registered.**  Registration, password-reset, and magic-link endpoints return the same HTTP status and the same phrasing regardless.
+- **Avoid leaking internal details.**  `writeError` messages should be user-facing and not expose stack traces, SQL errors, or library internals.
+
 ## Push notification troubleshooting
 
 See `PUSH_DEBUG.md` for the diagnostic playbook. The key gotcha: the HKDF chain in `internal/push/encrypt.go` must match `http_ece` (npm) exactly — Apple returns 201 even when the encryption keys are wrong, so there is no error signal at the gateway. The only way to know the push arrived is to check `self.lastPush` or `self.__diag` in the service worker.
