@@ -456,7 +456,7 @@ test.describe('Exhaustive: Settings Page States', () => {
     await expect(page.locator('#join-household-form button[type="submit"]')).toContainText('Join Household');
 
     // Account section
-    await expect(page.locator('text=Account')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Account' })).toBeVisible();
     // Sign Out is in the profile sheet
     await expect(page.locator('button[data-action="logout"]')).toHaveCount(0);
 
