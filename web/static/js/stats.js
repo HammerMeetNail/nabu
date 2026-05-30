@@ -445,10 +445,15 @@ function renderVolumeChart(periods, period) {
     let offset = 0;
 
     const parts = [];
+    let attributedML = 0;
     stackKeys.forEach(key => {
       const ml = p.volumeByIndicator?.[key] || 0;
+      attributedML += ml;
       if (ml > 0) parts.push(`${key} ${ml}mL`);
     });
+    const unlabeledML = p.totalML - attributedML;
+    if (unlabeledML > 0) parts.push(`unlabeled ${unlabeledML}mL`);
+
     const valText = parts.join(", ") || (p.totalML > 0 ? `${p.totalML} mL` : "");
     const fullLabel = formatPeriodLabel(p, period);
 
@@ -456,7 +461,7 @@ function renderVolumeChart(periods, period) {
 
     svg += `<g data-action="chart-tap" role="button" aria-label="${fullLabel}: ${p.totalML} mL">`;
 
-    if (stackKeys.length > 1 && p.volumeByIndicator && Object.keys(p.volumeByIndicator).length > 0) {
+    if (p.totalML > 0) {
       stackKeys.forEach(key => {
         const ml = p.volumeByIndicator?.[key] || 0;
         if (ml <= 0) return;
@@ -465,6 +470,10 @@ function renderVolumeChart(periods, period) {
         svg += `<rect x="${x + 2}" y="${baseY - offset - segH}" width="${colW - 4}" height="${Math.max(segH, 0.5)}" fill="${color}" opacity="0.85"/>`;
         offset += segH;
       });
+      if (unlabeledML > 0) {
+        const segH = Math.round((unlabeledML / maxML) * chartH);
+        svg += `<rect x="${x + 2}" y="${baseY - offset - segH}" width="${colW - 4}" height="${Math.max(segH, 0.5)}" rx="2" fill="#d1d5db" opacity="0.6"/>`;
+      }
     } else {
       svg += `<rect x="${x + 2}" y="${baseY - barH}" width="${colW - 4}" height="${barH}" rx="2" fill="#EC4899" opacity="0.85"/>`;
     }
@@ -483,12 +492,31 @@ function renderVolumeChart(periods, period) {
 
   const formulaTotal = periods.reduce((s, p) => s + (p.indicators?.["🍼 formula"] || 0), 0);
   const breastTotal = periods.reduce((s, p) => s + (p.indicators?.["🤱 breast"] || 0), 0);
-  if (formulaTotal > 0 || breastTotal > 0) {
+  const unlabeledTotalML = periods.reduce((s, p) => {
+    let attr = 0;
+    if (p.volumeByIndicator) {
+      Object.values(p.volumeByIndicator).forEach(v => { attr += v; });
+    }
+    return s + (p.totalML || 0) - attr;
+  }, 0);
+
+  if (formulaTotal > 0 || breastTotal > 0 || unlabeledTotalML > 0) {
     const ly = totalH - legendH + 14;
-    svg += `<rect x="${leftM}" y="${ly - 8}" width="8" height="8" rx="2" fill="#EC4899" opacity="0.85"/>`;
-    svg += `<text x="${leftM + 11}" y="${ly}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">🍼 ${formulaTotal} total</text>`;
-    svg += `<rect x="${leftM + 80}" y="${ly - 8}" width="8" height="8" rx="2" fill="#F59E0B" opacity="0.85"/>`;
-    svg += `<text x="${leftM + 91}" y="${ly}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">🤱 ${breastTotal} total</text>`;
+    let lx = leftM;
+    if (formulaTotal > 0) {
+      svg += `<rect x="${lx}" y="${ly - 8}" width="8" height="8" rx="2" fill="#EC4899" opacity="0.85"/>`;
+      svg += `<text x="${lx + 11}" y="${ly}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">🍼 ${formulaTotal} total</text>`;
+      lx += 72;
+    }
+    if (breastTotal > 0) {
+      svg += `<rect x="${lx}" y="${ly - 8}" width="8" height="8" rx="2" fill="#F59E0B" opacity="0.85"/>`;
+      svg += `<text x="${lx + 11}" y="${ly}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">🤱 ${breastTotal} total</text>`;
+      lx += 72;
+    }
+    if (unlabeledTotalML > 0) {
+      svg += `<rect x="${lx}" y="${ly - 8}" width="8" height="8" rx="2" fill="#d1d5db" opacity="0.6"/>`;
+      svg += `<text x="${lx + 11}" y="${ly}" font-size="8" fill="#9ca3af" font-family="system-ui, sans-serif">unlabeled ${unlabeledTotalML}mL</text>`;
+    }
   }
 
   svg += `</svg>`;
