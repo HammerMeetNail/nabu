@@ -262,7 +262,9 @@ function renderChoreStatsList(choreStats, choreMap) {
     return '<p class="text-secondary text-center">No chore data yet</p>';
   }
 
-  const items = choreStats.map(cs => {
+  const filtered = choreStats.filter(cs => (cs.totalThisWeek || 0) > 0 || (cs.totalThisMonth || 0) > 0);
+
+  const items = filtered.map(cs => {
     const chore = choreMap[cs.choreId];
     const icon = cs.choreIcon || (chore ? chore.icon : "✓");
     const totalThisWeek = cs.totalThisWeek || 0;
@@ -320,7 +322,7 @@ function renderChoreStatsList(choreStats, choreMap) {
     </details>`;
   }).join("");
 
-  return items;
+  return items || '<p class="text-secondary text-center">No chores logged this month</p>';
 }
 
 export function renderBabyCareSection(state) {
@@ -484,9 +486,9 @@ function renderVolumeChart(periods, period) {
   if (formulaTotal > 0 || breastTotal > 0) {
     const ly = totalH - legendH + 14;
     svg += `<rect x="${leftM}" y="${ly - 8}" width="8" height="8" rx="2" fill="#EC4899" opacity="0.85"/>`;
-    svg += `<text x="${leftM + 11}" y="${ly}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">🍼 ${formulaTotal}</text>`;
-    svg += `<rect x="${leftM + 72}" y="${ly - 8}" width="8" height="8" rx="2" fill="#F59E0B" opacity="0.85"/>`;
-    svg += `<text x="${leftM + 83}" y="${ly}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">🤱 ${breastTotal}</text>`;
+    svg += `<text x="${leftM + 11}" y="${ly}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">🍼 ${formulaTotal} total</text>`;
+    svg += `<rect x="${leftM + 80}" y="${ly - 8}" width="8" height="8" rx="2" fill="#F59E0B" opacity="0.85"/>`;
+    svg += `<text x="${leftM + 91}" y="${ly}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">🤱 ${breastTotal} total</text>`;
   }
 
   svg += `</svg>`;
@@ -592,7 +594,7 @@ function renderIndicatorChart(periods, period) {
       const color = indicatorColors[key] || "#6B7280";
       const total = periods.reduce((s, p) => s + (p.indicators?.[key] || 0), 0);
       svg += `<rect x="${lx}" y="${ly - 8}" width="8" height="8" rx="2" fill="${color}" opacity="0.85"/>`;
-      svg += `<text x="${lx + 11}" y="${ly}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">${key} ${total}</text>`;
+      svg += `<text x="${lx + 11}" y="${ly}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">${key} ${total} total</text>`;
     });
   }
 
