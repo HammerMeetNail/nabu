@@ -1749,11 +1749,21 @@ export async function init() {
         const indicatorLabels = [...document.querySelectorAll(".indicator-label-input")]
           .map(el => el.value.trim())
           .filter(v => v.length > 0);
+        // Collect default indicators by matching checked boxes to their index's label.
+        const indicatorDefaults = [];
+        document.querySelectorAll(".indicator-chip-row").forEach(row => {
+          const cb = row.querySelector("[data-action='toggle-indicator-default']");
+          const input = row.querySelector(".indicator-label-input");
+          if (cb && cb.checked && input) {
+            const val = input.value.trim();
+            if (val) indicatorDefaults.push(val);
+          }
+        });
 
         if (isNew) {
           apiFetch("/api/chores", {
             method: "POST",
-            body: JSON.stringify({ name, icon, color, category: "custom", indicatorLabels }),
+            body: JSON.stringify({ name, icon, color, category: "custom", indicatorLabels, indicatorDefaults }),
           }).then(async ({ data }) => {
             const newChore = data?.chore;
             if (!newChore) { showToast("Failed to create chore", "error"); return; }
@@ -1771,7 +1781,7 @@ export async function init() {
         } else {
           apiFetch(`/api/chores/${choreId}`, {
             method: "PATCH",
-            body: JSON.stringify({ name, icon, color, indicatorLabels }),
+            body: JSON.stringify({ name, icon, color, indicatorLabels, indicatorDefaults }),
           }).then(async () => {
             state.activeSheet = null;
             state.activeSheetData = {};
@@ -1861,6 +1871,10 @@ export async function init() {
         row.dataset.index = idx;
         row.innerHTML = `<input type="text" class="indicator-label-input input" data-index="${idx}"
           value="" placeholder="e.g. 💩 poo" maxlength="30" />
+          <label class="indicator-default-toggle" title="Preselect when logging">
+            <input type="checkbox" data-action="toggle-indicator-default" data-index="${idx}" />
+            <span class="indicator-default-label">default</span>
+          </label>
           <button type="button" class="indicator-remove-btn"
             data-action="remove-indicator-label" data-index="${idx}"
             aria-label="Remove label">×</button>`;

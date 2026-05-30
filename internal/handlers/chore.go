@@ -63,11 +63,12 @@ func (h *ChoreHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name            string   `json:"name"`
-		Icon            string   `json:"icon"`
-		Color           string   `json:"color"`
-		Category        string   `json:"category"`
-		IndicatorLabels []string `json:"indicatorLabels"`
+		Name              string   `json:"name"`
+		Icon              string   `json:"icon"`
+		Color             string   `json:"color"`
+		Category          string   `json:"category"`
+		IndicatorLabels   []string `json:"indicatorLabels"`
+		IndicatorDefaults []string `json:"indicatorDefaults"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -79,7 +80,7 @@ func (h *ChoreHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, err := h.service.CreateChore(r.Context(), *user.HouseholdID, user.ID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels)
+	created, err := h.service.CreateChore(r.Context(), *user.HouseholdID, user.ID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
@@ -125,11 +126,12 @@ func (h *ChoreHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name            string   `json:"name"`
-		Icon            string   `json:"icon"`
-		Color           string   `json:"color"`
-		Category        string   `json:"category"`
-		IndicatorLabels []string `json:"indicatorLabels"`
+		Name              string   `json:"name"`
+		Icon              string   `json:"icon"`
+		Color             string   `json:"color"`
+		Category          string   `json:"category"`
+		IndicatorLabels   []string `json:"indicatorLabels"`
+		IndicatorDefaults []string `json:"indicatorDefaults"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -141,7 +143,7 @@ func (h *ChoreHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.UpdateChore(r.Context(), id, *user.HouseholdID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels); err != nil {
+	if err := h.service.UpdateChore(r.Context(), id, *user.HouseholdID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults); err != nil {
 		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}

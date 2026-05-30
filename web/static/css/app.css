@@ -2852,6 +2852,28 @@ details[open] .chore-stat-chevron {
   background: var(--border);
 }
 
+.indicator-default-toggle {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.indicator-default-toggle input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--primary);
+}
+
+.indicator-default-toggle .indicator-default-label {
+  white-space: nowrap;
+  min-width: 0;
+}
+
 .btn-add-indicator {
   background: none;
   border: 1px dashed var(--border);

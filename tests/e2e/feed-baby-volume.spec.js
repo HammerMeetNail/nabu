@@ -364,13 +364,17 @@ test.describe('Feed Baby food type indicators', () => {
     const chips = page.locator('.log-chip');
     await expect(chips).toHaveCount(2);
 
+    // Formula is default-on; breast is default-off.
     const formulaChip = chips.nth(0);
-    // Toggle on
-    await formulaChip.click();
+    const breastChip = chips.nth(1);
     await expect(formulaChip).toHaveClass(/log-chip--on/);
-    // Toggle off
+    await expect(breastChip).not.toHaveClass(/log-chip--on/);
+    // Toggle formula off
     await formulaChip.click();
     await expect(formulaChip).not.toHaveClass(/log-chip--on/);
+    // Toggle breast on
+    await breastChip.click();
+    await expect(breastChip).toHaveClass(/log-chip--on/);
   });
 
   test('saves indicators and volume together via API', async ({ page }) => {
@@ -378,9 +382,11 @@ test.describe('Feed Baby food type indicators', () => {
     await tapFeedBaby(page);
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
 
-    // Toggle breast chip on
+    // Formula is default-on; toggle it off, then toggle breast on
+    await page.locator('.log-chip').nth(0).click();
     await page.locator('.log-chip').nth(1).click();
     await expect(page.locator('.log-chip').nth(1)).toHaveClass(/log-chip--on/);
+    await expect(page.locator('.log-chip').nth(0)).not.toHaveClass(/log-chip--on/);
 
     // Set volume to 95 mL
     await page.selectOption('#log-volume', '95');
@@ -405,8 +411,7 @@ test.describe('Feed Baby food type indicators', () => {
     await tapFeedBaby(page);
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
 
-    // Toggle formula chip on and set volume
-    await page.locator('.log-chip').nth(0).click();
+    // Formula is default-on; set volume and save
     await page.selectOption('#log-volume', '120');
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
@@ -501,8 +506,7 @@ test.describe('History indicator icons', () => {
     await card.click();
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
 
-    // Toggle both chips
-    await page.locator('.log-chip').nth(0).click();
+    // Formula is default-on; toggle breast too
     await page.locator('.log-chip').nth(1).click();
 
     await page.click('[data-action="save-log"]');

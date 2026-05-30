@@ -13,7 +13,7 @@ func NewService(store Store) *Service {
 	return &Service{store: store}
 }
 
-func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int64, name, icon, color, category string, indicatorLabels []string) (Chore, error) {
+func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string) (Chore, error) {
 	if name == "" {
 		return Chore{}, fmt.Errorf("name must not be empty")
 	}
@@ -29,15 +29,19 @@ func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int
 	if indicatorLabels == nil {
 		indicatorLabels = []string{}
 	}
+	if indicatorDefaults == nil {
+		indicatorDefaults = []string{}
+	}
 	return s.store.CreateChore(ctx, Chore{
-		HouseholdID:     householdID,
-		Name:            name,
-		Icon:            icon,
-		Color:           color,
-		Category:        category,
-		IsPredefined:    false,
-		CreatedBy:       &userID,
-		IndicatorLabels: indicatorLabels,
+		HouseholdID:      householdID,
+		Name:             name,
+		Icon:             icon,
+		Color:            color,
+		Category:         category,
+		IsPredefined:     false,
+		CreatedBy:        &userID,
+		IndicatorLabels:  indicatorLabels,
+		IndicatorDefaults: indicatorDefaults,
 	})
 }
 
@@ -49,7 +53,7 @@ func (s *Service) GetChore(ctx context.Context, choreID int64) (Chore, error) {
 	return s.store.GetChore(ctx, choreID)
 }
 
-func (s *Service) UpdateChore(ctx context.Context, choreID int64, householdID int64, name, icon, color, category string, indicatorLabels []string) error {
+func (s *Service) UpdateChore(ctx context.Context, choreID int64, householdID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string) error {
 	existing, err := s.store.GetChore(ctx, choreID)
 	if err != nil {
 		return err
@@ -71,6 +75,9 @@ func (s *Service) UpdateChore(ctx context.Context, choreID int64, householdID in
 	}
 	if indicatorLabels != nil {
 		existing.IndicatorLabels = indicatorLabels
+	}
+	if indicatorDefaults != nil {
+		existing.IndicatorDefaults = indicatorDefaults
 	}
 	return s.store.UpdateChore(ctx, existing)
 }
@@ -149,7 +156,7 @@ func (s *Service) SeedDefaultChores(ctx context.Context, householdID int64) erro
 
 var PredefinedChores = []Chore{
 	{Name: "Feed Cats", Icon: "🐱", Color: "#F59E0B", Category: "feeding", SortOrder: 0},
-	{Name: "Feed Baby", Icon: "🍼", Color: "#EC4899", Category: "feeding", SortOrder: 1, HasVolumeML: true, IndicatorLabels: []string{"🍼 formula", "🤱 breast"}},
+	{Name: "Feed Baby", Icon: "🍼", Color: "#EC4899", Category: "feeding", SortOrder: 1, HasVolumeML: true, IndicatorLabels: []string{"🍼 formula", "🤱 breast"}, IndicatorDefaults: []string{"🍼 formula"}},
 	{Name: "Change Baby", Icon: "👶", Color: "#8B5CF6", Category: "care", SortOrder: 2, IndicatorLabels: []string{"💩 poo", "💛 pee"}, IndicatorDefaults: []string{"💛 pee"}},
 	{Name: "Water Plants", Icon: "🌱", Color: "#10B981", Category: "plants", SortOrder: 3},
 	{Name: "Clean Litter Box", Icon: "🧹", Color: "#6366F1", Category: "cleaning", SortOrder: 4},
