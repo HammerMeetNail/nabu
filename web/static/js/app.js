@@ -716,6 +716,14 @@ function updateTopBar() {
   }
 }
 
+function closeNotifPanel() {
+  const container = document.querySelector("#notif-panel-container");
+  if (container && !container.hidden) {
+    container.hidden = true;
+    container.innerHTML = "";
+  }
+}
+
 function showToast(message, type) {
   const container = document.querySelector("#toast-container");
   if (!container) return;
@@ -1003,17 +1011,11 @@ export async function init() {
       if (!e.target.closest(".bottom-sheet")) return;
     }
 
-    // Close the notification panel when clicking outside
-    const notifContainer = document.querySelector("#notif-panel-container");
-    if (notifContainer && !notifContainer.hidden && !e.target.closest("#notif-panel-container") && !e.target.closest("#notifications-bell")) {
-      notifContainer.hidden = true;
-      notifContainer.innerHTML = "";
-    }
-
     const actionEl = e.target.closest("[data-action]");
 
     // data-nav SPA navigation: check first so it works without data-action
     if (navEl) {
+      closeNotifPanel();
       state.currentRoute = `/${navEl.dataset.nav}`;
       if (state.currentRoute === "/settings") {
         state._loadedHousehold = true;

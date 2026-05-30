@@ -178,7 +178,9 @@ export function renderNotificationPanel(notifications) {
   }
 
   return `
+  <div class="notif-backdrop" data-action="close-notifications"></div>
   <div class="notif-panel" id="notif-panel">
+    <div class="notif-panel-handle" aria-hidden="true"></div>
     <div class="notif-panel-header">
       <span class="notif-panel-title">Notifications</span>
       ${
