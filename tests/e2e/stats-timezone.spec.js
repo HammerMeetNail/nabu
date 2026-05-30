@@ -175,7 +175,12 @@ test.describe("Stats timezone awareness", () => {
     // Create a log 1 hour ago — definitely today in any timezone.
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
     const completedAt = oneHourAgo.toISOString();
-    const dateStr = completedAt.slice(0, 10);
+    // Use local date (not UTC) for the date field so log_date matches
+    // the NY timezone the heatmap uses for filtering.
+    const dateStr =
+      String(oneHourAgo.getFullYear()) + "-" +
+      String(oneHourAgo.getMonth() + 1).padStart(2, "0") + "-" +
+      String(oneHourAgo.getDate()).padStart(2, "0");
 
     const logResp = await page.request.post("/api/logs", {
       data: {
