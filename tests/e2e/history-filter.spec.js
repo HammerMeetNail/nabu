@@ -36,12 +36,12 @@ async function setupWithChores(page) {
 }
 
 async function openFilter(page) {
-  const btn = page.locator('.hist-filter-btn');
-  const expanded = await btn.getAttribute('aria-expanded');
-  if (expanded !== 'true') {
-    await btn.click();
+  const chips = page.locator('.hist-filter-chips');
+  const isOpen = await chips.evaluate(el => el.classList.contains('hist-filter-chips--open'));
+  if (!isOpen) {
+    await page.locator('.hist-filter-btn').click();
   }
-  await page.waitForSelector('.hist-filter-dropdown:not([hidden])', { timeout: 5000 });
+  await expect(chips).toHaveClass(/hist-filter-chips--open/);
 }
 
 test.describe('History filter', () => {
