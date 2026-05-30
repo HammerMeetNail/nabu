@@ -25,6 +25,7 @@ export function createAppState() {
     latestLogs: {},            // map of choreId -> ChoreLog (most recent per chore)
     notificationPrefs: null,
     availableNotificationTypes: [],
+    historyChoreFilter: null,  // null = show all, []string = filtered chore IDs
   };
 }
 
@@ -53,4 +54,5 @@ export function resetAuthedState(state) {
   state.latestLogs = {};
   state.notificationPrefs = null;
   state.availableNotificationTypes = [];
+  state.historyChoreFilter = null;
 }
