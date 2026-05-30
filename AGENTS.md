@@ -349,7 +349,7 @@ Every operation that reads or mutates data must verify the actor is authorized f
 
 ## Push notification troubleshooting
 
-See `PUSH_DEBUG.md` for the diagnostic playbook. The key gotcha: the HKDF chain in `internal/push/encrypt.go` must match `http_ece` (npm) exactly — Apple returns 201 even when the encryption keys are wrong, so there is no error signal at the gateway. The only way to know the push arrived is to check `self.lastPush` or `self.__diag` in the service worker.
+See `docs/plans/PUSH_DEBUG.md` for the diagnostic playbook. The key gotcha: the HKDF chain in `internal/push/encrypt.go` must match `http_ece` (npm) exactly — Apple returns 201 even when the encryption keys are wrong, so there is no error signal at the gateway. The only way to know the push arrived is to check `self.lastPush` or `self.__diag` in the service worker.
 
 ### Push architecture (`internal/push/`)
 
