@@ -1,6 +1,9 @@
 package middleware
 
-import "net/http"
+import (
+	"net/http"
+	"strings"
+)
 
 func SecurityHeaders() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
@@ -12,6 +15,10 @@ func SecurityHeaders() func(http.Handler) http.Handler {
 			w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
 			w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
 			w.Header().Set("Permissions-Policy", "camera=(), geolocation=(), microphone=()")
+			// Add HSTS when the request arrived over HTTPS (direct TLS or behind a trusted proxy).
+			if r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") {
+				w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+			}
 			next.ServeHTTP(w, r)
 		})
 	}

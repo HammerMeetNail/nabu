@@ -193,7 +193,7 @@ func (s *Service) SwitchHousehold(ctx context.Context, userID, householdID int64
 }
 
 func (s *Service) UpdateMemberRole(ctx context.Context, actorUserID, targetUserID int64, newRole string) error {
-	_, actorRole, err := s.store.GetMembership(ctx, actorUserID)
+	actorHHID, actorRole, err := s.store.GetMembership(ctx, actorUserID)
 	if err != nil {
 		return err
 	}
@@ -206,6 +206,10 @@ func (s *Service) UpdateMemberRole(ctx context.Context, actorUserID, targetUserI
 	hhID, targetRole, err := s.store.GetMembership(ctx, targetUserID)
 	if err != nil {
 		return err
+	}
+	// Prevent cross-household role manipulation.
+	if hhID != actorHHID {
+		return ErrNotAuthorized
 	}
 	if targetRole == RoleOwner {
 		members, err := s.store.GetMembers(ctx, hhID)
@@ -226,7 +230,7 @@ func (s *Service) UpdateMemberRole(ctx context.Context, actorUserID, targetUserI
 }
 
 func (s *Service) RemoveMember(ctx context.Context, actorUserID, targetUserID int64) error {
-	_, actorRole, err := s.store.GetMembership(ctx, actorUserID)
+	actorHHID, actorRole, err := s.store.GetMembership(ctx, actorUserID)
 	if err != nil {
 		return err
 	}
@@ -239,6 +243,10 @@ func (s *Service) RemoveMember(ctx context.Context, actorUserID, targetUserID in
 	hhID, _, cerr := s.store.GetMembership(ctx, targetUserID)
 	if cerr != nil {
 		return cerr
+	}
+	// Prevent cross-household member removal.
+	if hhID != actorHHID {
+		return ErrNotAuthorized
 	}
 	members, err := s.store.GetMembers(ctx, hhID)
 	if err != nil {

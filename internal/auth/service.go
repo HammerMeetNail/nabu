@@ -20,6 +20,7 @@ var (
 	ErrInvalidEmail        = errors.New("email must be valid")
 	ErrInvalidCredentials  = errors.New("invalid credentials")
 	ErrWeakPassword        = errors.New("password must be at least 8 characters")
+	ErrPasswordTooLong     = errors.New("password must be 72 characters or fewer")
 	ErrSessionNotFound     = errors.New("session not found")
 	ErrUserNotFound        = errors.New("user not found")
 	ErrInvalidToken        = errors.New("invalid or expired token")
@@ -79,6 +80,9 @@ func (s *Service) Register(ctx context.Context, email, password string) (User, S
 
 	if len(password) < 8 {
 		return User{}, Session{}, ErrWeakPassword
+	}
+	if len(password) > 72 {
+		return User{}, Session{}, ErrPasswordTooLong
 	}
 
 	passwordHash, err := hashPassword(password)
@@ -147,6 +151,8 @@ func (s *Service) Logout(ctx context.Context, sessionToken string) error {
 	return nil
 }
 
+const sessionIdleTimeout = 24 * time.Hour
+
 func (s *Service) Authenticate(ctx context.Context, sessionToken string) (User, error) {
 	if sessionToken == "" {
 		return User{}, ErrSessionNotFound
@@ -156,9 +162,19 @@ func (s *Service) Authenticate(ctx context.Context, sessionToken string) (User, 
 	if err != nil {
 		return User{}, ErrSessionNotFound
 	}
-	if session.ExpiresAt.Before(s.now()) {
+	now := s.now()
+	if session.ExpiresAt.Before(now) {
 		_ = s.store.DeleteSession(ctx, tokenHash)
 		return User{}, ErrSessionNotFound
+	}
+	// Enforce idle timeout: reject sessions not seen in the last 24 hours.
+	if now.Sub(session.LastSeenAt) > sessionIdleTimeout {
+		_ = s.store.DeleteSession(ctx, tokenHash)
+		return User{}, ErrSessionNotFound
+	}
+	// Touch the session no more than once per minute to avoid excessive writes.
+	if now.Sub(session.LastSeenAt) > time.Minute {
+		_ = s.store.TouchSession(ctx, tokenHash, now)
 	}
 	return s.store.GetUserByID(ctx, session.UserID)
 }
@@ -300,6 +316,9 @@ func (s *Service) ResetPassword(ctx context.Context, token, newPassword string) 
 	if len(newPassword) < 8 {
 		return User{}, Session{}, ErrWeakPassword
 	}
+	if len(newPassword) > 72 {
+		return User{}, Session{}, ErrPasswordTooLong
+	}
 
 	tokenHash := hashToken(token)
 	authToken, err := s.store.ConsumeAuthToken(ctx, tokenHash, "reset")
@@ -340,6 +359,9 @@ func (s *Service) ResetPassword(ctx context.Context, token, newPassword string) 
 func (s *Service) ChangePassword(ctx context.Context, userID int64, currentPassword, newPassword string) (User, Session, error) {
 	if len(newPassword) < 8 {
 		return User{}, Session{}, ErrWeakPassword
+	}
+	if len(newPassword) > 72 {
+		return User{}, Session{}, ErrPasswordTooLong
 	}
 
 	user, passwordHash, err := s.store.GetUserByIDWithHash(ctx, userID)
@@ -433,11 +455,15 @@ func (s *Service) CompleteGoogleOIDC(ctx context.Context, code, expectedNonce st
 func (s *Service) newSession(ctx context.Context, userID int64) (Session, error) {
 	token := randomToken(32)
 	tokenHash := hashToken(token)
-	session, err := s.store.CreateSession(ctx, userID, tokenHash, s.now().Add(s.sessionDuration))
+	now := s.now()
+	session, err := s.store.CreateSession(ctx, userID, tokenHash, now.Add(s.sessionDuration))
 	if err != nil {
 		return Session{}, err
 	}
 	session.ID = token
+	// Sync last_seen_at to the service clock so tests can override svc.now().
+	_ = s.store.TouchSession(ctx, tokenHash, now)
+	session.LastSeenAt = now
 	return session, nil
 }
 

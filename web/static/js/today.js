@@ -114,7 +114,7 @@ export function renderTodayView(state) {
     const check = log ? '<span class="check-overlay">✓</span>' : '';
     const note = log && log.note ? `<span class="chore-note">${escapeHTML(log.note)}</span>` : '';
     return `<button type="button" class="chore-card ${doneClass}" data-action="${log ? 'undo-chore' : 'log-chore'}" data-chore-id="${chore.id}" data-log-id="${log ? log.id : ''}" style="${style}">
-      <span class="chore-icon">${chore.icon}</span>
+      <span class="chore-icon">${escapeHTML(chore.icon)}</span>
       <span class="chore-name">${escapeHTML(chore.name)}</span>
       <span class="chore-category">${chore.category}</span>
       ${check}${note}

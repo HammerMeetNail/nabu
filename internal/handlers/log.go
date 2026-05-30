@@ -144,7 +144,10 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 	user, _ := middleware.CurrentUser(r.Context())
-	_ = user
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
+		return
+	}
 
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -211,7 +214,7 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 		logCompletedAt = &t
 	}
 
-	if err := h.service.UpdateLog(r.Context(), id, req.Note, req.Indicators, req.VolumeML, userID, logCompletedAt, req.Hour, logDate); err != nil {
+	if err := h.service.UpdateLog(r.Context(), id, *user.HouseholdID, req.Note, req.Indicators, req.VolumeML, userID, logCompletedAt, req.Hour, logDate); err != nil {
 		if errors.Is(err, log.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "log not found")
 			return

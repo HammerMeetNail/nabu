@@ -182,26 +182,27 @@ func (s *PostgresStore) CreateSession(ctx context.Context, userID int64, tokenHa
 	sessionID := randomToken(32)
 	now := time.Now().UTC()
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO sessions (id, user_id, token_hash, expires_at, last_seen_at, created_at)
+		VALUES ($1, $2, $3, $4, $5, $5)
 	`, sessionID, userID, tokenHash, expiresAt, now)
 	if err != nil {
 		return Session{}, err
 	}
 	return Session{
-		ID:        sessionID,
-		UserID:    userID,
-		ExpiresAt: expiresAt,
-		CreatedAt: now,
+		ID:         sessionID,
+		UserID:     userID,
+		ExpiresAt:  expiresAt,
+		LastSeenAt: now,
+		CreatedAt:  now,
 	}, nil
 }
 
 func (s *PostgresStore) GetSession(ctx context.Context, tokenHash string) (Session, error) {
 	var session Session
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, user_id, expires_at, created_at
+		SELECT id, user_id, expires_at, last_seen_at, created_at
 		FROM sessions WHERE token_hash = $1
-	`, tokenHash).Scan(&session.ID, &session.UserID, &session.ExpiresAt, &session.CreatedAt)
+	`, tokenHash).Scan(&session.ID, &session.UserID, &session.ExpiresAt, &session.LastSeenAt, &session.CreatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return Session{}, ErrSessionNotFound
@@ -209,6 +210,13 @@ func (s *PostgresStore) GetSession(ctx context.Context, tokenHash string) (Sessi
 		return Session{}, err
 	}
 	return session, nil
+}
+
+func (s *PostgresStore) TouchSession(ctx context.Context, tokenHash string, lastSeenAt time.Time) error {
+	_, err := s.db.ExecContext(ctx, `
+		UPDATE sessions SET last_seen_at = $1 WHERE token_hash = $2
+	`, lastSeenAt, tokenHash)
+	return err
 }
 
 func (s *PostgresStore) DeleteSession(ctx context.Context, tokenHash string) error {

@@ -17,10 +17,11 @@ type User struct {
 }
 
 type Session struct {
-	ID        string    `json:"id"`
-	UserID    int64     `json:"userId"`
-	ExpiresAt time.Time `json:"expiresAt"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID          string    `json:"id"`
+	UserID      int64     `json:"userId"`
+	ExpiresAt   time.Time `json:"expiresAt"`
+	LastSeenAt  time.Time `json:"lastSeenAt"`
+	CreatedAt   time.Time `json:"createdAt"`
 }
 
 type AuthToken struct {
@@ -45,6 +46,7 @@ type Store interface {
 	SetUserHousehold(ctx context.Context, userID, householdID int64, role string) error
 	CreateSession(ctx context.Context, userID int64, tokenHash string, expiresAt time.Time) (Session, error)
 	GetSession(ctx context.Context, tokenHash string) (Session, error)
+	TouchSession(ctx context.Context, tokenHash string, lastSeenAt time.Time) error
 	DeleteSession(ctx context.Context, tokenHash string) error
 	DeleteUserSessions(ctx context.Context, userID int64) error
 	CreateAuthToken(ctx context.Context, userID *int64, email, tokenHash, kind string, expiresAt time.Time) (AuthToken, error)

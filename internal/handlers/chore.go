@@ -2,11 +2,31 @@ package handlers
 
 import (
 	"net/http"
+	"regexp"
 	"strconv"
+	"unicode/utf8"
 
 	"github.com/dave/choresy/internal/chore"
 	"github.com/dave/choresy/internal/middleware"
 )
+
+var hexColorRe = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
+func validateChoreInput(name, icon, color string) (int, string) {
+	if utf8.RuneCountInString(name) == 0 {
+		return http.StatusBadRequest, "name must not be empty"
+	}
+	if utf8.RuneCountInString(name) > 60 {
+		return http.StatusBadRequest, "name must be 60 characters or fewer"
+	}
+	if utf8.RuneCountInString(icon) > 8 {
+		return http.StatusBadRequest, "icon must be 8 characters or fewer"
+	}
+	if color != "" && !hexColorRe.MatchString(color) {
+		return http.StatusBadRequest, "color must be a valid hex color (#RRGGBB)"
+	}
+	return 0, ""
+}
 
 type ChoreHandler struct {
 	service *chore.Service
@@ -54,6 +74,11 @@ func (h *ChoreHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if code, msg := validateChoreInput(req.Name, req.Icon, req.Color); code != 0 {
+		writeError(w, code, msg)
+		return
+	}
+
 	created, err := h.service.CreateChore(r.Context(), *user.HouseholdID, user.ID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
@@ -64,6 +89,12 @@ func (h *ChoreHandler) Create(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChoreHandler) Get(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.CurrentUser(r.Context())
+	if !ok || user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
+		return
+	}
+
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -72,7 +103,7 @@ func (h *ChoreHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 
 	c, err := h.service.GetChore(r.Context(), id)
-	if err != nil {
+	if err != nil || c.HouseholdID != *user.HouseholdID {
 		writeError(w, http.StatusNotFound, "chore not found")
 		return
 	}
@@ -80,7 +111,11 @@ func (h *ChoreHandler) Get(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChoreHandler) Update(w http.ResponseWriter, r *http.Request) {
-	_, _ = middleware.CurrentUser(r.Context())
+	user, ok := middleware.CurrentUser(r.Context())
+	if !ok || user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
+		return
+	}
 
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
@@ -101,7 +136,12 @@ func (h *ChoreHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.UpdateChore(r.Context(), id, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels); err != nil {
+	if code, msg := validateChoreInput(req.Name, req.Icon, req.Color); code != 0 {
+		writeError(w, code, msg)
+		return
+	}
+
+	if err := h.service.UpdateChore(r.Context(), id, *user.HouseholdID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels); err != nil {
 		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}
@@ -110,6 +150,12 @@ func (h *ChoreHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChoreHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.CurrentUser(r.Context())
+	if !ok || user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
+		return
+	}
+
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -117,7 +163,7 @@ func (h *ChoreHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.DeleteChore(r.Context(), id); err != nil {
+	if err := h.service.DeleteChore(r.Context(), id, *user.HouseholdID); err != nil {
 		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}
@@ -149,6 +195,12 @@ func (h *ChoreHandler) Reorder(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *ChoreHandler) RestoreDefault(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.CurrentUser(r.Context())
+	if !ok || user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
+		return
+	}
+
 	idStr := r.PathValue("id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
@@ -156,7 +208,7 @@ func (h *ChoreHandler) RestoreDefault(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.RestoreDefaultChore(r.Context(), id); err != nil {
+	if err := h.service.RestoreDefaultChore(r.Context(), id, *user.HouseholdID); err != nil {
 		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}
