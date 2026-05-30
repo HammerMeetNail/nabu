@@ -1962,6 +1962,15 @@ export async function init() {
         break;
       }
 
+      case "chore-filter": {
+        e.preventDefault();
+        state.stats = state.stats || {};
+        const id = actionEl.dataset.choreId;
+        state.stats.choreFilter = id ? parseInt(id, 10) : null;
+        render(app);
+        break;
+      }
+
       case "chart-tap": {
         e.preventDefault();
         const g = e.target.closest("[data-action=\"chart-tap\"]");

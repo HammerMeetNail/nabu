@@ -1378,6 +1378,45 @@ details[open] .member-chevron {
   flex-shrink: 0;
 }
 
+/* Chore Filter Chips */
+.chore-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.chore-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+
+.chore-filter-chip:hover {
+  background: var(--hover);
+}
+
+.chore-filter-chip--active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.chore-filter-chip-icon {
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
 /* Chore Stats */
 .chore-stat-card {
   border-bottom: 1px solid var(--border);

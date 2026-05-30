@@ -100,7 +100,7 @@ export function renderStatsPage(state) {
 
     <div class="card mb-3">
       <h3>Chores</h3>
-      ${renderChoreStatsList(choreStats, choreMap)}
+      ${renderChoreStatsList(choreStats, choreMap, stats.choreFilter || null)}
     </div>
 
     ${recap.totalChores > 0 ? `<div class="card mb-3">
@@ -257,12 +257,16 @@ function renderCategoryBars(breakdown) {
   return bars;
 }
 
-function renderChoreStatsList(choreStats, choreMap) {
+function renderChoreStatsList(choreStats, choreMap, filterId) {
   if (!choreStats || choreStats.length === 0) {
     return '<p class="text-secondary text-center">No chore data yet</p>';
   }
 
-  const filtered = choreStats.filter(cs => (cs.totalThisWeek || 0) > 0 || (cs.totalThisMonth || 0) > 0);
+  const chips = renderFilterChips(choreStats, choreMap, filterId);
+
+  const filtered = filterId
+    ? choreStats.filter(cs => cs.choreId === filterId)
+    : choreStats;
 
   const items = filtered.map(cs => {
     const chore = choreMap[cs.choreId];
@@ -322,7 +326,33 @@ function renderChoreStatsList(choreStats, choreMap) {
     </details>`;
   }).join("");
 
-  return items || '<p class="text-secondary text-center">No chores logged this month</p>';
+  return `${chips}${items || '<p class="text-secondary text-center">No chores logged</p>'}`;
+}
+
+function renderFilterChips(choreStats, choreMap, filterId) {
+  const seen = new Set();
+  const chipList = [];
+  choreStats.forEach(cs => {
+    if (seen.has(cs.choreId)) return;
+    seen.add(cs.choreId);
+    const chore = choreMap[cs.choreId];
+    const icon = cs.choreIcon || (chore ? chore.icon : "✓");
+    const color = chore ? chore.color : "#6B7280";
+    const active = filterId === cs.choreId;
+    chipList.push({ choreId: cs.choreId, name: cs.choreName, icon, color, active });
+  });
+
+  const allActive = filterId === null || filterId === undefined;
+  let html = '<div class="chore-filter-chips">';
+  html += `<button class="chore-filter-chip${allActive ? " chore-filter-chip--active" : ""}" data-action="chore-filter" data-chore-id="" aria-pressed="${allActive}">All</button>`;
+  chipList.forEach(c => {
+    html += `<button class="chore-filter-chip${c.active ? " chore-filter-chip--active" : ""}" data-action="chore-filter" data-chore-id="${c.choreId}" aria-pressed="${c.active}" style="--chip-color:${c.color}">
+      <span class="chore-filter-chip-icon">${c.icon}</span>
+      <span>${escapeHTML(c.name)}</span>
+    </button>`;
+  });
+  html += '</div>';
+  return html;
 }
 
 export function renderBabyCareSection(state) {
