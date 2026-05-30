@@ -6,3 +6,4 @@ test-results/
 .cache/
 .env
 .playwright-mcp/
+worktrees/
