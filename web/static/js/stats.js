@@ -26,6 +26,13 @@ export async function loadLeaderboard(period) {
   return data;
 }
 
+export async function loadChoreTimeSeries(choreId, period) {
+  const { data } = await apiFetch(
+    `/api/stats/chores/${choreId}/time-series?period=${period || "daily"}`
+  );
+  return data;
+}
+
 function formatHour(h) {
   if (h === 0) return "12a";
   if (h < 12) return h + "a";
@@ -68,6 +75,8 @@ export function renderStatsPage(state) {
     <div class="chart-period-toggle mt-2 mb-3">
       ${renderOverviewCards(todayCount, totalThisWeek, streaks, topChoreName, stats.leaderboardPeriod, state.user?.id)}
     </div>
+
+    ${renderBabyCareSection(state)}
 
     <div class="card mb-3">
       <h3>Activity</h3>
@@ -124,11 +133,12 @@ function renderOverviewCards(todayCount, totalThisWeek, streaks, topChoreName, p
   </div>`;
 }
 
-function heatmapColor(count) {
+function heatmapColor(count, maxCount) {
   if (count === 0) return "#e8e5df";
-  if (count <= 1) return "#c6e48b";
-  if (count <= 3) return "#7bc96f";
-  if (count <= 6) return "#239a3b";
+  const intensity = maxCount > 0 ? count / maxCount : 0;
+  if (intensity <= 0.25) return "#c6e48b";
+  if (intensity <= 0.5) return "#7bc96f";
+  if (intensity <= 0.75) return "#239a3b";
   return "#196127";
 }
 
@@ -139,6 +149,8 @@ function renderHeatmapGrid(heatmap) {
 
   const cellMap = {};
   heatmap.forEach(c => { cellMap[c.date] = c.count; });
+
+  const maxCount = Math.max(0, ...Object.values(cellMap));
 
   // Build a GitHub-style grid: columns = weeks, rows = days (Sun-Sat)
   const now = new Date();
@@ -174,7 +186,7 @@ function renderHeatmapGrid(heatmap) {
     html += '<div class="heatmap-week">';
     week.forEach((cell, di) => {
       const title = `${cell.date}: ${cell.count} chores`;
-      html += `<span class="heatmap-cell" style="background:${heatmapColor(cell.count)}" title="${title}"></span>`;
+      html += `<span class="heatmap-cell" style="background:${heatmapColor(cell.count, maxCount)}" title="${title}"></span>`;
     });
     html += '</div>';
   });
@@ -182,8 +194,9 @@ function renderHeatmapGrid(heatmap) {
   html += '</div>';
   html += '<div class="heatmap-legend">';
   html += '<span>Less</span>';
-  [0, 1, 2, 4, 7].forEach(n => {
-    html += `<span class="heatmap-legend-cell" style="background:${heatmapColor(n)}"></span>`;
+  const legendMax = Math.max(4, maxCount);
+  [0, Math.ceil(legendMax * 0.25), Math.ceil(legendMax * 0.5), Math.ceil(legendMax * 0.75), legendMax].forEach(n => {
+    html += `<span class="heatmap-legend-cell" style="background:${heatmapColor(n, legendMax)}"></span>`;
   });
   html += '<span>More</span>';
   html += '</div>';
@@ -308,6 +321,169 @@ function renderChoreStatsList(choreStats, choreMap) {
   }).join("");
 
   return items;
+}
+
+export function renderBabyCareSection(state) {
+  const stats = state.stats || {};
+  const babyPeriod = stats.babyPeriod || "daily";
+  const babyTimeSeries = stats.babyTimeSeries || {};
+  const members = state.members || [];
+
+  const memberMap = {};
+  members.forEach(m => { memberMap[m.userId] = m; });
+
+  const feedBaby = babyTimeSeries.feedBaby;
+  const changeBaby = babyTimeSeries.changeBaby;
+
+  if (!feedBaby && !changeBaby) return "";
+
+  const periodLabel = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
+
+  return `<div class="card mb-3">
+    <div class="baby-care-header">
+      <h3>Baby</h3>
+      <div class="period-toggle" role="group" aria-label="Time period">
+        ${["daily", "weekly", "monthly"].map(p => {
+          const active = p === babyPeriod ? " period-toggle--active" : "";
+          const label = periodLabel[p];
+          return `<button class="period-toggle-btn${active}" data-action="stats-baby-period" data-period="${p}" aria-pressed="${p === babyPeriod}">${label}</button>`;
+        }).join("")}
+      </div>
+    </div>
+    <div class="baby-care-columns">
+      ${feedBaby ? renderBabyColumn(feedBaby, memberMap, babyPeriod, "feed") : ""}
+      ${changeBaby ? renderBabyColumn(changeBaby, memberMap, babyPeriod, "change") : ""}
+    </div>
+  </div>`;
+}
+
+function renderBabyColumn(ts, memberMap, period, type) {
+  const isVolume = type === "feed";
+  const label = isVolume ? "Feed" : "Change";
+  const membersHTML = renderMemberList(ts.byMember, memberMap);
+  const chartHTML = isVolume
+    ? renderVolumeChart(ts.periods, period)
+    : renderIndicatorChart(ts.periods, period);
+
+  return `<div class="baby-care-column">
+    <h4 class="baby-col-title">${ts.choreIcon} ${escapeHTML(ts.choreName)}</h4>
+    ${membersHTML}
+    <div class="baby-chart">${chartHTML}</div>
+  </div>`;
+}
+
+function renderMemberList(byMember, memberMap) {
+  if (!byMember || byMember.length === 0) return '<p class="text-secondary text-sm">No data</p>';
+
+  const maxCount = byMember[0]?.count || 1;
+  return `<div class="baby-member-list">
+    ${byMember.map(entry => {
+      const member = memberMap[entry.userId];
+      const name = member ? (member.displayName || member.email) : `User ${entry.userId}`;
+      const initial = name.charAt(0).toUpperCase();
+      const color = member ? member.avatarColor : "#19323C";
+      const pct = maxCount > 0 ? (entry.count / maxCount) * 100 : 0;
+      return `<div class="baby-member-row">
+        <span class="avatar-circle-sm" style="background:${color}">${initial}</span>
+        <span class="baby-member-name">${escapeHTML(name)}</span>
+        <div class="baby-member-bar-track">
+          <div class="baby-member-bar-fill" style="width:${pct}%"></div>
+        </div>
+        <span class="baby-member-count">${entry.count}</span>
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+
+function renderVolumeChart(periods, period) {
+  if (!periods || periods.length === 0) return '<p class="text-secondary text-sm text-center mt-2">No data</p>';
+
+  const maxML = Math.max(1, ...periods.map(p => p.totalML || 0));
+  const chartH = 100;
+  const chartW = periods.length * 24;
+  const barW = 16;
+  const gap = 8;
+
+  let bars = "";
+  periods.forEach((p, i) => {
+    const x = i * (barW + gap) + 10;
+    const h = maxML > 0 ? (p.totalML / maxML) * (chartH - 20) : 0;
+    const y = chartH - h - 1;
+    const label = formatPeriodLabel(p, period);
+    bars += `<rect x="${x}" y="${y}" width="${barW}" height="${h}" rx="3" fill="#EC4899" opacity="0.85">
+      <title>${label}: ${p.totalML} mL</title>
+    </rect>`;
+  });
+
+  return `<svg viewBox="0 0 ${chartW + 20} ${chartH}" class="baby-svg-chart" aria-label="Volume chart">
+    <line x1="10" y1="${chartH - 1}" x2="${chartW + 10}" y2="${chartH - 1}" stroke="#d1d5db" stroke-width="1"/>
+    ${bars}
+  </svg>`;
+}
+
+function renderIndicatorChart(periods, period) {
+  if (!periods || periods.length === 0) return '<p class="text-secondary text-sm text-center mt-2">No data</p>';
+
+  const indicatorKeys = [];
+  const seen = new Set();
+  periods.forEach(p => {
+    if (p.indicators) {
+      Object.keys(p.indicators).forEach(k => {
+        if (!seen.has(k)) { seen.add(k); indicatorKeys.push(k); }
+      });
+    }
+  });
+
+  const maxCount = Math.max(1, ...periods.map(p => {
+    let sum = 0;
+    if (p.indicators) {
+      indicatorKeys.forEach(k => { sum += p.indicators[k] || 0; });
+    }
+    return sum;
+  }));
+
+  const colors = { "💩 poo": "#8B4513", "💛 pee": "#FACC15" };
+
+  const chartH = 100;
+  const chartW = periods.length * 24;
+  const barW = 16;
+  const gap = 8;
+
+  const groupW = indicatorKeys.length > 0 ? barW / indicatorKeys.length : barW;
+  let bars = "";
+  periods.forEach((p, i) => {
+    indicatorKeys.forEach((key, ki) => {
+      const count = p.indicators?.[key] || 0;
+      const x = i * (barW + gap) + 10 + ki * groupW;
+      const h = maxCount > 0 ? (count / maxCount) * (chartH - 20) : 0;
+      const y = chartH - h - 1;
+      const color = colors[key] || "#6B7280";
+      const label = formatPeriodLabel(p, period);
+      bars += `<rect x="${x}" y="${y}" width="${Math.max(1, groupW - 1)}" height="${h}" rx="2" fill="${color}" opacity="0.85">
+        <title>${label}: ${key} (${count})</title>
+      </rect>`;
+    });
+  });
+
+  return `<svg viewBox="0 0 ${chartW + 20} ${chartH}" class="baby-svg-chart" aria-label="Indicator chart">
+    <line x1="10" y1="${chartH - 1}" x2="${chartW + 10}" y2="${chartH - 1}" stroke="#d1d5db" stroke-width="1"/>
+    ${bars}
+  </svg>`;
+}
+
+function formatPeriodLabel(p, period) {
+  if (period === "daily") {
+    const d = new Date(p.start + "T00:00:00");
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+  if (period === "weekly") {
+    const s = new Date(p.start + "T00:00:00");
+    const e = new Date(p.end + "T00:00:00");
+    e.setDate(e.getDate() - 1);
+    return `${s.toLocaleDateString(undefined, { month: "short", day: "numeric" })}–${e.toLocaleDateString(undefined, { month: "short", day: "numeric" })}`;
+  }
+  const d = new Date(p.start + "T00:00:00");
+  return d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
 }
 
 export function renderStatsView(state) {

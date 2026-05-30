@@ -92,6 +92,22 @@ type VolumeDay struct {
 	TotalML int    `json:"totalML"`
 }
 
+type ChoreTimeSeries struct {
+	ChoreID   int64              `json:"choreId"`
+	ChoreName string             `json:"choreName"`
+	ChoreIcon string             `json:"choreIcon"`
+	ByMember  []LeaderboardEntry `json:"byMember"`
+	Periods   []TimeSeriesPeriod `json:"periods"`
+}
+
+type TimeSeriesPeriod struct {
+	Start      string         `json:"start"`
+	End        string         `json:"end"`
+	Count      int            `json:"count"`
+	TotalML    int            `json:"totalML"`
+	Indicators map[string]int `json:"indicators,omitempty"`
+}
+
 func NewService(logStore log.Store, choreStore choreStore) *Service {
 	return &Service{logStore: logStore, choreStore: choreStore}
 }
@@ -494,6 +510,134 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 	}
 
 	return overview, nil
+}
+
+func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID int64, period string, loc *time.Location) (*ChoreTimeSeries, error) {
+	ch, err := s.choreStore.GetChore(ctx, choreID)
+	if err != nil {
+		return nil, err
+	}
+
+	now := nowIn(loc)
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+
+	var start time.Time
+	var buckets []timeBucket
+
+	switch period {
+	case "weekly":
+		monday := wkStart(today, loc)
+		start = monday.AddDate(0, 0, -11*7)
+		buckets = buildWeekBuckets(start, today, loc)
+	case "monthly":
+		start = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc).AddDate(0, -5, 0)
+		buckets = buildMonthBuckets(start, today, loc)
+	default:
+		start = today.AddDate(0, 0, -13)
+		buckets = buildDayBuckets(start, today, loc)
+	}
+
+	end := today.AddDate(0, 0, 1)
+
+	logs, err := s.fetchLogsInRange(ctx, householdID, start, end, loc)
+	if err != nil {
+		return nil, err
+	}
+
+	yearStart := today.AddDate(-1, 0, 0)
+	yearEnd := today.AddDate(0, 0, 1)
+	allLogs, _ := s.fetchLogsInRange(ctx, householdID, yearStart, yearEnd, loc)
+
+	byMember := map[int64]int{}
+	for _, l := range allLogs {
+		if l.ChoreID == choreID && logInRange(l, yearStart, yearEnd, loc) {
+			byMember[l.UserID]++
+		}
+	}
+	var memberEntries []LeaderboardEntry
+	for uid, c := range byMember {
+		memberEntries = append(memberEntries, LeaderboardEntry{UserID: uid, Count: c})
+	}
+	sort.Slice(memberEntries, func(i, j int) bool { return memberEntries[i].Count > memberEntries[j].Count })
+
+	type bucketData struct {
+		count      int
+		totalML    int
+		indicators map[string]int
+	}
+	periodData := make([]bucketData, len(buckets))
+	for _, l := range logs {
+		if l.ChoreID != choreID {
+			continue
+		}
+		t := l.CompletedAt.In(loc)
+		for i, b := range buckets {
+			if !t.Before(b.start) && t.Before(b.end) {
+				periodData[i].count++
+				if l.VolumeML != nil {
+					periodData[i].totalML += *l.VolumeML
+				}
+				for _, ind := range l.Indicators {
+					if periodData[i].indicators == nil {
+						periodData[i].indicators = map[string]int{}
+					}
+					periodData[i].indicators[ind]++
+				}
+				break
+			}
+		}
+	}
+
+	result := &ChoreTimeSeries{
+		ChoreID:   ch.ID,
+		ChoreName: ch.Name,
+		ChoreIcon: ch.Icon,
+		ByMember:  memberEntries,
+	}
+
+	for i, b := range buckets {
+		tp := TimeSeriesPeriod{
+			Start:   b.start.Format("2006-01-02"),
+			End:     b.end.Format("2006-01-02"),
+			Count:   periodData[i].count,
+			TotalML: periodData[i].totalML,
+		}
+		if len(periodData[i].indicators) > 0 {
+			tp.Indicators = periodData[i].indicators
+		}
+		result.Periods = append(result.Periods, tp)
+	}
+
+	return result, nil
+}
+
+type timeBucket struct {
+	start time.Time
+	end   time.Time
+}
+
+func buildDayBuckets(start, end time.Time, loc *time.Location) []timeBucket {
+	var buckets []timeBucket
+	for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
+		buckets = append(buckets, timeBucket{start: d, end: d.AddDate(0, 0, 1)})
+	}
+	return buckets
+}
+
+func buildWeekBuckets(start, end time.Time, loc *time.Location) []timeBucket {
+	var buckets []timeBucket
+	for d := start; !d.After(end); d = d.AddDate(0, 0, 7) {
+		buckets = append(buckets, timeBucket{start: d, end: d.AddDate(0, 0, 7)})
+	}
+	return buckets
+}
+
+func buildMonthBuckets(start, end time.Time, loc *time.Location) []timeBucket {
+	var buckets []timeBucket
+	for d := start; !d.After(end); d = d.AddDate(0, 1, 0) {
+		buckets = append(buckets, timeBucket{start: d, end: d.AddDate(0, 1, 0)})
+	}
+	return buckets
 }
 
 // fetchLogsInRange fetches logs with widened bounds to account for timezone

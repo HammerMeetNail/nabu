@@ -21,7 +21,7 @@ import {
 } from "./auth.js";
 import { loadHousehold, listHouseholds, activateHousehold, createHousehold, updateHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, transferOwnership, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
 import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, loadMoreHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
-import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap } from "./stats.js";
+import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, sortChoresByOrder, syncTimezone } from "./preferences.js";
@@ -602,6 +602,37 @@ async function loadAllStatsData() {
       state.stats.choreStats = csData.choreStats;
     }
   } catch {}
+  await loadBabyTimeSeries();
+}
+
+async function loadBabyTimeSeries() {
+  const chores = state.chores || [];
+  const feedBaby = chores.find(c => c.name === "Feed Baby");
+  const changeBaby = chores.find(c => c.name === "Change Baby");
+
+  if (!feedBaby && !changeBaby) return;
+
+  state.stats = state.stats || {};
+  state.stats.babyPeriod = state.stats.babyPeriod || "daily";
+  const period = state.stats.babyPeriod;
+  state.stats.babyTimeSeries = state.stats.babyTimeSeries || {};
+
+  if (feedBaby) {
+    try {
+      const data = await loadChoreTimeSeries(feedBaby.id, period);
+      if (data && data.timeSeries) {
+        state.stats.babyTimeSeries.feedBaby = data.timeSeries;
+      }
+    } catch {}
+  }
+  if (changeBaby) {
+    try {
+      const data = await loadChoreTimeSeries(changeBaby.id, period);
+      if (data && data.timeSeries) {
+        state.stats.babyTimeSeries.changeBaby = data.timeSeries;
+      }
+    } catch {}
+  }
 }
 
 function countTodayLogs() {
@@ -1893,6 +1924,16 @@ export async function init() {
           .catch(() => {
             actionEl.checked = !isChecked;
           });
+          break;
+      }
+
+      case "stats-baby-period": {
+        e.preventDefault();
+        const period = actionEl.dataset.period;
+        if (!period) break;
+        state.stats = state.stats || {};
+        state.stats.babyPeriod = period;
+        loadBabyTimeSeries().then(() => render(app));
         break;
       }
     }
