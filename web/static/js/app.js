@@ -29,6 +29,7 @@ import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid,
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
 import { loadNotifications, markRead, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences } from "./notifications.js";
 import { renderScheduleTab } from "./schedule-tab.js";
+import { renderProfileSheet } from "./profile.js";
 
 /**
  * Reads the current frequency settings from a bottom sheet's freq <select>
@@ -528,9 +529,9 @@ function renderSettingsView() {
   }
 
   if (!hh) {
-    return `<div class="settings-view">${renderHouseholdView(null, null, null, state.user)}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}<button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div></div>`;
+    return `<div class="settings-view">${renderHouseholdView(null, null, null, state.user)}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}</div></div>`;
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}<button type="button" class="btn btn-sm btn-secondary mt-2" data-action="logout">Sign Out</button></div></div>`;
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}</div></div>`;
 }
 
 async function loadStatsData() {
@@ -722,6 +723,19 @@ function closeNotifPanel() {
     container.hidden = true;
     container.innerHTML = "";
   }
+}
+
+function closeProfilePanel() {
+  const container = document.querySelector("#profile-panel-container");
+  if (container && !container.hidden) {
+    container.hidden = true;
+    container.innerHTML = "";
+  }
+}
+
+function closeAllPanels() {
+  closeNotifPanel();
+  closeProfilePanel();
 }
 
 function showToast(message, type) {
@@ -1015,7 +1029,7 @@ export async function init() {
 
     // data-nav SPA navigation: check first so it works without data-action
     if (navEl) {
-      closeNotifPanel();
+      closeAllPanels();
       state.currentRoute = `/${navEl.dataset.nav}`;
       if (state.currentRoute === "/settings") {
         state._loadedHousehold = true;
@@ -1099,6 +1113,7 @@ export async function init() {
       }
       case "logout":
         e.preventDefault();
+        closeAllPanels();
         handleLogout().then(() => {
           resetAuthedState(state);
           state.currentRoute = "/";
@@ -1172,6 +1187,30 @@ export async function init() {
             container.innerHTML = renderNotificationPanel(state.notifications);
           }
         });
+        break;
+      }
+      case "open-profile": {
+        e.preventDefault();
+        closeNotifPanel();
+        const container = document.querySelector("#profile-panel-container");
+        if (container) {
+          container.hidden = false;
+          container.innerHTML = renderProfileSheet(state.user, state.household);
+        }
+        break;
+      }
+      case "close-profile": {
+        e.preventDefault();
+        closeProfilePanel();
+        break;
+      }
+      case "profile-nav-settings": {
+        e.preventDefault();
+        closeProfilePanel();
+        state._loadedHousehold = true;
+        state.currentRoute = "/settings";
+        render(app);
+        loadNotificationPrefs().then(() => render(app));
         break;
       }
       case "create-invite":

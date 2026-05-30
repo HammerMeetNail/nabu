@@ -226,8 +226,8 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     await expect(page.locator('#create-household-form')).toBeVisible({ timeout: 5000 });
     // Should also see join household form
     await expect(page.locator('#join-household-form')).toBeVisible();
-    // Should see Sign Out button
-    await expect(page.locator('button[data-action="logout"]')).toBeVisible();
+    // Sign Out is now in the profile sheet, not settings
+    await expect(page.locator('button[data-action="logout"]')).toHaveCount(0);
 
     // === Create Household ===
     await page.fill('#hh-name', 'Exhaustive Test Home');
@@ -365,9 +365,6 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     const leaveBtn = page.locator('button[data-action="leave-household"]');
     await expect(leaveBtn).toBeVisible();
 
-    // Account section — Sign Out
-    await expect(page.locator('button[data-action="logout"]')).toBeVisible();
-
     // === Test Top Bar Buttons ===
     
     // User avatar should show first letter of email
@@ -380,8 +377,12 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     const bell = page.locator('#notifications-bell');
     await expect(bell).toBeVisible();
 
-    // Click avatar → settings
+    // Click avatar → profile sheet
     await avatar.click();
+    await expect(page.locator('.profile-panel')).toBeVisible({ timeout: 5000 });
+
+    // Click Settings in profile sheet → navigate to settings
+    await page.click('button[data-action="profile-nav-settings"]');
     await expect(page.locator('.settings-view')).toBeVisible({ timeout: 5000 });
 
     // Go to today view
@@ -391,10 +392,13 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     // Click notifications bell → notification panel
     await bell.click();
     await expect(page.locator('.notif-panel')).toBeVisible({ timeout: 5000 });
+    // Dismiss notification panel before proceeding
+    await page.locator('.notif-close').click();
+    await expect(page.locator('.notif-panel')).toHaveCount(0, { timeout: 3000 });
 
     // === Logout ===
-    await page.click('a[data-nav="settings"]');
-    await expect(page.locator('button[data-action="logout"]')).toBeVisible({ timeout: 5000 });
+    await avatar.click();
+    await expect(page.locator('.profile-panel')).toBeVisible({ timeout: 5000 });
     await page.locator('button[data-action="logout"]').click();
 
     // Should return to login
@@ -453,9 +457,12 @@ test.describe('Exhaustive: Settings Page States', () => {
 
     // Account section
     await expect(page.locator('text=Account')).toBeVisible();
-    await expect(page.locator('button[data-action="logout"]')).toBeVisible();
+    // Sign Out is in the profile sheet
+    await expect(page.locator('button[data-action="logout"]')).toHaveCount(0);
 
-    // Logout
+    // Logout via profile sheet
+    await page.locator('#user-avatar').click();
+    await expect(page.locator('.profile-panel')).toBeVisible({ timeout: 5000 });
     await page.locator('button[data-action="logout"]').click();
     await expect(page.locator('#login-form')).toBeVisible({ timeout: 5000 });
   });

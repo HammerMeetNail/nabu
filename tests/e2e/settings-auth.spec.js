@@ -93,7 +93,9 @@ test.describe("Settings: auth features", () => {
     const toast = page.locator("#toast-container .toast-success");
     await expect(toast.first()).toBeVisible({ timeout: 3000 });
 
-    await page.locator("button[data-action=\"logout\"]").click();
+    await page.locator("#user-avatar").click();
+    await expect(page.locator(".profile-panel")).toBeVisible({ timeout: 5000 });
+    await page.locator('button[data-action="logout"]').click();
     await page.waitForTimeout(500);
     await expect(page.locator("#login-form")).toBeVisible({ timeout: 5000 });
 
