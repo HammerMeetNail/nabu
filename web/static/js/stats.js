@@ -399,26 +399,60 @@ function renderVolumeChart(periods, period) {
   if (!periods || periods.length === 0) return '<p class="text-secondary text-sm text-center mt-2">No data</p>';
 
   const maxML = Math.max(1, ...periods.map(p => p.totalML || 0));
-  const chartH = 100;
-  const chartW = periods.length * 24;
-  const barW = 16;
-  const gap = 8;
 
-  let bars = "";
-  periods.forEach((p, i) => {
-    const x = i * (barW + gap) + 10;
-    const h = maxML > 0 ? (p.totalML / maxML) * (chartH - 20) : 0;
-    const y = chartH - h - 1;
-    const label = formatPeriodLabel(p, period);
-    bars += `<rect x="${x}" y="${y}" width="${barW}" height="${h}" rx="3" fill="#EC4899" opacity="0.85">
-      <title>${label}: ${p.totalML} mL</title>
-    </rect>`;
+  const leftM = 38;
+  const rightM = 6;
+  const topM = 8;
+  const bottomM = 30;
+  const legendH = 20;
+  const chartH = 120;
+  const colW = 22;
+  const totalW = leftM + periods.length * colW + rightM;
+  const totalH = topM + chartH + bottomM + legendH;
+
+  const step = niceAxisStep(maxML);
+  const ticks = [];
+  for (let v = 0; v <= maxML + step / 2; v += step) ticks.push(v);
+
+  let svg = `<svg viewBox="0 0 ${totalW} ${totalH}" class="baby-svg-chart" role="img" aria-label="Feed Baby volume chart">`;
+
+  ticks.forEach(t => {
+    const y = topM + chartH - Math.round((t / maxML) * chartH);
+    svg += `<line x1="${leftM}" y1="${y}" x2="${totalW - rightM}" y2="${y}" stroke="#e5e7eb" stroke-width="0.5"/>`;
+    svg += `<text x="${leftM - 4}" y="${y + 4}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="system-ui, sans-serif">${t}</text>`;
   });
 
-  return `<svg viewBox="0 0 ${chartW + 20} ${chartH}" class="baby-svg-chart" aria-label="Volume chart">
-    <line x1="10" y1="${chartH - 1}" x2="${chartW + 10}" y2="${chartH - 1}" stroke="#d1d5db" stroke-width="1"/>
-    ${bars}
-  </svg>`;
+  svg += `<text x="12" y="${topM + chartH / 2}" text-anchor="middle" font-size="9" fill="#9ca3af" font-family="system-ui, sans-serif" transform="rotate(-90, 12, ${topM + chartH / 2})">mL</text>`;
+
+  periods.forEach((p, i) => {
+    const x = leftM + i * colW;
+    const h = Math.round((p.totalML / maxML) * chartH);
+    const y = topM + chartH - h;
+    svg += `<rect x="${x + 2}" y="${y}" width="${colW - 4}" height="${Math.max(h, 0.5)}" rx="2" fill="#EC4899" opacity="0.85">
+      <title>${formatPeriodLabel(p, period)}: ${p.totalML} mL</title>
+    </rect>`;
+
+    const labelInt = period === "daily" ? 2 : 1;
+    if (i % labelInt === 0) {
+      const xl = formatXLabel(p, period);
+      svg += `<text x="${x + colW / 2}" y="${topM + chartH + 13}" text-anchor="middle" font-size="8" fill="#9ca3af" font-family="system-ui, sans-serif">${xl}</text>`;
+    }
+  });
+
+  svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="#d1d5db" stroke-width="1"/>`;
+
+  const formulaTotal = periods.reduce((s, p) => s + (p.indicators?.["🍼 formula"] || 0), 0);
+  const breastTotal = periods.reduce((s, p) => s + (p.indicators?.["🤱 breast"] || 0), 0);
+  if (formulaTotal > 0 || breastTotal > 0) {
+    const ly = totalH - legendH + 14;
+    svg += `<rect x="${leftM}" y="${ly - 8}" width="8" height="8" rx="2" fill="#EC4899" opacity="0.85"/>`;
+    svg += `<text x="${leftM + 11}" y="${ly}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">🍼 ${formulaTotal}</text>`;
+    svg += `<rect x="${leftM + 72}" y="${ly - 8}" width="8" height="8" rx="2" fill="#F59E0B" opacity="0.85"/>`;
+    svg += `<text x="${leftM + 83}" y="${ly}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">🤱 ${breastTotal}</text>`;
+  }
+
+  svg += `</svg>`;
+  return svg;
 }
 
 function renderIndicatorChart(periods, period) {
@@ -442,33 +476,92 @@ function renderIndicatorChart(periods, period) {
     return sum;
   }));
 
-  const colors = { "💩 poo": "#8B4513", "💛 pee": "#FACC15" };
+  const indicatorColors = { "💩 poo": "#8B4513", "💛 pee": "#FACC15", "🍼 formula": "#EC4899", "🤱 breast": "#F59E0B" };
 
-  const chartH = 100;
-  const chartW = periods.length * 24;
-  const barW = 16;
-  const gap = 8;
+  const leftM = 38;
+  const rightM = 6;
+  const topM = 8;
+  const bottomM = 30;
+  const legendH = indicatorKeys.length > 0 ? 22 : 0;
+  const chartH = 120;
+  const colW = 22;
+  const totalW = leftM + periods.length * colW + rightM;
+  const totalH = topM + chartH + bottomM + legendH;
 
-  const groupW = indicatorKeys.length > 0 ? barW / indicatorKeys.length : barW;
-  let bars = "";
+  const step = niceAxisStep(maxCount);
+  const ticks = [];
+  for (let v = 0; v <= maxCount + step / 2; v += step) ticks.push(v);
+
+  let svg = `<svg viewBox="0 0 ${totalW} ${totalH}" class="baby-svg-chart" role="img" aria-label="Indicator chart">`;
+
+  ticks.forEach(t => {
+    const y = topM + chartH - Math.round((t / maxCount) * chartH);
+    svg += `<line x1="${leftM}" y1="${y}" x2="${totalW - rightM}" y2="${y}" stroke="#e5e7eb" stroke-width="0.5"/>`;
+    svg += `<text x="${leftM - 4}" y="${y + 4}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="system-ui, sans-serif">${t}</text>`;
+  });
+
+  svg += `<text x="12" y="${topM + chartH / 2}" text-anchor="middle" font-size="9" fill="#9ca3af" font-family="system-ui, sans-serif" transform="rotate(-90, 12, ${topM + chartH / 2})">count</text>`;
+
+  const groupW = indicatorKeys.length > 0 ? colW / indicatorKeys.length : colW;
   periods.forEach((p, i) => {
     indicatorKeys.forEach((key, ki) => {
       const count = p.indicators?.[key] || 0;
-      const x = i * (barW + gap) + 10 + ki * groupW;
-      const h = maxCount > 0 ? (count / maxCount) * (chartH - 20) : 0;
-      const y = chartH - h - 1;
-      const color = colors[key] || "#6B7280";
-      const label = formatPeriodLabel(p, period);
-      bars += `<rect x="${x}" y="${y}" width="${Math.max(1, groupW - 1)}" height="${h}" rx="2" fill="${color}" opacity="0.85">
-        <title>${label}: ${key} (${count})</title>
+      const x = leftM + i * colW + ki * groupW;
+      const h = Math.round((count / maxCount) * chartH);
+      const y = topM + chartH - h;
+      const color = indicatorColors[key] || "#6B7280";
+      svg += `<rect x="${x + 1}" y="${y}" width="${Math.max(1, groupW - 2)}" height="${Math.max(h, 0.5)}" rx="2" fill="${color}" opacity="0.85">
+        <title>${formatPeriodLabel(p, period)}: ${key} (${count})</title>
       </rect>`;
     });
+
+    const labelInt = period === "daily" ? 2 : 1;
+    if (i % labelInt === 0) {
+      const xl = formatXLabel(p, period);
+      svg += `<text x="${leftM + i * colW + colW / 2}" y="${topM + chartH + 13}" text-anchor="middle" font-size="8" fill="#9ca3af" font-family="system-ui, sans-serif">${xl}</text>`;
+    }
   });
 
-  return `<svg viewBox="0 0 ${chartW + 20} ${chartH}" class="baby-svg-chart" aria-label="Indicator chart">
-    <line x1="10" y1="${chartH - 1}" x2="${chartW + 10}" y2="${chartH - 1}" stroke="#d1d5db" stroke-width="1"/>
-    ${bars}
-  </svg>`;
+  svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="#d1d5db" stroke-width="1"/>`;
+
+  if (indicatorKeys.length > 0) {
+    const ly = totalH - legendH + 14;
+    indicatorKeys.forEach((key, ki) => {
+      const lx = leftM + ki * 90;
+      const color = indicatorColors[key] || "#6B7280";
+      const total = periods.reduce((s, p) => s + (p.indicators?.[key] || 0), 0);
+      svg += `<rect x="${lx}" y="${ly - 8}" width="8" height="8" rx="2" fill="${color}" opacity="0.85"/>`;
+      svg += `<text x="${lx + 11}" y="${ly}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">${key} ${total}</text>`;
+    });
+  }
+
+  svg += `</svg>`;
+  return svg;
+}
+
+function niceAxisStep(max) {
+  if (max <= 2) return 1;
+  if (max <= 10) return 2;
+  if (max <= 25) return 5;
+  if (max <= 100) return 25;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(max)));
+  const residual = max / magnitude;
+  if (residual <= 2) return magnitude / 2;
+  if (residual <= 5) return magnitude;
+  return magnitude * 2;
+}
+
+function formatXLabel(p, period) {
+  if (period === "daily") {
+    const d = new Date(p.start + "T00:00:00");
+    return d.getDate().toString();
+  }
+  if (period === "weekly") {
+    const d = new Date(p.start + "T00:00:00");
+    return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  }
+  const d = new Date(p.start + "T00:00:00");
+  return d.toLocaleDateString(undefined, { month: "short" });
 }
 
 function formatPeriodLabel(p, period) {
