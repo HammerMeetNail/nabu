@@ -1,6 +1,7 @@
 import { apiFetch } from "./api.js";
 import { escapeHTML } from "./utils.js";
 import { loadSchedulesForDate } from "./schedule.js";
+import { sortChoresByOrder } from "./preferences.js";
 
 function formatLocalISODate(d) {
   const year = d.getFullYear();
@@ -139,8 +140,30 @@ export function renderTodayView(state) {
   </div>`;
 }
 
+export function renderHistoryFilter(state) {
+  const filter = state.historyChoreFilter; // null = all, array = filtered set
+  const chores = state.chores || [];
+  const sorted = sortChoresByOrder(chores, state.choreOrder || []);
+
+  let html = '<div class="hist-filter">';
+  html += `<button type="button" class="hist-filter-chip hist-filter-all${filter === null ? ' active' : ''}" data-action="history-filter-all">All</button>`;
+  for (const c of sorted) {
+    const active = filter === null || filter.includes(c.id);
+    html += `<button type="button" class="hist-filter-chip${active ? ' active' : ''}" data-action="history-filter-chore" data-chore-id="${c.id}" style="${active ? `--chore-color:${c.color}` : ''}">
+      <span class="hist-filter-chip-icon">${escapeHTML(c.icon)}</span>
+      <span class="hist-filter-chip-name">${escapeHTML(c.name)}</span>
+    </button>`;
+  }
+  html += '</div>';
+  return html;
+}
+
 export function renderHistoryView(state) {
   const logs = state.historyLogs || [];
+  const chores = state.chores || [];
+  const filter = state.historyChoreFilter;
+  const filterBar = chores.length > 0 ? renderHistoryFilter(state) : '';
+
   if (logs.length === 0) {
     return `<div class="history-view">
       <div class="view-tabs">
@@ -148,6 +171,7 @@ export function renderHistoryView(state) {
         <button type="button" class="view-tab" data-action="switch-view" data-view="day">Day</button>
         <button type="button" class="view-tab" data-action="switch-view" data-view="week">Week</button>
       </div>
+      ${filterBar}
       <p class="text-secondary">No completed chores yet.</p>
     </div>`;
   }
@@ -158,7 +182,7 @@ export function renderHistoryView(state) {
   const pad = n => String(n).padStart(2, '0');
 
   // Group by day
-  const dayGroups = [];
+  const rawDayGroups = [];
   let currentDate = '';
   for (const l of logs) {
     const d = l.completedAt ? new Date(l.completedAt) : null;
@@ -169,11 +193,11 @@ export function renderHistoryView(state) {
 
     if (dateKey !== currentDate) {
       currentDate = dateKey;
-      dayGroups.push({ date: dateKey, label: dayLabel, rows: [] });
+      rawDayGroups.push({ date: dateKey, label: dayLabel, rows: [] });
     }
     const chore = (state.chores || []).find(c => c.id === l.choreId);
     const indicatorIcons = (l.indicators || []).map(label => label.split(' ')[0]);
-    dayGroups[dayGroups.length - 1].rows.push({
+    rawDayGroups[rawDayGroups.length - 1].rows.push({
       icon: chore?.icon || '',
       name: chore?.name || `Chore #${l.choreId}`,
       color: chore?.color || '#999',
@@ -186,6 +210,27 @@ export function renderHistoryView(state) {
       choreId: l.choreId,
       date: dateKey,
     });
+  }
+
+  // Apply chore filter
+  const dayGroups = filter !== null
+    ? rawDayGroups.map(g => ({
+        date: g.date,
+        label: g.label,
+        rows: g.rows.filter(r => filter.includes(r.choreId)),
+      })).filter(g => g.rows.length > 0)
+    : rawDayGroups;
+
+  if (dayGroups.length === 0) {
+    return `<div class="history-view">
+      <div class="view-tabs">
+        <button type="button" class="view-tab view-tab--active" data-action="switch-view" data-view="history">History</button>
+        <button type="button" class="view-tab" data-action="switch-view" data-view="day">Day</button>
+        <button type="button" class="view-tab" data-action="switch-view" data-view="week">Week</button>
+      </div>
+      ${filterBar}
+      ${filter !== null ? '<p class="text-secondary">No logs match the selected chores.</p>' : '<p class="text-secondary">No completed chores yet.</p>'}
+    </div>`;
   }
 
   // Group day groups into 7-day chunk groups
@@ -271,6 +316,7 @@ export function renderHistoryView(state) {
       <button type="button" class="view-tab" data-action="switch-view" data-view="day">Day</button>
       <button type="button" class="view-tab" data-action="switch-view" data-view="week">Week</button>
     </div>
+    ${filterBar}
     ${html}
     ${loadMore}
   </div>`;

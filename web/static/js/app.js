@@ -1895,6 +1895,31 @@ export async function init() {
         break;
       }
 
+      case "history-filter-all": {
+        e.preventDefault();
+        state.historyChoreFilter = null;
+        render(app);
+        break;
+      }
+
+      case "history-filter-chore": {
+        e.preventDefault();
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
+        if (state.historyChoreFilter === null) {
+          state.historyChoreFilter = (state.chores || []).map(c => c.id).filter(id => id !== choreId);
+        } else if (state.historyChoreFilter.includes(choreId)) {
+          state.historyChoreFilter = state.historyChoreFilter.filter(id => id !== choreId);
+          if (state.historyChoreFilter.length === 0) {
+            state.historyChoreFilter = null;
+          }
+        } else {
+          const updated = [...state.historyChoreFilter, choreId];
+          state.historyChoreFilter = updated.length >= (state.chores || []).length ? null : updated;
+        }
+        render(app);
+        break;
+      }
+
       case "toggle-notif-pref": {
         e.preventDefault();
         const notifType = actionEl.dataset.notifType;

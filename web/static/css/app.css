@@ -756,6 +756,71 @@ input:focus, select:focus, textarea:focus {
   color: var(--text-secondary);
 }
 
+.hist-filter {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.hist-filter::-webkit-scrollbar {
+  display: none;
+}
+
+.hist-filter-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s, opacity 0.15s;
+  opacity: 0.55;
+}
+
+.hist-filter-chip:active {
+  opacity: 0.7;
+}
+
+.hist-filter-chip.active {
+  opacity: 1;
+  border-color: var(--chore-color, var(--primary));
+  background: color-mix(in srgb, var(--chore-color, var(--primary)) 12%, var(--bg));
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.hist-filter-all {
+  opacity: 1;
+  font-weight: 600;
+}
+
+.hist-filter-all.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
+.hist-filter-chip-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.hist-filter-chip-name {
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .load-more-wrap {
   display: flex;
   justify-content: center;
