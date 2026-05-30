@@ -94,6 +94,7 @@ export function renderChoreSheet(chore) {
   const name = chore?.name || "";
   const color = chore?.color || "#2E86AB";
   const indicatorLabels = chore?.indicatorLabels || [];
+  const indicatorDefaults = chore?.indicatorDefaults || [];
   const isPredefined = chore?.isPredefined || false;
   const choreId = chore?.id ?? null;
 
@@ -110,10 +111,16 @@ export function renderChoreSheet(chore) {
       data-emoji="${escapeHTML(e)}" aria-label="${escapeHTML(e)}">${e}</button>`
   ).join("");
 
+  const defaultsSet = new Set(indicatorDefaults);
   const indicatorChips = indicatorLabels.map((label, i) =>
     `<div class="indicator-chip-row" data-index="${i}">
       <input type="text" class="indicator-label-input input" data-index="${i}"
         value="${escapeHTML(label)}" placeholder="e.g. 💩 poo" maxlength="30" />
+      <label class="indicator-default-toggle" title="Preselect when logging">
+        <input type="checkbox" data-action="toggle-indicator-default" data-index="${i}"
+          ${defaultsSet.has(label) ? ' checked' : ''} />
+        <span class="indicator-default-label">default</span>
+      </label>
       <button type="button" class="indicator-remove-btn"
         data-action="remove-indicator-label" data-index="${i}"
         aria-label="Remove label">×</button>
