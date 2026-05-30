@@ -3120,4 +3120,9 @@ details[open] .chore-stat-chevron {
   font-weight: 700;
   flex-shrink: 0;
 }
+.hh-leave-section {
+  border-top: 1px solid var(--border);
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+}
 

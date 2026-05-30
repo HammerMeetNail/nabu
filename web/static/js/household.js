@@ -206,11 +206,10 @@ export function renderHouseholdView(household, members, invites, currentUser) {
     ${inviteSection}
     <h4 class="mt-4">Members</h4>
     <div class="member-list">${memberList}</div>
-  </div>
-  <div class="card mt-3">
-    <h4>Danger Zone</h4>
-    <p class="text-secondary mb-2">Leave this household. You can rejoin later with an invite link.</p>
-    <button type="button" class="btn btn-sm btn-danger" data-action="leave-household">Leave Household</button>
+    <div class="hh-leave-section">
+      <p class="text-secondary">Leave this household. You can rejoin later with an invite link.</p>
+      <button type="button" class="btn btn-sm btn-danger" data-action="leave-household">Leave Household</button>
+    </div>
   </div>`;
 }
 

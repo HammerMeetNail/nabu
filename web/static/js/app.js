@@ -523,15 +523,34 @@ function renderSettingsView() {
 
     notifPrefsCard = `<div class="card mt-3">
       <h3>Notifications</h3>
-      <p class="text-secondary">Choose which notifications you receive via push.</p>
+      <p class="text-secondary">Applies to your account across all households.</p>
       <div class="notif-pref-list">${rows}</div>
     </div>`;
   }
 
+  const activeId = state.activeHouseholdId || hh?.id;
+  const yourHouseholdsCard = state.userHouseholds && state.userHouseholds.length > 1 ? `
+    <div class="card mt-3">
+      <h3>Your Households</h3>
+      <div class="profile-households">
+        ${state.userHouseholds.map(h => {
+          const isActive = h.id === activeId;
+          const ini = h.initials || h.name.charAt(0).toUpperCase();
+          return `<button type="button" class="profile-household-item${isActive ? ' profile-household-item--active' : ''}"
+            data-action="activate-household" data-household-id="${escapeHTML(h.id)}">
+            <span class="hh-initials-badge-sm" aria-hidden="true">${escapeHTML(ini)}</span>
+            <span class="profile-household-name">${escapeHTML(h.name)}</span>
+            <span class="profile-household-role text-secondary">${escapeHTML(h.role)}</span>
+            ${isActive ? '<span class="profile-household-check" aria-label="Active">&#10003;</span>' : ''}
+          </button>`;
+        }).join('')}
+      </div>
+    </div>` : "";
+
   if (!hh) {
-    return `<div class="settings-view">${renderHouseholdView(null, null, null, state.user)}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}</div></div>`;
+    return `<div class="settings-view">${renderHouseholdView(null, null, null, state.user)}${yourHouseholdsCard}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}</div></div>`;
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}</div></div>`;
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${notifPrefsCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}</div></div>`;
 }
 
 async function loadStatsData() {
