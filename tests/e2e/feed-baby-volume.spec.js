@@ -239,14 +239,14 @@ test.describe('Feed Baby volume picker', () => {
 
     const card = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
 
-    // First log: don't set volume (leave it as --)
+    // First log: formula is default-on, set 45 mL
     await card.click();
     await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
-    await page.selectOption('#log-volume', '--'); // explicitly choose no volume
+    await page.selectOption('#log-volume', '45');
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
-    // Open again: should still be empty
+    // Open again: volume should still default to empty (not 45)
     await card.click();
     await expect(page.locator('#log-volume')).toBeVisible({ timeout: 3000 });
     await expect(page.locator('#log-volume')).toHaveValue('');
