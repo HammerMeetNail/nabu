@@ -278,6 +278,38 @@ func (h *StatsHandler) ChoreStatsByID(w http.ResponseWriter, r *http.Request) {
 	writeError(w, http.StatusNotFound, "chore not found")
 }
 
+func (h *StatsHandler) ChoreTimeSeries(w http.ResponseWriter, r *http.Request) {
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
+		return
+	}
+
+	idStr := r.PathValue("id")
+	if idStr == "" {
+		writeError(w, http.StatusBadRequest, "chore id required")
+		return
+	}
+	choreID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid chore id")
+		return
+	}
+
+	period := r.URL.Query().Get("period")
+	if period == "" {
+		period = "daily"
+	}
+
+	ts, err := h.service.GetChoreTimeSeries(r.Context(), *user.HouseholdID, choreID, period, h.userLocation(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"timeSeries": ts})
+}
+
 func nowInLoc(loc *time.Location) time.Time {
 	if loc == nil {
 		loc = time.UTC

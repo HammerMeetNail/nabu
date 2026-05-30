@@ -1065,6 +1065,133 @@ details[open] .member-chevron {
   margin-top: 2px;
 }
 
+/* Baby Care */
+.baby-care-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.baby-care-header h3 {
+  margin: 0;
+}
+
+.period-toggle {
+  display: flex;
+  gap: 0;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.period-toggle-btn {
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.period-toggle-btn:not(:last-child) {
+  border-right: 1px solid var(--border);
+}
+
+.period-toggle-btn:hover {
+  background: var(--hover);
+}
+
+.period-toggle--active {
+  background: var(--primary) !important;
+  color: #fff !important;
+}
+
+.baby-care-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 480px) {
+  .baby-care-columns {
+    grid-template-columns: 1fr;
+  }
+}
+
+.baby-care-column {
+  background: var(--bg);
+  border-radius: var(--radius-card);
+  padding: 12px;
+  border: 1px solid var(--border);
+}
+
+.baby-col-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: var(--text);
+}
+
+.baby-member-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+
+.baby-member-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+}
+
+.baby-member-name {
+  flex: 0 0 auto;
+  min-width: 0;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.baby-member-bar-track {
+  flex: 1 1 auto;
+  height: 8px;
+  background: var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+  min-width: 20px;
+}
+
+.baby-member-bar-fill {
+  height: 100%;
+  background: var(--primary);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.baby-member-count {
+  font-weight: 600;
+  color: var(--text);
+  min-width: 20px;
+  text-align: right;
+  font-size: 0.75rem;
+}
+
+.baby-chart {
+  width: 100%;
+  overflow-x: auto;
+}
+
+.baby-svg-chart {
+  width: 100%;
+  max-height: 120px;
+}
+
 /* Heatmap */
 .heatmap-grid {
   display: flex;
