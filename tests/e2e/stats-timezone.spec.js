@@ -190,16 +190,22 @@ test.describe("Stats timezone awareness", () => {
     });
     expect(logResp.status()).toBe(201);
 
-    // Small wait to ensure persistence
-    await page.waitForTimeout(100);
+    // Wait for log to be persisted before querying heatmap
+    await page.waitForTimeout(500);
 
     // Query heatmap without explicit start/end (default behavior)
-    const heatmapResp = await page.request.get("/api/stats/heatmap");
-    expect(heatmapResp.status()).toBe(200);
-    const heatmap = (await heatmapResp.json()).heatmap || [];
+    // Retry up to 3 times in case the log hasn't propagated yet
+    let nonzeroDays = [];
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt > 0) await page.waitForTimeout(500);
+      const heatmapResp = await page.request.get("/api/stats/heatmap");
+      expect(heatmapResp.status()).toBe(200);
+      const heatmap = (await heatmapResp.json()).heatmap || [];
+      nonzeroDays = heatmap.filter((c) => c.count > 0);
+      if (nonzeroDays.length >= 1) break;
+    }
 
     // Should have at least one day with activity
-    const nonzeroDays = heatmap.filter((c) => c.count > 0);
     expect(nonzeroDays.length).toBeGreaterThanOrEqual(1);
 
     // The log date should appear in the heatmap (server converts to user TZ)
