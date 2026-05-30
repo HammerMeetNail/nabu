@@ -757,16 +757,47 @@ input:focus, select:focus, textarea:focus {
 }
 
 .hist-filter {
-  display: flex;
-  gap: 6px;
-  padding: 8px 12px 12px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
+  position: relative;
+  padding: 4px 12px 0;
 }
 
-.hist-filter::-webkit-scrollbar {
-  display: none;
+.hist-filter-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.hist-filter-btn:hover,
+.hist-filter-btn--open {
+  background: var(--hover);
+  color: var(--text-primary);
+}
+
+.hist-filter-dropdown {
+  position: absolute;
+  top: 100%;
+  left: 12px;
+  z-index: 50;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px;
+  max-width: calc(100vw - 40px);
+  max-height: 240px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow);
+  margin-top: 4px;
 }
 
 .hist-filter-chip {

@@ -141,12 +141,18 @@ export function renderTodayView(state) {
 }
 
 export function renderHistoryFilter(state) {
-  const filter = state.historyChoreFilter; // null = all, array = filtered set
+  const filter = state.historyChoreFilter;
   const chores = state.chores || [];
   const sorted = sortChoresByOrder(chores, state.choreOrder || []);
+  const open = state.historyFilterOpen;
 
+  const allActive = filter === null;
   let html = '<div class="hist-filter">';
-  html += `<button type="button" class="hist-filter-chip hist-filter-all${filter === null ? ' active' : ''}" data-action="history-filter-all">All</button>`;
+  html += `<button type="button" class="hist-filter-btn${open ? ' hist-filter-btn--open' : ''}" data-action="toggle-history-filter" aria-expanded="${open ? 'true' : 'false'}" aria-label="Filter chores">`;
+  html += '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>';
+  html += '</button>';
+  html += `<div class="hist-filter-dropdown${open ? '' : ''}"${open ? '' : ' hidden'}>`;
+  html += `<button type="button" class="hist-filter-chip hist-filter-all${allActive ? ' active' : ''}" data-action="history-filter-all">All</button>`;
   for (const c of sorted) {
     const active = filter === null || filter.includes(c.id);
     html += `<button type="button" class="hist-filter-chip${active ? ' active' : ''}" data-action="history-filter-chore" data-chore-id="${c.id}" style="${active ? `--chore-color:${c.color}` : ''}">
@@ -154,6 +160,7 @@ export function renderHistoryFilter(state) {
       <span class="hist-filter-chip-name">${escapeHTML(c.name)}</span>
     </button>`;
   }
+  html += '</div>';
   html += '</div>';
   return html;
 }

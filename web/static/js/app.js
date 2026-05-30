@@ -1920,7 +1920,14 @@ export async function init() {
 
       case "history-filter-all": {
         e.preventDefault();
-        state.historyChoreFilter = null;
+        state.historyChoreFilter = state.historyChoreFilter === null ? [] : null;
+        render(app);
+        break;
+      }
+
+      case "toggle-history-filter": {
+        e.preventDefault();
+        state.historyFilterOpen = !state.historyFilterOpen;
         render(app);
         break;
       }
