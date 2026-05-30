@@ -62,9 +62,8 @@ test.describe('History filter', () => {
     await page.click('[data-nav="activity"]');
     await page.waitForSelector('.history-view', { timeout: 10000 });
 
-    await expect(page.locator('.hist-filter-btn')).toBeVisible();
-
-    await openFilter(page);
+    // Filter button FAB is visible
+    await expect(page.locator('.hist-filter-fab')).toBeVisible();
 
     await expect(page.locator('.hist-filter-all')).toBeVisible();
     const chips = page.locator('.hist-filter-chip[data-action="history-filter-chore"]');

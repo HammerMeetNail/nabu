@@ -456,16 +456,14 @@ input:focus, select:focus, textarea:focus {
 /* Toast Notifications */
 #toast-container {
   position: fixed;
-  bottom: calc(86px + var(--safe-bottom));
+  top: 16px;
   left: 50%;
   transform: translateX(-50%);
-  width: 100%;
-  max-width: 480px;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 8px;
-  padding: 0 16px;
-  z-index: 200;
+  z-index: 350;
   pointer-events: none;
 }
 
@@ -756,48 +754,61 @@ input:focus, select:focus, textarea:focus {
   color: var(--text-secondary);
 }
 
-.hist-filter {
-  position: relative;
-  padding: 4px 12px 0;
+.hist-filter-fab {
+  position: fixed;
+  bottom: calc(70px + var(--safe-bottom, 0px) + 16px);
+  right: 16px;
+  z-index: 40;
 }
 
 .hist-filter-btn {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: 1px solid var(--border);
+  width: 44px;
+  height: 44px;
+  border: none;
   border-radius: 50%;
-  background: var(--surface);
-  color: var(--text-secondary);
+  background: var(--primary);
+  color: #fff;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  transition: background 0.15s, transform 0.15s;
 }
 
 .hist-filter-btn:hover,
 .hist-filter-btn--open {
-  background: var(--hover);
-  color: var(--text-primary);
+  background: var(--primary-hover, color-mix(in srgb, var(--primary) 85%, #000));
+  transform: scale(1.05);
 }
 
-.hist-filter-dropdown {
+.hist-filter-chips {
   position: absolute;
-  top: 100%;
-  left: 12px;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(8px);
   z-index: 50;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   padding: 10px;
   max-width: calc(100vw - 40px);
+  width: max-content;
   max-height: 240px;
   overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow);
-  margin-top: 4px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s, transform 0.15s;
+}
+
+.hist-filter-chips--open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
 }
 
 .hist-filter-chip {
