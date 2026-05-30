@@ -56,7 +56,7 @@ test.describe('History filter', () => {
     await page.waitForSelector('.history-view', { timeout: 10000 });
 
     // Filter bar should be visible
-    await expect(page.locator('.hist-filter')).toBeVisible();
+    await expect(page.locator('.hist-filter-fab')).toBeVisible();
 
     // Should have "All" button and chore chips
     await expect(page.locator('.hist-filter-all')).toBeVisible();

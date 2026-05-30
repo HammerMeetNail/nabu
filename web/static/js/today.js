@@ -147,11 +147,8 @@ export function renderHistoryFilter(state) {
   const open = state.historyFilterOpen;
 
   const allActive = filter === null;
-  let html = '<div class="hist-filter">';
-  html += `<button type="button" class="hist-filter-btn${open ? ' hist-filter-btn--open' : ''}" data-action="toggle-history-filter" aria-expanded="${open ? 'true' : 'false'}" aria-label="Filter chores">`;
-  html += '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>';
-  html += '</button>';
-  html += `<div class="hist-filter-dropdown${open ? '' : ''}"${open ? '' : ' hidden'}>`;
+  let html = '<div class="hist-filter-fab">';
+  html += `<div class="hist-filter-chips${open ? ' hist-filter-chips--open' : ''}">`;
   html += `<button type="button" class="hist-filter-chip hist-filter-all${allActive ? ' active' : ''}" data-action="history-filter-all">All</button>`;
   for (const c of sorted) {
     const active = filter === null || filter.includes(c.id);
@@ -161,6 +158,9 @@ export function renderHistoryFilter(state) {
     </button>`;
   }
   html += '</div>';
+  html += `<button type="button" class="hist-filter-btn${open ? ' hist-filter-btn--open' : ''}" data-action="toggle-history-filter" aria-expanded="${open ? 'true' : 'false'}" aria-label="Filter chores">`;
+  html += '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon></svg>';
+  html += '</button>';
   html += '</div>';
   return html;
 }
@@ -169,7 +169,7 @@ export function renderHistoryView(state) {
   const logs = state.historyLogs || [];
   const chores = state.chores || [];
   const filter = state.historyChoreFilter;
-  const filterBar = chores.length > 0 ? renderHistoryFilter(state) : '';
+  const filterFab = chores.length > 0 ? renderHistoryFilter(state) : '';
 
   if (logs.length === 0) {
     return `<div class="history-view">
@@ -178,8 +178,8 @@ export function renderHistoryView(state) {
         <button type="button" class="view-tab" data-action="switch-view" data-view="day">Day</button>
         <button type="button" class="view-tab" data-action="switch-view" data-view="week">Week</button>
       </div>
-      ${filterBar}
       <p class="text-secondary">No completed chores yet.</p>
+      ${filterFab}
     </div>`;
   }
   const members = state.members || [];
@@ -235,7 +235,7 @@ export function renderHistoryView(state) {
         <button type="button" class="view-tab" data-action="switch-view" data-view="day">Day</button>
         <button type="button" class="view-tab" data-action="switch-view" data-view="week">Week</button>
       </div>
-      ${filterBar}
+      ${filterFab}
       ${filter !== null ? '<p class="text-secondary">No logs match the selected chores.</p>' : '<p class="text-secondary">No completed chores yet.</p>'}
     </div>`;
   }
@@ -323,9 +323,9 @@ export function renderHistoryView(state) {
       <button type="button" class="view-tab" data-action="switch-view" data-view="day">Day</button>
       <button type="button" class="view-tab" data-action="switch-view" data-view="week">Week</button>
     </div>
-    ${filterBar}
     ${html}
     ${loadMore}
+    ${filterFab}
   </div>`;
 }
 
