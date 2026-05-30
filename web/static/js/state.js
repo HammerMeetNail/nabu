@@ -7,6 +7,8 @@ export function createAppState() {
     todayLogs: [],
     chores: [],
     household: null,
+    userHouseholds: [],
+    activeHouseholdId: null,
     notifications: [],
     unreadNotifications: 0,
     schedules: [],
@@ -29,6 +31,8 @@ export function createAppState() {
 export function resetAuthedState(state) {
   state.user = null;
   state.household = null;
+  state.userHouseholds = [];
+  state.activeHouseholdId = null;
   state.chores = [];
   state.todayLogs = [];
   state.notifications = [];

@@ -19,7 +19,7 @@ import {
   renderForgotPasswordView,
   renderResetPasswordView,
 } from "./auth.js";
-import { loadHousehold, createHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, transferOwnership, renderHouseholdView, renderJoinView } from "./household.js";
+import { loadHousehold, listHouseholds, activateHousehold, createHousehold, updateHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, transferOwnership, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
 import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, loadMoreHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
 import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
@@ -696,6 +696,17 @@ function updateTopBar() {
       avatar.textContent = state.user.email.charAt(0).toUpperCase();
       avatar.title = state.user.email;
     }
+    const hhIndicator = document.querySelector("#hh-indicator");
+    if (hhIndicator) {
+      const initials = state.household?.initials || "";
+      if (initials) {
+        hhIndicator.hidden = false;
+        hhIndicator.textContent = initials;
+        hhIndicator.title = state.household?.name || "";
+      } else {
+        hhIndicator.hidden = true;
+      }
+    }
     const bell = document.querySelector("#notifications-bell");
     const badge = document.querySelector("#notification-badge");
     if (bell) {
@@ -1195,7 +1206,7 @@ export async function init() {
         const container = document.querySelector("#profile-panel-container");
         if (container) {
           container.hidden = false;
-          container.innerHTML = renderProfileSheet(state.user, state.household);
+          container.innerHTML = renderProfileSheet(state.user, state.household, state.userHouseholds, state.activeHouseholdId);
         }
         break;
       }
@@ -1254,6 +1265,33 @@ export async function init() {
           render(app);
         });
         break;
+      case "toggle-edit-household": {
+        e.preventDefault();
+        const editForm = app.querySelector("#edit-household-form");
+        if (editForm) editForm.classList.toggle("hidden");
+        break;
+      }
+      case "activate-household": {
+        e.preventDefault();
+        const hhId = parseInt(actionEl.dataset.householdId, 10);
+        if (!hhId || hhId === state.activeHouseholdId) { closeProfilePanel(); break; }
+        activateHousehold(hhId).then(async (data) => {
+          if (data && data.error) { showToast(data.error, "error"); return; }
+          state.household = null;
+          state.members = [];
+          state.invites = [];
+          state.chores = [];
+          state.schedules = [];
+          state.todayLogs = [];
+          await Promise.all([loadHouseholdData(), loadChoreData(), loadTodayData(), loadLatestLogsData(), loadStatsData()]);
+          updateTopBar();
+          closeProfilePanel();
+          render(app);
+          const hhName = state.household?.name || "household";
+          showToast(`Switched to ${hhName}`, "info");
+        }).catch(() => showToast("Failed to switch household", "error"));
+        break;
+      }
       case "remove-member": {
         e.preventDefault();
         const userId = parseInt(actionEl.dataset.userId, 10);
@@ -1930,6 +1968,20 @@ export async function init() {
       const preview = document.querySelector("#chore-icon-preview");
       if (preview) preview.textContent = input.value || "📋";
     }
+    // Auto-initials: when a name field has data-autoinitials, populate the target
+    // initials field if it's empty or still matches the auto-generated value.
+    if (input.dataset.autoinitials) {
+      const targetId = input.dataset.autoinitials;
+      const initialsInput = document.getElementById(targetId);
+      if (initialsInput) {
+        const prevAuto = initialsInput.dataset.autoValue || "";
+        if (!initialsInput.value || initialsInput.value === prevAuto) {
+          const auto = generateInitials(input.value);
+          initialsInput.value = auto;
+          initialsInput.dataset.autoValue = auto;
+        }
+      }
+    }
   });
 
   document.addEventListener("submit", (e) => {
@@ -1958,6 +2010,9 @@ export async function init() {
         break;
       case "create-household":
         doCreateHousehold(form);
+        break;
+      case "update-household":
+        doUpdateHousehold(form);
         break;
       case "join-household":
         doJoinHousehold(form);
@@ -2465,11 +2520,20 @@ export async function init() {
 
 async function loadHouseholdData() {
   try {
-    const data = await loadHousehold();
+    const [data, listData] = await Promise.all([
+      loadHousehold(),
+      listHouseholds(),
+    ]);
     if (data.household) {
       state.household = data.household;
       state.members = data.members;
       state.invites = data.invites;
+    }
+    if (Array.isArray(listData?.households)) {
+      state.userHouseholds = listData.households;
+      if (data.household) {
+        state.activeHouseholdId = data.household.id;
+      }
     }
   } catch {}
 }
@@ -2541,7 +2605,8 @@ async function reloadViewData() {
 
 async function doCreateHousehold(form) {
   const name = form.querySelector("#hh-name").value;
-  const data = await createHousehold(name);
+  const initials = (form.querySelector("#hh-initials")?.value || "").trim();
+  const data = await createHousehold(name, initials || generateInitials(name));
   if (data.household) {
     state.household = data.household;
     await loadHouseholdData();
@@ -2570,6 +2635,22 @@ async function doJoinHousehold(form) {
     state.currentRoute = "/";
     render(document.querySelector("#app"));
   }
+}
+
+async function doUpdateHousehold(form) {
+  const name = form.querySelector("#edit-hh-name")?.value?.trim() || "";
+  const initials = (form.querySelector("#edit-hh-initials")?.value || "").trim();
+  if (!name) return;
+  const data = await updateHousehold(name, initials || generateInitials(name));
+  if (!data || data.error) {
+    showToast(data?.error || "Failed to update household", "error");
+    return;
+  }
+  await loadHouseholdData();
+  updateTopBar();
+  const app = document.querySelector("#app");
+  if (app) render(app);
+  showToast("Household updated", "info");
 }
 
 async function doCreateChoreFromSheet(form) {

@@ -392,14 +392,15 @@ func TestHouseholdCreateInvalidBody(t *testing.T) {
 	}
 }
 
-func TestHouseholdCreateConflict(t *testing.T) {
+func TestHouseholdCreateSecondHousehold(t *testing.T) {
+	// Multi-household: a user can create more than one household.
 	handler, sessionID, authService := setupHouseholdWithHome(t)
 	req := withUser(httptest.NewRequest(http.MethodPost, "/api/household", strings.NewReader(`{"name":"Second Home"}`)), authService, sessionID)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	handler.Create(rec, req)
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("status = %d, want 409", rec.Code)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("status = %d, want 201", rec.Code)
 	}
 }
 

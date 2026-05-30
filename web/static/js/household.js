@@ -8,21 +8,29 @@ function apiFetch(path, options = {}) {
   return fetch(path, { ...options, headers }).then(r => r.json());
 }
 
+export async function listHouseholds() {
+  return await fetch("/api/households").then(r => r.json());
+}
+
+export async function activateHousehold(id) {
+  return apiFetch(`/api/households/${id}/activate`, { method: "POST" });
+}
+
 export async function loadHousehold() {
   return await fetch("/api/household").then(r => r.json());
 }
 
-export async function createHousehold(name) {
+export async function createHousehold(name, initials) {
   return apiFetch("/api/household", {
     method: "POST",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, initials: initials || "" }),
   });
 }
 
-export async function updateHousehold(name) {
+export async function updateHousehold(name, initials) {
   return apiFetch("/api/household", {
     method: "PATCH",
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, initials: initials || "" }),
   });
 }
 
@@ -82,7 +90,11 @@ export function renderHouseholdView(household, members, invites, currentUser) {
         <form id="create-household-form" data-action="create-household" class="mt-3">
           <div class="form-group">
             <label class="form-label" for="hh-name">Household Name</label>
-            <input id="hh-name" type="text" name="name" required placeholder="Our Home">
+            <input id="hh-name" type="text" name="name" required placeholder="Our Home" data-autoinitials="hh-initials">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="hh-initials">Initials <span class="form-label-hint">(shown in header)</span></label>
+            <input id="hh-initials" type="text" name="initials" maxlength="4" placeholder="OH" autocomplete="off" class="hh-initials-input">
           </div>
           <button type="submit" class="btn btn-primary btn-block">Create Household</button>
         </form>
@@ -172,7 +184,25 @@ export function renderHouseholdView(household, members, invites, currentUser) {
     ${invites && invites.length ? `<h4 class="mt-3">Active Invites</h4><ul class="invite-list">${inviteList}</ul><div class="auth-divider"></div>` : ''}` : '';
 
   return `<div class="card mt-3">
-    <h3>${escapeHTML(household.name)}</h3>
+    <div class="hh-card-header">
+      <span class="hh-initials-badge" aria-hidden="true">${escapeHTML(household.initials || '')}</span>
+      <h3>${escapeHTML(household.name)}</h3>
+      ${isOwner ? `<button type="button" class="btn btn-sm btn-secondary hh-edit-btn" data-action="toggle-edit-household">Edit</button>` : ''}
+    </div>
+    ${isOwner ? `<form id="edit-household-form" class="hh-edit-form hidden" data-action="update-household">
+      <div class="form-group">
+        <label class="form-label" for="edit-hh-name">Household Name</label>
+        <input id="edit-hh-name" type="text" name="name" required value="${escapeHTML(household.name)}" data-autoinitials="edit-hh-initials">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="edit-hh-initials">Initials <span class="form-label-hint">(shown in header)</span></label>
+        <input id="edit-hh-initials" type="text" name="initials" maxlength="4" value="${escapeHTML(household.initials || '')}" autocomplete="off" class="hh-initials-input">
+      </div>
+      <div class="hh-edit-form-actions">
+        <button type="submit" class="btn btn-sm btn-primary">Save</button>
+        <button type="button" class="btn btn-sm btn-secondary" data-action="toggle-edit-household">Cancel</button>
+      </div>
+    </form>` : ''}
     ${inviteSection}
     <h4 class="mt-4">Members</h4>
     <div class="member-list">${memberList}</div>
@@ -188,4 +218,13 @@ function escapeHTML(str) {
   const div = document.createElement("div");
   div.textContent = str;
   return div.innerHTML;
+}
+
+export function generateInitials(name) {
+  const words = (name || "").trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return "";
+  if (words.length === 1) {
+    return words[0].length <= 3 ? words[0].toUpperCase() : words[0].slice(0, 2).toUpperCase();
+  }
+  return words.map(w => w[0]).join("").toUpperCase();
 }

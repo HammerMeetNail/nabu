@@ -18,15 +18,15 @@ func NewService(store Store, authStore AuthStore) *Service {
 	return &Service{store: store, authStore: authStore}
 }
 
-func (s *Service) CreateHousehold(ctx context.Context, name string, ownerID int64) (Household, error) {
+func (s *Service) CreateHousehold(ctx context.Context, name, initials string, ownerID int64) (Household, error) {
 	if name == "" {
 		return Household{}, fmt.Errorf("household name must not be empty")
 	}
-	_, _, err := s.store.GetMembership(ctx, ownerID)
-	if err == nil {
-		return Household{}, fmt.Errorf("user already belongs to a household")
+	if initials == "" {
+		initials = GenerateInitials(name)
 	}
-	hh, err := s.store.CreateHousehold(ctx, name, ownerID)
+	// Multi-household: allow creating even if already in a household
+	hh, err := s.store.CreateHousehold(ctx, name, initials, ownerID)
 	if err != nil {
 		return Household{}, err
 	}
@@ -52,9 +52,12 @@ func (s *Service) GetHousehold(ctx context.Context, userID int64) (Household, []
 	return hh, members, nil
 }
 
-func (s *Service) UpdateHousehold(ctx context.Context, userID int64, name string) error {
+func (s *Service) UpdateHousehold(ctx context.Context, userID int64, name, initials string) error {
 	if name == "" {
 		return fmt.Errorf("name must not be empty")
+	}
+	if initials == "" {
+		initials = GenerateInitials(name)
 	}
 	_, role, err := s.store.GetMembership(ctx, userID)
 	if err != nil {
@@ -67,7 +70,7 @@ func (s *Service) UpdateHousehold(ctx context.Context, userID int64, name string
 	if err != nil {
 		return err
 	}
-	return s.store.UpdateHousehold(ctx, hh.ID, name)
+	return s.store.UpdateHousehold(ctx, hh.ID, name, initials)
 }
 
 func (s *Service) CreateInvite(ctx context.Context, userID int64) (Invite, error) {
@@ -105,11 +108,6 @@ func (s *Service) DeleteInvite(ctx context.Context, userID, inviteID int64) erro
 }
 
 func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode string) (Household, error) {
-	_, _, err := s.store.GetMembership(ctx, userID)
-	if err == nil {
-		return Household{}, ErrAlreadyMember
-	}
-
 	invite, err := s.store.GetInviteByCode(ctx, inviteCode)
 	if err != nil && err != ErrInviteNotFound {
 		return Household{}, err
@@ -120,6 +118,11 @@ func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode st
 		hh, hhErr := s.store.GetHouseholdByInviteCode(ctx, inviteCode)
 		if hhErr != nil {
 			return Household{}, ErrInviteNotFound
+		}
+		// Check if already a member of this specific household
+		_, memberErr := s.store.GetMembershipForHousehold(ctx, userID, hh.ID)
+		if memberErr == nil {
+			return Household{}, ErrAlreadyMember
 		}
 		members, membErr := s.store.GetMembers(ctx, hh.ID)
 		if membErr != nil {
@@ -135,6 +138,12 @@ func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode st
 			_ = s.authStore.SetUserHousehold(ctx, userID, hh.ID, RoleMember)
 		}
 		return hh, nil
+	}
+
+	// Check if already a member of this specific household
+	_, memberErr := s.store.GetMembershipForHousehold(ctx, userID, invite.HouseholdID)
+	if memberErr == nil {
+		return Household{}, ErrAlreadyMember
 	}
 
 	members, err := s.store.GetMembers(ctx, invite.HouseholdID)
@@ -160,6 +169,27 @@ func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode st
 		_ = s.authStore.SetUserHousehold(ctx, userID, hh.ID, RoleMember)
 	}
 	return hh, nil
+}
+
+// ListUserHouseholds returns all households the user belongs to.
+func (s *Service) ListUserHouseholds(ctx context.Context, userID int64) ([]HouseholdWithRole, error) {
+	return s.store.ListUserHouseholds(ctx, userID)
+}
+
+// SwitchHousehold switches the user's active household.
+func (s *Service) SwitchHousehold(ctx context.Context, userID, householdID int64) error {
+	if err := s.store.SetActiveHousehold(ctx, userID, householdID); err != nil {
+		return err
+	}
+	// Keep auth store in sync
+	role, err := s.store.GetMembershipForHousehold(ctx, userID, householdID)
+	if err != nil {
+		return err
+	}
+	if s.authStore != nil {
+		_ = s.authStore.SetUserHousehold(ctx, userID, householdID, role)
+	}
+	return nil
 }
 
 func (s *Service) UpdateMemberRole(ctx context.Context, actorUserID, targetUserID int64, newRole string) error {
@@ -256,7 +286,7 @@ func (s *Service) TransferOwnership(ctx context.Context, currentOwnerID, newOwne
 	if role != RoleOwner {
 		return ErrNotAuthorized
 	}
-	_, _, err = s.store.GetMembership(ctx, newOwnerID)
+	_, err = s.store.GetMembershipForHousehold(ctx, newOwnerID, hhID)
 	if err != nil {
 		return ErrNotMember
 	}

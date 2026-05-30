@@ -31,7 +31,7 @@ func setupChoreTest(t *testing.T) (*ChoreHandler, string, *auth.Service, *househ
 	user, session := quickRegister(authService, "alice@example.com")
 	if _, err := householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"My Home", user.ID,
+		"My Home", "", user.ID,
 	); err != nil {
 		t.Fatalf("CreateHousehold: %v", err)
 	}

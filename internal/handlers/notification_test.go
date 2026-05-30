@@ -29,7 +29,7 @@ func setupNotificationTest(t *testing.T) (*NotificationHandler, string, *auth.Se
 	user, session := quickRegister(authService, "notif@example.com")
 	_, _ = householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"My Home", user.ID,
+		"My Home", "", user.ID,
 	)
 
 	return handler, session.ID, authService
