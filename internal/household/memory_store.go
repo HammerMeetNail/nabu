@@ -7,22 +7,24 @@ import (
 )
 
 type MemoryStore struct {
-	mu           sync.RWMutex
-	idSeq        int64
-	households   map[int64]Household
-	members      map[int64][]Member
-	userHH       map[int64]int64
-	invites      map[int64]Invite
-	inviteByCode map[string]Invite
+	mu             sync.RWMutex
+	idSeq          int64
+	households     map[int64]Household
+	// userHH maps userID -> active householdID
+	userHH         map[int64]int64
+	// userHouseholds maps userID -> []HouseholdWithRole
+	userHouseholds map[int64][]HouseholdWithRole
+	invites        map[int64]Invite
+	inviteByCode   map[string]Invite
 }
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
-		households:   map[int64]Household{},
-		members:      map[int64][]Member{},
-		userHH:       map[int64]int64{},
-		invites:      map[int64]Invite{},
-		inviteByCode: map[string]Invite{},
+		households:     map[int64]Household{},
+		userHH:         map[int64]int64{},
+		userHouseholds: map[int64][]HouseholdWithRole{},
+		invites:        map[int64]Invite{},
+		inviteByCode:   map[string]Invite{},
 	}
 }
 
@@ -31,7 +33,7 @@ func (s *MemoryStore) nextID() int64 {
 	return s.idSeq
 }
 
-func (s *MemoryStore) CreateHousehold(_ context.Context, name string, ownerID int64) (Household, error) {
+func (s *MemoryStore) CreateHousehold(_ context.Context, name, initials string, ownerID int64) (Household, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -41,17 +43,18 @@ func (s *MemoryStore) CreateHousehold(_ context.Context, name string, ownerID in
 	hh := Household{
 		ID:         id,
 		Name:       name,
+		Initials:   initials,
 		InviteCode: code,
 		CreatedAt:  now,
 	}
 	s.households[id] = hh
-	s.members[id] = []Member{{
-		UserID:      ownerID,
-		Email:       "",
-		DisplayName: "",
-		AvatarColor: "#19323C",
-		Role:        RoleOwner,
-	}}
+	// Add to user_households
+	s.userHouseholds[ownerID] = append(s.userHouseholds[ownerID], HouseholdWithRole{
+		ID:       id,
+		Name:     name,
+		Initials: initials,
+		Role:     RoleOwner,
+	})
 	s.userHH[ownerID] = id
 	return hh, nil
 }
@@ -73,10 +76,14 @@ func (s *MemoryStore) GetUserHousehold(_ context.Context, userID int64) (Househo
 	if !ok {
 		return Household{}, ErrNotFound
 	}
-	return s.households[hhID], nil
+	hh, ok := s.households[hhID]
+	if !ok {
+		return Household{}, ErrNotFound
+	}
+	return hh, nil
 }
 
-func (s *MemoryStore) UpdateHousehold(_ context.Context, id int64, name string) error {
+func (s *MemoryStore) UpdateHousehold(_ context.Context, id int64, name, initials string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	hh, ok := s.households[id]
@@ -84,34 +91,59 @@ func (s *MemoryStore) UpdateHousehold(_ context.Context, id int64, name string) 
 		return ErrNotFound
 	}
 	hh.Name = name
+	hh.Initials = initials
 	s.households[id] = hh
+	// Update name/initials in all userHouseholds entries
+	for uid, hhList := range s.userHouseholds {
+		for i, h := range hhList {
+			if h.ID == id {
+				s.userHouseholds[uid][i].Name = name
+				s.userHouseholds[uid][i].Initials = initials
+			}
+		}
+	}
 	return nil
 }
 
 func (s *MemoryStore) GetMembers(_ context.Context, householdID int64) ([]Member, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	members, ok := s.members[householdID]
-	if !ok {
+	var members []Member
+	for userID, hhList := range s.userHouseholds {
+		for _, h := range hhList {
+			if h.ID == householdID {
+				members = append(members, Member{
+					UserID: userID,
+					Role:   h.Role,
+				})
+				break
+			}
+		}
+	}
+	if len(members) == 0 {
 		return nil, ErrNotFound
 	}
-	result := make([]Member, len(members))
-	copy(result, members)
-	return result, nil
+	return members, nil
 }
 
 func (s *MemoryStore) AddMember(_ context.Context, householdID, userID int64, role string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.households[householdID]; !ok {
+	hh, ok := s.households[householdID]
+	if !ok {
 		return ErrNotFound
 	}
-	if _, ok := s.userHH[userID]; ok {
-		return ErrAlreadyMember
+	// Check if already a member of this specific household
+	for _, h := range s.userHouseholds[userID] {
+		if h.ID == householdID {
+			return ErrAlreadyMember
+		}
 	}
-	s.members[householdID] = append(s.members[householdID], Member{
-		UserID: userID,
-		Role:   role,
+	s.userHouseholds[userID] = append(s.userHouseholds[userID], HouseholdWithRole{
+		ID:       householdID,
+		Name:     hh.Name,
+		Initials: hh.Initials,
+		Role:     role,
 	})
 	s.userHH[userID] = householdID
 	return nil
@@ -120,30 +152,43 @@ func (s *MemoryStore) AddMember(_ context.Context, householdID, userID int64, ro
 func (s *MemoryStore) RemoveMember(_ context.Context, householdID, userID int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	members, ok := s.members[householdID]
+	hhList, ok := s.userHouseholds[userID]
 	if !ok {
-		return ErrNotFound
+		return ErrNotMember
 	}
-	for i, m := range members {
-		if m.UserID == userID {
-			s.members[householdID] = append(members[:i], members[i+1:]...)
-			delete(s.userHH, userID)
-			return nil
+	found := false
+	for i, h := range hhList {
+		if h.ID == householdID {
+			s.userHouseholds[userID] = append(hhList[:i], hhList[i+1:]...)
+			found = true
+			break
 		}
 	}
-	return ErrNotMember
+	if !found {
+		return ErrNotMember
+	}
+	// If removed from active household, switch to another
+	if s.userHH[userID] == householdID {
+		remaining := s.userHouseholds[userID]
+		if len(remaining) > 0 {
+			s.userHH[userID] = remaining[0].ID
+		} else {
+			delete(s.userHH, userID)
+		}
+	}
+	return nil
 }
 
 func (s *MemoryStore) UpdateMemberRole(_ context.Context, householdID, userID int64, role string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	members, ok := s.members[householdID]
+	hhList, ok := s.userHouseholds[userID]
 	if !ok {
 		return ErrNotFound
 	}
-	for i, m := range members {
-		if m.UserID == userID {
-			s.members[householdID][i].Role = role
+	for i, h := range hhList {
+		if h.ID == householdID {
+			s.userHouseholds[userID][i].Role = role
 			return nil
 		}
 	}
@@ -157,16 +202,51 @@ func (s *MemoryStore) GetMembership(_ context.Context, userID int64) (int64, str
 	if !ok {
 		return 0, "", ErrNotFound
 	}
-	members, ok := s.members[hhID]
-	if !ok {
-		return 0, "", ErrNotFound
-	}
-	for _, m := range members {
-		if m.UserID == userID {
-			return hhID, m.Role, nil
+	// Find role in user_households for the active household
+	for _, h := range s.userHouseholds[userID] {
+		if h.ID == hhID {
+			return hhID, h.Role, nil
 		}
 	}
 	return 0, "", ErrNotFound
+}
+
+func (s *MemoryStore) GetMembershipForHousehold(_ context.Context, userID, householdID int64) (string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, h := range s.userHouseholds[userID] {
+		if h.ID == householdID {
+			return h.Role, nil
+		}
+	}
+	return "", ErrNotMember
+}
+
+func (s *MemoryStore) ListUserHouseholds(_ context.Context, userID int64) ([]HouseholdWithRole, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	hhList := s.userHouseholds[userID]
+	result := make([]HouseholdWithRole, len(hhList))
+	copy(result, hhList)
+	return result, nil
+}
+
+func (s *MemoryStore) SetActiveHousehold(_ context.Context, userID, householdID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Verify user is a member
+	found := false
+	for _, h := range s.userHouseholds[userID] {
+		if h.ID == householdID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		return ErrNotMember
+	}
+	s.userHH[userID] = householdID
+	return nil
 }
 
 func (s *MemoryStore) GetHouseholdByInviteCode(_ context.Context, code string) (Household, error) {

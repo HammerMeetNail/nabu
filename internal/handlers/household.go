@@ -59,14 +59,15 @@ func (h *HouseholdHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name string `json:"name"`
+		Name     string `json:"name"`
+		Initials string `json:"initials"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	hh, err := h.service.CreateHousehold(r.Context(), req.Name, user.ID)
+	hh, err := h.service.CreateHousehold(r.Context(), req.Name, req.Initials, user.ID)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
@@ -83,14 +84,15 @@ func (h *HouseholdHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Name string `json:"name"`
+		Name     string `json:"name"`
+		Initials string `json:"initials"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
-	if err := h.service.UpdateHousehold(r.Context(), user.ID, req.Name); err != nil {
+	if err := h.service.UpdateHousehold(r.Context(), user.ID, req.Name, req.Initials); err != nil {
 		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}
@@ -196,6 +198,56 @@ func (h *HouseholdHandler) Join(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"household": hh})
+}
+
+// ListAll returns all households the authenticated user belongs to.
+func (h *HouseholdHandler) ListAll(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	households, err := h.service.ListUserHouseholds(r.Context(), user.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list households")
+		return
+	}
+	if households == nil {
+		households = []household.HouseholdWithRole{}
+	}
+
+	// Also include the active household ID from the current user
+	writeJSON(w, http.StatusOK, map[string]any{
+		"households": households,
+	})
+}
+
+// Activate switches the user's active household.
+func (h *HouseholdHandler) Activate(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	// Extract household ID from path: /api/households/:id/activate
+	path := r.URL.Path
+	// path is like /api/households/123/activate
+	path = strings.TrimPrefix(path, "/api/households/")
+	path = strings.TrimSuffix(path, "/activate")
+	householdID, err := strconv.ParseInt(path, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid household id")
+		return
+	}
+
+	if err := h.service.SwitchHousehold(r.Context(), user.ID, householdID); err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "activated"})
 }
 
 func (h *HouseholdHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request) {

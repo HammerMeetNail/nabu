@@ -1,9 +1,26 @@
 import { escapeHTML } from "./utils.js";
 
-export function renderProfileSheet(user, household) {
+export function renderProfileSheet(user, household, userHouseholds = [], activeHouseholdId = null) {
   const email = user?.email || "";
   const initial = email.charAt(0).toUpperCase();
   const hhName = household?.name || "";
+  const activeId = activeHouseholdId || household?.id;
+
+  const householdsSection = userHouseholds.length > 0 ? `
+    <div class="profile-households">
+      <p class="profile-households-label">Your Households</p>
+      ${userHouseholds.map(h => {
+        const isActive = h.id === activeId;
+        const ini = h.initials || h.name.charAt(0).toUpperCase();
+        return `<button type="button" class="profile-household-item${isActive ? ' profile-household-item--active' : ''}"
+          data-action="activate-household" data-household-id="${h.id}">
+          <span class="hh-initials-badge-sm" aria-hidden="true">${escapeHTML(ini)}</span>
+          <span class="profile-household-name">${escapeHTML(h.name)}</span>
+          <span class="profile-household-role text-secondary">${escapeHTML(h.role)}</span>
+          ${isActive ? '<span class="profile-household-check" aria-label="Active">&#10003;</span>' : ''}
+        </button>`;
+      }).join('')}
+    </div>` : "";
 
   return `
   <div class="profile-backdrop" data-action="close-profile"></div>
@@ -16,6 +33,7 @@ export function renderProfileSheet(user, household) {
         ${hhName ? `<span class="profile-household">${escapeHTML(hhName)}</span>` : ""}
       </div>
     </div>
+    ${householdsSection}
     <div class="profile-actions">
       <button type="button" class="profile-action-btn" data-action="profile-nav-settings">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">

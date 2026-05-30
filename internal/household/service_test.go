@@ -36,7 +36,7 @@ func TestCreateHousehold_Basic(t *testing.T) {
 	svc, _, auth := newSvc()
 	ctx := context.Background()
 
-	hh, err := svc.CreateHousehold(ctx, "Smith Family", 1)
+	hh, err := svc.CreateHousehold(ctx, "Smith Family", "", 1)
 	if err != nil {
 		t.Fatalf("CreateHousehold: %v", err)
 	}
@@ -54,20 +54,27 @@ func TestCreateHousehold_Basic(t *testing.T) {
 
 func TestCreateHousehold_EmptyNameError(t *testing.T) {
 	svc, _, _ := newSvc()
-	_, err := svc.CreateHousehold(context.Background(), "", 1)
+	_, err := svc.CreateHousehold(context.Background(), "", "", 1)
 	if err == nil {
 		t.Fatal("expected error for empty name")
 	}
 }
 
-func TestCreateHousehold_AlreadyMember(t *testing.T) {
+func TestCreateHousehold_MultipleAllowed(t *testing.T) {
 	svc, _, _ := newSvc()
 	ctx := context.Background()
 
-	_, _ = svc.CreateHousehold(ctx, "First", 1)
-	_, err := svc.CreateHousehold(ctx, "Second", 1)
-	if err == nil {
-		t.Fatal("expected error: user already in a household")
+	_, err := svc.CreateHousehold(ctx, "First", "", 1)
+	if err != nil {
+		t.Fatalf("first CreateHousehold: %v", err)
+	}
+	// Multi-household: the same user can create (and own) a second household.
+	hh2, err := svc.CreateHousehold(ctx, "Second", "", 1)
+	if err != nil {
+		t.Fatalf("second CreateHousehold should succeed in multi-household mode: %v", err)
+	}
+	if hh2.Name != "Second" {
+		t.Errorf("Name = %q, want Second", hh2.Name)
 	}
 }
 
@@ -77,7 +84,7 @@ func TestGetHousehold_Basic(t *testing.T) {
 	svc, _, _ := newSvc()
 	ctx := context.Background()
 
-	_, _ = svc.CreateHousehold(ctx, "Jones", 1)
+	_, _ = svc.CreateHousehold(ctx, "Jones", "", 1)
 
 	hh, members, err := svc.GetHousehold(ctx, 1)
 	if err != nil {
@@ -108,8 +115,8 @@ func TestUpdateHousehold_ByOwner(t *testing.T) {
 	svc, _, _ := newSvc()
 	ctx := context.Background()
 
-	_, _ = svc.CreateHousehold(ctx, "Old Name", 1)
-	err := svc.UpdateHousehold(ctx, 1, "New Name")
+	_, _ = svc.CreateHousehold(ctx, "Old Name", "", 1)
+	err := svc.UpdateHousehold(ctx, 1, "New Name", "")
 	if err != nil {
 		t.Fatalf("UpdateHousehold: %v", err)
 	}
@@ -123,8 +130,8 @@ func TestUpdateHousehold_EmptyName(t *testing.T) {
 	svc, _, _ := newSvc()
 	ctx := context.Background()
 
-	_, _ = svc.CreateHousehold(ctx, "Test", 1)
-	err := svc.UpdateHousehold(ctx, 1, "")
+	_, _ = svc.CreateHousehold(ctx, "Test", "", 1)
+	err := svc.UpdateHousehold(ctx, 1, "", "")
 	if err == nil {
 		t.Fatal("expected error for empty name")
 	}
@@ -134,18 +141,18 @@ func TestUpdateHousehold_NotAuthorized(t *testing.T) {
 	svc, _, _ := newSvc()
 	ctx := context.Background()
 
-	_, _ = svc.CreateHousehold(ctx, "Test", 1)
+	_, _ = svc.CreateHousehold(ctx, "Test", "", 1)
 	// Add a plain member
 	store := household.NewMemoryStore()
 	_ = store // use the same svc
 	// Create a household and get the real store's AddMember via join
 	// For simplicity, create a fresh scenario
 	svc2, store2, _ := newSvc()
-	hh, _ := svc2.CreateHousehold(ctx, "X", 1)
+	hh, _ := svc2.CreateHousehold(ctx, "X", "", 1)
 	_ = hh
 	_ = store2.AddMember(ctx, hh.ID, 2, household.RoleMember)
 
-	err := svc2.UpdateHousehold(ctx, 2, "Hacked")
+	err := svc2.UpdateHousehold(ctx, 2, "Hacked", "")
 	if err == nil {
 		t.Fatal("expected error: member cannot update household")
 	}
@@ -157,7 +164,7 @@ func TestCreateInvite_OwnerCanCreate(t *testing.T) {
 	svc, _, _ := newSvc()
 	ctx := context.Background()
 
-	_, _ = svc.CreateHousehold(ctx, "Test", 1)
+	_, _ = svc.CreateHousehold(ctx, "Test", "", 1)
 	inv, err := svc.CreateInvite(ctx, 1)
 	if err != nil {
 		t.Fatalf("CreateInvite: %v", err)
@@ -174,7 +181,7 @@ func TestCreateInvite_NonOwnerFails(t *testing.T) {
 	svc, store, _ := newSvc()
 	ctx := context.Background()
 
-	hh, _ := svc.CreateHousehold(ctx, "Test", 1)
+	hh, _ := svc.CreateHousehold(ctx, "Test", "", 1)
 	_ = store.AddMember(ctx, hh.ID, 2, household.RoleMember)
 
 	_, err := svc.CreateInvite(ctx, 2)
@@ -187,7 +194,7 @@ func TestGetInvites_ReturnsList(t *testing.T) {
 	svc, _, _ := newSvc()
 	ctx := context.Background()
 
-	_, _ = svc.CreateHousehold(ctx, "Test", 1)
+	_, _ = svc.CreateHousehold(ctx, "Test", "", 1)
 	_, _ = svc.CreateInvite(ctx, 1)
 	_, _ = svc.CreateInvite(ctx, 1)
 
@@ -204,7 +211,7 @@ func TestDeleteInvite_RemovesIt(t *testing.T) {
 	svc, _, _ := newSvc()
 	ctx := context.Background()
 
-	_, _ = svc.CreateHousehold(ctx, "Test", 1)
+	_, _ = svc.CreateHousehold(ctx, "Test", "", 1)
 	inv, _ := svc.CreateInvite(ctx, 1)
 
 	err := svc.DeleteInvite(ctx, 1, inv.ID)
@@ -224,7 +231,7 @@ func TestJoinHousehold_ViaOneTimeInvite(t *testing.T) {
 	svc, _, auth := newSvc()
 	ctx := context.Background()
 
-	_, _ = svc.CreateHousehold(ctx, "Test", 1)
+	_, _ = svc.CreateHousehold(ctx, "Test", "", 1)
 	inv, _ := svc.CreateInvite(ctx, 1)
 
 	joined, err := svc.JoinHousehold(ctx, 2, inv.Code)
@@ -244,7 +251,7 @@ func TestJoinHousehold_AlreadyMember(t *testing.T) {
 	svc, _, _ := newSvc()
 	ctx := context.Background()
 
-	_, _ = svc.CreateHousehold(ctx, "Test", 1)
+	_, _ = svc.CreateHousehold(ctx, "Test", "", 1)
 	inv, _ := svc.CreateInvite(ctx, 1)
 	_, _ = svc.JoinHousehold(ctx, 2, inv.Code)
 
@@ -260,7 +267,7 @@ func TestJoinHousehold_InvalidCode(t *testing.T) {
 	svc, _, _ := newSvc()
 	ctx := context.Background()
 
-	_, _ = svc.CreateHousehold(ctx, "Test", 1)
+	_, _ = svc.CreateHousehold(ctx, "Test", "", 1)
 	_, err := svc.JoinHousehold(ctx, 2, "BADCODE")
 	if err == nil {
 		t.Fatal("expected error for invalid invite code")
@@ -271,7 +278,7 @@ func TestJoinHousehold_ViaPermanentCode(t *testing.T) {
 	svc, _, _ := newSvc()
 	ctx := context.Background()
 
-	hh, _ := svc.CreateHousehold(ctx, "Test", 1)
+	hh, _ := svc.CreateHousehold(ctx, "Test", "", 1)
 	// Use the household's permanent invite code
 	joined, err := svc.JoinHousehold(ctx, 2, hh.InviteCode)
 	if err != nil {
@@ -288,7 +295,7 @@ func TestUpdateMemberRole_OwnerPromotesMember(t *testing.T) {
 	svc, store, _ := newSvc()
 	ctx := context.Background()
 
-	hh, _ := svc.CreateHousehold(ctx, "Test", 1)
+	hh, _ := svc.CreateHousehold(ctx, "Test", "", 1)
 	_ = store.AddMember(ctx, hh.ID, 2, household.RoleMember)
 
 	err := svc.UpdateMemberRole(ctx, 1, 2, household.RoleAdmin)
@@ -301,7 +308,7 @@ func TestUpdateMemberRole_NonOwnerFails(t *testing.T) {
 	svc, store, _ := newSvc()
 	ctx := context.Background()
 
-	hh, _ := svc.CreateHousehold(ctx, "Test", 1)
+	hh, _ := svc.CreateHousehold(ctx, "Test", "", 1)
 	_ = store.AddMember(ctx, hh.ID, 2, household.RoleMember)
 	_ = store.AddMember(ctx, hh.ID, 3, household.RoleMember)
 
@@ -315,7 +322,7 @@ func TestUpdateMemberRole_InvalidRole(t *testing.T) {
 	svc, store, _ := newSvc()
 	ctx := context.Background()
 
-	hh, _ := svc.CreateHousehold(ctx, "Test", 1)
+	hh, _ := svc.CreateHousehold(ctx, "Test", "", 1)
 	_ = store.AddMember(ctx, hh.ID, 2, household.RoleMember)
 
 	err := svc.UpdateMemberRole(ctx, 1, 2, "superadmin")
@@ -328,7 +335,7 @@ func TestUpdateMemberRole_CannotDemoteLastOwner(t *testing.T) {
 	svc, store, _ := newSvc()
 	ctx := context.Background()
 
-	hh, _ := svc.CreateHousehold(ctx, "Test", 1)
+	hh, _ := svc.CreateHousehold(ctx, "Test", "", 1)
 	_ = store.AddMember(ctx, hh.ID, 2, household.RoleMember)
 
 	// Try to demote the only owner
@@ -344,7 +351,7 @@ func TestRemoveMember_OwnerRemovesMember(t *testing.T) {
 	svc, store, _ := newSvc()
 	ctx := context.Background()
 
-	hh, _ := svc.CreateHousehold(ctx, "Test", 1)
+	hh, _ := svc.CreateHousehold(ctx, "Test", "", 1)
 	_ = store.AddMember(ctx, hh.ID, 2, household.RoleMember)
 
 	err := svc.RemoveMember(ctx, 1, 2)
@@ -361,7 +368,7 @@ func TestRemoveMember_NonOwnerFails(t *testing.T) {
 	svc, store, _ := newSvc()
 	ctx := context.Background()
 
-	hh, _ := svc.CreateHousehold(ctx, "Test", 1)
+	hh, _ := svc.CreateHousehold(ctx, "Test", "", 1)
 	_ = store.AddMember(ctx, hh.ID, 2, household.RoleMember)
 	_ = store.AddMember(ctx, hh.ID, 3, household.RoleMember)
 
@@ -375,7 +382,7 @@ func TestRemoveMember_CannotRemoveSelf(t *testing.T) {
 	svc, _, _ := newSvc()
 	ctx := context.Background()
 
-	_, _ = svc.CreateHousehold(ctx, "Test", 1)
+	_, _ = svc.CreateHousehold(ctx, "Test", "", 1)
 	err := svc.RemoveMember(ctx, 1, 1)
 	if err == nil {
 		t.Fatal("expected error: use leave instead")
@@ -388,7 +395,7 @@ func TestLeaveHousehold_MemberLeaves(t *testing.T) {
 	svc, store, _ := newSvc()
 	ctx := context.Background()
 
-	hh, _ := svc.CreateHousehold(ctx, "Test", 1)
+	hh, _ := svc.CreateHousehold(ctx, "Test", "", 1)
 	_ = store.AddMember(ctx, hh.ID, 2, household.RoleMember)
 
 	err := svc.LeaveHousehold(ctx, 2)
@@ -401,7 +408,7 @@ func TestLeaveHousehold_LastOwnerCannotLeave(t *testing.T) {
 	svc, _, _ := newSvc()
 	ctx := context.Background()
 
-	_, _ = svc.CreateHousehold(ctx, "Test", 1)
+	_, _ = svc.CreateHousehold(ctx, "Test", "", 1)
 	err := svc.LeaveHousehold(ctx, 1)
 	if err == nil {
 		t.Fatal("expected error: last owner cannot leave")
@@ -412,7 +419,7 @@ func TestLeaveHousehold_OwnerLeavesIfAnotherOwnerExists(t *testing.T) {
 	svc, store, _ := newSvc()
 	ctx := context.Background()
 
-	hh, _ := svc.CreateHousehold(ctx, "Test", 1)
+	hh, _ := svc.CreateHousehold(ctx, "Test", "", 1)
 	_ = store.AddMember(ctx, hh.ID, 2, household.RoleOwner)
 
 	err := svc.LeaveHousehold(ctx, 1)
@@ -427,7 +434,7 @@ func TestTransferOwnership(t *testing.T) {
 	svc, store, _ := newSvc()
 	ctx := context.Background()
 
-	hh, _ := svc.CreateHousehold(ctx, "Test", 1)
+	hh, _ := svc.CreateHousehold(ctx, "Test", "", 1)
 	_ = store.AddMember(ctx, hh.ID, 2, household.RoleMember)
 
 	err := svc.TransferOwnership(ctx, 1, 2)
@@ -452,7 +459,7 @@ func TestTransferOwnership_NonOwnerFails(t *testing.T) {
 	svc, store, _ := newSvc()
 	ctx := context.Background()
 
-	hh, _ := svc.CreateHousehold(ctx, "Test", 1)
+	hh, _ := svc.CreateHousehold(ctx, "Test", "", 1)
 	_ = store.AddMember(ctx, hh.ID, 2, household.RoleMember)
 
 	err := svc.TransferOwnership(ctx, 2, 1)
@@ -465,7 +472,7 @@ func TestTransferOwnership_TargetNotMember(t *testing.T) {
 	svc, _, _ := newSvc()
 	ctx := context.Background()
 
-	_, _ = svc.CreateHousehold(ctx, "Test", 1)
+	_, _ = svc.CreateHousehold(ctx, "Test", "", 1)
 	err := svc.TransferOwnership(ctx, 1, 999)
 	if err == nil {
 		t.Fatal("expected error: target is not a member")
@@ -478,7 +485,7 @@ func TestGetInvites_NonOwnerFails(t *testing.T) {
 	svc, store, _ := newSvc()
 	ctx := context.Background()
 
-	hh, _ := svc.CreateHousehold(ctx, "Test", 1)
+	hh, _ := svc.CreateHousehold(ctx, "Test", "", 1)
 	_ = store.AddMember(ctx, hh.ID, 2, household.RoleMember)
 
 	_, err := svc.GetInvites(ctx, 2)
@@ -491,7 +498,7 @@ func TestDeleteInvite_NonOwnerFails(t *testing.T) {
 	svc, store, _ := newSvc()
 	ctx := context.Background()
 
-	hh, _ := svc.CreateHousehold(ctx, "Test", 1)
+	hh, _ := svc.CreateHousehold(ctx, "Test", "", 1)
 	_ = store.AddMember(ctx, hh.ID, 2, household.RoleMember)
 	inv, _ := svc.CreateInvite(ctx, 1)
 

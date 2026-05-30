@@ -35,7 +35,7 @@ func setupStatsTest(t *testing.T) (*StatsHandler, string, *auth.Service) {
 	user, session := quickRegister(authService, "alice@example.com")
 	if _, err := householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"My Home", user.ID,
+		"My Home", "", user.ID,
 	); err != nil {
 		t.Fatalf("CreateHousehold: %v", err)
 	}
@@ -290,7 +290,7 @@ func setupStatsTestWithPrefs(t *testing.T) (*StatsHandler, string, *auth.Service
 	user, session := quickRegister(authService, "prefuser@example.com")
 	if _, err := householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"Pref Home", user.ID,
+		"Pref Home", "", user.ID,
 	); err != nil {
 		t.Fatalf("CreateHousehold: %v", err)
 	}
@@ -434,7 +434,7 @@ func TestStatsUserLocationValidTimezone(t *testing.T) {
 	user2, session2 := quickRegister(authService2, "tz@example.com")
 	if _, err := householdService2.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"TZ Home", user2.ID,
+		"TZ Home", "", user2.ID,
 	); err != nil {
 		t.Fatalf("CreateHousehold: %v", err)
 	}
@@ -478,7 +478,7 @@ func TestStatsUserLocationInvalidTimezone(t *testing.T) {
 	user, session := quickRegister(authService, "badtz@example.com")
 	if _, err := householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"Bad TZ Home", user.ID,
+		"Bad TZ Home", "", user.ID,
 	); err != nil {
 		t.Fatalf("CreateHousehold: %v", err)
 	}

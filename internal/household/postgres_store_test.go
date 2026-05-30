@@ -20,15 +20,18 @@ func TestPostgresHouseholdStore_CreateHousehold(t *testing.T) {
 	defer db.Close()
 	store := NewPostgresStore(db)
 
-	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO households (name, invite_code) VALUES ($1, $2)`)).
-		WithArgs("My Home", sqlmock.AnyArg()).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "invite_code", "created_at"}).
-			AddRow(1, "My Home", "ABC123", testTime))
-	mock.ExpectExec(regexp.QuoteMeta(`UPDATE users SET household_id = $1, role = 'owner' WHERE id = $2`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO households (name, initials, invite_code) VALUES ($1, $2, $3) RETURNING id, name, initials, invite_code, created_at`)).
+		WithArgs("My Home", "", sqlmock.AnyArg()).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "initials", "invite_code", "created_at"}).
+			AddRow(1, "My Home", "MH", "ABC123", testTime))
+	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO user_households (user_id, household_id, role) VALUES ($1, $2, 'owner') ON CONFLICT (user_id, household_id) DO NOTHING`)).
+		WithArgs(int64(1), int64(1)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE users SET active_household_id = $1, household_id = $1, role = 'owner' WHERE id = $2`)).
 		WithArgs(int64(1), int64(1)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
-	hh, err := store.CreateHousehold(context.Background(), "My Home", 1)
+	hh, err := store.CreateHousehold(context.Background(), "My Home", "", 1)
 	if err != nil {
 		t.Fatalf("CreateHousehold: %v", err)
 	}
@@ -45,10 +48,10 @@ func TestPostgresHouseholdStore_GetHousehold(t *testing.T) {
 	defer db.Close()
 	store := NewPostgresStore(db)
 
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, name, invite_code, created_at FROM households WHERE id = $1`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, name, COALESCE(initials, ''), invite_code, created_at FROM households WHERE id = $1`)).
 		WithArgs(int64(1)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "invite_code", "created_at"}).
-			AddRow(1, "My Home", "ABC", testTime))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "initials", "invite_code", "created_at"}).
+			AddRow(1, "My Home", "MH", "ABC", testTime))
 
 	hh, err := store.GetHousehold(context.Background(), 1)
 	if err != nil {
@@ -83,7 +86,7 @@ func TestPostgresHouseholdStore_GetMembers(t *testing.T) {
 	defer db.Close()
 	store := NewPostgresStore(db)
 
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, email, display_name, avatar_color, email_verified, role FROM users WHERE household_id = $1`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT u.id, u.email, u.display_name, u.avatar_color, u.email_verified, uh.role FROM user_households uh JOIN users u ON u.id = uh.user_id WHERE uh.household_id = $1`)).
 		WithArgs(int64(1)).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "display_name", "avatar_color", "email_verified", "role"}).
 			AddRow(1, "a@b.com", "Alice", "#F00", true, "owner"))
@@ -105,7 +108,13 @@ func TestPostgresHouseholdStore_AddMember(t *testing.T) {
 	defer db.Close()
 	store := NewPostgresStore(db)
 
-	mock.ExpectExec(regexp.QuoteMeta(`UPDATE users SET household_id = $1, role = $2 WHERE id = $3`)).
+	// AddMember(ctx, householdID=1, userID=2, role="member")
+	// First exec: INSERT INTO user_households (user_id=$2, household_id=$1, role=$3)
+	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO user_households (user_id, household_id, role) VALUES ($1, $2, $3) ON CONFLICT (user_id, household_id) DO NOTHING`)).
+		WithArgs(int64(2), int64(1), "member").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	// Second exec: UPDATE users SET active_household_id=$1, household_id=$1, role=$2 WHERE id=$3
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE users SET active_household_id = $1, household_id = $1, role = $2 WHERE id = $3`)).
 		WithArgs(int64(1), "member", int64(2)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -123,7 +132,14 @@ func TestPostgresHouseholdStore_RemoveMember(t *testing.T) {
 	defer db.Close()
 	store := NewPostgresStore(db)
 
-	mock.ExpectExec(regexp.QuoteMeta(`UPDATE users SET household_id = NULL, role = 'member' WHERE id = $1 AND household_id = $2`)).
+	// RemoveMember(ctx, householdID=1, userID=2)
+	// First exec: DELETE FROM user_households WHERE user_id=$1 AND household_id=$2
+	mock.ExpectExec(regexp.QuoteMeta(`DELETE FROM user_households WHERE user_id = $1 AND household_id = $2`)).
+		WithArgs(int64(2), int64(1)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	// Second exec: UPDATE users SET active_household_id=..., household_id=..., role=... WHERE id=$1 AND (...)
+	// The query uses $1 (userID) and $2 (householdID) — 2 args total
+	mock.ExpectExec(`UPDATE users SET`).
 		WithArgs(int64(2), int64(1)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
@@ -141,7 +157,13 @@ func TestPostgresHouseholdStore_UpdateMemberRole(t *testing.T) {
 	defer db.Close()
 	store := NewPostgresStore(db)
 
-	mock.ExpectExec(regexp.QuoteMeta(`UPDATE users SET role = $1 WHERE id = $2 AND household_id = $3`)).
+	// UpdateMemberRole(ctx, householdID=1, userID=2, role="admin")
+	// First exec: UPDATE user_households SET role=$1 WHERE user_id=$2 AND household_id=$3
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE user_households SET role = $1 WHERE user_id = $2 AND household_id = $3`)).
+		WithArgs("admin", int64(2), int64(1)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	// Second exec: UPDATE users SET role=$1 WHERE id=$2 AND active_household_id=$3
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE users SET role = $1 WHERE id = $2 AND active_household_id = $3`)).
 		WithArgs("admin", int64(2), int64(1)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 

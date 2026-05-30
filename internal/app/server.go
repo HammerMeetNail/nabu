@@ -173,6 +173,16 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	mux.HandleFunc("/api/household/leave", method(http.MethodPost, householdHandler.Leave))
 	mux.HandleFunc("/api/household/transfer", method(http.MethodPost, householdHandler.Transfer))
 
+	// Multi-household endpoints
+	mux.HandleFunc("/api/households", method(http.MethodGet, middleware.RequireAuth(householdHandler.ListAll)))
+	mux.HandleFunc("/api/households/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/activate") && r.Method == http.MethodPost {
+			middleware.RequireAuth(householdHandler.Activate)(w, r)
+			return
+		}
+		http.NotFound(w, r)
+	})
+
 	mux.HandleFunc("/api/chores", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:

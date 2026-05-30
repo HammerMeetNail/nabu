@@ -42,7 +42,7 @@ func (s *PostgresStore) GetUserByEmail(ctx context.Context, email string) (User,
 	var passwordHash string
 	var householdID sql.NullInt64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, household_id, email, password_hash, display_name, avatar_color, email_verified, role, created_at
+		SELECT id, COALESCE(active_household_id, household_id), email, password_hash, display_name, avatar_color, email_verified, role, created_at
 		FROM users WHERE email = $1
 	`, email).Scan(
 		&user.ID, &householdID, &user.Email, &passwordHash,
@@ -64,7 +64,7 @@ func (s *PostgresStore) GetUserByID(ctx context.Context, id int64) (User, error)
 	var user User
 	var householdID sql.NullInt64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, household_id, email, display_name, avatar_color, email_verified, role, created_at
+		SELECT id, COALESCE(active_household_id, household_id), email, display_name, avatar_color, email_verified, role, created_at
 		FROM users WHERE id = $1
 	`, id).Scan(
 		&user.ID, &householdID, &user.Email, &user.DisplayName,
@@ -87,7 +87,7 @@ func (s *PostgresStore) GetUserByIDWithHash(ctx context.Context, id int64) (User
 	var passwordHash string
 	var householdID sql.NullInt64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, household_id, email, password_hash, display_name, avatar_color, email_verified, role, created_at
+		SELECT id, COALESCE(active_household_id, household_id), email, password_hash, display_name, avatar_color, email_verified, role, created_at
 		FROM users WHERE id = $1
 	`, id).Scan(
 		&user.ID, &householdID, &user.Email, &passwordHash,
@@ -109,7 +109,7 @@ func (s *PostgresStore) FindUserByEmail(ctx context.Context, email string) (User
 	var user User
 	var householdID sql.NullInt64
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, household_id, email, display_name, avatar_color, email_verified, role, created_at
+		SELECT id, COALESCE(active_household_id, household_id), email, display_name, avatar_color, email_verified, role, created_at
 		FROM users WHERE email = $1
 	`, email).Scan(
 		&user.ID, &householdID, &user.Email, &user.DisplayName,
@@ -133,7 +133,7 @@ func (s *PostgresStore) VerifyEmail(ctx context.Context, userID int64) (User, er
 	err := s.db.QueryRowContext(ctx, `
 		UPDATE users SET email_verified = TRUE
 		WHERE id = $1
-		RETURNING id, household_id, email, display_name, avatar_color, email_verified, role, created_at
+		RETURNING id, COALESCE(active_household_id, household_id), email, display_name, avatar_color, email_verified, role, created_at
 	`, userID).Scan(
 		&user.ID, &householdID, &user.Email, &user.DisplayName,
 		&user.AvatarColor, &user.EmailVerified, &user.Role, &user.CreatedAt,

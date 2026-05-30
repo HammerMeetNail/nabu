@@ -30,7 +30,7 @@ func setupPrefsTest(t *testing.T) (*PreferencesHandler, string, *auth.Service) {
 	user, session := quickRegister(authService, "prefs@example.com")
 	_, _ = householdService.CreateHousehold(
 		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
-		"My Home", user.ID,
+		"My Home", "", user.ID,
 	)
 
 	return handler, session.ID, authService

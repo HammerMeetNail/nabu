@@ -2996,3 +2996,128 @@ details[open] .chore-stat-chevron {
   color: var(--danger);
 }
 
+/* ─── Household indicator in top bar ──────────────────────────────────────── */
+.hh-indicator {
+  height: 28px;
+  min-width: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--brand);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: none;
+  flex-shrink: 0;
+}
+.hh-indicator:active { opacity: 0.8; }
+
+/* ─── Household initials badges ───────────────────────────────────────────── */
+.hh-initials-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: var(--brand);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.hh-initials-badge-sm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--brand);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+/* ─── Household card header (name + badge + edit button) ──────────────────── */
+.hh-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 2px;
+}
+.hh-card-header h3 { flex: 1; margin: 0; }
+.hh-edit-btn { flex-shrink: 0; }
+
+/* ─── Household edit form ─────────────────────────────────────────────────── */
+.hh-edit-form {
+  background: var(--bg);
+  border-radius: var(--radius-card);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+.hh-edit-form-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.hh-initials-input { max-width: 120px; }
+
+/* ─── Form label hint ─────────────────────────────────────────────────────── */
+.form-label-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-secondary);
+  margin-left: 4px;
+}
+
+/* ─── Profile sheet: household switcher ───────────────────────────────────── */
+.profile-households {
+  padding: 8px 0;
+  border-top: 1px solid var(--border);
+}
+.profile-households-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  padding: 0 16px 4px;
+}
+.profile-household-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  font-size: 14px;
+}
+.profile-household-item:active { background: var(--cal-bg); }
+.profile-household-item--active { background: var(--bg); }
+.profile-household-name { flex: 1; font-weight: 500; }
+.profile-household-role {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.profile-household-check {
+  color: var(--success);
+  font-size: 16px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
