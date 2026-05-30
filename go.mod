@@ -1,6 +1,6 @@
 module github.com/dave/choresy
 
-go 1.25.0
+go 1.25.10
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2

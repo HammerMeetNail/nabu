@@ -251,7 +251,7 @@ export function renderPickChoreSheet(chores, slot, _schedules) {
           data-time-period="anytime"
           data-date="${escapeHTML(slot.date || "")}">
           <span class="drag-handle" aria-hidden="true">⠿</span>
-          <span class="chore-icon">${c.icon}</span>
+          <span class="chore-icon">${escapeHTML(c.icon)}</span>
           <span class="chore-name">${escapeHTML(c.name)}</span>
           <span class="chore-category">${escapeHTML(c.category)}</span>
         </button>`).join("");
@@ -308,7 +308,7 @@ export function renderEditScheduleSheet(chore, sch, date) {
   return `
     <div class="bottom-sheet" role="dialog" aria-modal="true" aria-label="Edit ${escapeHTML(chore.name)}">
       <div class="sheet-handle" aria-hidden="true"></div>
-      <h2 class="sheet-title">${chore.icon} ${escapeHTML(chore.name)}</h2>
+      <h2 class="sheet-title">${escapeHTML(chore.icon)} ${escapeHTML(chore.name)}</h2>
       <div class="sheet-time-row">
         <label for="edit-sheet-time" class="field-label">Time</label>
         <input type="time" id="edit-sheet-time" class="text-input sheet-time-input"
@@ -345,7 +345,7 @@ export function renderEditScheduleSheet(chore, sch, date) {
  * @param {object}      opts   { showWhen: bool, slotHour: number|null }
  */
 export function renderLogSheet(chore, log, date, members, currentUserId, cachedVolumeML = null, opts = {}) {
-  const title = `${chore.icon} ${escapeHTML(chore.name)}`;
+  const title = `${escapeHTML(chore.icon)} ${escapeHTML(chore.name)}`;
   const noteVal = log ? escapeHTML(log.note || "") : "";
   const activeIndicators = new Set(log?.indicators || (chore.indicatorDefaults || []));
 
@@ -467,7 +467,7 @@ export function renderQuickLogSheet(chores, date) {
           data-reorder-chore-id="${c.id}"
           data-date="${escapeHTML(date)}">
           <span class="drag-handle" aria-hidden="true">⠿</span>
-          <span class="chore-icon">${c.icon}</span>
+          <span class="chore-icon">${escapeHTML(c.icon)}</span>
           <span class="chore-name">${escapeHTML(c.name)}</span>
         </button>`).join("");
 

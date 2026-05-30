@@ -42,7 +42,7 @@ func Load() (Config, error) {
 		GoogleClientID:     getenv("GOOGLE_CLIENT_ID", ""),
 		GoogleClientSecret: getenv("GOOGLE_CLIENT_SECRET", ""),
 		TrustedProxyCIDRs:  getenv("TRUSTED_PROXY_CIDRS", ""),
-		RateLimitAuthMax:   getenvInt("RATE_LIMIT_AUTH_MAX", 20),
+		RateLimitAuthMax:   getenvInt("RATE_LIMIT_AUTH_MAX", 5),
 		VAPIDPublicKey:     getenv("VAPID_PUBLIC_KEY", ""),
 		VAPIDPrivateKey:    getenv("VAPID_PRIVATE_KEY", ""),
 		VAPIDSubject:       getenv("VAPID_SUBJECT", ""),

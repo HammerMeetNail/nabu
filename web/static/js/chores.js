@@ -60,7 +60,7 @@ export function renderChoresView(state) {
     return `<div class="chore-row${isHidden ? ' chore-row--hidden' : ''}"
       data-chores-tab-reorder-id="${c.id}" draggable="true">
       <span class="chore-row-drag-handle" aria-hidden="true">⋮⋮</span>
-      <span class="chore-row-icon" style="background:${escapeHTML(c.color)}">${c.icon}</span>
+      <span class="chore-row-icon" style="background:${escapeHTML(c.color)}">${escapeHTML(c.icon)}</span>
       <span class="chore-row-name">${escapeHTML(c.name)}</span>
       <span class="chore-row-badge${isDefault ? ' chore-row-badge--default' : ' chore-row-badge--custom'}">${isDefault ? 'Default' : 'Custom'}</span>
       <div class="chore-row-actions">
@@ -140,7 +140,7 @@ export function renderChoreSheet(chore) {
       <label class="chore-edit-label">Icon</label>
       <div class="chore-icon-row">
         <div class="chore-icon-preview" id="chore-icon-preview"
-          style="background:${escapeHTML(color)}">${icon}</div>
+          style="background:${escapeHTML(color)}">${escapeHTML(icon)}</div>
         <input id="chore-icon-input" type="text" class="input chore-icon-input"
           value="${escapeHTML(icon)}" maxlength="4" placeholder="Emoji" />
       </div>

@@ -507,3 +507,46 @@ func TestDeleteInvite_NonOwnerFails(t *testing.T) {
 		t.Fatal("expected error: member cannot delete invite")
 	}
 }
+
+// ─── F11: Cross-household member removal ──────────────────────────────────────
+
+// TestRemoveMemberCrossHouseholdBlocked verifies that an owner of household A
+// cannot remove a member of a different household B.
+func TestRemoveMemberCrossHouseholdBlocked(t *testing.T) {
+	svc, store, _ := newSvc()
+	ctx := context.Background()
+
+	// Household A: owner is user 1, member is user 2.
+	hhA, _ := svc.CreateHousehold(ctx, "Household A", "A", 1)
+	_ = store.AddMember(ctx, hhA.ID, 2, household.RoleMember)
+
+	// Household B: owner is user 3, member is user 4.
+	hhB, _ := svc.CreateHousehold(ctx, "Household B", "B", 3)
+	_ = store.AddMember(ctx, hhB.ID, 4, household.RoleMember)
+
+	// Owner of A tries to remove a member of B — must fail.
+	err := svc.RemoveMember(ctx, 1, 4)
+	if err != household.ErrNotAuthorized {
+		t.Fatalf("RemoveMember cross-household: error = %v, want ErrNotAuthorized", err)
+	}
+}
+
+// TestUpdateMemberRoleCrossHouseholdBlocked verifies that an owner of household A
+// cannot change the role of a member in a different household B.
+func TestUpdateMemberRoleCrossHouseholdBlocked(t *testing.T) {
+	svc, store, _ := newSvc()
+	ctx := context.Background()
+
+	// Household A: owner is user 1.
+	svc.CreateHousehold(ctx, "Household A", "A", 1)
+
+	// Household B: owner is user 2, member is user 3.
+	hhB, _ := svc.CreateHousehold(ctx, "Household B", "B", 2)
+	_ = store.AddMember(ctx, hhB.ID, 3, household.RoleMember)
+
+	// Owner of A tries to change role of member in B — must fail.
+	err := svc.UpdateMemberRole(ctx, 1, 3, household.RoleAdmin)
+	if err != household.ErrNotAuthorized {
+		t.Fatalf("UpdateMemberRole cross-household: error = %v, want ErrNotAuthorized", err)
+	}
+}

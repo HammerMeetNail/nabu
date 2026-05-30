@@ -90,7 +90,7 @@ export function renderHomeView(state) {
       return `<div class="home-card-wrapper" draggable="true" data-home-reorder-chore-id="${chore.id}">
       <button type="button" class="home-card-remove" data-action="home-remove-chore" data-chore-id="${chore.id}" aria-label="Remove ${escapeHTML(chore.name)} from home">&#x2715;</button>
       <button type="button" class="home-chore-card home-chore-card--jiggle" data-home-chore-id="${chore.id}" style="--chore-color:${chore.color}">
-        <span class="home-card-icon">${chore.icon}</span>
+        <span class="home-card-icon">${escapeHTML(chore.icon)}</span>
         <span class="home-card-name">${escapeHTML(chore.name)}</span>
         ${timeHTML}
       </button>
@@ -101,7 +101,7 @@ export function renderHomeView(state) {
       data-home-chore-id="${chore.id}"
       data-action="home-tap-chore"
       style="--chore-color:${chore.color}">
-      <span class="home-card-icon">${chore.icon}</span>
+      <span class="home-card-icon">${escapeHTML(chore.icon)}</span>
       <span class="home-card-name">${escapeHTML(chore.name)}</span>
       ${timeHTML}
     </button>`;

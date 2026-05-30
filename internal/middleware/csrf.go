@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/base64"
 	"net/http"
 	"strings"
@@ -24,9 +25,12 @@ func CSRF(cookieName string) func(http.Handler) http.Handler {
 					Secure:   requestIsHTTPS(r),
 				})
 			}
-			if isStateChanging(r.Method) && strings.HasPrefix(r.URL.Path, "/api/") && r.Header.Get("X-CSRF-Token") != token {
-				http.Error(w, "csrf token invalid", http.StatusForbidden)
-				return
+			if isStateChanging(r.Method) && strings.HasPrefix(r.URL.Path, "/api/") {
+				headerToken := r.Header.Get("X-CSRF-Token")
+				if subtle.ConstantTimeCompare([]byte(headerToken), []byte(token)) != 1 {
+					http.Error(w, "csrf token invalid", http.StatusForbidden)
+					return
+				}
 			}
 			next.ServeHTTP(w, r)
 		})

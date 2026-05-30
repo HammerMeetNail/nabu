@@ -92,8 +92,9 @@ func TestChoreCreateEmptyName(t *testing.T) {
 
 	handler.Create(rec, req)
 
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusConflict, rec.Body.String())
+	// F13: empty names are now rejected by handler-level validation (400).
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusBadRequest, rec.Body.String())
 	}
 }
 
@@ -395,5 +396,56 @@ func TestChoreSeedDefaultsNoHousehold(t *testing.T) {
 	handler.SeedDefaults(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+// ─── F13+F14: Server-side validation ─────────────────────────────────────────
+
+func TestChoreCreateEmptyNameRejected(t *testing.T) {
+	handler, sessionID, authService, _ := setupChoreTest(t)
+	body := `{"name":"","icon":"🧹","color":"#FF0000","category":"cleaning"}`
+	req := withUser(httptest.NewRequest(http.MethodPost, "/api/chores", strings.NewReader(body)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("empty name: status = %d, want 400", rec.Code)
+	}
+}
+
+func TestChoreCreateNameTooLong(t *testing.T) {
+	handler, sessionID, authService, _ := setupChoreTest(t)
+	longName := strings.Repeat("x", 61)
+	body := `{"name":"` + longName + `","icon":"🧹","color":"#FF0000","category":"cleaning"}`
+	req := withUser(httptest.NewRequest(http.MethodPost, "/api/chores", strings.NewReader(body)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("name too long: status = %d, want 400", rec.Code)
+	}
+}
+
+func TestChoreCreateInvalidColorRejected(t *testing.T) {
+	handler, sessionID, authService, _ := setupChoreTest(t)
+	body := `{"name":"Sweep","icon":"🧹","color":"red","category":"cleaning"}`
+	req := withUser(httptest.NewRequest(http.MethodPost, "/api/chores", strings.NewReader(body)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid color: status = %d, want 400", rec.Code)
+	}
+}
+
+func TestChoreCreateValidHexColorAccepted(t *testing.T) {
+	handler, sessionID, authService, _ := setupChoreTest(t)
+	body := `{"name":"Sweep","icon":"🧹","color":"#1A2B3C","category":"cleaning"}`
+	req := withUser(httptest.NewRequest(http.MethodPost, "/api/chores", strings.NewReader(body)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("valid color: status = %d, want 201, body=%s", rec.Code, rec.Body.String())
 	}
 }

@@ -179,7 +179,7 @@ function renderChoreCard(chore, sch, log, date, compact = false) {
         data-drag-chore-id="${chore.id}"
         data-drag-schedule-id="${sch?.id || ""}"
         aria-pressed="${done}">
-        <span class="chore-icon" aria-hidden="true">${chore.icon}</span>
+        <span class="chore-icon" aria-hidden="true">${escapeHTML(chore.icon)}</span>
         <span class="chore-name">${escapeHTML(chore.name)}</span>
         ${timeLabel}${assignee}
         ${done ? '<span class="check-overlay" aria-hidden="true">✓</span>' : ""}
@@ -343,7 +343,7 @@ function renderWeekChoreCard(chore, sch, log, iso) {
       data-drag-schedule-id="${sch?.id || ""}"
       aria-label="${escapeHTML(chore.name)}${done ? " (done)" : ""}"
       title="${escapeHTML(chore.name)}">
-      <span class="chore-icon" aria-hidden="true">${chore.icon}</span>
+      <span class="chore-icon" aria-hidden="true">${escapeHTML(chore.icon)}</span>
       <span class="chore-name">${escapeHTML(chore.name)}</span>
       ${done ? '<span class="check-overlay" aria-hidden="true">✓</span>' : ""}
     </button>

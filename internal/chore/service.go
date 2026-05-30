@@ -49,10 +49,13 @@ func (s *Service) GetChore(ctx context.Context, choreID int64) (Chore, error) {
 	return s.store.GetChore(ctx, choreID)
 }
 
-func (s *Service) UpdateChore(ctx context.Context, choreID int64, name, icon, color, category string, indicatorLabels []string) error {
+func (s *Service) UpdateChore(ctx context.Context, choreID int64, householdID int64, name, icon, color, category string, indicatorLabels []string) error {
 	existing, err := s.store.GetChore(ctx, choreID)
 	if err != nil {
 		return err
+	}
+	if existing.HouseholdID != householdID {
+		return fmt.Errorf("chore not found")
 	}
 	if name != "" {
 		existing.Name = name
@@ -72,10 +75,13 @@ func (s *Service) UpdateChore(ctx context.Context, choreID int64, name, icon, co
 	return s.store.UpdateChore(ctx, existing)
 }
 
-func (s *Service) DeleteChore(ctx context.Context, choreID int64) error {
+func (s *Service) DeleteChore(ctx context.Context, choreID int64, householdID int64) error {
 	chore, err := s.store.GetChore(ctx, choreID)
 	if err != nil {
 		return err
+	}
+	if chore.HouseholdID != householdID {
+		return fmt.Errorf("chore not found")
 	}
 	if chore.IsPredefined {
 		return fmt.Errorf("cannot delete predefined chores")
@@ -87,10 +93,13 @@ func (s *Service) ReorderChores(ctx context.Context, householdID int64, choreIDs
 	return s.store.ReorderChores(ctx, householdID, choreIDs)
 }
 
-func (s *Service) RestoreDefaultChore(ctx context.Context, choreID int64) error {
+func (s *Service) RestoreDefaultChore(ctx context.Context, choreID int64, householdID int64) error {
 	existing, err := s.store.GetChore(ctx, choreID)
 	if err != nil {
 		return err
+	}
+	if existing.HouseholdID != householdID {
+		return fmt.Errorf("chore not found")
 	}
 	if !existing.IsPredefined || existing.PredefinedKey == "" {
 		return fmt.Errorf("chore is not a predefined chore")

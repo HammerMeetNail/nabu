@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -506,5 +507,96 @@ func TestResendVerificationAlreadyVerified(t *testing.T) {
 	}
 	if len(mailer.Messages) != 0 {
 		t.Fatalf("expected no emails sent, got %d", len(mailer.Messages))
+	}
+}
+
+// ─── F7: Password max length ──────────────────────────────────────────────────
+
+func TestRegisterPasswordTooLong(t *testing.T) {
+	store := NewMemoryStore()
+	svc := NewService(store)
+
+	longPassword := strings.Repeat("a", 73)
+	_, _, err := svc.Register(context.Background(), "a@example.com", longPassword)
+	if err != ErrPasswordTooLong {
+		t.Fatalf("Register with 73-char password: error = %v, want ErrPasswordTooLong", err)
+	}
+}
+
+func TestRegisterPasswordAtLimit(t *testing.T) {
+	store := NewMemoryStore()
+	svc := NewService(store)
+
+	password := strings.Repeat("a", 72)
+	_, _, err := svc.Register(context.Background(), "a@example.com", password)
+	if err != nil {
+		t.Fatalf("Register with exactly 72-char password should succeed: %v", err)
+	}
+}
+
+func TestResetPasswordTooLong(t *testing.T) {
+	store := NewMemoryStore()
+	svc := NewService(store)
+
+	longPassword := strings.Repeat("a", 73)
+	_, _, err := svc.ResetPassword(context.Background(), "sometoken", longPassword)
+	if err != ErrPasswordTooLong {
+		t.Fatalf("ResetPassword with 73-char password: error = %v, want ErrPasswordTooLong", err)
+	}
+}
+
+func TestChangePasswordTooLong(t *testing.T) {
+	store := NewMemoryStore()
+	svc := NewService(store)
+
+	longPassword := strings.Repeat("a", 73)
+	_, _, err := svc.ChangePassword(context.Background(), 1, "current", longPassword)
+	if err != ErrPasswordTooLong {
+		t.Fatalf("ChangePassword with 73-char password: error = %v, want ErrPasswordTooLong", err)
+	}
+}
+
+// ─── F10: Session idle timeout ────────────────────────────────────────────────
+
+func TestAuthenticateIdleTimeout(t *testing.T) {
+	store := NewMemoryStore()
+	svc := NewService(store)
+
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return base }
+
+	_, session, err := svc.Register(context.Background(), "idle@example.com", "password123")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	// Advance past the idle timeout — session should be rejected.
+	svc.now = func() time.Time { return base.Add(25 * time.Hour) }
+	_, err = svc.Authenticate(context.Background(), session.ID)
+	if err != ErrSessionNotFound {
+		t.Fatalf("Authenticate after idle timeout: error = %v, want ErrSessionNotFound", err)
+	}
+}
+
+func TestAuthenticateActiveSessionNotExpired(t *testing.T) {
+	store := NewMemoryStore()
+	svc := NewService(store)
+
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return base }
+
+	_, session, err := svc.Register(context.Background(), "active@example.com", "password123")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	// Advance to just under the idle timeout — session should still be valid.
+	svc.now = func() time.Time { return base.Add(23 * time.Hour) }
+	user, err := svc.Authenticate(context.Background(), session.ID)
+	if err != nil {
+		t.Fatalf("Authenticate within idle window: %v", err)
+	}
+	if user.Email != "active@example.com" {
+		t.Fatalf("email = %q", user.Email)
 	}
 }

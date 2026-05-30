@@ -59,8 +59,13 @@ func TestAuthRegisterDuplicate(t *testing.T) {
 		t.Fatal("first register should succeed")
 	}
 	rec := makeReq()
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("status = %d, want %d", rec.Code, http.StatusConflict)
+	// F6: duplicate email must NOT expose whether the address is registered.
+	// The handler must return 200 (not 409) to prevent account enumeration.
+	if rec.Code != http.StatusOK {
+		t.Fatalf("duplicate register: status = %d, want 200 (account-enumeration fix)", rec.Code)
+	}
+	if strings.Contains(rec.Body.String(), "already registered") {
+		t.Fatal("response must not reveal whether the email is already registered")
 	}
 }
 

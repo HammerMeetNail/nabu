@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"strings"
@@ -85,7 +86,13 @@ func (l *RateLimiter) Middleware(prefix string) func(http.Handler) http.Handler 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if prefix == "" || strings.HasPrefix(r.URL.Path, prefix) {
-				if !l.allow(l.clientIP(r), r.URL.Path) {
+				remaining, windowEnd := l.allowWithInfo(l.clientIP(r), r.URL.Path)
+				if remaining < 0 {
+					retryAfter := int(time.Until(windowEnd).Seconds()) + 1
+					if retryAfter < 1 {
+						retryAfter = 1
+					}
+					w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
 					http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 					return
 				}
@@ -96,6 +103,12 @@ func (l *RateLimiter) Middleware(prefix string) func(http.Handler) http.Handler 
 }
 
 func (l *RateLimiter) allow(ip, path string) bool {
+	remaining, _ := l.allowWithInfo(ip, path)
+	return remaining >= 0
+}
+
+// allowWithInfo returns remaining count (-1 if denied) and the current window end time.
+func (l *RateLimiter) allowWithInfo(ip, path string) (int, time.Time) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	key := ip + "|" + path
@@ -103,14 +116,14 @@ func (l *RateLimiter) allow(ip, path string) bool {
 	entry, ok := l.entries[key]
 	if !ok || now.After(entry.windowEnd) {
 		l.entries[key] = rateEntry{count: 1, windowEnd: now.Add(l.window)}
-		return true
+		return l.limit - 1, now.Add(l.window)
 	}
 	if entry.count >= l.limit {
-		return false
+		return -1, entry.windowEnd
 	}
 	entry.count++
 	l.entries[key] = entry
-	return true
+	return l.limit - entry.count, entry.windowEnd
 }
 
 func (l *RateLimiter) clientIP(r *http.Request) string {

@@ -1,10 +1,5 @@
 import { getCSRFToken } from "./api.js";
-
-function escapeHTML(str) {
-  const div = document.createElement("div");
-  div.textContent = str;
-  return div.innerHTML;
-}
+import { escapeHTML } from "./utils.js";
 
 export async function loadSession() {
   const res = await fetch("/api/me");

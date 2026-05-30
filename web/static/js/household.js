@@ -1,4 +1,5 @@
 import { getCSRFToken } from "./api.js";
+import { escapeHTML } from "./utils.js";
 
 function apiFetch(path, options = {}) {
   const headers = new Headers(options.headers || {});
@@ -211,12 +212,6 @@ export function renderHouseholdView(household, members, invites, currentUser) {
       <button type="button" class="btn btn-sm btn-danger" data-action="leave-household">Leave Household</button>
     </div>
   </div>`;
-}
-
-function escapeHTML(str) {
-  const div = document.createElement("div");
-  div.textContent = str;
-  return div.innerHTML;
 }
 
 export function generateInitials(name) {

@@ -245,3 +245,36 @@ func TestRateLimiter_SetTrustedProxies_IPv4WithoutCIDR(t *testing.T) {
 		t.Errorf("expected 3.3.3.3 (from XFF), got %q", ip)
 	}
 }
+
+// ─── F8/F23: Retry-After header ───────────────────────────────────────────────
+
+func TestRateLimiter_RetryAfterHeader(t *testing.T) {
+	rl := NewRateLimiter(1, time.Minute)
+	defer rl.Stop()
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	rl.now = func() time.Time { return base }
+
+	handler := rl.Middleware("/api/auth")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	// First request is allowed.
+	rr := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
+	req.RemoteAddr = "5.5.5.5:80"
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("first request: status = %d, want 200", rr.Code)
+	}
+
+	// Second request is rate-limited and must carry Retry-After.
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request: status = %d, want 429", rr.Code)
+	}
+	retryAfter := rr.Header().Get("Retry-After")
+	if retryAfter == "" {
+		t.Fatal("expected Retry-After header on 429 response")
+	}
+}

@@ -103,7 +103,7 @@ export function renderScheduleTab(state) {
             data-schedule-id="${r.sch.id}"
             data-date="${r.iso}"
             data-slot-hour="${r.sch.specificTime ? r.sch.specificTime.split(':')[0] : ''}">
-            <span class="sch-icon">${r.chore.icon}</span>
+            <span class="sch-icon">${escapeHTML(r.chore.icon)}</span>
             <div class="sch-body">
               <div class="sch-name-row">
                 <span class="sch-name">${escapeHTML(r.chore.name)}</span>

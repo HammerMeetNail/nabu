@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"crypto/subtle"
 	"net/http"
 
 	"github.com/dave/choresy/internal/auth"
@@ -32,11 +33,15 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		switch err {
 		case auth.ErrDuplicateEmail:
-			writeError(w, http.StatusConflict, "email already registered")
+			// Return 200 with a generic message to prevent account enumeration.
+			// The client should tell the user to check their email.
+			writeJSON(w, http.StatusOK, map[string]string{"status": "if this email is new, check your inbox"})
 		case auth.ErrInvalidEmail:
 			writeError(w, http.StatusBadRequest, "invalid email")
 		case auth.ErrWeakPassword:
 			writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		case auth.ErrPasswordTooLong:
+			writeError(w, http.StatusBadRequest, "password must be 72 characters or fewer")
 		default:
 			writeError(w, http.StatusInternalServerError, "registration failed")
 		}
@@ -182,6 +187,8 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "invalid or expired token")
 		case auth.ErrWeakPassword:
 			writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		case auth.ErrPasswordTooLong:
+			writeError(w, http.StatusBadRequest, "password must be 72 characters or fewer")
 		default:
 			writeError(w, http.StatusInternalServerError, "password reset failed")
 		}
@@ -215,6 +222,8 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusUnauthorized, "current password is incorrect")
 		case auth.ErrWeakPassword:
 			writeError(w, http.StatusBadRequest, "password must be at least 8 characters")
+		case auth.ErrPasswordTooLong:
+			writeError(w, http.StatusBadRequest, "password must be 72 characters or fewer")
 		default:
 			writeError(w, http.StatusInternalServerError, "password change failed")
 		}
@@ -252,7 +261,7 @@ func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
 	expectedState := h.getOIDCCookie(r, "choresy_oidc_state")
-	if state == "" || state != expectedState {
+	if state == "" || subtle.ConstantTimeCompare([]byte(state), []byte(expectedState)) != 1 {
 		writeError(w, http.StatusBadRequest, "invalid state parameter")
 		return
 	}
@@ -302,6 +311,8 @@ func (h *AuthHandler) clearSessionCookie(w http.ResponseWriter) {
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   h.secure,
 		MaxAge:   -1,
 	})
 }

@@ -106,7 +106,7 @@ func TestLogService_UpdateLog(t *testing.T) {
 	hour := 9
 	vol := 200
 	logDate := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
-	err := svc.UpdateLog(ctx, l.ID, "updated", []string{"b", "c"}, &vol, &newUID, &newTime, &hour, &logDate)
+	err := svc.UpdateLog(ctx, l.ID, 1, "updated", []string{"b", "c"}, &vol, &newUID, &newTime, &hour, &logDate)
 	if err != nil {
 		t.Fatalf("UpdateLog: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestLogService_UpdateLog(t *testing.T) {
 
 func TestLogService_UpdateLog_NotFound(t *testing.T) {
 	svc := chorelog.NewService(chorelog.NewMemoryStore())
-	err := svc.UpdateLog(context.Background(), 9999, "", nil, nil, nil, nil, nil, nil)
+	err := svc.UpdateLog(context.Background(), 9999, 1, "", nil, nil, nil, nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected error for missing log")
 	}
@@ -353,7 +353,7 @@ func TestLogService_UpdateLog_NilIndicators(t *testing.T) {
 	ctx := context.Background()
 
 	l, _ := svc.LogChore(ctx, 1, 10, 100, "original", []string{"a"}, nil, nil, nil, nil)
-	err := svc.UpdateLog(ctx, l.ID, "updated", nil, nil, nil, nil, nil, nil)
+	err := svc.UpdateLog(ctx, l.ID, 1, "updated", nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("UpdateLog with nil indicators: %v", err)
 	}

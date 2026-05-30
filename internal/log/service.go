@@ -51,10 +51,13 @@ func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int
 	})
 }
 
-func (s *Service) UpdateLog(ctx context.Context, logID int64, note string, indicators []string, volumeML *int, userID *int64, completedAt *time.Time, slotHour *int, logDate *time.Time) error {
+func (s *Service) UpdateLog(ctx context.Context, logID int64, householdID int64, note string, indicators []string, volumeML *int, userID *int64, completedAt *time.Time, slotHour *int, logDate *time.Time) error {
 	log, err := s.store.GetLog(ctx, logID)
 	if err != nil {
 		return err
+	}
+	if log.HouseholdID != householdID {
+		return errors.New("log does not belong to your household")
 	}
 	log.Note = note
 	if indicators == nil {

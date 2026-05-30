@@ -144,11 +144,13 @@ func (s *MemoryStore) CreateSession(_ context.Context, userID int64, tokenHash s
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	now := time.Now().UTC()
 	session := Session{
-		ID:        randomToken(32),
-		UserID:    userID,
-		ExpiresAt: expiresAt,
-		CreatedAt: time.Now().UTC(),
+		ID:         randomToken(32),
+		UserID:     userID,
+		ExpiresAt:  expiresAt,
+		LastSeenAt: now,
+		CreatedAt:  now,
 	}
 	s.sessionsByHash[tokenHash] = session
 	return session, nil
@@ -163,6 +165,18 @@ func (s *MemoryStore) GetSession(_ context.Context, tokenHash string) (Session, 
 		return Session{}, ErrSessionNotFound
 	}
 	return session, nil
+}
+
+func (s *MemoryStore) TouchSession(_ context.Context, tokenHash string, lastSeenAt time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	session, ok := s.sessionsByHash[tokenHash]
+	if !ok {
+		return ErrSessionNotFound
+	}
+	session.LastSeenAt = lastSeenAt
+	s.sessionsByHash[tokenHash] = session
+	return nil
 }
 
 func (s *MemoryStore) DeleteSession(_ context.Context, tokenHash string) error {
