@@ -307,7 +307,7 @@ test.describe('Feed Baby volume picker', () => {
     await page.selectOption('#log-volume', '150');
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
-    await page.waitForTimeout(2000); // let first toast dismiss
+    await expect(page.locator('#toast-container .toast')).not.toBeVisible({ timeout: 10000 });
 
     // Log with 30 mL second (newer, this becomes the cached value)
     await card.click();
