@@ -1985,16 +1985,6 @@ export async function init() {
         break;
       }
 
-      case "chore-filter": {
-        e.preventDefault();
-        state.stats = state.stats || {};
-        const id = actionEl.dataset.choreId;
-        const newFilter = id ? parseInt(id, 10) : null;
-        state.stats.choreFilter = state.stats.choreFilter === newFilter ? null : newFilter;
-        render(app);
-        break;
-      }
-
       case "chart-tap": {
         e.preventDefault();
         const g = e.target.closest("[data-action=\"chart-tap\"]");
