@@ -1989,7 +1989,8 @@ export async function init() {
         e.preventDefault();
         state.stats = state.stats || {};
         const id = actionEl.dataset.choreId;
-        state.stats.choreFilter = id ? parseInt(id, 10) : null;
+        const newFilter = id ? parseInt(id, 10) : null;
+        state.stats.choreFilter = state.stats.choreFilter === newFilter ? null : newFilter;
         render(app);
         break;
       }
