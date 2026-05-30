@@ -24,7 +24,7 @@ async function registerAndCreateHousehold(page, hhName) {
   await page.fill('#reg-password', 'test123456');
   await page.fill('#reg-confirm', 'test123456');
   await page.click('button[type="submit"]');
-  await page.waitForSelector('#user-avatar:not([hidden])', { timeout: 10000 });
+  await page.waitForSelector('#hh-indicator:not([hidden])', { timeout: 10000 });
 
   const csrf = await getCSRF(page);
   const res = await page.request.post('/api/household', {
@@ -58,7 +58,7 @@ test.describe('Multi-Household', () => {
     await page.fill('#reg-password', 'test123456');
     await page.fill('#reg-confirm', 'test123456');
     await page.click('button[type="submit"]');
-    await page.waitForSelector('#user-avatar:not([hidden])', { timeout: 10000 });
+    await page.waitForSelector('#hh-indicator:not([hidden])', { timeout: 10000 });
 
     // Navigate to settings to see the create-household form
     await page.click('[data-nav="settings"]');
@@ -123,7 +123,7 @@ test.describe('Multi-Household', () => {
     await page.waitForSelector('.home-view', { timeout: 15000 });
 
     // Open profile sheet
-    await page.click('#user-avatar');
+    await page.click('#hh-indicator');
     await page.waitForSelector('#profile-panel', { timeout: 5000 });
 
     // Household switcher should be visible with both households
@@ -154,7 +154,7 @@ test.describe('Multi-Household', () => {
     await page.waitForSelector('.home-view', { timeout: 15000 });
 
     // Open profile sheet
-    await page.click('#user-avatar');
+    await page.click('#hh-indicator');
     await page.waitForSelector('#profile-panel', { timeout: 5000 });
 
     // Find the non-active household (Home A) and click to switch

@@ -12,7 +12,7 @@ async function setupFullAccount(page) {
   await page.fill('#reg-password', 'test123456');
   await page.fill('#reg-confirm', 'test123456');
   await page.click('button[type="submit"]');
-  await page.waitForSelector('#user-avatar:not([hidden])', { timeout: 10000 });
+  await page.waitForSelector('#hh-indicator:not([hidden])', { timeout: 10000 });
 
   const csrf = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
   const hhResp = await page.request.post('/api/household', {
@@ -209,7 +209,7 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     await page.fill('#reg-password', 'test123456');
     await page.fill('#reg-confirm', 'test123456');
     await page.click('button[type="submit"]');
-    await page.waitForSelector('#user-avatar:not([hidden])', { timeout: 10000 });
+    await page.waitForSelector('#hh-indicator:not([hidden])', { timeout: 10000 });
 
     // Should see top bar and bottom tabs
     await expect(page.locator('#top-bar')).not.toBeHidden({ timeout: 5000 });
@@ -367,11 +367,11 @@ test.describe('Exhaustive: Authenticated Flow', () => {
 
     // === Test Top Bar Buttons ===
     
-    // User avatar should show first letter of email
-    const avatar = page.locator('#user-avatar');
+    // Household indicator should show initials
+    const avatar = page.locator('#hh-indicator');
     await expect(avatar).toBeVisible();
     const avatarText = await avatar.textContent();
-    expect(avatarText.length).toBe(1);
+    expect(avatarText.length).toBeGreaterThan(0);
 
     // Notifications bell should be visible
     const bell = page.locator('#notifications-bell');
@@ -438,7 +438,7 @@ test.describe('Exhaustive: Settings Page States', () => {
     await page.fill('#reg-password', 'test123456');
     await page.fill('#reg-confirm', 'test123456');
     await page.click('button[type="submit"]');
-    await page.waitForSelector('#user-avatar:not([hidden])', { timeout: 10000 });
+    await page.waitForSelector('#hh-indicator:not([hidden])', { timeout: 10000 });
     await expect(page.locator('#bottom-tabs')).not.toBeHidden();
 
     // Go to settings
@@ -461,7 +461,7 @@ test.describe('Exhaustive: Settings Page States', () => {
     await expect(page.locator('button[data-action="logout"]')).toHaveCount(0);
 
     // Logout via profile sheet
-    await page.locator('#user-avatar').click();
+    await page.locator('#hh-indicator').click();
     await expect(page.locator('.profile-panel')).toBeVisible({ timeout: 5000 });
     await page.locator('button[data-action="logout"]').click();
     await expect(page.locator('#login-form')).toBeVisible({ timeout: 5000 });

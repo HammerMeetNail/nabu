@@ -708,23 +708,12 @@ function updateTopBar() {
   if (state.user) {
     topBar.hidden = false;
     tabs.hidden = false;
-    const avatar = document.querySelector("#user-avatar");
-    if (avatar) {
-      avatar.hidden = false;
-      avatar.style.backgroundColor = "#19323C";
-      avatar.textContent = state.user.email.charAt(0).toUpperCase();
-      avatar.title = state.user.email;
-    }
     const hhIndicator = document.querySelector("#hh-indicator");
     if (hhIndicator) {
+      hhIndicator.hidden = false;
       const initials = state.household?.initials || "";
-      if (initials) {
-        hhIndicator.hidden = false;
-        hhIndicator.textContent = initials;
-        hhIndicator.title = state.household?.name || "";
-      } else {
-        hhIndicator.hidden = true;
-      }
+      hhIndicator.textContent = initials || state.user.email.charAt(0).toUpperCase();
+      hhIndicator.title = state.household?.name || state.user.email;
     }
     const bell = document.querySelector("#notifications-bell");
     const badge = document.querySelector("#notification-badge");
