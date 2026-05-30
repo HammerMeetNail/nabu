@@ -1471,6 +1471,15 @@ export async function init() {
         const memberVal = document.querySelector('#log-member')?.value;
         const userId = memberVal && memberVal !== "" ? parseInt(memberVal, 10) : null;
 
+        // Require volume or indicator for chores that have both features.
+        const chore = (state.chores || []).find(c => c.id === choreId);
+        if (chore && chore.hasVolumeML && (chore.indicatorLabels || []).length > 0) {
+          if (volumeML === null && indicators.length === 0) {
+            showToast("Select a volume or food type", "error");
+            break;
+          }
+        }
+
         let date        = actionEl.dataset.date || "";
         let completedAt = actionEl.dataset.completedAt || null;
         let slotHour    = null;
