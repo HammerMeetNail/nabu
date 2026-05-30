@@ -24,7 +24,7 @@ async function setupWithChores(page) {
   await page.fill('#reg-password', 'test123456');
   await page.fill('#reg-confirm', 'test123456');
   await page.click('button[type="submit"]');
-  await page.waitForSelector('#user-avatar:not([hidden])', { timeout: 10000 });
+  await page.waitForSelector('#hh-indicator:not([hidden])', { timeout: 10000 });
 
   const csrf = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
 

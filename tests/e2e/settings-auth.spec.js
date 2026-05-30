@@ -14,7 +14,7 @@ async function registerUser(page, email, password = "test123456") {
   await page.fill("#reg-password", password);
   await page.fill("#reg-confirm", password);
   await page.click("button[type=\"submit\"]");
-  await page.waitForSelector("#user-avatar:not([hidden])", { timeout: 10000 });
+  await page.waitForSelector("#hh-indicator:not([hidden])", { timeout: 10000 });
   const csrf =
     (await page.context().cookies()).find((c) => c.name === "choresy_csrf")
       ?.value || "";
@@ -93,7 +93,7 @@ test.describe("Settings: auth features", () => {
     const toast = page.locator("#toast-container .toast-success");
     await expect(toast.first()).toBeVisible({ timeout: 3000 });
 
-    await page.locator("#user-avatar").click();
+    await page.locator("#hh-indicator").click();
     await expect(page.locator(".profile-panel")).toBeVisible({ timeout: 5000 });
     await page.locator('button[data-action="logout"]').click();
     await page.waitForTimeout(500);
@@ -102,7 +102,7 @@ test.describe("Settings: auth features", () => {
     await page.fill("#login-email", email);
     await page.fill("#login-password", "newpassword789");
     await page.click("#login-form button[type=\"submit\"]");
-    await expect(page.locator("#user-avatar:not([hidden])")).toBeVisible({
+    await expect(page.locator("#hh-indicator:not([hidden])")).toBeVisible({
       timeout: 10000,
     });
   });
@@ -191,7 +191,7 @@ test.describe("Settings: auth features", () => {
     await page.waitForTimeout(1000);
 
     await page.reload();
-    await page.waitForSelector("#user-avatar:not([hidden])", {
+    await page.waitForSelector("#hh-indicator:not([hidden])", {
       timeout: 15000,
     });
     await expect(page.locator("#top-bar")).not.toBeHidden({ timeout: 5000 });
