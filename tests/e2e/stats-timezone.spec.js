@@ -200,12 +200,13 @@ test.describe("Stats timezone awareness", () => {
 
     // Query heatmap without explicit start/end (default behavior)
     // Retry up to 3 times in case the log hasn't propagated yet
+    let heatmap = [];
     let nonzeroDays = [];
     for (let attempt = 0; attempt < 3; attempt++) {
       if (attempt > 0) await page.waitForTimeout(500);
       const heatmapResp = await page.request.get("/api/stats/heatmap");
       expect(heatmapResp.status()).toBe(200);
-      const heatmap = (await heatmapResp.json()).heatmap || [];
+      heatmap = (await heatmapResp.json()).heatmap || [];
       nonzeroDays = heatmap.filter((c) => c.count > 0);
       if (nonzeroDays.length >= 1) break;
     }
