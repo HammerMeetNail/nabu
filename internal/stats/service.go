@@ -101,11 +101,12 @@ type ChoreTimeSeries struct {
 }
 
 type TimeSeriesPeriod struct {
-	Start      string         `json:"start"`
-	End        string         `json:"end"`
-	Count      int            `json:"count"`
-	TotalML    int            `json:"totalML"`
-	Indicators map[string]int `json:"indicators,omitempty"`
+	Start             string         `json:"start"`
+	End               string         `json:"end"`
+	Count             int            `json:"count"`
+	TotalML           int            `json:"totalML"`
+	Indicators        map[string]int `json:"indicators,omitempty"`
+	VolumeByIndicator map[string]int `json:"volumeByIndicator,omitempty"`
 }
 
 func NewService(logStore log.Store, choreStore choreStore) *Service {
@@ -561,9 +562,10 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 	sort.Slice(memberEntries, func(i, j int) bool { return memberEntries[i].Count > memberEntries[j].Count })
 
 	type bucketData struct {
-		count      int
-		totalML    int
-		indicators map[string]int
+		count              int
+		totalML            int
+		indicators         map[string]int
+		volumeByIndicator  map[string]int
 	}
 	periodData := make([]bucketData, len(buckets))
 	for _, l := range logs {
@@ -576,6 +578,12 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 				periodData[i].count++
 				if l.VolumeML != nil {
 					periodData[i].totalML += *l.VolumeML
+					for _, ind := range l.Indicators {
+						if periodData[i].volumeByIndicator == nil {
+							periodData[i].volumeByIndicator = map[string]int{}
+						}
+						periodData[i].volumeByIndicator[ind] += *l.VolumeML
+					}
 				}
 				for _, ind := range l.Indicators {
 					if periodData[i].indicators == nil {
@@ -604,6 +612,9 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 		}
 		if len(periodData[i].indicators) > 0 {
 			tp.Indicators = periodData[i].indicators
+		}
+		if len(periodData[i].volumeByIndicator) > 0 {
+			tp.VolumeByIndicator = periodData[i].volumeByIndicator
 		}
 		result.Periods = append(result.Periods, tp)
 	}

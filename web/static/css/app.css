@@ -1192,6 +1192,18 @@ details[open] .member-chevron {
   max-height: 200px;
 }
 
+.baby-svg-chart [data-action="chart-tap"] {
+  cursor: pointer;
+}
+
+.baby-svg-chart .chart-bar-val {
+  display: none;
+}
+
+.baby-svg-chart .chart-bar-val--visible {
+  display: inline;
+}
+
 /* Heatmap */
 .heatmap-grid {
   display: flex;

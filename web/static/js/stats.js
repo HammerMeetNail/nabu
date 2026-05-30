@@ -424,13 +424,51 @@ function renderVolumeChart(periods, period) {
 
   svg += `<text x="12" y="${topM + chartH / 2}" text-anchor="middle" font-size="9" fill="#9ca3af" font-family="system-ui, sans-serif" transform="rotate(-90, 12, ${topM + chartH / 2})">mL</text>`;
 
+  const stackColors = { "🍼 formula": "#EC4899", "🤱 breast": "#F59E0B" };
+  const stackKeys = [];
+
+  periods.forEach(p => {
+    if (p.volumeByIndicator) {
+      Object.keys(p.volumeByIndicator).forEach(k => {
+        if (!stackKeys.includes(k)) stackKeys.push(k);
+      });
+    }
+  });
+  if (stackKeys.length === 0) stackKeys.push("total");
+
   periods.forEach((p, i) => {
     const x = leftM + i * colW;
-    const h = Math.round((p.totalML / maxML) * chartH);
-    const y = topM + chartH - h;
-    svg += `<rect x="${x + 2}" y="${y}" width="${colW - 4}" height="${Math.max(h, 0.5)}" rx="2" fill="#EC4899" opacity="0.85">
-      <title>${formatPeriodLabel(p, period)}: ${p.totalML} mL</title>
-    </rect>`;
+    const totalH_ = Math.round((p.totalML / maxML) * chartH);
+    const baseY = topM + chartH;
+    let offset = 0;
+
+    const parts = [];
+    stackKeys.forEach(key => {
+      const ml = p.volumeByIndicator?.[key] || 0;
+      if (ml > 0) parts.push(`${key} ${ml}mL`);
+    });
+    const valText = parts.join(", ") || (p.totalML > 0 ? `${p.totalML} mL` : "");
+    const fullLabel = formatPeriodLabel(p, period);
+
+    const barH = Math.max(totalH_, 0.5);
+
+    svg += `<g data-action="chart-tap" role="button" aria-label="${fullLabel}: ${p.totalML} mL">`;
+
+    if (stackKeys.length > 1 && p.volumeByIndicator && Object.keys(p.volumeByIndicator).length > 0) {
+      stackKeys.forEach(key => {
+        const ml = p.volumeByIndicator?.[key] || 0;
+        if (ml <= 0) return;
+        const segH = Math.round((ml / maxML) * chartH);
+        const color = stackColors[key] || "#6B7280";
+        svg += `<rect x="${x + 2}" y="${baseY - offset - segH}" width="${colW - 4}" height="${Math.max(segH, 0.5)}" fill="${color}" opacity="0.85"/>`;
+        offset += segH;
+      });
+    } else {
+      svg += `<rect x="${x + 2}" y="${baseY - barH}" width="${colW - 4}" height="${barH}" rx="2" fill="#EC4899" opacity="0.85"/>`;
+    }
+
+    svg += `<text class="chart-bar-val" x="${x + colW / 2}" y="${baseY - barH - 3}" text-anchor="middle" font-size="8" fill="#374151" font-weight="600" font-family="system-ui, sans-serif">${valText}</text>`;
+    svg += `</g>`;
 
     const labelInt = period === "daily" ? 2 : 1;
     if (i % labelInt === 0) {
@@ -502,18 +540,41 @@ function renderIndicatorChart(periods, period) {
 
   svg += `<text x="12" y="${topM + chartH / 2}" text-anchor="middle" font-size="9" fill="#9ca3af" font-family="system-ui, sans-serif" transform="rotate(-90, 12, ${topM + chartH / 2})">count</text>`;
 
-  const groupW = indicatorKeys.length > 0 ? colW / indicatorKeys.length : colW;
   periods.forEach((p, i) => {
-    indicatorKeys.forEach((key, ki) => {
-      const count = p.indicators?.[key] || 0;
-      const x = leftM + i * colW + ki * groupW;
-      const h = Math.round((count / maxCount) * chartH);
-      const y = topM + chartH - h;
-      const color = indicatorColors[key] || "#6B7280";
-      svg += `<rect x="${x + 1}" y="${y}" width="${Math.max(1, groupW - 2)}" height="${Math.max(h, 0.5)}" rx="2" fill="${color}" opacity="0.85">
-        <title>${formatPeriodLabel(p, period)}: ${key} (${count})</title>
-      </rect>`;
+    const baseY = topM + chartH;
+    let offset = 0;
+    const parts = [];
+    let periodTotal = 0;
+    indicatorKeys.forEach(key => {
+      const c = p.indicators?.[key] || 0;
+      periodTotal += c;
+      if (c > 0) parts.push(`${key} ${c}`);
     });
+    const valText = parts.join(", ");
+    const fullLabel = formatPeriodLabel(p, period);
+
+    svg += `<g data-action="chart-tap" role="button" aria-label="${fullLabel}: ${valText || '0'}">`;
+
+    if (indicatorKeys.length > 1) {
+      indicatorKeys.forEach(key => {
+        const count = p.indicators?.[key] || 0;
+        if (count <= 0) return;
+        const segH = Math.round((count / maxCount) * chartH);
+        const color = indicatorColors[key] || "#6B7280";
+        svg += `<rect x="${leftM + i * colW + 2}" y="${baseY - offset - segH}" width="${colW - 4}" height="${Math.max(segH, 0.5)}" fill="${color}" opacity="0.85"/>`;
+        offset += segH;
+      });
+    } else if (indicatorKeys.length === 1) {
+      const key = indicatorKeys[0];
+      const count = p.indicators?.[key] || 0;
+      const segH = Math.round((count / maxCount) * chartH);
+      const color = indicatorColors[key] || "#6B7280";
+      svg += `<rect x="${leftM + i * colW + 2}" y="${baseY - segH}" width="${colW - 4}" height="${Math.max(segH, 0.5)}" rx="2" fill="${color}" opacity="0.85"/>`;
+    }
+
+    const totalH_ = Math.round((periodTotal / maxCount) * chartH);
+    svg += `<text class="chart-bar-val" x="${leftM + i * colW + colW / 2}" y="${baseY - totalH_ - 3}" text-anchor="middle" font-size="8" fill="#374151" font-weight="600" font-family="system-ui, sans-serif">${valText}</text>`;
+    svg += `</g>`;
 
     const labelInt = period === "daily" ? 2 : 1;
     if (i % labelInt === 0) {

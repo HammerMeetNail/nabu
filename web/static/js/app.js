@@ -1936,6 +1936,18 @@ export async function init() {
         loadBabyTimeSeries().then(() => render(app));
         break;
       }
+
+      case "chart-tap": {
+        e.preventDefault();
+        const g = e.target.closest("[data-action=\"chart-tap\"]");
+        if (!g) break;
+        const val = g.querySelector(".chart-bar-val");
+        if (!val) break;
+        const visible = val.classList.contains("chart-bar-val--visible");
+        document.querySelectorAll(".chart-bar-val--visible").forEach(el => el.classList.remove("chart-bar-val--visible"));
+        if (!visible) val.classList.add("chart-bar-val--visible");
+        break;
+      }
     }
   });
 
