@@ -36,7 +36,11 @@ async function setupWithChores(page) {
 }
 
 async function openFilter(page) {
-  await page.click('.hist-filter-btn');
+  const btn = page.locator('.hist-filter-btn');
+  const expanded = await btn.getAttribute('aria-expanded');
+  if (expanded !== 'true') {
+    await btn.click();
+  }
   await page.waitForSelector('.hist-filter-dropdown:not([hidden])', { timeout: 5000 });
 }
 
@@ -141,13 +145,19 @@ test.describe('History filter', () => {
     await page.waitForTimeout(300);
     await expect(page.locator('.hist-row')).toHaveCount(1);
 
-    // Now All is a toggle: click to show nothing, click again to show all
-    // First All click: hide all (all chips inactive)
+    // After excluding, filter is [all_except_one] (not null)
+    // Clicking All toggles to show all (null)
+    await page.locator('.hist-filter-all').click();
+    await page.waitForTimeout(300);
+    await expect(page.locator('.hist-row')).toHaveCount(2);
+    await expect(page.locator('.hist-filter-all')).toHaveClass(/active/);
+
+    // Clicking All again toggles to hide all ([])
     await page.locator('.hist-filter-all').click();
     await page.waitForTimeout(300);
     await expect(page.locator('.hist-row')).toHaveCount(0);
 
-    // Second All click: show all again
+    // Third click: show all again
     await page.locator('.hist-filter-all').click();
     await page.waitForTimeout(300);
     await expect(page.locator('.hist-row')).toHaveCount(2);
