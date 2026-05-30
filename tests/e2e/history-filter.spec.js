@@ -62,8 +62,11 @@ test.describe('History filter', () => {
     await page.click('[data-nav="activity"]');
     await page.waitForSelector('.history-view', { timeout: 10000 });
 
-    // Filter button FAB is visible
+    // Filter button FAB is visible; chips start closed
     await expect(page.locator('.hist-filter-fab')).toBeVisible();
+
+    // Tap to open (reuse helper that handles the toggle)
+    await openFilter(page);
 
     await expect(page.locator('.hist-filter-all')).toBeVisible();
     const chips = page.locator('.hist-filter-chip[data-action="history-filter-chore"]');

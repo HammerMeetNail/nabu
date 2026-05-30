@@ -26,7 +26,7 @@ export function createAppState() {
     notificationPrefs: null,
     availableNotificationTypes: [],
     historyChoreFilter: null,  // null = show all, []string = filtered chore IDs
-    historyFilterOpen: true,   // filter dropdown visible by default
+    historyFilterOpen: false,  // filter dropdown starts closed
   };
 }
 
@@ -56,5 +56,5 @@ export function resetAuthedState(state) {
   state.notificationPrefs = null;
   state.availableNotificationTypes = [];
 	state.historyChoreFilter = null;
-	state.historyFilterOpen = true;
+	state.historyFilterOpen = false;
 }
