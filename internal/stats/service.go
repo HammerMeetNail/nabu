@@ -505,13 +505,11 @@ func (s *Service) fetchLogsInRange(ctx context.Context, householdID int64, start
 }
 
 // logInRange returns true if the log's local date falls within [start, end).
-// Uses LogDate if present (mirroring the SQL COALESCE), otherwise derives
-// the date from CompletedAt in the given location.
+// Always uses CompletedAt converted to the user's timezone, since the heatmap
+// groups by the same conversion. LogDate (which may reflect the browser's
+// local time rather than the user's chosen timezone) is not used at this
+// layer — the store layer already handles LogDate-vs-CompletedAt filtering.
 func logInRange(l log.ChoreLog, start, end time.Time, loc *time.Location) bool {
-	if l.LogDate != nil && *l.LogDate != "" {
-		return *l.LogDate >= start.Format("2006-01-02") &&
-			*l.LogDate < end.Format("2006-01-02")
-	}
 	local := l.CompletedAt.In(loc)
 	return !local.Before(start) && local.Before(end)
 }
