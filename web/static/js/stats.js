@@ -478,7 +478,9 @@ function renderVolumeChart(periods, period) {
       svg += `<rect x="${x + 2}" y="${baseY - barH}" width="${colW - 4}" height="${barH}" rx="2" fill="#EC4899" opacity="0.85"/>`;
     }
 
-    svg += `<text class="chart-bar-val" x="${x + colW / 2}" y="${baseY - barH - 3}" text-anchor="middle" font-size="8" fill="#374151" font-weight="600" font-family="system-ui, sans-serif">${valText}</text>`;
+    const labelX = Math.max(leftM + 4, Math.min(totalW - rightM - 40, x + colW / 2));
+    const labelY = Math.max(topM + 10, baseY - barH - 4);
+    svg += `<text class="chart-bar-val" x="${labelX}" y="${labelY}" text-anchor="middle" font-size="10" fill="#fff" stroke="#374151" stroke-width="1.5" paint-order="stroke fill" font-weight="700" font-family="system-ui, sans-serif">${valText}</text>`;
     svg += `</g>`;
 
     const labelInt = period === "daily" ? 2 : 1;
@@ -603,7 +605,9 @@ function renderIndicatorChart(periods, period) {
     }
 
     const totalH_ = Math.round((periodTotal / maxCount) * chartH);
-    svg += `<text class="chart-bar-val" x="${leftM + i * colW + colW / 2}" y="${baseY - totalH_ - 3}" text-anchor="middle" font-size="8" fill="#374151" font-weight="600" font-family="system-ui, sans-serif">${valText}</text>`;
+    const labelX = Math.max(leftM + 4, Math.min(totalW - rightM - 40, leftM + i * colW + colW / 2));
+    const labelY = Math.max(topM + 10, baseY - totalH_ - 4);
+    svg += `<text class="chart-bar-val" x="${labelX}" y="${labelY}" text-anchor="middle" font-size="10" fill="#fff" stroke="#374151" stroke-width="1.5" paint-order="stroke fill" font-weight="700" font-family="system-ui, sans-serif">${valText}</text>`;
     svg += `</g>`;
 
     const labelInt = period === "daily" ? 2 : 1;
