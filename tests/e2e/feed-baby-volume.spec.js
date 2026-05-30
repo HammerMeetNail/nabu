@@ -506,8 +506,9 @@ test.describe('History indicator icons', () => {
     await card.click();
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
 
-    // Formula is default-on; toggle breast too
+    // Formula is default-on; toggle breast too, and set a volume
     await page.locator('.log-chip').nth(1).click();
+    await page.selectOption('#log-volume', '90');
 
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
