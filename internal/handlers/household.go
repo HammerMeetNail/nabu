@@ -1,20 +1,29 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/dave/choresy/internal/household"
 	"github.com/dave/choresy/internal/middleware"
+	"github.com/dave/choresy/internal/notification"
 )
 
 type HouseholdHandler struct {
-	service *household.Service
+	service        *household.Service
+	notifService   *notification.Service
+	householdStore household.Store
 }
 
 func NewHouseholdHandler(service *household.Service) *HouseholdHandler {
 	return &HouseholdHandler{service: service}
+}
+
+func (h *HouseholdHandler) WithNotification(notifService *notification.Service, householdStore household.Store) {
+	h.notifService = notifService
+	h.householdStore = householdStore
 }
 
 func (h *HouseholdHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -162,6 +171,28 @@ func (h *HouseholdHandler) Join(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
+	}
+
+	// Fire-and-forget: notify other household members.
+	if h.notifService != nil && h.householdStore != nil {
+		hhID := hh.ID
+		joinerID := user.ID
+		joinerName := user.DisplayName
+		if joinerName == "" {
+			joinerName = user.Email
+		}
+		householdName := hh.Name
+		go func() {
+			members, err := h.householdStore.GetMembers(context.Background(), hhID)
+			if err != nil {
+				return
+			}
+			mi := make([]notification.MemberInfo, len(members))
+			for i, m := range members {
+				mi[i] = notification.MemberInfo{UserID: m.UserID, DisplayName: m.DisplayName}
+			}
+			h.notifService.NotifyHouseholdJoined(context.Background(), mi, joinerID, joinerName, householdName)
+		}()
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"household": hh})

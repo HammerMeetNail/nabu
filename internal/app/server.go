@@ -83,6 +83,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	notifService := notification.NewService(notifStore)
 	notifHandler := handlers.NewNotificationHandler(notifService)
 	logHandler.WithNotification(notifService, choreStore, householdStore)
+	householdHandler.WithNotification(notifService, householdStore)
 
 	var vapidSigner *push.VAPIDSigner
 	if cfg.VAPIDPublicKey != "" && cfg.VAPIDPrivateKey != "" {

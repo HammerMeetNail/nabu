@@ -2390,19 +2390,31 @@ export async function init() {
 
   // ── Notification polling ─────────────────────────────────────────────────
   // Poll every 30 s for new notifications.  Pause while the tab is hidden so
-  // we don't hammer the API in background tabs.
+  // we don't hammer the API in background tabs.  Also refreshes household data
+  // when a household_joined notification is detected so new members appear
+  // without needing a page reload.
   let notifPollTimer = null;
+  let _lastHHRefresh = 0;
   function startNotifPoll() {
     if (notifPollTimer) clearInterval(notifPollTimer);
     notifPollTimer = setInterval(() => {
       if (!document.hidden && state.user) {
         loadNotifData().then(() => updateTopBar());
+        if (state.household) {
+          const hasJoinNotif = (state.notifications || []).some(n => n.type === 'household_joined');
+          const now = Date.now();
+          if (hasJoinNotif || now - _lastHHRefresh > 300000) {
+            _lastHHRefresh = now;
+            loadHouseholdData();
+          }
+        }
       }
     }, 30000);
   }
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden && state.user) {
       loadNotifData().then(() => updateTopBar());
+      if (state.household) loadHouseholdData();
     }
   });
   if (state.user) startNotifPoll();

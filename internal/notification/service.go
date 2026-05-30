@@ -68,6 +68,11 @@ func AvailableNotificationTypes() []NotificationTypeInfo {
 			Label:       "Chore Logged",
 			Description: "When someone else in your household logs a chore.",
 		},
+		{
+			Type:        "household_joined",
+			Label:       "Household Joined",
+			Description: "When someone joins your household.",
+		},
 	}
 }
 
@@ -134,6 +139,36 @@ func (s *Service) NotifyChoreLogged(ctx context.Context, members []MemberInfo, l
 		}
 		if s.pushSender != nil && s.shouldSendPush(ctx, m.UserID, "chore_logged") {
 			log.Printf("notif: sending push to user %d title=%q", n.UserID, n.Title)
+			_ = s.pushSender.SendPushToUser(ctx, n.UserID, n.Title, n.Body)
+		}
+	}
+}
+
+// NotifyHouseholdJoined creates a "household_joined" notification for every
+// household member except the one who just joined.  It also sends a Web Push
+// to each recipient if a PushSender is configured.
+//
+// This is intentionally fire-and-forget: callers should invoke it in a
+// goroutine so individual push failures do not block the HTTP response.
+func (s *Service) NotifyHouseholdJoined(ctx context.Context, members []MemberInfo, joinerID int64, joinerName string, householdName string) {
+	title := "New Member"
+	body := fmt.Sprintf("%s joined %s", joinerName, householdName)
+
+	for _, m := range members {
+		if m.UserID == joinerID {
+			continue
+		}
+		n, err := s.store.CreateNotification(ctx, Notification{
+			UserID: m.UserID,
+			Type:   "household_joined",
+			Title:  title,
+			Body:   body,
+		})
+		if err != nil {
+			continue
+		}
+		if s.pushSender != nil && s.shouldSendPush(ctx, m.UserID, "household_joined") {
+			log.Printf("notif: sending household_joined push to user %d", n.UserID)
 			_ = s.pushSender.SendPushToUser(ctx, n.UserID, n.Title, n.Body)
 		}
 	}

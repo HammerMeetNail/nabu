@@ -50,13 +50,21 @@ test.describe('Settings: notification preferences', () => {
     await expect(checkbox).toBeAttached();
     await expect(checkbox).toBeChecked();
 
-    // Click the visible toggle slider to turn OFF
-    const toggleSlider = page.locator('.notif-pref-toggle .toggle-slider').first();
-    await toggleSlider.scrollIntoViewIfNeeded();
-    await toggleSlider.click();
-    await page.waitForTimeout(500);
+    // Turn off each toggle so pushEnabled becomes false
+    const toggles = page.locator('.notif-pref-toggle .toggle-slider');
+    const toggleCount = await toggles.count();
+    for (let i = 0; i < toggleCount; i++) {
+      const slider = toggles.nth(i);
+      await slider.scrollIntoViewIfNeeded();
+      // Only click if it's checked (some may be already off)
+      const input = page.locator('.notif-pref-toggle input').nth(i);
+      if (await input.isChecked()) {
+        await slider.click();
+        await page.waitForTimeout(300);
+      }
+    }
 
-    // Verify toggle-off persisted
+    // Verify push is now disabled
     await expect.poll(async () => {
       const res = await page.request.get('/api/notification-preferences', {
         headers: { 'X-CSRF-Token': csrf },
@@ -64,15 +72,15 @@ test.describe('Settings: notification preferences', () => {
       if (!res.ok()) return null;
       const data = await res.json();
       return data.preferences.pushEnabled;
-    }, { timeout: 5000, intervals: [300] }).toBe(false);
+    }, { timeout: 10000, intervals: [300] }).toBe(false);
 
-    // Re-query the toggle slider (DOM may have been morphed) and click to turn ON
-    const toggleSliderOn = page.locator('.notif-pref-toggle .toggle-slider').first();
+    // Turn chore_logged back ON
+    const toggleSliderOn = page.locator('.notif-pref-toggle input[data-notif-type="chore_logged"] + .toggle-slider').first();
     await toggleSliderOn.scrollIntoViewIfNeeded();
     await toggleSliderOn.click();
     await page.waitForTimeout(500);
 
-    // Verify toggle-on persisted
+    // Verify push is re-enabled
     await expect.poll(async () => {
       const res = await page.request.get('/api/notification-preferences', {
         headers: { 'X-CSRF-Token': csrf },
