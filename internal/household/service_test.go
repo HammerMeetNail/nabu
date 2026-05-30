@@ -538,7 +538,7 @@ func TestUpdateMemberRoleCrossHouseholdBlocked(t *testing.T) {
 	ctx := context.Background()
 
 	// Household A: owner is user 1.
-	svc.CreateHousehold(ctx, "Household A", "A", 1)
+	_, _ = svc.CreateHousehold(ctx, "Household A", "A", 1)
 
 	// Household B: owner is user 2, member is user 3.
 	hhB, _ := svc.CreateHousehold(ctx, "Household B", "B", 2)
