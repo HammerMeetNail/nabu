@@ -87,7 +87,7 @@ Action required: Check backup system immediately.
 EOF
 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Writing error report to R2..."
-    rclone copy "$error_file" "r2:${R2_BUCKET}/" 2>/dev/null || true
+    rclone copy "$error_file" "r2-nabu:${R2_BUCKET}/" 2>/dev/null || true
     rm -f "$error_file"
 
     echo "ERROR: $error_message"
@@ -105,10 +105,10 @@ cleanup() {
 trap cleanup EXIT
 
 # Get latest backup
-BACKUP_FILE=$(rclone ls "r2:${R2_BUCKET}/" 2>/dev/null | grep -E '\.sql\.gz\.gpg$' | sort -k2 | tail -1 | awk '{print $2}')
+BACKUP_FILE=$(rclone ls "r2-nabu:${R2_BUCKET}/" 2>/dev/null | grep -E '\.sql\.gz\.gpg$' | sort -k2 | tail -1 | awk '{print $2}')
 
 if [[ -z "$BACKUP_FILE" ]]; then
-    write_error "No backup files found in r2:${R2_BUCKET}/"
+    write_error "No backup files found in r2-nabu:${R2_BUCKET}/"
 fi
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Verifying backup: ${BACKUP_FILE}"
@@ -117,7 +117,7 @@ mkdir -p "$BACKUP_DIR"
 
 # Step 1: Download
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Downloading backup..."
-if ! rclone copy "r2:${R2_BUCKET}/${BACKUP_FILE}" "${BACKUP_DIR}/" 2>&1; then
+if ! rclone copy "r2-nabu:${R2_BUCKET}/${BACKUP_FILE}" "${BACKUP_DIR}/" 2>&1; then
     write_error "Failed to download backup from R2"
 fi
 

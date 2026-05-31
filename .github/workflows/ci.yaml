@@ -426,7 +426,7 @@ jobs:
             # Create/update rclone config for R2 backups
             mkdir -p ~/.config/rclone
             cat > ~/.config/rclone/rclone.conf << 'RCLONECONF'
-          [r2]
+          [r2-nabu]
           type = s3
           provider = Cloudflare
           access_key_id = ${R2_ACCESS_KEY_ID}

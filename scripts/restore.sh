@@ -26,8 +26,8 @@ if [[ -z "${BACKUP_ENCRYPTION_KEY:-}" ]]; then
 fi
 
 list_backups() {
-    echo "Available backups in r2:${R2_BUCKET}/"
-    rclone ls "r2:${R2_BUCKET}/" | sort -k2 | tail -20
+    echo "Available backups in r2-nabu:${R2_BUCKET}/"
+    rclone ls "r2-nabu:${R2_BUCKET}/" | sort -k2 | tail -20
 }
 
 if [[ "${1:-}" == "--list" ]] || [[ "${1:-}" == "-l" ]]; then
@@ -36,7 +36,7 @@ if [[ "${1:-}" == "--list" ]] || [[ "${1:-}" == "-l" ]]; then
 fi
 
 if [[ "${1:-}" == "--latest" ]]; then
-    BACKUP_FILE=$(rclone ls "r2:${R2_BUCKET}/" | sort -k2 | tail -1 | awk '{print $2}')
+    BACKUP_FILE=$(rclone ls "r2-nabu:${R2_BUCKET}/" | sort -k2 | tail -1 | awk '{print $2}')
     echo "Latest backup: $BACKUP_FILE"
 elif [[ -n "${1:-}" ]]; then
     BACKUP_FILE="$1"
@@ -59,9 +59,9 @@ if [[ "$CONFIRM" != "yes-restore-production" ]]; then
 fi
 
 echo "[$(date)] Downloading backup..."
-rclone copy "r2:${R2_BUCKET}/${BACKUP_FILE}" "${BACKUP_DIR}/" --progress
+rclone copy "r2-nabu:${R2_BUCKET}/${BACKUP_FILE}" "${BACKUP_DIR}/" --progress
 
-POSTGRES_CONTAINER=$(podman ps --format '{{.Names}}' 2>/dev/null | grep -E 'postgres' | head -1)
+POSTGRES_CONTAINER=$(podman ps --format '{{.Names}}' 2>/dev/null | grep -E 'choresy.*postgres' | head -1)
 
 if [[ -n "$POSTGRES_CONTAINER" ]]; then
     gpg --decrypt --batch --pinentry-mode loopback --passphrase-fd 3 3<<<"$BACKUP_ENCRYPTION_KEY" "${BACKUP_DIR}/${BACKUP_FILE}" \
