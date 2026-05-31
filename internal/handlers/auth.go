@@ -4,8 +4,8 @@ import (
 	"crypto/subtle"
 	"net/http"
 
-	"github.com/dave/choresy/internal/auth"
-	"github.com/dave/choresy/internal/middleware"
+	"github.com/HammerMeetNail/nabu/internal/auth"
+	"github.com/HammerMeetNail/nabu/internal/middleware"
 )
 
 type AuthHandler struct {
@@ -252,15 +252,15 @@ func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.setOIDCCookie(w, "choresy_oidc_state", state, 600)
-	h.setOIDCCookie(w, "choresy_oidc_nonce", nonce, 600)
+	h.setOIDCCookie(w, "nabu_oidc_state", state, 600)
+	h.setOIDCCookie(w, "nabu_oidc_nonce", nonce, 600)
 
 	http.Redirect(w, r, url, http.StatusFound)
 }
 
 func (h *AuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
-	expectedState := h.getOIDCCookie(r, "choresy_oidc_state")
+	expectedState := h.getOIDCCookie(r, "nabu_oidc_state")
 	if state == "" || subtle.ConstantTimeCompare([]byte(state), []byte(expectedState)) != 1 {
 		writeError(w, http.StatusBadRequest, "invalid state parameter")
 		return
@@ -272,7 +272,7 @@ func (h *AuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	expectedNonce := h.getOIDCCookie(r, "choresy_oidc_nonce")
+	expectedNonce := h.getOIDCCookie(r, "nabu_oidc_nonce")
 
 	user, session, err := h.authService.CompleteGoogleOIDC(r.Context(), code, expectedNonce)
 	if err != nil {

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/dave/choresy/internal/chore"
-	"github.com/dave/choresy/internal/config"
+	"github.com/HammerMeetNail/nabu/internal/chore"
+	"github.com/HammerMeetNail/nabu/internal/config"
 )
 
 func TestNewServerHealthEndpoint(t *testing.T) {
@@ -72,8 +72,8 @@ func TestNewServerServesIndex(t *testing.T) {
 	if body == "" {
 		t.Fatal("expected HTML response body")
 	}
-	if !strings.Contains(body, "Choresy") {
-		t.Fatal("expected Choresy in response body")
+	if !strings.Contains(body, "Nabu") {
+		t.Fatal("expected Nabu in response body")
 	}
 }
 
@@ -141,14 +141,14 @@ func TestMethodWrapperEnforcesHTTPVerb(t *testing.T) {
 func TestBuildVersionedSWInjectsVersion(t *testing.T) {
 	// Use a MapFS to simulate the embedded service-worker.js without relying
 	// on the real //go:embed FS (which only works at build time).
-	swSource := []byte(`const CACHE_NAME = "choresy-static-v1";`)
+	swSource := []byte(`const CACHE_NAME = "nabu-static-v1";`)
 	fsys := fstest.MapFS{
 		"service-worker.js": {Data: swSource},
 	}
 
 	// buildVersionedSW should replace "v1" with the given version.
 	result := buildVersionedSW(fsys, "0.1.99")
-	expected := `const CACHE_NAME = "choresy-static-0.1.99";`
+	expected := `const CACHE_NAME = "nabu-static-0.1.99";`
 	if string(result) != expected {
 		t.Fatalf("got  %q\nwant %q", string(result), expected)
 	}
@@ -157,12 +157,12 @@ func TestBuildVersionedSWInjectsVersion(t *testing.T) {
 func TestBuildVersionedSWHandlesArbitraryBaseVersion(t *testing.T) {
 	// The regex must match any numeric base version (v1, v2, v99, etc.)
 	// so a future source change doesn't silently break version injection.
-	swSource := []byte(`const CACHE_NAME = "choresy-static-v99";`)
+	swSource := []byte(`const CACHE_NAME = "nabu-static-v99";`)
 	fsys := fstest.MapFS{
 		"service-worker.js": {Data: swSource},
 	}
 	result := buildVersionedSW(fsys, "2.0.0")
-	expected := `const CACHE_NAME = "choresy-static-2.0.0";`
+	expected := `const CACHE_NAME = "nabu-static-2.0.0";`
 	if string(result) != expected {
 		t.Fatalf("got  %q\nwant %q", string(result), expected)
 	}
@@ -274,9 +274,9 @@ func TestNewOIDCProvider_WithGoogleCredentials(t *testing.T) {
 // need the call line itself to be executed.
 
 // srvRequest fires a single HTTP request at srv and returns the recorder.
-// csrfToken, when non-empty, sets the choresy_csrf cookie AND X-CSRF-Token
+// csrfToken, when non-empty, sets the nabu_csrf cookie AND X-CSRF-Token
 // header (required for state-changing methods on /api/ paths).
-// sessionCookie, when non-empty, attaches a choresy_session cookie.
+// sessionCookie, when non-empty, attaches a nabu_session cookie.
 func srvRequest(srv http.Handler, method, path, body, csrfToken, sessionCookie string) *httptest.ResponseRecorder {
 	var r io.Reader
 	if body != "" {
@@ -287,11 +287,11 @@ func srvRequest(srv http.Handler, method, path, body, csrfToken, sessionCookie s
 		req.Header.Set("Content-Type", "application/json")
 	}
 	if csrfToken != "" {
-		req.AddCookie(&http.Cookie{Name: "choresy_csrf", Value: csrfToken})
+		req.AddCookie(&http.Cookie{Name: "nabu_csrf", Value: csrfToken})
 		req.Header.Set("X-CSRF-Token", csrfToken)
 	}
 	if sessionCookie != "" {
-		req.AddCookie(&http.Cookie{Name: "choresy_session", Value: sessionCookie})
+		req.AddCookie(&http.Cookie{Name: "nabu_session", Value: sessionCookie})
 	}
 	rec := httptest.NewRecorder()
 	srv.ServeHTTP(rec, req)
@@ -299,7 +299,7 @@ func srvRequest(srv http.Handler, method, path, body, csrfToken, sessionCookie s
 }
 
 // srvRegister POSTs to /api/auth/register with a fixed test account and
-// returns the choresy_session cookie value from the response.
+// returns the nabu_session cookie value from the response.
 func srvRegister(t *testing.T, srv http.Handler) string {
 	t.Helper()
 	rec := srvRequest(srv, http.MethodPost, "/api/auth/register",
@@ -309,11 +309,11 @@ func srvRegister(t *testing.T, srv http.Handler) string {
 		t.Fatalf("register: got %d body=%s", rec.Code, rec.Body.String())
 	}
 	for _, c := range rec.Result().Cookies() {
-		if c.Name == "choresy_session" {
+		if c.Name == "nabu_session" {
 			return c.Value
 		}
 	}
-	t.Fatal("no choresy_session cookie after register")
+	t.Fatal("no nabu_session cookie after register")
 	return ""
 }
 

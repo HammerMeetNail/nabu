@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dave/choresy/internal/auth"
-	"github.com/dave/choresy/internal/chore"
-	"github.com/dave/choresy/internal/household"
-	"github.com/dave/choresy/internal/mail"
-	"github.com/dave/choresy/internal/middleware"
+	"github.com/HammerMeetNail/nabu/internal/auth"
+	"github.com/HammerMeetNail/nabu/internal/chore"
+	"github.com/HammerMeetNail/nabu/internal/household"
+	"github.com/HammerMeetNail/nabu/internal/mail"
+	"github.com/HammerMeetNail/nabu/internal/middleware"
 )
 
 func setupChoreTest(t *testing.T) (*ChoreHandler, string, *auth.Service, *household.Service) {
@@ -40,10 +40,10 @@ func setupChoreTest(t *testing.T) (*ChoreHandler, string, *auth.Service, *househ
 }
 
 func withUser(r *http.Request, authService *auth.Service, sessionID string) *http.Request {
-	r.AddCookie(&http.Cookie{Name: "choresy_session", Value: sessionID})
+	r.AddCookie(&http.Cookie{Name: "nabu_session", Value: sessionID})
 	var authed *http.Request
 	rec := httptest.NewRecorder()
-	middleware.Session(authService, "choresy_session")(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	middleware.Session(authService, "nabu_session")(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		authed = req
 	})).ServeHTTP(rec, r)
 	return authed

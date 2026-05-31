@@ -1064,7 +1064,7 @@ make e2e         # E2E: log several chores across days → view stats → leader
 
 #### 9.5 Deployment
 
-- [ ] Build and push container image to `quay.io/dave/choresy`
+- [ ] Build and push container image to `quay.io/nabu/nabu`
 - [ ] Set up Hetzner server using `cloud-init.yaml`
 - [ ] Configure Cloudflare Tunnel
 - [ ] Deploy via `compose.server.yaml`

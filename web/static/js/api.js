@@ -1,5 +1,5 @@
 export function getCSRFToken() {
-  const match = document.cookie.match(/(?:^|;\s*)choresy_csrf=([^;]*)/);
+  const match = document.cookie.match(/(?:^|;\s*)nabu_csrf=([^;]*)/);
   return match ? match[1] : "";
 }
 

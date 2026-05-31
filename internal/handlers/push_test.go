@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dave/choresy/internal/auth"
-	"github.com/dave/choresy/internal/household"
-	"github.com/dave/choresy/internal/mail"
-	"github.com/dave/choresy/internal/push"
+	"github.com/HammerMeetNail/nabu/internal/auth"
+	"github.com/HammerMeetNail/nabu/internal/household"
+	"github.com/HammerMeetNail/nabu/internal/mail"
+	"github.com/HammerMeetNail/nabu/internal/push"
 )
 
 func setupPushTest(t *testing.T) (*PushHandler, string, *auth.Service) {

@@ -1,4 +1,4 @@
-module github.com/dave/choresy
+module github.com/HammerMeetNail/nabu
 
 go 1.25.10
 

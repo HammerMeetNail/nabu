@@ -937,7 +937,7 @@ async function doChangePassword(form) {
 }
 
 async function doResendVerification() {
-  const csrfToken = document.cookie.match(/(?:^|;\s*)choresy_csrf=([^;]*)/)?.[1] || "";
+  const csrfToken = document.cookie.match(/(?:^|;\s*)nabu_csrf=([^;]*)/)?.[1] || "";
   try {
     await fetch("/api/auth/email/verification/resend", {
       method: "POST",
@@ -950,7 +950,7 @@ async function doResendVerification() {
 }
 
 async function verifyEmail(token) {
-  const csrfToken = document.cookie.match(/(?:^|;\s*)choresy_csrf=([^;]*)/)?.[1] || "";
+  const csrfToken = document.cookie.match(/(?:^|;\s*)nabu_csrf=([^;]*)/)?.[1] || "";
   const res = await fetch(`/api/auth/email/verify?token=${encodeURIComponent(token)}`, {
     headers: { "X-CSRF-Token": csrfToken },
   });
@@ -980,7 +980,7 @@ async function doJoinWithCode(code) {
 
 async function consumeMagicLink(token) {
   try {
-    const csrfToken = document.cookie.match(/(?:^|;\s*)choresy_csrf=([^;]*)/)?.[1] || "";
+    const csrfToken = document.cookie.match(/(?:^|;\s*)nabu_csrf=([^;]*)/)?.[1] || "";
     const res = await fetch(`/api/auth/magic-link/consume?token=${encodeURIComponent(token)}`, {
       headers: { "X-CSRF-Token": csrfToken },
     });

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dave/choresy/internal/push"
+	"github.com/HammerMeetNail/nabu/internal/push"
 )
 
 // ─── GenerateVAPIDKeys ────────────────────────────────────────────────────────

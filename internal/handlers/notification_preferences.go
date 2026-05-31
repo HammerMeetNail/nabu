@@ -3,8 +3,8 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/dave/choresy/internal/middleware"
-	"github.com/dave/choresy/internal/notification"
+	"github.com/HammerMeetNail/nabu/internal/middleware"
+	"github.com/HammerMeetNail/nabu/internal/notification"
 )
 
 type NotificationPreferencesHandler struct {

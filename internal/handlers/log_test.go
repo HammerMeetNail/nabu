@@ -6,12 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dave/choresy/internal/auth"
-	"github.com/dave/choresy/internal/chore"
-	"github.com/dave/choresy/internal/household"
-	logsvc "github.com/dave/choresy/internal/log"
-	"github.com/dave/choresy/internal/mail"
-	"github.com/dave/choresy/internal/notification"
+	"github.com/HammerMeetNail/nabu/internal/auth"
+	"github.com/HammerMeetNail/nabu/internal/chore"
+	"github.com/HammerMeetNail/nabu/internal/household"
+	logsvc "github.com/HammerMeetNail/nabu/internal/log"
+	"github.com/HammerMeetNail/nabu/internal/mail"
+	"github.com/HammerMeetNail/nabu/internal/notification"
 )
 
 func setupLogTest(t *testing.T) (*LogHandler, string, *auth.Service) {

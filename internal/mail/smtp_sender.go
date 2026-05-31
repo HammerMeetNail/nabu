@@ -32,7 +32,7 @@ func NewSMTPSender(host, port, user, pass, from string) *SMTPSender {
 func (s *SMTPSender) Send(_ context.Context, msg Message) error {
 	from := s.from
 	if from == "" {
-		from = "no-reply@choresy.local"
+		from = "no-reply@nabu.local"
 	}
 	to := []string{msg.To}
 	body := buildEmail(from, msg)

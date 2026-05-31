@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dave/choresy/internal/auth"
+	"github.com/HammerMeetNail/nabu/internal/auth"
 )
 
 func TestCSRFMiddlewareRejectsMissingHeader(t *testing.T) {
@@ -54,7 +54,7 @@ func TestSessionMiddlewareInjectsCurrentUser(t *testing.T) {
 		t.Fatalf("Register returned error: %v", err)
 	}
 
-	handler := Session(svc, "choresy_session")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := Session(svc, "nabu_session")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		currentUser, ok := CurrentUser(r.Context())
 		if !ok {
 			t.Fatal("expected current user in context")
@@ -66,7 +66,7 @@ func TestSessionMiddlewareInjectsCurrentUser(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
-	req.AddCookie(&http.Cookie{Name: "choresy_session", Value: session.ID})
+	req.AddCookie(&http.Cookie{Name: "nabu_session", Value: session.ID})
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -212,7 +212,7 @@ func TestWithUser_SetsAndRetrieves(t *testing.T) {
 func TestSessionMiddlewareSkipsStaticPaths(t *testing.T) {
 	called := false
 	svc := auth.NewService(auth.NewMemoryStore())
-	handler := Session(svc, "choresy_session")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := Session(svc, "nabu_session")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusNoContent)
 	}))

@@ -13,23 +13,23 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dave/choresy/internal/audit"
-	"github.com/dave/choresy/internal/auth"
-	"github.com/dave/choresy/internal/chore"
-	"github.com/dave/choresy/internal/config"
-	"github.com/dave/choresy/internal/database"
-	"github.com/dave/choresy/internal/handlers"
-	"github.com/dave/choresy/internal/household"
-	logsvc "github.com/dave/choresy/internal/log"
-	"github.com/dave/choresy/internal/mail"
-	"github.com/dave/choresy/internal/middleware"
-	"github.com/dave/choresy/internal/notification"
-	"github.com/dave/choresy/internal/push"
-	"github.com/dave/choresy/internal/schedule"
-	"github.com/dave/choresy/internal/stats"
-	"github.com/dave/choresy/internal/userprefs"
-	"github.com/dave/choresy/internal/version"
-	webassets "github.com/dave/choresy/web"
+	"github.com/HammerMeetNail/nabu/internal/audit"
+	"github.com/HammerMeetNail/nabu/internal/auth"
+	"github.com/HammerMeetNail/nabu/internal/chore"
+	"github.com/HammerMeetNail/nabu/internal/config"
+	"github.com/HammerMeetNail/nabu/internal/database"
+	"github.com/HammerMeetNail/nabu/internal/handlers"
+	"github.com/HammerMeetNail/nabu/internal/household"
+	logsvc "github.com/HammerMeetNail/nabu/internal/log"
+	"github.com/HammerMeetNail/nabu/internal/mail"
+	"github.com/HammerMeetNail/nabu/internal/middleware"
+	"github.com/HammerMeetNail/nabu/internal/notification"
+	"github.com/HammerMeetNail/nabu/internal/push"
+	"github.com/HammerMeetNail/nabu/internal/schedule"
+	"github.com/HammerMeetNail/nabu/internal/stats"
+	"github.com/HammerMeetNail/nabu/internal/userprefs"
+	"github.com/HammerMeetNail/nabu/internal/version"
+	webassets "github.com/HammerMeetNail/nabu/web"
 )
 
 type Server struct {
@@ -73,7 +73,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	authService.SetAuditLogger(audit.NewStdLogger(log.Default()))
 	authService.SetMailer(newMailer(cfg), cfg.AppBaseURL)
 	authService.SetOIDCProvider(newOIDCProvider(cfg))
-	authHandler := handlers.NewAuthHandler(authService, "choresy_session", cfg.ServerSecure, cfg.AppBaseURL)
+	authHandler := handlers.NewAuthHandler(authService, "nabu_session", cfg.ServerSecure, cfg.AppBaseURL)
 	householdService := household.NewService(householdStore, authService)
 	householdHandler := handlers.NewHouseholdHandler(householdService)
 	choreService := chore.NewService(choreStore)
@@ -347,8 +347,8 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	var handler http.Handler = mux
 	handler = middleware.RequestLogger(nil)(handler)
 	handler = middleware.SecurityHeaders()(handler)
-	handler = middleware.Session(authService, "choresy_session")(handler)
-	handler = middleware.CSRF("choresy_csrf")(handler)
+	handler = middleware.Session(authService, "nabu_session")(handler)
+	handler = middleware.CSRF("nabu_csrf")(handler)
 	handler = rateLimiter.Middleware("/api/auth")(handler)
 
 	return &Server{handler: handler}
@@ -386,7 +386,7 @@ func renderIndex(w http.ResponseWriter, cfg config.Config) {
 		VAPIDPublicKey     string
 		GoogleOAuthEnabled bool
 	}{
-		AppName:            "Choresy",
+		AppName:            "Nabu",
 		Version:            version.Version,
 		VAPIDPublicKey:     cfg.VAPIDPublicKey,
 		GoogleOAuthEnabled: googleOAuthEnabled,
@@ -483,7 +483,7 @@ func buildVersionedJSCache(fsys fs.FS, ver string) map[string][]byte {
 	return cache
 }
 
-var swCacheNameRE = regexp.MustCompile(`("choresy-static-)v\d+(")`)
+var swCacheNameRE = regexp.MustCompile(`("nabu-static-)v\d+(")`)
 
 func buildVersionedSW(fsys fs.FS, ver string) []byte {
 	raw, err := fs.ReadFile(fsys, "service-worker.js")

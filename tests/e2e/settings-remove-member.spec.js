@@ -9,7 +9,7 @@ function uniqueEmail() {
 }
 
 async function getCSRF(page) {
-  return (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
+  return (await page.context().cookies()).find(c => c.name === 'nabu_csrf')?.value || '';
 }
 
 async function setupOwnerWithHousehold(page) {

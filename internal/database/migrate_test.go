@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
-	migrationassets "github.com/dave/choresy/migrations"
+	migrationassets "github.com/HammerMeetNail/nabu/migrations"
 )
 
 func TestMigrateAppliesPendingMigrations(t *testing.T) {

@@ -18,8 +18,8 @@ ARG BUILD_VERSION=dev
 
 # Build the application
 RUN CGO_ENABLED=0 GOOS=linux GOCACHE=/tmp/go-build go build \
-    -ldflags="-w -s -X 'github.com/dave/choresy/internal/version.Version=${BUILD_VERSION}'" \
-    -o choresy ./cmd/server \
+    -ldflags="-w -s -X 'github.com/HammerMeetNail/nabu/internal/version.Version=${BUILD_VERSION}'" \
+    -o nabu ./cmd/server \
     && rm -rf /tmp/go-build
 
 # Runtime stage
@@ -34,7 +34,7 @@ RUN apk add --no-cache ca-certificates tzdata
 RUN adduser -D -g '' appuser
 
 # Copy binary from builder
-COPY --from=builder /build/choresy .
+COPY --from=builder /build/nabu .
 
 # Set ownership
 RUN chown -R appuser:appuser /app
@@ -50,4 +50,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
 # Run the application
-CMD ["./choresy"]
+CMD ["./nabu"]

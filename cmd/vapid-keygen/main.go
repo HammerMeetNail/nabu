@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dave/choresy/internal/push"
+	"github.com/HammerMeetNail/nabu/internal/push"
 )
 
 func main() {

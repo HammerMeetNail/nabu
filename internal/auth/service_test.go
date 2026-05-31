@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dave/choresy/internal/audit"
-	"github.com/dave/choresy/internal/mail"
+	"github.com/HammerMeetNail/nabu/internal/audit"
+	"github.com/HammerMeetNail/nabu/internal/mail"
 )
 
 func TestRegister(t *testing.T) {

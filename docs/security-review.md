@@ -1,7 +1,7 @@
 # Choresy Security Review
 
 **Date:** 2026-05-30  
-**Scope:** Full codebase, dependency audit, live pentest of production (https://choresy.yearofbingo.com)  
+**Scope:** Full codebase, dependency audit, live pentest of production (https://nabu-app.com)  
 **Reviewer:** OpenCode automated security review  
 **Go version in use:** go1.25 (go.mod)  
 **Current app version:** v0.1.163  
@@ -763,7 +763,7 @@ Every user-supplied value uses parameterized placeholders (`$1`, `$2`, etc.). Al
 
 ## Production Configuration Observations (Pentest)
 
-The following was observed from the live site `https://choresy.yearofbingo.com`:
+The following was observed from the live site `https://nabu-app.com`:
 
 | Check | Result |
 |-------|--------|

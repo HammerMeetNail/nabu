@@ -186,7 +186,7 @@ The `/service-worker.js` endpoint must return `Cache-Control: no-store` with `cf
 
 Verify:
 ```bash
-curl -sI https://choresy.yearofbingo.com/service-worker.js | grep -i cache
+curl -sI https://nabu-app.com/service-worker.js | grep -i cache
 # Expected: cache-control: no-store
 #           cf-cache-status: BYPASS
 ```
@@ -197,7 +197,7 @@ See `internal/app/server.go` for the SW handler.
 
 ```bash
 # Log a chore to trigger push notifications
-curl -X POST https://choresy.yearofbingo.com/api/logs \
+curl -X POST https://nabu-app.com/api/logs \
   -H "Content-Type: application/json" \
   -H "X-CSRF-Token: <csrf_token>" \
   -b "choresy_session=<session>; choresy_csrf=<csrf>" \

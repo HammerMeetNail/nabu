@@ -83,7 +83,7 @@ describe("Auth Views", () => {
     const { renderLoginView } = await import("../auth.js");
     const html = renderLoginView();
     assert.ok(html.includes("Sign In"));
-    assert.ok(html.includes("Choresy"));
+    assert.ok(html.includes("Nabu"));
     assert.ok(html.includes("Create Account"));
   });
 

@@ -5,7 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/dave/choresy/internal/log"
+	"github.com/HammerMeetNail/nabu/internal/log"
 )
 
 func nowIn(loc *time.Location) time.Time {

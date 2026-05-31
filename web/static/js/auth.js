@@ -114,7 +114,7 @@ export function renderLoginView(googleOAuthEnabled) {
     </a>
   ` : "";
   return `<div class="auth-card">` +
-    `<h1 class="auth-title">Choresy</h1>` +
+    `<h1 class="auth-title">Nabu</h1>` +
     `<form id="login-form" data-action="login">` +
     `  <div class="form-group">` +
     `    <label class="form-label" for="login-email">Email</label>` +

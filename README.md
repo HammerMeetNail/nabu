@@ -171,8 +171,8 @@ The service worker file (`/service-worker.js`) is also version-injected at start
 
 ## Deployment
 
-- **Production URL**: `https://choresy.yearofbingo.com`
-- **Container image**: `quay.io/choresy/choresy` (multi-arch: amd64 + arm64)
+- **Production URL**: `https://nabu-app.com`
+- **Container image**: `quay.io/nabu/nabu` (multi-arch: amd64 + arm64)
 - **Deploy**: push a `v*` tag — CI builds, runs all tests, scans for vulnerabilities, signs the image, and deploys automatically
 - **Test account**: `verify@yearofbingo.com` / `test123456`
 
@@ -194,16 +194,16 @@ Pushes to `main` and `v*` tags trigger:
 
 ```bash
 # Imports must carry the new version tag
-curl -s https://choresy.yearofbingo.com/static/js/calendar.js | grep "^import"
+curl -s https://nabu-app.com/static/js/calendar.js | grep "^import"
 # Expected: import { ... } from "./utils.js?v=0.1.X";
 
 # Cache headers must be no-store / BYPASS (not max-age / HIT)
-curl -sI https://choresy.yearofbingo.com/static/js/app.js | grep -i cache
+curl -sI https://nabu-app.com/static/js/app.js | grep -i cache
 # Expected: cache-control: no-store
 #           cf-cache-status: BYPASS
 
 # Version endpoint
-curl -s https://choresy.yearofbingo.com/ | grep 'app.js'
+curl -s https://nabu-app.com/ | grep 'app.js'
 # Expected: src="/static/js/app.js?v=0.1.X"
 ```
 

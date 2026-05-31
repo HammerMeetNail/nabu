@@ -3,8 +3,8 @@ package handlers
 import (
 	"net/http"
 
-	"github.com/dave/choresy/internal/middleware"
-	"github.com/dave/choresy/internal/userprefs"
+	"github.com/HammerMeetNail/nabu/internal/middleware"
+	"github.com/HammerMeetNail/nabu/internal/userprefs"
 )
 
 // PreferencesHandler handles GET /api/preferences and PATCH /api/preferences.

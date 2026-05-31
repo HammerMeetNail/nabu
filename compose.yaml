@@ -11,10 +11,10 @@ services:
     environment:
       PORT: "8080"
       APP_BASE_URL: "http://localhost:8080"
-      DATABASE_URL: "postgres://choresy:choresy@postgres:5432/choresy?sslmode=disable"
+      DATABASE_URL: "postgres://nabu:nabu@postgres:5432/nabu?sslmode=disable"
       SMTP_HOST: "mailpit"
       SMTP_PORT: "1025"
-      SMTP_FROM: "no-reply@choresy.local"
+      SMTP_FROM: "no-reply@nabu.local"
       RATE_LIMIT_AUTH_MAX: "1000"
     ports:
       - "8080:8080"
@@ -26,11 +26,11 @@ services:
   postgres:
     image: docker.io/postgres:17-alpine
     environment:
-      POSTGRES_DB: choresy
-      POSTGRES_USER: choresy
-      POSTGRES_PASSWORD: choresy
+      POSTGRES_DB: nabu
+      POSTGRES_USER: nabu
+      POSTGRES_PASSWORD: nabu
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U choresy -d choresy"]
+      test: ["CMD-SHELL", "pg_isready -U nabu -d nabu"]
       interval: 5s
       timeout: 5s
       retries: 10

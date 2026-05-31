@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dave/choresy/internal/audit"
-	choresymail "github.com/dave/choresy/internal/mail"
+	"github.com/HammerMeetNail/nabu/internal/audit"
+	nabumail "github.com/HammerMeetNail/nabu/internal/mail"
 )
 
 var (
@@ -31,7 +31,7 @@ var (
 type Service struct {
 	store           Store
 	sessionDuration time.Duration
-	mailer          choresymail.Sender
+	mailer          nabumail.Sender
 	auditLogger     audit.Logger
 	baseURL         string
 	oidcProvider    OIDCProvider
@@ -42,14 +42,14 @@ func NewService(store Store) *Service {
 	return &Service{
 		store:           store,
 		sessionDuration: 30 * 24 * time.Hour,
-		mailer:          choresymail.NopSender{},
+		mailer:          nabumail.NopSender{},
 		auditLogger:     audit.NopLogger{},
 		baseURL:         "http://localhost:8080",
 		now:             func() time.Time { return time.Now().UTC() },
 	}
 }
 
-func (s *Service) SetMailer(sender choresymail.Sender, baseURL string) {
+func (s *Service) SetMailer(sender nabumail.Sender, baseURL string) {
 	if sender != nil {
 		s.mailer = sender
 	}
@@ -209,9 +209,9 @@ func (s *Service) sendVerificationEmail(ctx context.Context, user User) error {
 	if err != nil {
 		return err
 	}
-	if err := s.mailer.Send(ctx, choresymail.Message{
+	if err := s.mailer.Send(ctx, nabumail.Message{
 		To:      user.Email,
-		Subject: "Verify your Choresy email",
+		Subject: "Verify your Nabu email",
 		Body:    emailVerificationTemplate(s.baseURL, token),
 	}); err != nil {
 		return err
@@ -237,9 +237,9 @@ func (s *Service) RequestMagicLink(ctx context.Context, email string) error {
 		return err
 	}
 
-	if err := s.mailer.Send(ctx, choresymail.Message{
+	if err := s.mailer.Send(ctx, nabumail.Message{
 		To:      normalizedEmail,
-		Subject: "Your Choresy magic link",
+		Subject: "Your Nabu magic link",
 		Body:    magicLinkTemplate(s.baseURL, token),
 	}); err != nil {
 		return err
@@ -300,9 +300,9 @@ func (s *Service) RequestPasswordReset(ctx context.Context, email string) error 
 		return err
 	}
 
-	if err := s.mailer.Send(ctx, choresymail.Message{
+	if err := s.mailer.Send(ctx, nabumail.Message{
 		To:      user.Email,
-		Subject: "Reset your Choresy password",
+		Subject: "Reset your Nabu password",
 		Body:    passwordResetTemplate(s.baseURL, token),
 	}); err != nil {
 		return err
@@ -520,7 +520,7 @@ func hashToken(token string) string {
 func emailVerificationTemplate(baseURL, token string) string {
 	link := fmt.Sprintf("%s/verify-email?token=%s", baseURL, token)
 	return fmt.Sprintf(`
-	<h2>Welcome to Choresy!</h2>
+	<h2>Welcome to Nabu!</h2>
 	<p>Click the link below to verify your email address:</p>
 	<p><a href="%s">Verify Email</a></p>
 	<p>Or copy this link: %s</p>
@@ -530,9 +530,9 @@ func emailVerificationTemplate(baseURL, token string) string {
 func magicLinkTemplate(baseURL, token string) string {
 	link := fmt.Sprintf("%s/magic-login?token=%s", baseURL, token)
 	return fmt.Sprintf(`
-	<h2>Your Choresy magic link</h2>
+	<h2>Your Nabu magic link</h2>
 	<p>Click the link below to sign in:</p>
-	<p><a href="%s">Sign in to Choresy</a></p>
+	<p><a href="%s">Sign in to Nabu</a></p>
 	<p>Or copy this link: %s</p>
 	`, link, link)
 }
@@ -540,7 +540,7 @@ func magicLinkTemplate(baseURL, token string) string {
 func passwordResetTemplate(baseURL, token string) string {
 	link := fmt.Sprintf("%s/reset-password?token=%s", baseURL, token)
 	return fmt.Sprintf(`
-	<h2>Reset your Choresy password</h2>
+	<h2>Reset your Nabu password</h2>
 	<p>Click the link below to reset your password:</p>
 	<p><a href="%s">Reset Password</a></p>
 	<p>Or copy this link: %s</p>

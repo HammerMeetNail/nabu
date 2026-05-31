@@ -1,6 +1,6 @@
 {
-  "name": "Choresy — Household Chore Tracker",
-  "short_name": "Choresy",
+  "name": "Nabu — Household Chore Tracker",
+  "short_name": "Nabu",
   "start_url": "/",
   "display": "standalone",
   "orientation": "portrait",

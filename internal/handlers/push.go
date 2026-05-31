@@ -4,8 +4,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/dave/choresy/internal/middleware"
-	"github.com/dave/choresy/internal/push"
+	"github.com/HammerMeetNail/nabu/internal/middleware"
+	"github.com/HammerMeetNail/nabu/internal/push"
 )
 
 type PushHandler struct {

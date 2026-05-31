@@ -1,4 +1,4 @@
-const CACHE_NAME = "choresy-static-v1";
+const CACHE_NAME = "nabu-static-v1";
 const OFFLINE_URL = "/static/offline.html";
 const STATIC_ASSETS = [
   "/static/css/app.css",
@@ -47,7 +47,7 @@ self.addEventListener("push", (event) => {
     self.__diag = self.__diag || [];
     self.__diag.push({ type: "push-decode-error", ts, msg: e.message });
   }
-  const title = data.title || "Choresy";
+  const title = data.title || "Nabu";
   const body = data.body || "";
   const icon = "/static/icons/icon-192.png";
   self.lastPush = { decrypted, title, body, time: ts, hasData };
@@ -59,7 +59,7 @@ self.addEventListener("push", (event) => {
       self.registration.showNotification(title, {
         body: body || "(tap to open)",
         icon,
-        tag: "choresy",
+        tag: "nabu",
         requireInteraction: true,
         vibrate: [200, 100, 200],
       }),

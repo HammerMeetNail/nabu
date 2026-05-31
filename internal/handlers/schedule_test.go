@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dave/choresy/internal/auth"
-	"github.com/dave/choresy/internal/household"
-	"github.com/dave/choresy/internal/mail"
-	"github.com/dave/choresy/internal/schedule"
+	"github.com/HammerMeetNail/nabu/internal/auth"
+	"github.com/HammerMeetNail/nabu/internal/household"
+	"github.com/HammerMeetNail/nabu/internal/mail"
+	"github.com/HammerMeetNail/nabu/internal/schedule"
 )
 
 func setupScheduleTest(t *testing.T) (*ScheduleHandler, string, *auth.Service) {
