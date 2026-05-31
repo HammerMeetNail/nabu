@@ -423,9 +423,9 @@ jobs:
           ENVFILE
             chmod 600 .env
 
-            # Create/update rclone config for R2 backups
+            # Create/update rclone config for R2 backups (separate file to avoid conflict with yearofbingo)
             mkdir -p ~/.config/rclone
-            cat > ~/.config/rclone/rclone.conf << 'RCLONECONF'
+            cat > ~/.config/rclone/rclone-nabu.conf << 'RCLONECONF'
           [r2-nabu]
           type = s3
           provider = Cloudflare
@@ -435,7 +435,7 @@ jobs:
           acl = private
           no_check_bucket = true
           RCLONECONF
-            chmod 600 ~/.config/rclone/rclone.conf
+            chmod 600 ~/.config/rclone/rclone-nabu.conf
 
             # Pull new image and restart
             podman-compose pull
