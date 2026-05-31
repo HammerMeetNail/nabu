@@ -11,6 +11,9 @@ if [[ -f "$ENV_FILE" ]]; then
     set +a
 fi
 
+# Use dedicated rclone config to avoid conflicts with yearofbingo
+export RCLONE_CONFIG="$HOME/.config/rclone/rclone-nabu.conf"
+
 BACKUP_DIR="/tmp/nabu-backups"
 R2_BUCKET="${R2_BUCKET:-nabu-app-backups}"
 DB_NAME="${DB_NAME:-choresy}"

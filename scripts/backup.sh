@@ -21,6 +21,9 @@ if [[ -f "$ENV_FILE" ]]; then
     set +a
 fi
 
+# Use dedicated rclone config to avoid conflicts with yearofbingo
+export RCLONE_CONFIG="$HOME/.config/rclone/rclone-nabu.conf"
+
 # Optional email notifications (Resend)
 if [[ -f "${SCRIPT_DIR}/notify-email.sh" ]]; then
     source "${SCRIPT_DIR}/notify-email.sh"
