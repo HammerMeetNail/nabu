@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_FILE="${ENV_FILE:-/opt/choresy/.env}"
+ENV_FILE="${ENV_FILE:-/opt/nabu/.env}"
 
 if [[ -f "$ENV_FILE" ]]; then
     set -a
@@ -11,8 +11,8 @@ if [[ -f "$ENV_FILE" ]]; then
     set +a
 fi
 
-BACKUP_DIR="/tmp/choresy-backups"
-R2_BUCKET="${R2_BUCKET:-choresy-backups}"
+BACKUP_DIR="/tmp/nabu-backups"
+R2_BUCKET="${R2_BUCKET:-nabu-app-backups}"
 DB_NAME="${DB_NAME:-choresy}"
 
 if [[ -z "${DB_PASSWORD:-}" ]]; then

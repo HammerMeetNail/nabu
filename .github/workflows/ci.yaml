@@ -370,6 +370,13 @@ jobs:
           VAPID_PUBLIC_KEY: ${{ secrets.VAPID_PUBLIC_KEY }}
           VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
           VAPID_SUBJECT: ${{ secrets.VAPID_SUBJECT }}
+          BACKUP_ENCRYPTION_KEY: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+          BACKUP_NOTIFY_EMAILS: ${{ secrets.BACKUP_NOTIFY_EMAILS }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          EMAIL_FROM_ADDRESS: ${{ secrets.EMAIL_FROM_ADDRESS }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
         run: |
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
@@ -390,12 +397,15 @@ jobs:
             cp compose.server.yaml compose.server.deploy.yaml
           fi
 
-          # Copy compose file to server
+          # Copy compose file and scripts to server
           scp compose.server.deploy.yaml ssh.yearofbingo.com:/opt/nabu/compose.yaml
+          scp scripts/backup.sh scripts/restore.sh scripts/verify-backup.sh scripts/notify-email.sh ssh.yearofbingo.com:/opt/nabu/scripts/
 
           # Deploy
           ssh ssh.yearofbingo.com << EOF
             cd /opt/nabu
+
+            chmod 0755 scripts/*.sh
 
             # Write .env with all secrets
             cat > .env << 'ENVFILE'
@@ -406,8 +416,26 @@ jobs:
           VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
           VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
           VAPID_SUBJECT=${VAPID_SUBJECT}
+          BACKUP_ENCRYPTION_KEY=${BACKUP_ENCRYPTION_KEY}
+          BACKUP_NOTIFY_EMAILS=${BACKUP_NOTIFY_EMAILS}
+          RESEND_API_KEY=${RESEND_API_KEY}
+          EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS}
           ENVFILE
             chmod 600 .env
+
+            # Create/update rclone config for R2 backups
+            mkdir -p ~/.config/rclone
+            cat > ~/.config/rclone/rclone.conf << 'RCLONECONF'
+          [r2]
+          type = s3
+          provider = Cloudflare
+          access_key_id = ${R2_ACCESS_KEY_ID}
+          secret_access_key = ${R2_SECRET_ACCESS_KEY}
+          endpoint = https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
+          acl = private
+          no_check_bucket = true
+          RCLONECONF
+            chmod 600 ~/.config/rclone/rclone.conf
 
             # Pull new image and restart
             podman-compose pull
