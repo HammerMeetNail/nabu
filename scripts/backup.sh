@@ -83,7 +83,7 @@ CURRENT_STEP="dump"
 
 # For containerized PostgreSQL, connect via podman if localhost
 if [[ "$DB_HOST" == "localhost" ]] || [[ "$DB_HOST" == "127.0.0.1" ]]; then
-    POSTGRES_CONTAINER=$(podman ps --format '{{.Names}}' 2>/dev/null | grep -E 'postgres' | head -1)
+    POSTGRES_CONTAINER=$(podman ps --format '{{.Names}}' 2>/dev/null | grep -E 'choresy.*postgres' | head -1)
 
     if [[ -n "$POSTGRES_CONTAINER" ]]; then
         echo "Using podman exec for database dump (container: $POSTGRES_CONTAINER)..."
@@ -127,7 +127,7 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] Backup created: ${BACKUP_FILE} (${BACKUP_SI
 # Upload to R2
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Uploading to R2..."
 CURRENT_STEP="upload"
-rclone copy "${BACKUP_DIR}/${BACKUP_FILE}" "r2:${R2_BUCKET}/" --progress
+rclone copy "${BACKUP_DIR}/${BACKUP_FILE}" "r2-nabu:${R2_BUCKET}/" --progress
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Upload complete"
 CURRENT_STEP="cleanup"
