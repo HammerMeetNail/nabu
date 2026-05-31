@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/dave/choresy/internal/config"
+	"github.com/HammerMeetNail/nabu/internal/config"
 )
 
 func TestRunServesOnPort(t *testing.T) {

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	chorelog "github.com/dave/choresy/internal/log"
+	chorelog "github.com/HammerMeetNail/nabu/internal/log"
 )
 
 // ─── Service tests ────────────────────────────────────────────────────────────

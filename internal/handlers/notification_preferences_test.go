@@ -6,10 +6,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dave/choresy/internal/auth"
-	"github.com/dave/choresy/internal/household"
-	"github.com/dave/choresy/internal/mail"
-	"github.com/dave/choresy/internal/notification"
+	"github.com/HammerMeetNail/nabu/internal/auth"
+	"github.com/HammerMeetNail/nabu/internal/household"
+	"github.com/HammerMeetNail/nabu/internal/mail"
+	"github.com/HammerMeetNail/nabu/internal/notification"
 )
 
 func setupNotifPrefsTest(t *testing.T) (*NotificationPreferencesHandler, string, *auth.Service) {

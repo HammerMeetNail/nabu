@@ -17,7 +17,7 @@ on:
 env:
   GO_VERSION: "1.25"
   REGISTRY: quay.io
-  IMAGE_NAME: choresy/choresy
+  IMAGE_NAME: nabu/nabu
 
 jobs:
   changes:
@@ -313,12 +313,12 @@ jobs:
             ## Container Image
 
             ```bash
-            podman pull quay.io/choresy/choresy:${{ steps.version.outputs.version }}
+            podman pull quay.io/nabu/nabu:${{ steps.version.outputs.version }}
             ```
 
             **Available tags:**
-            - `quay.io/choresy/choresy:${{ steps.version.outputs.version }}`
-            - `quay.io/choresy/choresy:latest`
+            - `quay.io/nabu/nabu:${{ steps.version.outputs.version }}`
+            - `quay.io/nabu/nabu:latest`
 
   deploy:
     name: Deploy to Production
@@ -384,18 +384,18 @@ jobs:
 
           # Substitute image digest into compose file
           if [ -n "${IMAGE_DIGEST}" ]; then
-            sed "s|image: quay.io/choresy/choresy:latest|# tag: ${IMAGE_TAG}\n    image: quay.io/choresy/choresy@${IMAGE_DIGEST}|" \
+            sed "s|image: quay.io/nabu/nabu:latest|# tag: ${IMAGE_TAG}\n    image: quay.io/nabu/nabu@${IMAGE_DIGEST}|" \
               compose.server.yaml > compose.server.deploy.yaml
           else
             cp compose.server.yaml compose.server.deploy.yaml
           fi
 
           # Copy compose file to server
-          scp compose.server.deploy.yaml ssh.yearofbingo.com:/opt/choresy/compose.yaml
+          scp compose.server.deploy.yaml ssh.yearofbingo.com:/opt/nabu/compose.yaml
 
           # Deploy
           ssh ssh.yearofbingo.com << EOF
-            cd /opt/choresy
+            cd /opt/nabu
 
             # Write .env with all secrets
             cat > .env << 'ENVFILE'

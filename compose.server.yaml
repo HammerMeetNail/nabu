@@ -1,14 +1,15 @@
-# Production compose file — deployed to /opt/choresy/compose.yaml by CI/CD
+# Production compose file — deployed to /opt/nabu/compose.yaml by CI/CD
+# Shares the choresy_default network for DB access; does not run its own postgres.
 
 services:
   app:
-    image: quay.io/choresy/choresy:latest   # CI substitutes digest at deploy time
+    image: quay.io/nabu/nabu:latest   # CI substitutes digest at deploy time
     ports:
-      - "8081:8080"
+      - "8082:8080"
     environment:
       - PORT=8080
       - APP_ENV=production
-      - APP_BASE_URL=https://choresy.yearofbingo.com
+      - APP_BASE_URL=https://nabu-app.com
       - SERVER_SECURE=true
       - DATABASE_URL=postgres://choresy:${DB_PASSWORD}@postgres:5432/choresy?sslmode=disable
       - SMTP_HOST=smtp.resend.com
@@ -21,22 +22,10 @@ services:
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
       - VAPID_SUBJECT=${VAPID_SUBJECT}
-    depends_on:
-      postgres:
-        condition: service_healthy
     restart: unless-stopped
+    networks:
+      - choresy_default
 
-  postgres:
-    image: docker.io/library/postgres:16-alpine
-    environment:
-      - POSTGRES_USER=choresy
-      - POSTGRES_PASSWORD=${DB_PASSWORD}
-      - POSTGRES_DB=choresy
-    volumes:
-      - /mnt/data/choresy/postgres:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U choresy -d choresy"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
+networks:
+  choresy_default:
+    external: true

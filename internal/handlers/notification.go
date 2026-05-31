@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/dave/choresy/internal/middleware"
-	"github.com/dave/choresy/internal/notification"
+	"github.com/HammerMeetNail/nabu/internal/middleware"
+	"github.com/HammerMeetNail/nabu/internal/notification"
 )
 
 type NotificationHandler struct {

@@ -18,7 +18,7 @@ async function setupWithChores(page) {
   await page.click('button[type="submit"]');
   await page.waitForSelector('#hh-indicator:not([hidden])', { timeout: 10000 });
 
-  const csrf = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
+  const csrf = (await page.context().cookies()).find(c => c.name === 'nabu_csrf')?.value || '';
 
   await page.request.post('/api/household', {
     data: { name: `Vol Test ${Date.now()}` },
@@ -125,7 +125,7 @@ test.describe('Feed Baby volume picker', () => {
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     // Schedule Feed Baby at 10 AM so we have a card to long-press.
-    const csrf = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
+    const csrf = (await page.context().cookies()).find(c => c.name === 'nabu_csrf')?.value || '';
     await page.request.post('/api/schedules', {
       data: { choreId: feedBaby.id, timePeriod: 'anytime', specificTime: '10:00', frequencyType: 'daily', isActive: true },
       headers: { 'X-CSRF-Token': csrf },
@@ -158,7 +158,7 @@ test.describe('Feed Baby volume picker', () => {
     await page.click('[data-action="switch-view"][data-view="day"]');
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
-    const csrf = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
+    const csrf = (await page.context().cookies()).find(c => c.name === 'nabu_csrf')?.value || '';
     await page.request.post('/api/schedules', {
       data: { choreId: feedBaby.id, timePeriod: 'anytime', specificTime: '10:00', frequencyType: 'daily', isActive: true },
       headers: { 'X-CSRF-Token': csrf },
@@ -256,7 +256,7 @@ test.describe('Feed Baby volume picker', () => {
     const { feedBaby } = await setupWithChores(page);
 
     // Schedule Feed Baby so we have a card to long-press in calendar
-    const csrf = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
+    const csrf = (await page.context().cookies()).find(c => c.name === 'nabu_csrf')?.value || '';
     await page.request.post('/api/schedules', {
       data: { choreId: feedBaby.id, timePeriod: 'anytime', specificTime: '10:00', frequencyType: 'daily', isActive: true },
       headers: { 'X-CSRF-Token': csrf },

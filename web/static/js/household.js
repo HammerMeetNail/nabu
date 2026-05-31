@@ -75,7 +75,7 @@ export async function transferOwnership(newOwnerId) {
 export function renderJoinView(code) {
   return `<div class="auth-card">
     <h1 class="auth-title">You're Invited!</h1>
-    <p class="text-center text-secondary mb-3">Create an account or sign in to join this household on Choresy.</p>
+    <p class="text-center text-secondary mb-3">Create an account or sign in to join this household on Nabu.</p>
     <button type="button" class="btn btn-primary btn-block" data-action="show-register">Create Account</button>
     <div class="auth-divider">or</div>
     <button type="button" class="btn btn-secondary btn-block" data-action="show-login">Sign In</button>

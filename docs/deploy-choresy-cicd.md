@@ -5,7 +5,7 @@ repository) that mirrors the pattern used by yearofbingo. The end result is:
   push to Quay.io → scan → sign → deploy pipeline
 - The container image is hosted on Quay.io
 - Production runs on a shared Hetzner server alongside yearofbingo, available
-  at `https://choresy.yearofbingo.com`
+  at `https://nabu-app.com`
 - Deployment is fully automated: push a tag, get a deploy
 
 **Assumption**: choresy has already been manually deployed to the server using
@@ -64,14 +64,14 @@ add env vars choresy does need, fix the container port):
 # Production compose file — deployed to /opt/choresy/compose.yaml by CI/CD
 services:
   app:
-    image: quay.io/choresy/choresy:latest   # CI substitutes digest at deploy time
+    image: quay.io/nabu/nabu:latest   # CI substitutes digest at deploy time
     ports:
       - "8081:PORT"                          # replace PORT with container port from Phase 0
     environment:
       - SERVER_HOST=0.0.0.0
       - SERVER_PORT=PORT                     # match container port above
       - APP_ENV=production
-      - APP_BASE_URL=https://choresy.yearofbingo.com
+      - APP_BASE_URL=https://nabu-app.com
       # Add all required env vars. Reference secrets from .env with ${VAR} syntax:
       # - DB_HOST=postgres
       # - DB_PORT=5432
@@ -152,7 +152,7 @@ The key structural differences from yearofbingo:
 - SSH hostname is still `ssh.yearofbingo.com` (same server)
 - Remove test jobs that don't apply (e.g. `test-js` if no JS tests, `e2e` if no E2E tests)
 - Remove env vars and secrets from the deploy job that choresy doesn't need
-- Adjust the `APP_BASE_URL` to `https://choresy.yearofbingo.com`
+- Adjust the `APP_BASE_URL` to `https://nabu-app.com`
 
 Full workflow template — edit every `# ADAPT:` comment before committing:
 
@@ -425,12 +425,12 @@ jobs:
             ## Container Image
 
             ```bash
-            podman pull quay.io/choresy/choresy:${{ steps.version.outputs.version }}
+            podman pull quay.io/nabu/nabu:${{ steps.version.outputs.version }}
             ```
 
             **Available tags:**
-            - `quay.io/choresy/choresy:${{ steps.version.outputs.version }}`
-            - `quay.io/choresy/choresy:latest`
+            - `quay.io/nabu/nabu:${{ steps.version.outputs.version }}`
+            - `quay.io/nabu/nabu:latest`
 
   deploy:
     name: Deploy to Production
@@ -482,7 +482,7 @@ jobs:
 
           # Substitute image digest into compose file
           if [ -n "${IMAGE_DIGEST}" ]; then
-            sed "s|image: quay.io/choresy/choresy:latest|# tag: ${IMAGE_TAG}\n    image: quay.io/choresy/choresy@${IMAGE_DIGEST}|" \
+            sed "s|image: quay.io/nabu/nabu:latest|# tag: ${IMAGE_TAG}\n    image: quay.io/nabu/nabu@${IMAGE_DIGEST}|" \
               compose.server.yaml > compose.server.deploy.yaml
           else
             cp compose.server.yaml compose.server.deploy.yaml
@@ -586,7 +586,7 @@ public repositories without any credentials):
 ssh -i ~/.ssh/hetzner_yearofbingo_ci \
     -o ProxyCommand="cloudflared access ssh --hostname ssh.yearofbingo.com" \
     deploy@ssh.yearofbingo.com \
-    "podman pull quay.io/choresy/choresy:latest 2>&1 | tail -5"
+    "podman pull quay.io/nabu/nabu:latest 2>&1 | tail -5"
 ```
 
 If the repository is private, configure Quay.io credentials on the server:
@@ -624,7 +624,7 @@ Total wall time is typically 8–15 minutes depending on build cache warmth.
 
 ```bash
 # App is live at the correct URL
-curl -sf https://choresy.yearofbingo.com/health
+curl -sf https://nabu-app.com/health
 
 # yearofbingo is still healthy (must not have been disrupted)
 curl -sf https://yearofbingo.com/health
@@ -665,9 +665,9 @@ with fresh secrets.
 | SSH user | `deploy` |
 | SSH key secret | `SSH_PRIVATE_KEY` (same key as yearofbingo) |
 | Container registry | `quay.io` |
-| Image name | `quay.io/choresy/choresy` (adjust to your org) |
+| Image name | `quay.io/nabu/nabu` (adjust to your org) |
 | Server app dir | `/opt/choresy/` |
 | Server host port | `8081` |
-| Production URL | `https://choresy.yearofbingo.com` |
+| Production URL | `https://nabu-app.com` |
 | Deploy trigger | Push a `v*` tag to `main` |
 | yearofbingo must stay healthy | Yes — verify at end of every deploy |

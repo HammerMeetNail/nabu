@@ -5,9 +5,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/dave/choresy/internal/middleware"
-	"github.com/dave/choresy/internal/stats"
-	"github.com/dave/choresy/internal/userprefs"
+	"github.com/HammerMeetNail/nabu/internal/middleware"
+	"github.com/HammerMeetNail/nabu/internal/stats"
+	"github.com/HammerMeetNail/nabu/internal/userprefs"
 )
 
 type StatsHandler struct {

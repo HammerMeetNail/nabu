@@ -20,7 +20,7 @@ async function setupWithChores(page) {
   await page.waitForSelector('#hh-indicator:not([hidden])', { timeout: 10000 });
 
   const csrf = (await page.context().cookies())
-    .find(c => c.name === 'choresy_csrf')?.value || '';
+    .find(c => c.name === 'nabu_csrf')?.value || '';
   await page.request.post('/api/household', {
     data: { name: `SW Reload Test ${Date.now()}` },
     headers: { 'X-CSRF-Token': csrf },

@@ -181,7 +181,7 @@ Production test account: `verify@yearofbingo.com` / `test123456` (household and 
 
 ## Production
 
-- **URL**: `https://choresy.yearofbingo.com`
+- **URL**: `https://nabu-app.com`
 - **Deploy trigger**: push a `v*` tag (e.g. `git tag v0.1.7 && git push origin v0.1.7`). CI builds, tests, and deploys automatically.
 - **CI**: `.github/workflows/ci.yaml` — runs secret scan, JS tests, lint, Go tests (with coverage), and E2E tests before deploying.
 
@@ -191,11 +191,11 @@ After CI goes green, confirm the correct version is serving versioned imports:
 
 ```bash
 # Check that JS imports carry the new version tag
-curl -s https://choresy.yearofbingo.com/static/js/calendar.js | grep "^import"
+curl -s https://nabu-app.com/static/js/calendar.js | grep "^import"
 # Expected: import { ... } from "./utils.js?v=0.1.X";
 
 # Check cache headers — must be no-store, must NOT be max-age
-curl -sI https://choresy.yearofbingo.com/static/js/app.js | grep -i cache
+curl -sI https://nabu-app.com/static/js/app.js | grep -i cache
 # Expected: cache-control: no-store
 #           cf-cache-status: BYPASS
 ```
@@ -208,7 +208,7 @@ If imports still show the old version number, the binary was not rebuilt with th
 
 ```bash
 # The index page embeds the version; check it with:
-curl -s https://choresy.yearofbingo.com/ | grep 'app.js'
+curl -s https://nabu-app.com/ | grep 'app.js'
 # Expected: <script ... src="/static/js/app.js?v=0.1.X" ...>
 ```
 
@@ -244,16 +244,16 @@ Once the `Deploy to Production` job goes green:
 
 ```bash
 # Confirm versioned imports carry the new tag
-curl -s https://choresy.yearofbingo.com/static/js/calendar.js | grep "^import"
+curl -s https://nabu-app.com/static/js/calendar.js | grep "^import"
 # Expected: import { ... } from "./utils.js?v=0.1.X";
 
 # Confirm cache headers
-curl -sI https://choresy.yearofbingo.com/static/js/app.js | grep -i cache
+curl -sI https://nabu-app.com/static/js/app.js | grep -i cache
 # Expected: cache-control: no-store
 #           cf-cache-status: BYPASS
 
 # Confirm correct version in index page
-curl -s https://choresy.yearofbingo.com/ | grep 'app.js'
+curl -s https://nabu-app.com/ | grep 'app.js'
 # Expected: src="/static/js/app.js?v=0.1.X"
 ```
 

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dave/choresy/internal/notification"
+	"github.com/HammerMeetNail/nabu/internal/notification"
 )
 
 // stubPushSender records calls to SendPushToUser.

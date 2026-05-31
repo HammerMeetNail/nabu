@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/dave/choresy/internal/chore"
+	"github.com/HammerMeetNail/nabu/internal/chore"
 )
 
 // ─── Service tests ────────────────────────────────────────────────────────────

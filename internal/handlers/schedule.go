@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/dave/choresy/internal/middleware"
-	"github.com/dave/choresy/internal/schedule"
+	"github.com/HammerMeetNail/nabu/internal/middleware"
+	"github.com/HammerMeetNail/nabu/internal/schedule"
 )
 
 // ScheduleHandler handles HTTP requests for schedule CRUD and queries.

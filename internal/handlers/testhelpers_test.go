@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"github.com/dave/choresy/internal/auth"
+	"github.com/HammerMeetNail/nabu/internal/auth"
 	"golang.org/x/crypto/bcrypt"
 )
 

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dave/choresy/internal/auth"
-	"github.com/dave/choresy/internal/mail"
-	"github.com/dave/choresy/internal/middleware"
+	"github.com/HammerMeetNail/nabu/internal/auth"
+	"github.com/HammerMeetNail/nabu/internal/mail"
+	"github.com/HammerMeetNail/nabu/internal/middleware"
 )
 
 func setupAuthHandler(t *testing.T) (*AuthHandler, *auth.Service) {
@@ -17,7 +17,7 @@ func setupAuthHandler(t *testing.T) (*AuthHandler, *auth.Service) {
 	svc := auth.NewService(store)
 	mailer := mail.NewMemorySender()
 	svc.SetMailer(mailer, "http://localhost:8080")
-	handler := NewAuthHandler(svc, "choresy_session", false, "http://localhost:8080")
+	handler := NewAuthHandler(svc, "nabu_session", false, "http://localhost:8080")
 	return handler, svc
 }
 
@@ -125,7 +125,7 @@ func TestAuthLogout(t *testing.T) {
 	_, session := quickRegister(svc, "alice@example.com")
 
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
-	req.AddCookie(&http.Cookie{Name: "choresy_session", Value: session.ID})
+	req.AddCookie(&http.Cookie{Name: "nabu_session", Value: session.ID})
 	rec := httptest.NewRecorder()
 
 	handler.Logout(rec, req)
@@ -146,10 +146,10 @@ func TestAuthMe(t *testing.T) {
 	_, session := quickRegister(svc, "alice@example.com")
 
 	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
-	req.AddCookie(&http.Cookie{Name: "choresy_session", Value: session.ID})
+	req.AddCookie(&http.Cookie{Name: "nabu_session", Value: session.ID})
 	rec := httptest.NewRecorder()
 
-	sessionMW := middleware.Session(svc, "choresy_session")
+	sessionMW := middleware.Session(svc, "nabu_session")
 	sessionMW(http.HandlerFunc(handler.Me)).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
@@ -262,7 +262,7 @@ func TestAuthResendVerification(t *testing.T) {
 	_, session := quickRegister(svc, "alice@example.com")
 
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/verify/resend", nil)
-	req.AddCookie(&http.Cookie{Name: "choresy_session", Value: session.ID})
+	req.AddCookie(&http.Cookie{Name: "nabu_session", Value: session.ID})
 	rec := httptest.NewRecorder()
 
 	handler.ResendVerification(rec, req)
@@ -302,7 +302,7 @@ func TestAuthVerifyEmail(t *testing.T) {
 	token := extractTokenFromBody(t, mailer.Messages[len(mailer.Messages)-1].Body, "token=")
 
 	// Use a fresh handler with the same service
-	handler := NewAuthHandler(svc, "choresy_session", false, "http://localhost:8080")
+	handler := NewAuthHandler(svc, "nabu_session", false, "http://localhost:8080")
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/verify?token="+token, nil)
 	rec := httptest.NewRecorder()
 
@@ -372,7 +372,7 @@ func TestAuthConsumeMagicLink(t *testing.T) {
 	}
 	token := extractTokenFromBody(t, mailer.Messages[len(mailer.Messages)-1].Body, "token=")
 
-	handler := NewAuthHandler(svc, "choresy_session", false, "http://localhost:8080")
+	handler := NewAuthHandler(svc, "nabu_session", false, "http://localhost:8080")
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/magic-link?token="+token, nil)
 	rec := httptest.NewRecorder()
 
@@ -421,7 +421,7 @@ func TestAuthResetPassword(t *testing.T) {
 	}
 	token := extractTokenFromBody(t, mailer.Messages[len(mailer.Messages)-1].Body, "token=")
 
-	handler := NewAuthHandler(svc, "choresy_session", false, "http://localhost:8080")
+	handler := NewAuthHandler(svc, "nabu_session", false, "http://localhost:8080")
 	body := `{"token":"` + token + `","password":"newpassword123"}`
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/password/reset", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -500,7 +500,7 @@ func TestAuthResendVerificationBadSession(t *testing.T) {
 	handler, _ := setupAuthHandler(t)
 	// Cookie present but session doesn't exist in store → Authenticate returns error
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/verify/resend", nil)
-	req.AddCookie(&http.Cookie{Name: "choresy_session", Value: "invalid-session-id"})
+	req.AddCookie(&http.Cookie{Name: "nabu_session", Value: "invalid-session-id"})
 	rec := httptest.NewRecorder()
 	handler.ResendVerification(rec, req)
 	if rec.Code != http.StatusUnauthorized {
@@ -602,7 +602,7 @@ func TestAuthGoogleCallbackMissingCode(t *testing.T) {
 	// State cookie matches state param, but no code param.
 	handler, _ := setupAuthHandler(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/google/callback?state=mystate", nil)
-	req.AddCookie(&http.Cookie{Name: "choresy_oidc_state", Value: "mystate"})
+	req.AddCookie(&http.Cookie{Name: "nabu_oidc_state", Value: "mystate"})
 	rec := httptest.NewRecorder()
 	handler.GoogleCallback(rec, req)
 	if rec.Code != http.StatusBadRequest {
@@ -614,8 +614,8 @@ func TestAuthGoogleCallbackOIDCError(t *testing.T) {
 	// State cookie matches, code provided, but CompleteGoogleOIDC fails (no OIDC provider).
 	handler, _ := setupAuthHandler(t)
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/google/callback?state=mystate&code=authcode", nil)
-	req.AddCookie(&http.Cookie{Name: "choresy_oidc_state", Value: "mystate"})
-	req.AddCookie(&http.Cookie{Name: "choresy_oidc_nonce", Value: "mynonce"})
+	req.AddCookie(&http.Cookie{Name: "nabu_oidc_state", Value: "mystate"})
+	req.AddCookie(&http.Cookie{Name: "nabu_oidc_nonce", Value: "mynonce"})
 	rec := httptest.NewRecorder()
 	handler.GoogleCallback(rec, req)
 	if rec.Code != http.StatusUnauthorized {

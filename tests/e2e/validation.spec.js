@@ -14,7 +14,7 @@ async function setupFullAccount(page) {
   await page.click('button[type="submit"]');
   await page.waitForSelector('#hh-indicator:not([hidden])', { timeout: 10000 });
 
-  const csrf = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
+  const csrf = (await page.context().cookies()).find(c => c.name === 'nabu_csrf')?.value || '';
   const hhResp = await page.request.post('/api/household', {
     data: { name: `Exhaustive ${Date.now()}` },
     headers: { 'X-CSRF-Token': csrf },
@@ -40,7 +40,7 @@ test.describe('Exhaustive: Auth Pages', () => {
     await page.waitForSelector('#login-form');
 
     // Title
-    await expect(page.locator('.auth-title')).toContainText('Choresy');
+    await expect(page.locator('.auth-title')).toContainText('Nabu');
 
     // Form fields
     await expect(page.locator('#login-email')).toBeVisible();
@@ -185,7 +185,7 @@ test.describe('Exhaustive: Auth Pages', () => {
     // Register → login
     await page.click('button[data-action="show-login"]');
     await page.waitForSelector('#login-form');
-    await expect(page.locator('.auth-title')).toContainText('Choresy');
+    await expect(page.locator('.auth-title')).toContainText('Nabu');
 
     // Login → magic link
     await page.click('button[data-action="show-magic-link"]');
@@ -241,7 +241,7 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     await page.waitForSelector('.cal-date', { timeout: 15000 });
 
     // Schedule the first chore at 08:00 so a card is visible in the day view
-    const csrf2 = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
+    const csrf2 = (await page.context().cookies()).find(c => c.name === 'nabu_csrf')?.value || '';
     const { chores: seededChores } = await (await page.request.get('/api/chores')).json();
     await page.request.post('/api/schedules', {
       data: { choreId: seededChores[0].id, timePeriod: 'anytime', specificTime: '08:00', frequencyType: 'daily', isActive: true },

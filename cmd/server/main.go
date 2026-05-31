@@ -7,8 +7,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/dave/choresy/internal/app"
-	"github.com/dave/choresy/internal/config"
+	"github.com/HammerMeetNail/nabu/internal/app"
+	"github.com/HammerMeetNail/nabu/internal/config"
 )
 
 func main() {

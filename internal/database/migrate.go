@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sort"
 
-	migrationassets "github.com/dave/choresy/migrations"
+	migrationassets "github.com/HammerMeetNail/nabu/migrations"
 )
 
 func Migrate(ctx context.Context, db *sql.DB) error {

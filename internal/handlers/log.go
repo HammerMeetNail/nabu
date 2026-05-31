@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/dave/choresy/internal/chore"
-	"github.com/dave/choresy/internal/household"
-	"github.com/dave/choresy/internal/log"
-	"github.com/dave/choresy/internal/middleware"
-	"github.com/dave/choresy/internal/notification"
+	"github.com/HammerMeetNail/nabu/internal/chore"
+	"github.com/HammerMeetNail/nabu/internal/household"
+	"github.com/HammerMeetNail/nabu/internal/log"
+	"github.com/HammerMeetNail/nabu/internal/middleware"
+	"github.com/HammerMeetNail/nabu/internal/notification"
 )
 
 type LogHandler struct {

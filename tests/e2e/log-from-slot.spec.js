@@ -26,7 +26,7 @@ async function setupWithChores(page) {
   await page.click('button[type="submit"]');
   await page.waitForSelector('#hh-indicator:not([hidden])', { timeout: 10000 });
 
-  const csrf = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
+  const csrf = (await page.context().cookies()).find(c => c.name === 'nabu_csrf')?.value || '';
 
   await page.request.post('/api/household', {
     data: { name: `Slot Log Test ${Date.now()}` },
@@ -239,7 +239,7 @@ test.describe('Log from time slot', () => {
     // Create a schedule at the current hour via API to get a card in the grid.
     const now = new Date();
     const testHour = String(now.getHours() % 12 + 8).padStart(2, '0') + ':00';
-    const csrf = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
+    const csrf = (await page.context().cookies()).find(c => c.name === 'nabu_csrf')?.value || '';
     const chores = (await (await page.request.get('/api/chores')).json()).chores;
     const choreId = chores[0].id;
     const choreName = chores[0].name;
@@ -281,7 +281,7 @@ test.describe('Log from time slot', () => {
 
     const now = new Date();
     const testHour = String(now.getHours() % 12 + 9).padStart(2, '0') + ':00';
-    const csrf = (await page.context().cookies()).find(c => c.name === 'choresy_csrf')?.value || '';
+    const csrf = (await page.context().cookies()).find(c => c.name === 'nabu_csrf')?.value || '';
     const chores = (await (await page.request.get('/api/chores')).json()).chores;
     const choreId = chores[0].id;
     const choreName = chores[0].name;

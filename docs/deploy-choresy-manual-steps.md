@@ -42,7 +42,7 @@ Run from your local machine (after Phase 1 repo is created and public):
 ssh -i ~/.ssh/hetzner_yearofbingo_ci \
     -o ProxyCommand="cloudflared access ssh --hostname ssh.yearofbingo.com" \
     deploy@ssh.yearofbingo.com \
-    "podman pull quay.io/dave/choresy:latest 2>&1 | tail -5"
+    "podman pull quay.io/nabu/nabu:latest 2>&1 | tail -5"
 ```
 
 If the repo is public, no credentials are needed. If it's private,
@@ -75,7 +75,7 @@ Total wall time: ~8–15 minutes.
 
 ```bash
 # App is live
-curl -sf https://choresy.yearofbingo.com/health
+curl -sf https://nabu-app.com/health
 
 # yearofbingo is still healthy
 curl -sf https://yearofbingo.com/health

@@ -71,7 +71,7 @@ test("existing user can request and use magic link", async ({ browser }) => {
   const csrfPage = await context.newPage();
   await csrfPage.goto(BASE);
   await waitForAppReady(csrfPage);
-  const csrfCookie = (await context.cookies()).find(c => c.name === "choresy_csrf");
+  const csrfCookie = (await context.cookies()).find(c => c.name === "nabu_csrf");
   const csrfToken = csrfCookie?.value || "";
   await csrfPage.close();
 

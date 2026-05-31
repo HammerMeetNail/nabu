@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"unicode/utf8"
 
-	"github.com/dave/choresy/internal/chore"
-	"github.com/dave/choresy/internal/middleware"
+	"github.com/HammerMeetNail/nabu/internal/chore"
+	"github.com/HammerMeetNail/nabu/internal/middleware"
 )
 
 var hexColorRe = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)

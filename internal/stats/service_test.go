@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	chorelog "github.com/dave/choresy/internal/log"
-	"github.com/dave/choresy/internal/stats"
+	chorelog "github.com/HammerMeetNail/nabu/internal/log"
+	"github.com/HammerMeetNail/nabu/internal/stats"
 )
 
 // stubChoreStore satisfies stats.choreStore (unexported interface, satisfied

@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/dave/choresy/internal/household"
+	"github.com/HammerMeetNail/nabu/internal/household"
 )
 
 // stubAuthStore satisfies the household.AuthStore interface.

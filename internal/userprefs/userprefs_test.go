@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	sqlmock "github.com/DATA-DOG/go-sqlmock"
-	"github.com/dave/choresy/internal/userprefs"
+	"github.com/HammerMeetNail/nabu/internal/userprefs"
 )
 
 // ─── Memory store tests ───────────────────────────────────────────────────────

@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dave/choresy/internal/household"
-	"github.com/dave/choresy/internal/middleware"
-	"github.com/dave/choresy/internal/notification"
+	"github.com/HammerMeetNail/nabu/internal/household"
+	"github.com/HammerMeetNail/nabu/internal/middleware"
+	"github.com/HammerMeetNail/nabu/internal/notification"
 )
 
 type HouseholdHandler struct {
