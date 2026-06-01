@@ -550,3 +550,23 @@ func TestUpdateMemberRoleCrossHouseholdBlocked(t *testing.T) {
 		t.Fatalf("UpdateMemberRole cross-household: error = %v, want ErrNotAuthorized", err)
 	}
 }
+
+// TestDeleteInviteCrossHouseholdBlocked verifies that an owner of household A
+// cannot delete an invite belonging to household B.
+func TestDeleteInviteCrossHouseholdBlocked(t *testing.T) {
+	svc, _, _ := newSvc()
+	ctx := context.Background()
+
+	// Household A: owner is user 1.
+	_, _ = svc.CreateHousehold(ctx, "Household A", "A", 1)
+
+	// Household B: owner is user 2.
+	_, _ = svc.CreateHousehold(ctx, "Household B", "B", 2)
+	invB, _ := svc.CreateInvite(ctx, 2)
+
+	// Owner of A tries to delete an invite from B — must fail.
+	err := svc.DeleteInvite(ctx, 1, invB.ID)
+	if err != household.ErrNotAuthorized {
+		t.Fatalf("DeleteInvite cross-household: error = %v, want ErrNotAuthorized", err)
+	}
+}

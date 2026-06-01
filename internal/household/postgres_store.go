@@ -269,6 +269,18 @@ func (s *PostgresStore) GetInviteByCode(ctx context.Context, code string) (Invit
 	return inv, err
 }
 
+func (s *PostgresStore) GetInviteByID(ctx context.Context, id int64) (Invite, error) {
+	var inv Invite
+	err := s.db.QueryRowContext(ctx, `
+		SELECT id, household_id, code, created_by, max_uses, used_count, COALESCE(expires_at, 'epoch'::timestamptz), created_at
+		FROM invites WHERE id = $1
+	`, id).Scan(&inv.ID, &inv.HouseholdID, &inv.Code, &inv.CreatedBy, &inv.MaxUses, &inv.UsedCount, &inv.ExpiresAt, &inv.CreatedAt)
+	if err == sql.ErrNoRows {
+		return Invite{}, ErrInviteNotFound
+	}
+	return inv, err
+}
+
 func (s *PostgresStore) GetInvites(ctx context.Context, householdID int64) ([]Invite, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, household_id, code, created_by, max_uses, used_count, expires_at, created_at

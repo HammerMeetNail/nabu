@@ -60,8 +60,12 @@ test.describe('Home tab log → calendar visibility', () => {
     const choreName = await firstCard.locator('.home-card-name').innerText();
     await logChoreViaSheet(page, firstCard);
 
-    // Verify log was saved with correct slotHour via API
-    const { logs } = await (await page.request.get('/api/logs/today')).json();
+    // Query using browser's local date (not UTC) to match log's log_date.
+    const localDate = await page.evaluate(() => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    });
+    const { logs } = await (await page.request.get(`/api/logs/today?date=${localDate}`)).json();
     const logged = (logs || []).find(l => {
       const chore = chores.find(c => c.id === l.choreId);
       return chore && chore.name === choreName;
@@ -79,8 +83,11 @@ test.describe('Home tab log → calendar visibility', () => {
     const choreName = await firstCard.locator('.home-card-name').innerText();
     await logChoreViaSheet(page, firstCard);
 
-    // Verify log was saved with correct slotHour via API
-    const { logs } = await (await page.request.get('/api/logs/today')).json();
+    const localDate = await page.evaluate(() => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    });
+    const { logs } = await (await page.request.get(`/api/logs/today?date=${localDate}`)).json();
     const logged = (logs || []).find(l => {
       const chore = chores.find(c => c.id === l.choreId);
       return chore && chore.name === choreName;

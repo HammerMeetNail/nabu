@@ -71,6 +71,7 @@ type Store interface {
 	GetHouseholdByInviteCode(ctx context.Context, code string) (Household, error)
 	CreateInvite(ctx context.Context, householdID, createdBy int64, code string, maxUses int) (Invite, error)
 	GetInviteByCode(ctx context.Context, code string) (Invite, error)
+	GetInviteByID(ctx context.Context, id int64) (Invite, error)
 	GetInvites(ctx context.Context, householdID int64) ([]Invite, error)
 	UseInvite(ctx context.Context, code string) error
 	DeleteInvite(ctx context.Context, id int64) error

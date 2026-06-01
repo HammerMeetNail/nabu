@@ -288,8 +288,7 @@ func (h *AuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 
 func (h *AuthHandler) authResponse(user auth.User, session auth.Session) map[string]any {
 	return map[string]any{
-		"user":    user,
-		"session": session.ID,
+		"user": user,
 	}
 }
 

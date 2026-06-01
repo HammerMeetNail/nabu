@@ -449,3 +449,84 @@ func TestChoreCreateValidHexColorAccepted(t *testing.T) {
 		t.Fatalf("valid color: status = %d, want 201, body=%s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestChoreCreateCategoryTooLong(t *testing.T) {
+	handler, sessionID, authService, _ := setupChoreTest(t)
+	longCategory := strings.Repeat("x", 31)
+	body := `{"name":"Sweep","icon":"🧹","color":"#FF0000","category":"` + longCategory + `"}`
+	req := withUser(httptest.NewRequest(http.MethodPost, "/api/chores", strings.NewReader(body)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("category too long: status = %d, want 400", rec.Code)
+	}
+}
+
+func TestChoreCreateCategoryControlChars(t *testing.T) {
+	handler, sessionID, authService, _ := setupChoreTest(t)
+	body := `{"name":"Sweep","icon":"🧹","color":"#FF0000","category":"clean\n"}`
+	req := withUser(httptest.NewRequest(http.MethodPost, "/api/chores", strings.NewReader(body)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("category control chars: status = %d, want 400, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestChoreCreateTooManyIndicatorLabels(t *testing.T) {
+	handler, sessionID, authService, _ := setupChoreTest(t)
+	body := `{"name":"Sweep","icon":"🧹","color":"#FF0000","category":"cleaning","indicatorLabels":["a","b","c","d","e","f","g","h","i"]}`
+	req := withUser(httptest.NewRequest(http.MethodPost, "/api/chores", strings.NewReader(body)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("too many labels: status = %d, want 400, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestChoreCreateIndicatorDefaultNotInLabels(t *testing.T) {
+	handler, sessionID, authService, _ := setupChoreTest(t)
+	body := `{"name":"Sweep","icon":"🧹","color":"#FF0000","category":"cleaning","indicatorLabels":["🟢 good"],"indicatorDefaults":["🔴 bad"]}`
+	req := withUser(httptest.NewRequest(http.MethodPost, "/api/chores", strings.NewReader(body)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("default not in labels: status = %d, want 400, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestChoreCreateIndicatorLabelControlChars(t *testing.T) {
+	handler, sessionID, authService, _ := setupChoreTest(t)
+	body := `{"name":"Sweep","icon":"🧹","color":"#FF0000","category":"cleaning","indicatorLabels":["good\n"]}`
+	req := withUser(httptest.NewRequest(http.MethodPost, "/api/chores", strings.NewReader(body)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("label control chars: status = %d, want 400, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestChoreUpdateCategoryValidation(t *testing.T) {
+	handler, sessionID, authService, _ := setupChoreTest(t)
+	createReq := withUser(httptest.NewRequest(http.MethodPost, "/api/chores", strings.NewReader(
+		`{"name":"Old Name","icon":"🧹","color":"#FF0000","category":"cleaning"}`,
+	)), authService, sessionID)
+	createReq.Header.Set("Content-Type", "application/json")
+	handler.Create(httptest.NewRecorder(), createReq)
+
+	longCategory := strings.Repeat("x", 31)
+	body := `{"name":"New","icon":"🧹","color":"#FF0000","category":"` + longCategory + `"}`
+	req := withUser(httptest.NewRequest(http.MethodPatch, "/api/chores/1", strings.NewReader(body)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "1")
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("update category too long: status = %d, want 400", rec.Code)
+	}
+}

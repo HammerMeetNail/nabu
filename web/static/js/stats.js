@@ -248,7 +248,7 @@ function renderCategoryBars(breakdown) {
   const bars = breakdown.map(b => {
     const pct = (b.count / barMax) * 100;
     return `<div class="stat-bar-row mb-2">
-      <span class="stat-bar-label">${b.category}</span>
+      <span class="stat-bar-label">${escapeHTML(b.category)}</span>
       <div class="stat-bar-track"><div class="stat-bar-fill" style="width:${pct}%"></div></div>
       <span class="stat-bar-count">${b.count}</span>
     </div>`;
@@ -451,7 +451,7 @@ function renderVolumeChart(periods, period) {
     stackKeys.forEach(key => {
       const ml = p.volumeByIndicator?.[key] || 0;
       attributedML += ml;
-      if (ml > 0) parts.push(`${key} ${ml}mL`);
+      if (ml > 0) parts.push(`${escapeHTML(key)} ${ml}mL`);
     });
     const unlabeledML = p.totalML - attributedML;
     if (unlabeledML > 0) parts.push(`unlabeled ${unlabeledML}mL`);
@@ -597,7 +597,7 @@ function renderIndicatorChart(periods, period) {
     indicatorKeys.forEach(key => {
       const c = p.indicators?.[key] || 0;
       periodTotal += c;
-      if (c > 0) parts.push(`${key} ${c}`);
+      if (c > 0) parts.push(`${escapeHTML(key)} ${c}`);
     });
     const valText = parts.join(", ");
     const fullLabel = formatPeriodLabel(p, period);
@@ -657,7 +657,7 @@ function renderIndicatorChart(periods, period) {
       const color = indicatorColors[key] || "#6B7280";
       const total = periods.reduce((s, p) => s + (p.indicators?.[key] || 0), 0);
       svg += `<rect x="${lx}" y="${ly - 8}" width="8" height="8" rx="2" fill="${color}" opacity="0.85"/>`;
-      svg += `<text x="${lx + 11}" y="${ly}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">${key} ${total} total</text>`;
+      svg += `<text x="${lx + 11}" y="${ly}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">${escapeHTML(key)} ${total} total</text>`;
     });
   }
 
@@ -732,7 +732,7 @@ export function renderStatsView(state) {
   const bars = breakdown.map(b => {
     const pct = (b.count / barMax) * 100;
     return `<div class="stat-bar-row mb-2">
-      <span class="stat-bar-label">${b.category}</span>
+      <span class="stat-bar-label">${escapeHTML(b.category)}</span>
       <div class="stat-bar-track"><div class="stat-bar-fill" style="width:${pct}%"></div></div>
       <span class="stat-bar-count">${b.count}</span>
     </div>`;

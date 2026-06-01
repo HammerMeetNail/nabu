@@ -315,6 +315,8 @@ Every operation that reads or mutates data must verify the actor is authorized f
 - **Service-layer ownership checks (defense in depth).**  Handlers extract the user from the request context; services re-verify that the requested resource belongs to the user's household.  Never assume the handler's guard is sufficient — add the check in the service too.
 - **Cross-resource isolation.**  When two users interact (e.g. one member changes another's role), verify they belong to the same household.  Compare both household IDs; a mismatch is an immediate reject.
 - **Resource deletion and mutation must pass the owning household ID.**  Methods like `DeleteChore`, `UpdateChore`, `UpdateLog` accept a `householdID` parameter and the service verifies `resource.HouseholdID == householdID`.
+- **Do not trust foreign keys from the client.**  If a request body contains `choreId`, `inviteId`, `userId`, `scheduleId`, or any other resource reference, verify that the referenced record belongs to the actor's household before using it.  This applies even when the write itself stores the current `householdID` separately.
+- **Read endpoints need ownership checks too.**  Stats, detail pages, exports, and lookup endpoints can leak cross-household metadata even when they do not mutate anything.  Treat reads by ID the same way as writes by ID.
 
 ### Authentication and session safety
 
@@ -335,6 +337,16 @@ Every operation that reads or mutates data must verify the actor is authorized f
 - **Server-side validation is mandatory.**  Client-side validation is a UX convenience only.  Check field lengths, required-ness, and format (e.g. hex colour regex) on every create and update handler.
 - **Escape all user-controlled strings in HTML templates.**  Emoji, names, notes, display names — anything that came from user input or the database.  Use `escapeHTML()` from `utils.js` (not a local copy).  Never duplicate the function.
 - **Colour fields must match `^#[0-9A-Fa-f]{6}$`.**  Reject any other value at the handler level.
+- **Treat all chore metadata as untrusted.**  `icon`, `name`, `category`, `indicatorLabels`, and `indicatorDefaults` all come from users or the database.  Escape every one of them at render time, including inside history rows, SVG text, `aria-label`, `title`, and `style` attributes.
+- **Do not treat string splitting or emoji-only conventions as sanitization.**  A value like `label.split(' ')[0]` is still untrusted text and must be escaped before interpolation.
+- **Validate arrays, not just scalars.**  For list fields like `indicatorLabels` and `indicatorDefaults`, validate maximum item count, per-item length, and cross-field relationships such as "defaults must be a subset of labels".
+- **Prefer explicit validation rules for free-text metadata.**  Fields like `category`, `initials`, and indicator labels must have server-side maximum lengths and reject control characters even if the UI currently constrains them.
+
+### Security regression tests
+
+- **Every security bug fix must add a regression test at the vulnerable layer.**  If the bug is in a handler or service, add a Go test.  If the bug is in rendered HTML, add a JS render test or E2E test.  Many fixes need both.
+- **For escaping bugs, test the exact sink.**  Add tests for the concrete render function that previously interpolated unescaped data, not just a generic helper test.
+- **For authorization bugs, add a cross-household negative test.**  The test should prove that a user from household A cannot read, mutate, or delete a record from household B.
 
 ### HTTP security
 

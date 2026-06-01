@@ -2,6 +2,7 @@ package stats
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"time"
 
@@ -66,6 +67,7 @@ type choreStore interface {
 
 type ChoreInfo struct {
 	ID              int64
+	HouseholdID     int64
 	Name            string
 	Icon            string
 	Color           string
@@ -517,6 +519,9 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 	ch, err := s.choreStore.GetChore(ctx, choreID)
 	if err != nil {
 		return nil, err
+	}
+	if ch.HouseholdID != householdID {
+		return nil, fmt.Errorf("chore not found")
 	}
 
 	now := nowIn(loc)

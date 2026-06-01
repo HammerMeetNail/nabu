@@ -295,6 +295,16 @@ func (s *MemoryStore) GetInviteByCode(_ context.Context, code string) (Invite, e
 	return inv, nil
 }
 
+func (s *MemoryStore) GetInviteByID(_ context.Context, id int64) (Invite, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	inv, ok := s.invites[id]
+	if !ok {
+		return Invite{}, ErrInviteNotFound
+	}
+	return inv, nil
+}
+
 func (s *MemoryStore) GetInvites(_ context.Context, householdID int64) ([]Invite, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

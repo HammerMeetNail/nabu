@@ -97,11 +97,18 @@ func (s *Service) GetInvites(ctx context.Context, userID int64) ([]Invite, error
 }
 
 func (s *Service) DeleteInvite(ctx context.Context, userID, inviteID int64) error {
-	_, role, err := s.store.GetMembership(ctx, userID)
+	actorHHID, role, err := s.store.GetMembership(ctx, userID)
 	if err != nil {
 		return err
 	}
 	if role != RoleOwner {
+		return ErrNotAuthorized
+	}
+	invite, err := s.store.GetInviteByID(ctx, inviteID)
+	if err != nil {
+		return err
+	}
+	if invite.HouseholdID != actorHHID {
 		return ErrNotAuthorized
 	}
 	return s.store.DeleteInvite(ctx, inviteID)

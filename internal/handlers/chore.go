@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"regexp"
 	"strconv"
+	"strings"
 	"unicode/utf8"
 
 	"github.com/HammerMeetNail/nabu/internal/chore"
@@ -12,7 +13,7 @@ import (
 
 var hexColorRe = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 
-func validateChoreInput(name, icon, color string) (int, string) {
+func validateChoreInput(name, icon, color, category string, indicatorLabels, indicatorDefaults []string) (int, string) {
 	if utf8.RuneCountInString(name) == 0 {
 		return http.StatusBadRequest, "name must not be empty"
 	}
@@ -24,6 +25,32 @@ func validateChoreInput(name, icon, color string) (int, string) {
 	}
 	if color != "" && !hexColorRe.MatchString(color) {
 		return http.StatusBadRequest, "color must be a valid hex color (#RRGGBB)"
+	}
+	if utf8.RuneCountInString(category) > 30 {
+		return http.StatusBadRequest, "category must be 30 characters or fewer"
+	}
+	if strings.ContainsAny(category, "\x00\n\r\t") {
+		return http.StatusBadRequest, "category contains invalid characters"
+	}
+	if len(indicatorLabels) > 8 {
+		return http.StatusBadRequest, "too many indicator labels"
+	}
+	for _, label := range indicatorLabels {
+		if utf8.RuneCountInString(label) == 0 || utf8.RuneCountInString(label) > 30 {
+			return http.StatusBadRequest, "indicator labels must be 1-30 characters"
+		}
+		if strings.ContainsAny(label, "\x00\n\r\t") {
+			return http.StatusBadRequest, "indicator label contains invalid characters"
+		}
+	}
+	labelSet := map[string]struct{}{}
+	for _, label := range indicatorLabels {
+		labelSet[label] = struct{}{}
+	}
+	for _, label := range indicatorDefaults {
+		if _, ok := labelSet[label]; !ok {
+			return http.StatusBadRequest, "indicator defaults must be a subset of indicator labels"
+		}
 	}
 	return 0, ""
 }
@@ -75,7 +102,7 @@ func (h *ChoreHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if code, msg := validateChoreInput(req.Name, req.Icon, req.Color); code != 0 {
+	if code, msg := validateChoreInput(req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults); code != 0 {
 		writeError(w, code, msg)
 		return
 	}
@@ -138,7 +165,7 @@ func (h *ChoreHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if code, msg := validateChoreInput(req.Name, req.Icon, req.Color); code != 0 {
+	if code, msg := validateChoreInput(req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults); code != 0 {
 		writeError(w, code, msg)
 		return
 	}

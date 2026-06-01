@@ -39,8 +39,8 @@ func TestAuthRegister(t *testing.T) {
 	if !strings.Contains(bodyStr, `"user"`) {
 		t.Fatal("expected user in response")
 	}
-	if !strings.Contains(bodyStr, `"session"`) {
-		t.Fatal("expected session in response")
+	if strings.Contains(bodyStr, `"session"`) {
+		t.Fatal("session should not be in response")
 	}
 }
 

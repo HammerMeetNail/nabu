@@ -117,7 +117,7 @@ export function renderTodayView(state) {
     return `<button type="button" class="chore-card ${doneClass}" data-action="${log ? 'undo-chore' : 'log-chore'}" data-chore-id="${chore.id}" data-log-id="${log ? log.id : ''}" style="${style}">
       <span class="chore-icon">${escapeHTML(chore.icon)}</span>
       <span class="chore-name">${escapeHTML(chore.name)}</span>
-      <span class="chore-category">${chore.category}</span>
+      <span class="chore-category">${escapeHTML(chore.category)}</span>
       ${check}${note}
     </button>`;
   }).join("");
@@ -203,7 +203,7 @@ export function renderHistoryView(state) {
       rawDayGroups.push({ date: dateKey, label: dayLabel, rows: [] });
     }
     const chore = (state.chores || []).find(c => c.id === l.choreId);
-    const indicatorIcons = (l.indicators || []).map(label => label.split(' ')[0]);
+    const indicatorIcons = (l.indicators || []).map(label => escapeHTML(label.split(' ')[0]));
     rawDayGroups[rawDayGroups.length - 1].rows.push({
       icon: chore?.icon || '',
       name: chore?.name || `Chore #${l.choreId}`,

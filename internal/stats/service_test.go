@@ -42,8 +42,8 @@ func seedService(t *testing.T, logs []chorelog.ChoreLog) (*stats.Service, *stubC
 		}
 	}
 	cs := &stubChoreStore{chores: []stats.ChoreInfo{
-		{ID: 100, Name: "Dishes", Category: "kitchen"},
-		{ID: 101, Name: "Vacuum", Category: "cleaning"},
+		{ID: 100, HouseholdID: 1, Name: "Dishes", Category: "kitchen"},
+		{ID: 101, HouseholdID: 1, Name: "Vacuum", Category: "cleaning"},
 	}}
 	svc := stats.NewService(logStore, cs)
 	return svc, cs
@@ -303,5 +303,18 @@ func TestGetWeeklyOverview_Structure(t *testing.T) {
 	}
 	if ov.Breakdown == nil {
 		t.Error("Breakdown should not be nil")
+	}
+}
+
+func TestGetChoreTimeSeriesCrossHousehold(t *testing.T) {
+	now := time.Now().UTC()
+	logs := []chorelog.ChoreLog{
+		{HouseholdID: 1, UserID: 10, ChoreID: 100, CompletedAt: now},
+	}
+	svc, _ := seedService(t, logs)
+
+	_, err := svc.GetChoreTimeSeries(context.Background(), 2, 100, "daily", utc)
+	if err == nil {
+		t.Fatal("GetChoreTimeSeries should reject chore from different household")
 	}
 }

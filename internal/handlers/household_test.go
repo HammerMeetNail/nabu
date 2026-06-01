@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -169,6 +170,9 @@ func TestHouseholdCreateAndListAndDeleteInvite(t *testing.T) {
 		t.Fatalf("CreateInvite body = %s", createRec.Body.String())
 	}
 
+	// Extract invite ID from response
+	inviteID := extractIntFromJSON(t, createRec.Body.String(), `"id":`)
+
 	// ListInvites
 	listReq := withUser(httptest.NewRequest(http.MethodGet, "/api/household/invites", nil), authService, sessionID)
 	listRec := httptest.NewRecorder()
@@ -177,8 +181,8 @@ func TestHouseholdCreateAndListAndDeleteInvite(t *testing.T) {
 		t.Fatalf("ListInvites: status = %d, body=%s", listRec.Code, listRec.Body.String())
 	}
 
-	// DeleteInvite (id=1 — the first invite created)
-	delReq := withUser(httptest.NewRequest(http.MethodDelete, "/api/household/invites/1", nil), authService, sessionID)
+	// DeleteInvite
+	delReq := withUser(httptest.NewRequest(http.MethodDelete, "/api/household/invites/"+strconv.FormatInt(inviteID, 10), nil), authService, sessionID)
 	delRec := httptest.NewRecorder()
 	handler.DeleteInvite(delRec, delReq)
 	if delRec.Code != http.StatusOK {
@@ -621,4 +625,28 @@ func TestHouseholdTransferSuccess(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
 	}
+}
+
+func extractIntFromJSON(t *testing.T, body, prefix string) int64 {
+	t.Helper()
+	idx := strings.Index(body, prefix)
+	if idx < 0 {
+		t.Fatalf("prefix %q not found in body: %s", prefix, body)
+	}
+	idx += len(prefix)
+	for idx < len(body) && (body[idx] == ' ' || body[idx] == '\t') {
+		idx++
+	}
+	end := idx
+	for end < len(body) && body[end] >= '0' && body[end] <= '9' {
+		end++
+	}
+	if end == idx {
+		t.Fatalf("no integer found after prefix %q in body", prefix)
+	}
+	n, err := strconv.ParseInt(body[idx:end], 10, 64)
+	if err != nil {
+		t.Fatalf("parse int: %v", err)
+	}
+	return n
 }

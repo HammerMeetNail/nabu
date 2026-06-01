@@ -3,25 +3,25 @@ import { test, expect } from "@playwright/test";
 const BASE = "http://localhost:8080";
 const MAILPIT = "http://localhost:8025";
 
-async function waitForMagicLinkToken(request, subject) {
+async function waitForMagicLinkToken(request, email) {
   for (let attempt = 0; attempt < 15; attempt++) {
     await new Promise(r => setTimeout(r, 1000));
     const res = await request.get(`${MAILPIT}/api/v1/messages`);
     const data = await res.json();
     for (const msg of data.messages || []) {
-      if (msg.Subject && msg.Subject.includes(subject)) {
-        const rawRes = await request.get(`${MAILPIT}/api/v1/message/${msg.ID}/raw`);
-        const raw = await rawRes.text();
-        const match = raw.match(/token=([A-Za-z0-9_-]+)/);
-        if (match) return match[1];
-      }
+      // Match by recipient AND subject to avoid cross-test contamination.
+      if (!msg.Subject || !msg.Subject.includes("magic")) continue;
+      const rawRes = await request.get(`${MAILPIT}/api/v1/message/${msg.ID}/raw`);
+      const raw = await rawRes.text();
+      if (!raw.includes(email)) continue;
+      const match = raw.match(/token=([A-Za-z0-9_-]+)/);
+      if (match) return match[1];
     }
   }
   return null;
 }
 
 async function waitForAppReady(page) {
-  // Wait for the SPA to render something into #app
   await page.waitForFunction(() => {
     const app = document.querySelector("#app");
     return app && app.children.length > 0;
@@ -45,15 +45,21 @@ test("magic link creates new user who has never registered", async ({ browser })
   await page.click("#magic-link-form button[type='submit']");
 
   // Check Mailpit for the magic link email
-  const token = await waitForMagicLinkToken(request, "magic");
+  const token = await waitForMagicLinkToken(request, email);
   expect(token).not.toBeNull();
 
-  // Consume magic link - should auto-create account and log in
-  await page.goto(`${BASE}/magic-login?token=${token}`);
-  await page.waitForTimeout(2000);
+  // Consume magic link via SPA route. Wait for the API call to complete
+  // by listening for the network request, then verify authenticated state.
+  const consumePromise = page.waitForResponse(
+    r => r.url().includes("/api/auth/magic-link/consume") && r.status() === 200,
+    { timeout: 15000 }
+  );
+  await page.goto(`${BASE}/magic-login?token=${encodeURIComponent(token)}`);
+  await consumePromise;
 
-  // Verify logged in — top bar should be visible
-  await expect(page.locator("#top-bar")).not.toBeHidden({ timeout: 5000 });
+  // Session cookie should now be set. Reload to ensure authenticated view.
+  await page.reload();
+  await page.waitForSelector("#top-bar:not([hidden])", { timeout: 10000 });
   await expect(page.locator("#bottom-tabs")).not.toBeHidden({ timeout: 3000 });
 
   await context.close();
@@ -67,12 +73,11 @@ test("existing user can request and use magic link", async ({ browser }) => {
   const email = `e2e-existing-${Date.now()}@test.local`;
   const password = "password123";
 
-  // Register via API (get CSRF first)
+  // Register via API — get CSRF token first from a page visit.
   const csrfPage = await context.newPage();
   await csrfPage.goto(BASE);
   await waitForAppReady(csrfPage);
-  const csrfCookie = (await context.cookies()).find(c => c.name === "nabu_csrf");
-  const csrfToken = csrfCookie?.value || "";
+  const csrfToken = (await context.cookies()).find(c => c.name === "nabu_csrf")?.value || "";
   await csrfPage.close();
 
   const regRes = await request.post(`${BASE}/api/auth/register`, {
@@ -81,10 +86,10 @@ test("existing user can request and use magic link", async ({ browser }) => {
   });
   expect(regRes.ok()).toBeTruthy();
 
-  // Clear cookies so we get the login form (API register set a session cookie)
+  // Clear cookies so we get unauthenticated state.
   await context.clearCookies();
 
-  // Now go to the app and request a magic link
+  // Request a magic link via the UI.
   await page.goto(BASE);
   await waitForAppReady(page);
 
@@ -93,16 +98,21 @@ test("existing user can request and use magic link", async ({ browser }) => {
   await page.fill("#magic-email", email);
   await page.click("#magic-link-form button[type='submit']");
 
-  // Check Mailpit for the magic link email
-  const token = await waitForMagicLinkToken(request, "magic");
+  // Get token from Mailpit
+  const token = await waitForMagicLinkToken(request, email);
   expect(token).not.toBeNull();
 
-  // Consume magic link
-  await page.goto(`${BASE}/magic-login?token=${token}`);
-  await page.waitForTimeout(2000);
+  // Navigate to magic-login and wait for the consume API call to complete.
+  const consumePromise = page.waitForResponse(
+    r => r.url().includes("/api/auth/magic-link/consume") && r.status() === 200,
+    { timeout: 15000 }
+  );
+  await page.goto(`${BASE}/magic-login?token=${encodeURIComponent(token)}`);
+  await consumePromise;
 
-  // Verify logged in
-  await expect(page.locator("#top-bar")).not.toBeHidden({ timeout: 10000 });
+  // Session cookie should be set. Reload for clean authenticated view.
+  await page.reload();
+  await page.waitForSelector("#top-bar:not([hidden])", { timeout: 10000 });
   await expect(page.locator("#bottom-tabs")).not.toBeHidden({ timeout: 5000 });
 
   await context.close();
