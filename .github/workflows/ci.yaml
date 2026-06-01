@@ -70,6 +70,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache: true
       - uses: golangci/golangci-lint-action@v9
         with:
           version: v2.6.2
@@ -84,6 +85,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache: true
       - run: go mod download
       - run: go test -v -race -coverprofile=coverage.out ./...
       - uses: codecov/codecov-action@v5
@@ -102,10 +104,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: pnpm
       - name: Install pnpm
         run: corepack enable pnpm
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
       - name: JS tests
         run: node --test web/static/js/tests/runner.js
 
@@ -125,13 +128,22 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: ${{ env.GO_VERSION }}
+          cache: true
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: pnpm
       - name: Install pnpm
         run: corepack enable pnpm
       - name: Install dependencies
-        run: pnpm install
+        run: pnpm install --frozen-lockfile
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
       - name: Install Playwright browsers
         run: pnpm exec playwright install chromium
       - name: Run E2E tests
