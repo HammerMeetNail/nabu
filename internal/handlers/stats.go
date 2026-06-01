@@ -278,6 +278,22 @@ func (h *StatsHandler) ChoreStatsByID(w http.ResponseWriter, r *http.Request) {
 	writeError(w, http.StatusNotFound, "chore not found")
 }
 
+func (h *StatsHandler) TopChores(w http.ResponseWriter, r *http.Request) {
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
+		return
+	}
+
+	entries, err := h.service.GetTopChores(r.Context(), *user.HouseholdID, 5, h.userLocation(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"topChores": entries})
+}
+
 func (h *StatsHandler) ChoreTimeSeries(w http.ResponseWriter, r *http.Request) {
 	user, _ := middleware.CurrentUser(r.Context())
 	if user.HouseholdID == nil {
