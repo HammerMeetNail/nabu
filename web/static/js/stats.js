@@ -21,6 +21,11 @@ export async function loadChoreStats() {
   return data;
 }
 
+export async function loadTopChores() {
+  const { data } = await apiFetch("/api/stats/top-chores");
+  return data;
+}
+
 export async function loadLeaderboard(period) {
   const { data } = await apiFetch(`/api/stats/leaderboard?period=${period || "week"}`);
   return data;
@@ -50,6 +55,7 @@ export function renderStatsPage(state) {
   const heatmap = stats.heatmap || [];
   const busyHours = stats.busyHours || [];
   const choreStats = stats.choreStats || [];
+  const topChores = stats.topChores || [];
   const chores = state.chores || [];
   const members = state.members || [];
 
@@ -91,6 +97,11 @@ export function renderStatsPage(state) {
     <div class="card mb-3">
       <h3>Leaderboard</h3>
       ${renderLeaderboardList(leaderboard, memberMap, stats.leaderboardPeriod)}
+    </div>
+
+    <div class="card mb-3">
+      <h3>Top Chores</h3>
+      ${renderTopChoresList(topChores)}
     </div>
 
     <div class="card mb-3">
@@ -255,6 +266,41 @@ function renderCategoryBars(breakdown) {
   }).join("");
 
   return bars;
+}
+
+function renderTopChoresList(topChores) {
+  if (!topChores || topChores.length === 0) {
+    return '<div class="top-chore-list"><p class="text-secondary text-center">No data yet</p></div>';
+  }
+
+  const maxMonth = Math.max(1, ...topChores.map(c => c.thisMonth));
+
+  const rows = topChores.map((c, i) => {
+    const pct = (c.thisMonth / maxMonth) * 100;
+    const icon = c.choreIcon || "✓";
+    return `<div class="top-chore-row">
+      <span class="top-chore-rank">${i + 1}</span>
+      <span class="top-chore-icon">${icon}</span>
+      <span class="top-chore-name">${escapeHTML(c.choreName)}</span>
+      <div class="top-chore-bar-track">
+        <div class="top-chore-bar-fill" style="width:${pct}%"></div>
+      </div>
+      <div class="top-chore-counts">
+        <span class="top-chore-count top-chore-count--day" title="Today">${c.today || 0}</span>
+        <span class="top-chore-count top-chore-count--week" title="This Week">${c.thisWeek || 0}</span>
+        <span class="top-chore-count top-chore-count--month" title="This Month">${c.thisMonth || 0}</span>
+      </div>
+    </div>`;
+  }).join("");
+
+  return `<div class="top-chore-list">
+    <div class="top-chore-header-row">
+      <span class="top-chore-header-label">Day</span>
+      <span class="top-chore-header-label">Week</span>
+      <span class="top-chore-header-label">Month</span>
+    </div>
+    ${rows}
+  </div>`;
 }
 
 function renderChoreStatsList(choreStats, choreMap) {

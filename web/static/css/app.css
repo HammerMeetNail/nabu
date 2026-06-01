@@ -1534,6 +1534,102 @@ details[open] .chore-stat-chevron {
   min-height: 1px;
 }
 
+/* Top Chores */
+.top-chore-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.top-chore-header-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 0 0 4px;
+  margin-bottom: 4px;
+}
+
+.top-chore-header-label {
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  width: 40px;
+  text-align: center;
+}
+
+.top-chore-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.top-chore-rank {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.top-chore-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  width: 24px;
+  text-align: center;
+}
+
+.top-chore-name {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.top-chore-bar-track {
+  flex: 2;
+  height: 6px;
+  background: var(--bg);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.top-chore-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 3px;
+  min-width: 2px;
+}
+
+.top-chore-counts {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.top-chore-count {
+  font-size: 13px;
+  font-weight: 600;
+  width: 40px;
+  text-align: center;
+}
+
+.top-chore-count--day {
+  color: var(--text-primary);
+}
+
+.top-chore-count--week {
+  color: var(--text-secondary);
+}
+
+.top-chore-count--month {
+  color: var(--accent);
+}
+
 /* ─── Calendar: shared nav ─────────────────────────────────────────────────── */
 
 .cal-nav {

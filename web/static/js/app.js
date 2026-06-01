@@ -21,7 +21,7 @@ import {
 } from "./auth.js";
 import { loadHousehold, listHouseholds, activateHousehold, createHousehold, updateHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, transferOwnership, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
 import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, loadMoreHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
-import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries } from "./stats.js";
+import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, sortChoresByOrder, syncTimezone } from "./preferences.js";
@@ -600,6 +600,13 @@ async function loadAllStatsData() {
     if (csData && csData.choreStats) {
       state.stats = state.stats || {};
       state.stats.choreStats = csData.choreStats;
+    }
+  } catch {}
+  try {
+    const tcData = await loadTopChores();
+    if (tcData && tcData.topChores) {
+      state.stats = state.stats || {};
+      state.stats.topChores = tcData.topChores;
     }
   } catch {}
   await loadBabyTimeSeries();

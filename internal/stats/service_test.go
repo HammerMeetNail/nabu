@@ -318,3 +318,131 @@ func TestGetChoreTimeSeriesCrossHousehold(t *testing.T) {
 		t.Fatal("GetChoreTimeSeries should reject chore from different household")
 	}
 }
+
+// ─── Top Chores ───────────────────────────────────────────────────────────────
+
+func TestGetTopChores_Basic(t *testing.T) {
+	ref := time.Now().UTC().Add(-1 * time.Hour)
+	logs := []chorelog.ChoreLog{
+		{HouseholdID: 1, UserID: 10, ChoreID: 100, CompletedAt: ref},
+		{HouseholdID: 1, UserID: 10, ChoreID: 100, CompletedAt: ref.Add(-30 * time.Minute)},
+		{HouseholdID: 1, UserID: 10, ChoreID: 100, CompletedAt: ref.Add(-2 * time.Hour)},
+		{HouseholdID: 1, UserID: 10, ChoreID: 101, CompletedAt: ref.Add(-10 * time.Minute)},
+		{HouseholdID: 1, UserID: 10, ChoreID: 101, CompletedAt: ref.Add(-3 * time.Hour)},
+	}
+	svc, _ := seedService(t, logs)
+
+	entries, err := svc.GetTopChores(context.Background(), 1, 5, utc)
+	if err != nil {
+		t.Fatalf("GetTopChores: %v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 entries, got %d", len(entries))
+	}
+
+	if entries[0].ChoreName != "Dishes" {
+		t.Errorf("first entry should be Dishes (most monthly logs), got %s", entries[0].ChoreName)
+	}
+	if entries[0].ThisMonth != 3 {
+		t.Errorf("Dishes ThisMonth = %d, want 3", entries[0].ThisMonth)
+	}
+	if entries[0].Today != 3 {
+		t.Errorf("Dishes Today = %d, want 3", entries[0].Today)
+	}
+
+	if entries[1].ChoreName != "Vacuum" {
+		t.Errorf("second entry should be Vacuum, got %s", entries[1].ChoreName)
+	}
+	if entries[1].ThisMonth != 2 {
+		t.Errorf("Vacuum ThisMonth = %d, want 2", entries[1].ThisMonth)
+	}
+	if entries[1].Today != 2 {
+		t.Errorf("Vacuum Today = %d, want 2", entries[1].Today)
+	}
+}
+
+func TestGetTopChores_Empty(t *testing.T) {
+	svc, _ := seedService(t, nil)
+	entries, err := svc.GetTopChores(context.Background(), 1, 5, utc)
+	if err != nil {
+		t.Fatalf("GetTopChores: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("expected 0 entries, got %d", len(entries))
+	}
+}
+
+func TestGetTopChores_Limit(t *testing.T) {
+	ref := time.Now().UTC().Add(-1 * time.Hour)
+
+	cs := &stubChoreStore{chores: []stats.ChoreInfo{}}
+	for i := int64(1); i <= 6; i++ {
+		cs.chores = append(cs.chores, stats.ChoreInfo{
+			ID: 200 + i, HouseholdID: 1, Name: "Chore" + string(rune('A'-1+i)),
+		})
+	}
+
+	logStore := chorelog.NewMemoryStore()
+	logSvc := chorelog.NewService(logStore)
+	ctx := context.Background()
+	for i, ch := range cs.chores {
+		count := 6 - i
+		for j := 0; j < count; j++ {
+			d := ref.Add(time.Duration(-j) * time.Hour)
+			_, err := logSvc.LogChore(ctx, 1, 10, ch.ID, "", nil, &d, nil, &d, nil)
+			if err != nil {
+				t.Fatalf("seed log: %v", err)
+			}
+		}
+	}
+
+	svc := stats.NewService(logStore, cs)
+
+	entries, err := svc.GetTopChores(context.Background(), 1, 3, utc)
+	if err != nil {
+		t.Fatalf("GetTopChores: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("expected 3 entries (limit), got %d", len(entries))
+	}
+	if entries[0].ThisMonth != 6 {
+		t.Errorf("first entry ThisMonth = %d, want 6", entries[0].ThisMonth)
+	}
+	if entries[1].ThisMonth != 5 {
+		t.Errorf("second entry ThisMonth = %d, want 5", entries[1].ThisMonth)
+	}
+	if entries[2].ThisMonth != 4 {
+		t.Errorf("third entry ThisMonth = %d, want 4", entries[2].ThisMonth)
+	}
+}
+
+func TestGetTopChores_WeekAndDayCounts(t *testing.T) {
+	ref := time.Now().UTC().Add(-1 * time.Hour)
+
+	logs := []chorelog.ChoreLog{
+		{HouseholdID: 1, UserID: 10, ChoreID: 100, CompletedAt: ref},
+		{HouseholdID: 1, UserID: 10, ChoreID: 100, CompletedAt: ref.Add(-30 * time.Minute)},
+		{HouseholdID: 1, UserID: 10, ChoreID: 101, CompletedAt: ref.Add(-2 * time.Hour)},
+	}
+	svc, _ := seedService(t, logs)
+
+	entries, err := svc.GetTopChores(context.Background(), 1, 5, utc)
+	if err != nil {
+		t.Fatalf("GetTopChores: %v", err)
+	}
+	if len(entries) < 1 {
+		t.Fatal("expected at least 1 entry")
+	}
+	if entries[0].ChoreName != "Dishes" {
+		t.Fatalf("expected Dishes first (2 logs vs 1 for Vacuum), got %s", entries[0].ChoreName)
+	}
+	if entries[0].ThisMonth != 2 {
+		t.Errorf("Dishes ThisMonth = %d, want 2", entries[0].ThisMonth)
+	}
+	if entries[0].Today != 2 {
+		t.Errorf("Dishes Today = %d, want 2", entries[0].Today)
+	}
+	if entries[1].ThisMonth != 1 {
+		t.Errorf("Vacuum ThisMonth = %d, want 1", entries[1].ThisMonth)
+	}
+}
