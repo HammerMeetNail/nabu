@@ -146,13 +146,13 @@ TEST_DB_NAME="$(
         match($0, /^\\\\connect( -reuse-previous=on)?[[:space:]]+\"?([^\"[:space:]]+)\"?/, m) { print m[2]; exit }
     ' "${BACKUP_DIR}/verify_restore.sql" 2>/dev/null || true
 )"
-TEST_DB_NAME="${TEST_DB_NAME:-choresy}"
+TEST_DB_NAME="${TEST_DB_NAME:-nabu}"
 
 # Step 3: Start test container
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting test PostgreSQL container..."
 if ! podman run -d \
     --name "$TEST_CONTAINER" \
-    -e POSTGRES_USER=choresy \
+    -e POSTGRES_USER=nabu \
     -e POSTGRES_PASSWORD="$TEST_DB_PASSWORD" \
     -e POSTGRES_DB="$TEST_DB_NAME" \
     docker.io/library/postgres:16-alpine 2>&1; then
@@ -163,7 +163,7 @@ fi
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Waiting for PostgreSQL..."
 for i in {1..60}; do
     if podman exec -e PGPASSWORD="$TEST_DB_PASSWORD" "$TEST_CONTAINER" \
-        psql -U choresy -d "$TEST_DB_NAME" -c "SELECT 1" &>/dev/null; then
+        psql -U nabu -d "$TEST_DB_NAME" -c "SELECT 1" &>/dev/null; then
         break
     fi
     if [[ $i -eq 60 ]]; then
@@ -179,7 +179,7 @@ done
 # Step 4: Restore
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Restoring to test container..."
 if ! podman exec -i -e PGPASSWORD="$TEST_DB_PASSWORD" "$TEST_CONTAINER" \
-    psql -U choresy -d "$TEST_DB_NAME" -v ON_ERROR_STOP=1 -v VERBOSITY=terse -v SHOW_CONTEXT=never \
+    psql -U nabu -d "$TEST_DB_NAME" -v ON_ERROR_STOP=1 -v VERBOSITY=terse -v SHOW_CONTEXT=never \
     < "${BACKUP_DIR}/verify_restore.sql" > "${BACKUP_DIR}/verify_restore_psql.log" 2>&1; then
     POSTGRES_LOG_TAIL="$(podman logs --tail 120 "$TEST_CONTAINER" 2>&1 || true)"
     write_error "Failed to restore backup to test database
@@ -194,14 +194,14 @@ fi
 # Step 5: Validate
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Validating data..."
 USER_COUNT=$(podman exec -e PGPASSWORD="$TEST_DB_PASSWORD" "$TEST_CONTAINER" \
-    psql -U choresy -d "$TEST_DB_NAME" -t -c "SELECT COUNT(*) FROM users;" 2>/dev/null | tr -d ' \n')
+    psql -U nabu -d "$TEST_DB_NAME" -t -c "SELECT COUNT(*) FROM users;" 2>/dev/null | tr -d ' \n')
 
 if [[ -z "$USER_COUNT" ]] || [[ "$USER_COUNT" -lt 0 ]]; then
     write_error "Failed to query users table - restore may have failed"
 fi
 
 CHORE_COUNT=$(podman exec -e PGPASSWORD="$TEST_DB_PASSWORD" "$TEST_CONTAINER" \
-    psql -U choresy -d "$TEST_DB_NAME" -t -c "SELECT COUNT(*) FROM chores;" 2>/dev/null | tr -d ' \n')
+    psql -U nabu -d "$TEST_DB_NAME" -t -c "SELECT COUNT(*) FROM chores;" 2>/dev/null | tr -d ' \n')
 
 echo ""
 echo "=========================================="

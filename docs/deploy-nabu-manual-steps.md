@@ -6,33 +6,33 @@ can run a full build and deploy.
 ## Phase 1 — Create Quay.io repository and robot account
 
 1. Log in to https://quay.io
-2. Create a new **public** repository: `dave/choresy`
-   (namespace `dave`, repository name `choresy`)
+2. Create a new **public** repository: `HammerMeetNail/nabu`
+   (namespace `dave`, repository name `nabu`)
 3. Go to **Account Settings → Robot Accounts → Create Robot Account**
-   Name it `choresy_ci`
-4. Grant the `choresy_ci` robot **Write** permission on `dave/choresy`
-5. Copy the robot account username (`dave+choresy_ci`) and token —
+   Name it `nabu_ci`
+4. Grant the `nabu_ci` robot **Write** permission on `HammerMeetNail/nabu`
+5. Copy the robot account username (`dave+nabu_ci`) and token —
    you need these for Phase 3
 
 ## Phase 3 — Add GitHub repository secrets
 
-In https://github.com/HammerMeetNail/choresy → **Settings → Secrets and
+In https://github.com/HammerMeetNail/nabu → **Settings → Secrets and
 variables → Actions**, create the following secrets:
 
 | Secret name          | Where to get the value |
 |----------------------|------------------------|
 | `SSH_PRIVATE_KEY`    | Content of `~/.ssh/hetzner_yearofbingo_ci` (full PEM, same key as yearofbingo) |
-| `QUAY_USERNAME`      | Robot account username from Phase 1 (`dave+choresy_ci`) |
+| `QUAY_USERNAME`      | Robot account username from Phase 1 (`dave+nabu_ci`) |
 | `QUAY_PASSWORD`      | Robot account token from Phase 1 |
-| `CODECOV_TOKEN`      | Add choresy at https://codecov.io and copy its upload token (optional — remove codecov steps from workflow if skipping) |
-| `DB_PASSWORD`        | Must match the value already in `/opt/choresy/.env` on the server. If creating fresh: `openssl rand -base64 32` |
-| `SMTP_HOST`          | Must match `/opt/choresy/.env` on the server |
-| `SMTP_PORT`          | Must match `/opt/choresy/.env` on the server (typically 587) |
-| `SMTP_USER`          | Must match `/opt/choresy/.env` on the server |
-| `SMTP_PASS`          | Must match `/opt/choresy/.env` on the server |
-| `SMTP_FROM`          | Must match `/opt/choresy/.env` on the server |
-| `GOOGLE_CLIENT_ID`   | Must match `/opt/choresy/.env` on the server |
-| `GOOGLE_CLIENT_SECRET` | Must match `/opt/choresy/.env` on the server |
+| `CODECOV_TOKEN`      | Add nabu at https://codecov.io and copy its upload token (optional — remove codecov steps from workflow if skipping) |
+| `DB_PASSWORD`        | Must match the value already in `/opt/nabu/.env` on the server. If creating fresh: `openssl rand -base64 32` |
+| `SMTP_HOST`          | Must match `/opt/nabu/.env` on the server |
+| `SMTP_PORT`          | Must match `/opt/nabu/.env` on the server (typically 587) |
+| `SMTP_USER`          | Must match `/opt/nabu/.env` on the server |
+| `SMTP_PASS`          | Must match `/opt/nabu/.env` on the server |
+| `SMTP_FROM`          | Must match `/opt/nabu/.env` on the server |
+| `GOOGLE_CLIENT_ID`   | Must match `/opt/nabu/.env` on the server |
+| `GOOGLE_CLIENT_SECRET` | Must match `/opt/nabu/.env` on the server |
 
 ## Phase 7 — Verify server can pull from Quay.io
 
@@ -49,7 +49,7 @@ If the repo is public, no credentials are needed. If it's private,
 log in on the server:
 
 ```bash
-podman login quay.io --username dave+choresy_ci --password <token>
+podman login quay.io --username dave+nabu_ci --password <token>
 ```
 
 ## Phase 8 — Tag to trigger the first full deploy

@@ -1,4 +1,4 @@
-# Choresy — Implementation Plan
+# Nabu — Implementation Plan
 
 A household chore coordination web app. Husband, wife, and other household members log and coordinate chores throughout the day, week, month, and year. Designed as a PWA for iPhone homescreen, beautiful enough for a non-technical grandmother.
 
@@ -29,7 +29,7 @@ A household chore coordination web app. Husband, wife, and other household membe
 | CSS | Single plain CSS file with custom properties (design tokens) |
 | Database | PostgreSQL, raw SQL via `database/sql` + `pgx/v5` — no ORM |
 | Auth | Session-based (HttpOnly cookies), email+password, magic link, Google OIDC |
-| CSRF | Double-submit cookie pattern (`choresy_csrf` cookie + `X-CSRF-Token` header) |
+| CSRF | Double-submit cookie pattern (`nabu_csrf` cookie + `X-CSRF-Token` header) |
 | Asset pipeline | Content-hashed CSS/JS at build time, embedded via `//go:embed`, 1-year immutable cache |
 | Migrations | Numbered SQL files applied at startup via `golang-migrate` |
 | Real-time | Server-Sent Events (SSE) with Redis Pub/Sub for cross-instance broadcasting |
@@ -139,7 +139,7 @@ Each stage is designed to be implemented autonomously. Stages are sequential —
 
 #### 0.1 Project Initialization **[P]**
 
-- [ ] `go mod init github.com/dave/choresy`
+- [ ] `go mod init github.com/HammerMeetNail/nabu`
 - [ ] Create directory structure:
   ```
   cmd/server/
@@ -233,10 +233,10 @@ Each stage is designed to be implemented autonomously. Stages are sequential —
 
 - [ ] `web/assets.go` — `//go:embed templates static` for embedding all frontend assets
 - [ ] `web/templates/index.html` — SPA shell: `<!DOCTYPE html>`, meta viewport, CSP meta, `<main id="app">`, bottom tabs nav, footer
-- [ ] `web/static/manifest.webmanifest` — PWA manifest (name: "Choresy", short_name: "Choresy", theme_color: "#19323C", background_color: "#F4EFE7")
+- [ ] `web/static/manifest.webmanifest` — PWA manifest (name: "Nabu", short_name: "Nabu", theme_color: "#19323C", background_color: "#F4EFE7")
 - [ ] `web/static/service-worker.js` — cache-first for static, network-first for nav, offline fallback
 - [ ] `web/static/offline.html` — "You're offline" page
-- [ ] `web/static/icons/icon.svg` — app icon (choresy brand mark)
+- [ ] `web/static/icons/icon.svg` — app icon (nabu brand mark)
 - [ ] `web/static/css/app.css` — CSS reset + design tokens (custom properties) + base typography + layout skeleton (mobile-first, max-width 480px)
 - [ ] `web/static/js/app.js` — main entry: event delegation on `#app`, SPA routing, `render()` orchestrator
 - [ ] `web/static/js/state.js` — single mutable state object factory (`createAppState()`)
@@ -344,7 +344,7 @@ curl localhost:8080/health   # {"status":"ok"}
 
 #### 1.6 Session Middleware
 
-- [ ] `internal/middleware/auth.go` — session middleware: extract `choresy_session` cookie, call `auth.Authenticate()`, inject `User` into context
+- [ ] `internal/middleware/auth.go` — session middleware: extract `nabu_session` cookie, call `auth.Authenticate()`, inject `User` into context
 - [ ] `internal/middleware/auth.go` — `CurrentUser(ctx)` helper, `RequireAuth` wrapper
 
 #### 1.7 Frontend Auth
@@ -438,7 +438,7 @@ make e2e         # E2E: register, verify, login, logout flows pass
 #### 2.6 First-Run / Setup Wizard
 
 - [ ] On first login (user has no household), show setup wizard:
-  - Step 1: "Welcome to Choresy! Let's set up your home."
+  - Step 1: "Welcome to Nabu! Let's set up your home."
   - Step 2: "Invite your partner" — shows invite code + "Copy" button, optional "Send via email" input
   - Step 3: "Choose your chores" — checklist of pre-defined chores to enable/disable
 - [ ] `web/static/js/setup.js` — wizard render + handlers
@@ -873,8 +873,8 @@ make e2e         # E2E: set reminder preference → schedule chore → wait for 
 #### 7.2 PWA Manifest Polish
 
 - [ ] `web/static/manifest.webmanifest` — finalize:
-  - `name: "Choresy — Household Chore Tracker"`
-  - `short_name: "Choresy"`
+  - `name: "Nabu — Household Chore Tracker"`
+  - `short_name: "Nabu"`
   - `display: "standalone"`
   - `orientation: "portrait"`
   - `scope: "/"`
@@ -1179,7 +1179,7 @@ make e2e          # All E2E scenarios pass
 ## File Inventory (Intended Final State)
 
 ```
-choresy/
+nabu/
 ├── .github/workflows/ci.yaml
 ├── .gitignore
 ├── .dockerignore

@@ -82,7 +82,7 @@ func readJSON(r *http.Request, target any) error {
 ### 8. OAuth state parameter not validated
 **File:** `internal/handlers/auth.go:223-240`
 
-`GoogleCallback` reads the `code` parameter and proceeds with the token exchange, but never reads or validates the `choresy_oidc_state` cookie against the `state` query parameter. This leaves the OAuth callback open to CSRF. The handler should compare `r.URL.Query().Get("state")` with `h.getOIDCCookie(r, "choresy_oidc_state")` and reject mismatches.
+`GoogleCallback` reads the `code` parameter and proceeds with the token exchange, but never reads or validates the `nabu_oidc_state` cookie against the `state` query parameter. This leaves the OAuth callback open to CSRF. The handler should compare `r.URL.Query().Get("state")` with `h.getOIDCCookie(r, "nabu_oidc_state")` and reject mismatches.
 
 ### 9. Rate limiter map grows unbounded
 **File:** `internal/middleware/ratelimit.go`

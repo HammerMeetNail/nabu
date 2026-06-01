@@ -180,7 +180,7 @@ func TestMigrateReturnsRecordErrors(t *testing.T) {
 }
 
 func TestOpenReturnsDatabaseHandle(t *testing.T) {
-	db, err := Open("postgres://choresy:choresy@localhost:5432/choresy?sslmode=disable")
+	db, err := Open("postgres://nabu:nabu@localhost:5432/nabu?sslmode=disable")
 	if err != nil {
 		t.Fatalf("Open returned error: %v", err)
 	}

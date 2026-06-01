@@ -14,7 +14,7 @@ users:
   - name: deploy
     shell: /bin/bash
     ssh_authorized_keys:
-      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIChoresyPlaceholderKey choresy-ci
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAINabuPlaceholderKey nabu-ci
 
 ssh_pwauth: false
 disable_root: true
@@ -26,7 +26,7 @@ write_files:
   - path: /etc/sudoers.d/deploy
     permissions: "0440"
     content: |
-      deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart choresy.service, /usr/bin/systemctl restart cloudflared.service, /usr/bin/systemctl status choresy.service, /usr/bin/systemctl status cloudflared.service, /usr/bin/journalctl -u choresy.service -n 200 --no-pager, /usr/bin/journalctl -u cloudflared.service -n 200 --no-pager
+      deploy ALL=(root) NOPASSWD: /usr/bin/systemctl restart nabu.service, /usr/bin/systemctl restart cloudflared.service, /usr/bin/systemctl status nabu.service, /usr/bin/systemctl status cloudflared.service, /usr/bin/journalctl -u nabu.service -n 200 --no-pager, /usr/bin/journalctl -u cloudflared.service -n 200 --no-pager
 
   - path: /etc/sysctl.d/99-unprivileged-ports.conf
     content: |
@@ -42,30 +42,30 @@ write_files:
       [Service]
       Type=simple
       User=deploy
-      ExecStart=/usr/local/bin/cloudflared tunnel run choresy
+      ExecStart=/usr/local/bin/cloudflared tunnel run nabu
       Restart=always
       RestartSec=5
 
       [Install]
       WantedBy=multi-user.target
 
-  - path: /etc/systemd/system/choresy-backup.service
+  - path: /etc/systemd/system/nabu-backup.service
     content: |
       [Unit]
-      Description=Choresy Database Backup
-      After=network-online.target choresy.service
+      Description=Nabu Database Backup
+      After=network-online.target nabu.service
       Wants=network-online.target
 
       [Service]
       Type=oneshot
       User=deploy
-      WorkingDirectory=/opt/choresy
-      ExecStart=/opt/choresy/scripts/backup.sh
+      WorkingDirectory=/opt/nabu
+      ExecStart=/opt/nabu/scripts/backup.sh
 
-  - path: /etc/systemd/system/choresy-backup.timer
+  - path: /etc/systemd/system/nabu-backup.timer
     content: |
       [Unit]
-      Description=Daily backup for Choresy
+      Description=Daily backup for Nabu
 
       [Timer]
       OnCalendar=*-*-* 03:00:00
@@ -75,23 +75,23 @@ write_files:
       [Install]
       WantedBy=timers.target
 
-  - path: /etc/systemd/system/choresy-verify-backup.service
+  - path: /etc/systemd/system/nabu-verify-backup.service
     content: |
       [Unit]
-      Description=Choresy Backup Verification
-      After=network-online.target choresy-backup.service
+      Description=Nabu Backup Verification
+      After=network-online.target nabu-backup.service
       Wants=network-online.target
 
       [Service]
       Type=oneshot
       User=deploy
-      WorkingDirectory=/opt/choresy
-      ExecStart=/opt/choresy/scripts/verify-backup.sh
+      WorkingDirectory=/opt/nabu
+      ExecStart=/opt/nabu/scripts/verify-backup.sh
 
-  - path: /etc/systemd/system/choresy-verify-backup.timer
+  - path: /etc/systemd/system/nabu-verify-backup.timer
     content: |
       [Unit]
-      Description=Daily backup verification for Choresy
+      Description=Daily backup verification for Nabu
 
       [Timer]
       OnCalendar=*-*-* 04:00:00
@@ -105,7 +105,7 @@ write_files:
     content: |
       [Unit]
       Description=Nabu App
-      After=network-online.target choresy.service
+      After=network-online.target nabu.service
       Wants=network-online.target
 
       [Service]
@@ -171,10 +171,10 @@ write_files:
       [Install]
       WantedBy=timers.target
 
-  - path: /etc/systemd/system/choresy.service
+  - path: /etc/systemd/system/nabu.service
     content: |
       [Unit]
-      Description=Choresy App
+      Description=Nabu App
       After=network-online.target
       Wants=network-online.target
 
@@ -182,7 +182,7 @@ write_files:
       Type=oneshot
       RemainAfterExit=yes
       User=deploy
-      WorkingDirectory=/opt/choresy
+      WorkingDirectory=/opt/nabu
       ExecStart=/usr/bin/podman-compose up -d
       ExecStop=/usr/bin/podman-compose down
 
@@ -193,11 +193,11 @@ write_files:
     owner: deploy:deploy
     permissions: "0600"
     content: |
-      tunnel: choresy
-      credentials-file: /home/deploy/.cloudflared/choresy-tunnel.json
+      tunnel: nabu
+      credentials-file: /home/deploy/.cloudflared/nabu-tunnel.json
 
       ingress:
-        - hostname: choresy.app
+        - hostname: nabu.app
           service: http://localhost:80
         - service: http_status:404
 
@@ -238,8 +238,8 @@ runcmd:
   - loginctl enable-linger deploy
   - systemctl enable --now firewalld
   - /usr/local/bin/setup-cloudflare-firewall.sh
-  - mkdir -p /opt/choresy
-  - chown deploy:deploy /opt/choresy
+  - mkdir -p /opt/nabu
+  - chown deploy:deploy /opt/nabu
   - mkdir -p /opt/nabu
   - chown deploy:deploy /opt/nabu
   - |
@@ -251,9 +251,9 @@ runcmd:
   - mkdir -p /home/deploy/.config/rclone
   - chown -R deploy:deploy /home/deploy/.config
   - systemctl daemon-reload
-  - systemctl enable choresy.service
-  - systemctl enable choresy-backup.timer
-  - systemctl enable choresy-verify-backup.timer
+  - systemctl enable nabu.service
+  - systemctl enable nabu-backup.timer
+  - systemctl enable nabu-verify-backup.timer
   - systemctl enable nabu.service
   - systemctl enable nabu-backup.timer
   - systemctl enable nabu-verify-backup.timer

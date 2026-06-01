@@ -1,4 +1,4 @@
-You are setting up a production CI/CD pipeline for the choresy application (this
+You are setting up a production CI/CD pipeline for the nabu application (this
 repository) that mirrors the pattern used by yearofbingo. The end result is:
 
 - Every version tag (`v*`) pushed to GitHub triggers a full test → build →
@@ -8,9 +8,9 @@ repository) that mirrors the pattern used by yearofbingo. The end result is:
   at `https://nabu-app.com`
 - Deployment is fully automated: push a tag, get a deploy
 
-**Assumption**: choresy has already been manually deployed to the server using
+**Assumption**: nabu has already been manually deployed to the server using
 the local-build method. This guide migrates it to a proper CI/CD workflow. If
-choresy has not yet been deployed manually, complete the manual deploy first,
+nabu has not yet been deployed manually, complete the manual deploy first,
 then return here.
 
 ---
@@ -39,12 +39,12 @@ Record all answers — they drive every decision below.
 
 Do this manually in the Quay.io web UI (https://quay.io):
 
-1. Create a new **public** repository named `choresy/choresy`
-   (or `<your-org>/choresy` — note the name you choose, it becomes `IMAGE_NAME`
+1. Create a new **public** repository named `nabu/nabu`
+   (or `<your-org>/nabu` — note the name you choose, it becomes `IMAGE_NAME`
    in the workflow).
 2. Go to **Account Settings → Robot Accounts → Create Robot Account**.
-   Name it something like `choresy_ci`.
-3. Grant the robot **Write** permission on the `choresy/choresy` repository.
+   Name it something like `nabu_ci`.
+3. Grant the robot **Write** permission on the `nabu/nabu` repository.
 4. Copy the robot account's **username** and **password/token** — you will add
    these as GitHub secrets (`QUAY_USERNAME`, `QUAY_PASSWORD`) in Phase 3.
 
@@ -53,15 +53,15 @@ Do this manually in the Quay.io web UI (https://quay.io):
 ## Phase 2 — Create `compose.server.yaml`
 
 This file is the production compose template. The CI/CD workflow reads it,
-substitutes the image digest, and SCPs it to `/opt/choresy/compose.yaml` on the
+substitutes the image digest, and SCPs it to `/opt/nabu/compose.yaml` on the
 server.
 
 Create `compose.server.yaml` at the repository root. Use the template below,
-adapting it to what you found in Phase 0 (remove services choresy does not need,
-add env vars choresy does need, fix the container port):
+adapting it to what you found in Phase 0 (remove services nabu does not need,
+add env vars nabu does need, fix the container port):
 
 ```yaml
-# Production compose file — deployed to /opt/choresy/compose.yaml by CI/CD
+# Production compose file — deployed to /opt/nabu/compose.yaml by CI/CD
 services:
   app:
     image: quay.io/nabu/nabu:latest   # CI substitutes digest at deploy time
@@ -75,9 +75,9 @@ services:
       # Add all required env vars. Reference secrets from .env with ${VAR} syntax:
       # - DB_HOST=postgres
       # - DB_PORT=5432
-      # - DB_USER=choresy
+      # - DB_USER=nabu
       # - DB_PASSWORD=${DB_PASSWORD}
-      # - DB_NAME=choresy
+      # - DB_NAME=nabu
       # - DB_SSLMODE=disable
       # - REDIS_HOST=redis
       # - REDIS_PORT=6379
@@ -90,28 +90,28 @@ services:
       #   condition: service_healthy
     restart: unless-stopped
 
-  # Uncomment if choresy needs postgres:
+  # Uncomment if nabu needs postgres:
   # postgres:
   #   image: docker.io/library/postgres:16-alpine
   #   environment:
-  #     - POSTGRES_USER=choresy
+  #     - POSTGRES_USER=nabu
   #     - POSTGRES_PASSWORD=${DB_PASSWORD}
-  #     - POSTGRES_DB=choresy
+  #     - POSTGRES_DB=nabu
   #   volumes:
-  #     - /mnt/data/choresy/postgres:/var/lib/postgresql/data
+  #     - /mnt/data/nabu/postgres:/var/lib/postgresql/data
   #   healthcheck:
-  #     test: ["CMD-SHELL", "pg_isready -U choresy -d choresy"]
+  #     test: ["CMD-SHELL", "pg_isready -U nabu -d nabu"]
   #     interval: 5s
   #     timeout: 5s
   #     retries: 5
   #   restart: unless-stopped
 
-  # Uncomment if choresy needs redis:
+  # Uncomment if nabu needs redis:
   # redis:
   #   image: docker.io/library/redis:7-alpine
   #   command: redis-server --requirepass ${REDIS_PASSWORD}
   #   volumes:
-  #     - /mnt/data/choresy/redis:/data
+  #     - /mnt/data/nabu/redis:/data
   #   healthcheck:
   #     test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
   #     interval: 5s
@@ -124,7 +124,7 @@ services:
 
 ## Phase 3 — Set up GitHub repository secrets
 
-In the choresy GitHub repository go to **Settings → Secrets and variables →
+In the nabu GitHub repository go to **Settings → Secrets and variables →
 Actions** and create the following secrets. Values marked `[SAME AS YEAROFBINGO]`
 can be copied from the yearofbingo repo's secrets — they reference the same
 server and same external accounts.
@@ -132,26 +132,26 @@ server and same external accounts.
 | Secret name | Where to get the value |
 |-------------|------------------------|
 | `SSH_PRIVATE_KEY` | The private key for the `deploy` user on the server. This is the same key used by yearofbingo. Get the private key content from `~/.ssh/hetzner_yearofbingo_ci` on your local machine (the full PEM content including `-----BEGIN...` and `-----END...` lines). `[SAME AS YEAROFBINGO]` |
-| `QUAY_USERNAME` | Robot account username from Phase 1 (format: `choresy+choresy_ci`) |
+| `QUAY_USERNAME` | Robot account username from Phase 1 (format: `nabu+nabu_ci`) |
 | `QUAY_PASSWORD` | Robot account token from Phase 1 |
-| `CODECOV_TOKEN` | From https://codecov.io — add the choresy repo and copy its upload token (optional; remove the Codecov steps from the workflow if not using it) |
-| `DB_PASSWORD` | Strong random password for choresy's postgres (if used). Generate with `openssl rand -base64 32`. Must match what is already in `/opt/choresy/.env` on the server. |
-| `REDIS_PASSWORD` | Strong random password for choresy's redis (if used). Must match server. |
-| *(add any other app-specific secrets choresy needs)* | From Phase 0 env var list |
+| `CODECOV_TOKEN` | From https://codecov.io — add the nabu repo and copy its upload token (optional; remove the Codecov steps from the workflow if not using it) |
+| `DB_PASSWORD` | Strong random password for nabu's postgres (if used). Generate with `openssl rand -base64 32`. Must match what is already in `/opt/nabu/.env` on the server. |
+| `REDIS_PASSWORD` | Strong random password for nabu's redis (if used). Must match server. |
+| *(add any other app-specific secrets nabu needs)* | From Phase 0 env var list |
 
 ---
 
 ## Phase 4 — Create the GitHub Actions workflow
 
 Create `.github/workflows/ci.yaml`. Base it on yearofbingo's workflow but adapt
-it to choresy's actual test suites and env vars (found in Phase 0).
+it to nabu's actual test suites and env vars (found in Phase 0).
 
 The key structural differences from yearofbingo:
-- `IMAGE_NAME` is `choresy/choresy` (or your Quay.io org/repo name)
-- The deploy job writes to `/opt/choresy/` and uses `compose.server.yaml`
+- `IMAGE_NAME` is `nabu/nabu` (or your Quay.io org/repo name)
+- The deploy job writes to `/opt/nabu/` and uses `compose.server.yaml`
 - SSH hostname is still `ssh.yearofbingo.com` (same server)
 - Remove test jobs that don't apply (e.g. `test-js` if no JS tests, `e2e` if no E2E tests)
-- Remove env vars and secrets from the deploy job that choresy doesn't need
+- Remove env vars and secrets from the deploy job that nabu doesn't need
 - Adjust the `APP_BASE_URL` to `https://nabu-app.com`
 
 Full workflow template — edit every `# ADAPT:` comment before committing:
@@ -176,7 +176,7 @@ on:
 env:
   GO_VERSION: "1.24"   # ADAPT: match go.mod
   REGISTRY: quay.io
-  IMAGE_NAME: choresy/choresy   # ADAPT: must match Quay.io repo from Phase 1
+  IMAGE_NAME: nabu/nabu   # ADAPT: must match Quay.io repo from Phase 1
 
 jobs:
   changes:
@@ -252,8 +252,8 @@ jobs:
           flags: go
           token: ${{ secrets.CODECOV_TOKEN }}
 
-  # ADAPT: add a test-js job here if choresy has JavaScript tests (see yearofbingo ci.yaml for the pattern)
-  # ADAPT: add an e2e job here if choresy has Playwright tests (see yearofbingo ci.yaml for the pattern)
+  # ADAPT: add a test-js job here if nabu has JavaScript tests (see yearofbingo ci.yaml for the pattern)
+  # ADAPT: add an e2e job here if nabu has Playwright tests (see yearofbingo ci.yaml for the pattern)
 
   build-image:
     name: Build Image (${{ matrix.arch }})
@@ -464,7 +464,7 @@ jobs:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           IMAGE_DIGEST: ${{ needs.scan-and-push.outputs.digest }}
           IMAGE_TAG: ${{ needs.scan-and-push.outputs.tag }}
-          # ADAPT: list every secret choresy needs at runtime
+          # ADAPT: list every secret nabu needs at runtime
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
           # add more secrets here as needed
@@ -489,13 +489,13 @@ jobs:
           fi
 
           # Copy compose file to server
-          scp compose.server.deploy.yaml ssh.yearofbingo.com:/opt/choresy/compose.yaml
+          scp compose.server.deploy.yaml ssh.yearofbingo.com:/opt/nabu/compose.yaml
 
           # Deploy
           ssh ssh.yearofbingo.com << EOF
-            cd /opt/choresy
+            cd /opt/nabu
 
-            # Write .env (ADAPT: add/remove vars to match choresy's secrets above)
+            # Write .env (ADAPT: add/remove vars to match nabu's secrets above)
             cat > .env << 'ENVFILE'
           DB_PASSWORD=${DB_PASSWORD}
           REDIS_PASSWORD=${REDIS_PASSWORD}
@@ -560,7 +560,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        language: ['go']   # ADAPT: add 'javascript' if choresy has JS
+        language: ['go']   # ADAPT: add 'javascript' if nabu has JS
     steps:
       - uses: actions/checkout@v6
       - uses: github/codeql-action/init@v4
@@ -574,8 +574,8 @@ jobs:
 
 ## Phase 7 — Update the server to expect the Quay.io image
 
-The server currently has `/opt/choresy/compose.yaml` referencing
-`localhost/choresy_app:latest` (from the manual deploy). The CI/CD workflow
+The server currently has `/opt/nabu/compose.yaml` referencing
+`localhost/nabu_app:latest` (from the manual deploy). The CI/CD workflow
 will overwrite this file on first deploy with the Quay.io image reference.
 No server changes are needed — the deploy job handles it.
 
@@ -635,7 +635,7 @@ On the server, confirm both stacks are running:
 ssh -i ~/.ssh/hetzner_yearofbingo_ci \
     -o ProxyCommand="cloudflared access ssh --hostname ssh.yearofbingo.com" \
     deploy@ssh.yearofbingo.com \
-    "podman ps --format 'table {{.Names}}\t{{.Status}}' && sudo systemctl status choresy.service yearofbingo.service --no-pager"
+    "podman ps --format 'table {{.Names}}\t{{.Status}}' && sudo systemctl status nabu.service yearofbingo.service --no-pager"
 ```
 
 ---
@@ -666,7 +666,7 @@ with fresh secrets.
 | SSH key secret | `SSH_PRIVATE_KEY` (same key as yearofbingo) |
 | Container registry | `quay.io` |
 | Image name | `quay.io/nabu/nabu` (adjust to your org) |
-| Server app dir | `/opt/choresy/` |
+| Server app dir | `/opt/nabu/` |
 | Server host port | `8081` |
 | Production URL | `https://nabu-app.com` |
 | Deploy trigger | Push a `v*` tag to `main` |

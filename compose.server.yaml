@@ -1,5 +1,6 @@
 # Production compose file — deployed to /opt/nabu/compose.yaml by CI/CD
-# Shares the choresy_default network for DB access; does not run its own postgres.
+# App shares the nabu_default network with the standalone nabu_postgres_1 container.
+# Postgres is run separately (see cloud-init.yaml for provisioning).
 
 services:
   app:
@@ -11,7 +12,7 @@ services:
       - APP_ENV=production
       - APP_BASE_URL=https://nabu-app.com
       - SERVER_SECURE=true
-      - DATABASE_URL=postgres://choresy:${DB_PASSWORD}@postgres:5432/choresy?sslmode=disable
+      - DATABASE_URL=postgres://nabu:${DB_PASSWORD}@nabu_postgres_1:5432/nabu?sslmode=disable
       - SMTP_HOST=smtp.resend.com
       - SMTP_PORT=587
       - SMTP_USER=resend
@@ -24,8 +25,8 @@ services:
       - VAPID_SUBJECT=${VAPID_SUBJECT}
     restart: unless-stopped
     networks:
-      - choresy_default
+      - nabu_default
 
 networks:
-  choresy_default:
+  nabu_default:
     external: true

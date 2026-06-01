@@ -338,8 +338,8 @@ import (
     "strconv"
     "time"
 
-    "github.com/dave/choresy/internal/middleware"
-    "github.com/dave/choresy/internal/schedule"
+    "github.com/HammerMeetNail/nabu/internal/middleware"
+    "github.com/HammerMeetNail/nabu/internal/schedule"
 )
 
 type ScheduleHandler struct {
@@ -511,7 +511,7 @@ func (h *ScheduleHandler) Delete(w http.ResponseWriter, r *http.Request) {
 ### 6b. Route Registration (`internal/app/server.go`)
 
 Add the following inside `NewServerWithDB`, alongside the existing route registrations.
-Import `"github.com/dave/choresy/internal/schedule"` and wire up a new store + handler.
+Import `"github.com/HammerMeetNail/nabu/internal/schedule"` and wire up a new store + handler.
 
 ```go
 // Add after logStore and logService setup:
@@ -1919,7 +1919,7 @@ import (
     "strings"
     "testing"
 
-    "github.com/dave/choresy/internal/schedule"
+    "github.com/HammerMeetNail/nabu/internal/schedule"
 )
 
 func setupScheduleTest(t *testing.T) (*ScheduleHandler, string, *auth.Service) {

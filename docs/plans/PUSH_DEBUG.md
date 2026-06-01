@@ -20,7 +20,7 @@ Key gotcha: **Apple returns 201 even when encryption is broken.** There is no er
 ```bash
 # SSH to production and check logs
 ssh deploy@ssh.yearofbingo.com
-podman logs choresy_app_1 --tail 20 | grep -E 'push|notif'
+podman logs nabu_app_1 --tail 20 | grep -E 'push|notif'
 
 # Expected output for a successful send:
 # notif: sending push to user N title="..."
@@ -42,7 +42,7 @@ remotedebug_ios_webkit_adapter --port 9222
 
 # List debuggable pages
 curl http://localhost:9222/json
-# Look for "Choresy" (main page) and "ServiceWorker" entries
+# Look for "Nabu" (main page) and "ServiceWorker" entries
 ```
 
 The pages are accessible via WebSocket:
@@ -200,7 +200,7 @@ See `internal/app/server.go` for the SW handler.
 curl -X POST https://nabu-app.com/api/logs \
   -H "Content-Type: application/json" \
   -H "X-CSRF-Token: <csrf_token>" \
-  -b "choresy_session=<session>; choresy_csrf=<csrf>" \
+  -b "nabu_session=<session>; nabu_csrf=<csrf>" \
   -d '{"choreId": 1, "hour": '"$(date +%H)"'}'
 ```
 

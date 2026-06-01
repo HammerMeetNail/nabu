@@ -39,8 +39,8 @@ CURRENT_STEP="init"
 # Database connection
 DB_HOST="${DB_HOST:-localhost}"
 DB_PORT="${DB_PORT:-5432}"
-DB_USER="${DB_USER:-choresy}"
-DB_NAME="${DB_NAME:-choresy}"
+DB_USER="${DB_USER:-nabu}"
+DB_NAME="${DB_NAME:-nabu}"
 
 # Notify on failure (best-effort)
 on_error() {
@@ -86,7 +86,7 @@ CURRENT_STEP="dump"
 
 # For containerized PostgreSQL, connect via podman if localhost
 if [[ "$DB_HOST" == "localhost" ]] || [[ "$DB_HOST" == "127.0.0.1" ]]; then
-    POSTGRES_CONTAINER=$(podman ps --format '{{.Names}}' 2>/dev/null | grep -E 'choresy.*postgres' | head -1)
+    POSTGRES_CONTAINER=$(podman ps --format '{{.Names}}' 2>/dev/null | grep -E 'nabu.*postgres' | head -1)
 
     if [[ -n "$POSTGRES_CONTAINER" ]]; then
         echo "Using podman exec for database dump (container: $POSTGRES_CONTAINER)..."

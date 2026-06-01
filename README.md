@@ -1,4 +1,4 @@
-# Choresy
+# Nabu
 
 A household chore coordination web app. Designed as a PWA for iPhone homescreen, beautiful enough for a non-technical grandmother.
 
@@ -9,7 +9,7 @@ A household chore coordination web app. Designed as a PWA for iPhone homescreen,
 make local       # Start stack (app:8080, Mailpit:8025, Postgres:5432)
 make local-fresh # Fresh rebuild with volume wipe (required after any JS/template change)
 make run         # Run without database (in-memory stores)
-make seed        # Seed test user (test@choresy.local / "correct horse battery")
+make seed        # Seed test user (test@nabu.local / "correct horse battery")
 
 # Testing
 make test        # Go + JS tests
@@ -98,7 +98,7 @@ See `PUSH_DEBUG.md` for the diagnostic playbook.
 
 ## PWA
 
-Choresy is a Progressive Web App with a service worker caching strategy. Key PWA features:
+Nabu is a Progressive Web App with a service worker caching strategy. Key PWA features:
 
 - **Offline-ready**: SW caches static assets and serves stale-while-revalidate
 - **iOS homescreen**: Manifest, apple-touch-icon, standalone display mode

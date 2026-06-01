@@ -36,7 +36,7 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	t.Setenv("PORT", "9090")
 	t.Setenv("APP_ENV", "production")
 	t.Setenv("APP_BASE_URL", "https://example.com")
-	t.Setenv("DATABASE_URL", "postgres://localhost/choresy")
+	t.Setenv("DATABASE_URL", "postgres://localhost/nabu")
 	t.Setenv("SMTP_HOST", "mailpit")
 	t.Setenv("SMTP_PORT", "25")
 	t.Setenv("SMTP_USER", "user")
@@ -64,7 +64,7 @@ func TestLoadUsesEnvironmentOverrides(t *testing.T) {
 	if !cfg.ServerSecure {
 		t.Fatal("expected ServerSecure = true")
 	}
-	if cfg.DatabaseURL != "postgres://localhost/choresy" {
+	if cfg.DatabaseURL != "postgres://localhost/nabu" {
 		t.Fatalf("DatabaseURL = %q", cfg.DatabaseURL)
 	}
 	if cfg.SMTPHost != "mailpit" || cfg.SMTPPort != "25" || cfg.SMTPUser != "user" || cfg.SMTPPass != "pass" || cfg.SMTPFrom != "noreply@example.com" {

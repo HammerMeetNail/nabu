@@ -40,7 +40,7 @@ push: sent to user 3 ... status=201 ✓
 1. Connect iPhone to Mac via USB cable
 2. On iPhone: Settings → Safari → Advanced → Web Inspector = ON
 3. On Mac: Safari → Settings → Advanced → "Show Develop menu in menu bar" = ON
-4. On Mac: Safari → Develop → [iPhone name] → choose the Choresy PWA
+4. On Mac: Safari → Develop → [iPhone name] → choose the Nabu PWA
    (The PWA will appear as a separate entry from regular Safari tabs)
 
 ### Step 1: Verify service worker is active and has push handler
@@ -167,7 +167,7 @@ Even with all Settings → Notifications toggles on, also check:
 
 ```bash
 ssh ssh.yearofbingo.com   # requires cloudflared
-cd /opt/choresy
+cd /opt/nabu
 podman-compose logs --tail=50 app 2>&1 | grep 'push:\|notif:'
 podman-compose exec app env | grep VAPID
 ```

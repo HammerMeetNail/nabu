@@ -16,7 +16,7 @@ export RCLONE_CONFIG="$HOME/.config/rclone/rclone-nabu.conf"
 
 BACKUP_DIR="/tmp/nabu-backups"
 R2_BUCKET="${R2_BUCKET:-nabu-app-backups}"
-DB_NAME="${DB_NAME:-choresy}"
+DB_NAME="${DB_NAME:-nabu}"
 
 if [[ -z "${DB_PASSWORD:-}" ]]; then
     echo "ERROR: DB_PASSWORD is required"
@@ -64,20 +64,20 @@ fi
 echo "[$(date)] Downloading backup..."
 rclone copy "r2-nabu:${R2_BUCKET}/${BACKUP_FILE}" "${BACKUP_DIR}/" --progress
 
-POSTGRES_CONTAINER=$(podman ps --format '{{.Names}}' 2>/dev/null | grep -E 'choresy.*postgres' | head -1)
+POSTGRES_CONTAINER=$(podman ps --format '{{.Names}}' 2>/dev/null | grep -E 'nabu.*postgres' | head -1)
 
 if [[ -n "$POSTGRES_CONTAINER" ]]; then
     gpg --decrypt --batch --pinentry-mode loopback --passphrase-fd 3 3<<<"$BACKUP_ENCRYPTION_KEY" "${BACKUP_DIR}/${BACKUP_FILE}" \
         | gunzip \
         | podman exec -i -e PGPASSWORD="$DB_PASSWORD" "$POSTGRES_CONTAINER" \
-            psql -U choresy -d "$DB_NAME"
+            psql -U nabu -d "$DB_NAME"
 else
     gpg --decrypt --batch --pinentry-mode loopback --passphrase-fd 3 3<<<"$BACKUP_ENCRYPTION_KEY" "${BACKUP_DIR}/${BACKUP_FILE}" \
         | gunzip \
         | PGPASSWORD="$DB_PASSWORD" psql \
             -h "${DB_HOST:-localhost}" \
             -p "${DB_PORT:-5432}" \
-            -U "${DB_USER:-choresy}" \
+            -U "${DB_USER:-nabu}" \
             -d "$DB_NAME"
 fi
 

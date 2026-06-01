@@ -1,4 +1,4 @@
-# Choresy Security Review
+# Nabu Security Review
 
 **Date:** 2026-05-30  
 **Scope:** Full codebase, dependency audit, live pentest of production (https://nabu-app.com)  
@@ -584,7 +584,7 @@ Validate `color` server-side against a regex: `^#[0-9A-Fa-f]{6}$`
 
 #### Description
 
-The CSRF implementation uses the double-submit cookie pattern without server-side binding. The server trusts that the `X-CSRF-Token` header value matches the `choresy_csrf` cookie value, but never ties the CSRF token to a specific session. Weaknesses:
+The CSRF implementation uses the double-submit cookie pattern without server-side binding. The server trusts that the `X-CSRF-Token` header value matches the `nabu_csrf` cookie value, but never ties the CSRF token to a specific session. Weaknesses:
 
 - If a subdomain cookie injection were possible (it is not currently, since the site has no subdomains), an attacker could set a known CSRF token and forge requests.
 - The CSRF token never rotates within a session, so a leaked token (e.g., via a future XSS) remains valid until the session ends.
