@@ -133,6 +133,34 @@ Rules that follow from this:
 - **Always verify after a deploy** (see Production section below).
 - If you add a new JS module that itself imports other modules, the rewriter handles it automatically — no extra work needed.
 
+## Client parity
+
+This repository has two first-class clients:
+
+- **PWA** — `web/static/js/` (plain ES modules)
+- **iOS** — `ios/` (native SwiftUI)
+
+Every feature, bug fix, validation change, security fix, API change, or UI behavior change must be evaluated for both clients. See `docs/plans/ios.md` for the full conversion plan and `docs/plans/client-parity.md` for the feature matrix.
+
+**When changing the PWA**, check whether the iOS app needs:
+- A matching SwiftUI UI change.
+- A matching API model change.
+- A matching XCTest or XCUITest update.
+- A matching snapshot update.
+
+**When changing the iOS app**, check whether the PWA needs:
+- A matching JavaScript UI/state change.
+- A matching Playwright E2E test.
+- A matching JS render/unit test.
+- A matching backend handler/service/store change.
+
+**PR descriptions must state one of:**
+- "PWA and iOS both updated."
+- "PWA-only change; iOS not affected because \<reason\>."
+- "iOS-only change; PWA not affected because \<reason\>."
+
+See `ios/AGENTS.md` for iOS-specific agent instructions.
+
 ## Local dev stack
 
 `make local` starts via Podman Compose: app on `:8080`, Mailpit on `:8025`, Postgres on `:5432`.
