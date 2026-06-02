@@ -604,7 +604,8 @@ async function loadAllStatsData() {
     }
   } catch {}
   try {
-    const busyData = await loadBusyHours();
+    const busyFilter = state.stats?.busyHoursFilter || {};
+    const busyData = await loadBusyHours(busyFilter);
     if (busyData && busyData.busyHours) {
       state.stats = state.stats || {};
       state.stats.busyHours = busyData.busyHours;
@@ -2117,6 +2118,19 @@ export async function init() {
       if (wkRow)   wkRow.hidden   = (freqVal !== "weekly");
       if (intvRow) intvRow.hidden = (freqVal !== "every_n_days");
       if (endRow)  endRow.hidden  = (freqVal === "once");
+    }
+    if (actionEl?.dataset?.action === "busy-hours-filter") {
+      const filter = actionEl.dataset.filter;
+      state.stats = state.stats || {};
+      state.stats.busyHoursFilter = state.stats.busyHoursFilter || {};
+      const raw = actionEl.value;
+      const val = raw ? parseInt(raw, 10) : null;
+      state.stats.busyHoursFilter[filter] = val;
+      loadBusyHours(state.stats.busyHoursFilter).then(data => {
+        if (data && data.busyHours) {
+          state.stats.busyHours = data.busyHours;
+        }
+      }).catch(() => {}).then(() => render(app));
     }
     if (actionEl?.dataset?.action === "update-member-role") {
       const userId = parseInt(actionEl.dataset.userId, 10);

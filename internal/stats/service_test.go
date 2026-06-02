@@ -186,7 +186,7 @@ func TestGetBusyHours_Returns24Slots(t *testing.T) {
 	svc, _ := seedService(t, logs)
 	start := time.Date(2026, 4, 1, 0, 0, 0, 0, utc)
 	end := time.Date(2026, 5, 1, 0, 0, 0, 0, utc)
-	hours, err := svc.GetBusyHours(context.Background(), 1, start, end, utc)
+	hours, err := svc.GetBusyHours(context.Background(), 1, start, end, utc, nil, nil)
 	if err != nil {
 		t.Fatalf("GetBusyHours: %v", err)
 	}
@@ -196,6 +196,50 @@ func TestGetBusyHours_Returns24Slots(t *testing.T) {
 	for _, h := range hours {
 		if h.Hour == 9 && h.Count != 1 {
 			t.Errorf("hour 9 count = %d, want 1", h.Count)
+		}
+	}
+}
+
+func TestGetBusyHours_FilterByChore(t *testing.T) {
+	d := time.Date(2026, 4, 10, 9, 0, 0, 0, utc)
+	logs := []chorelog.ChoreLog{
+		{HouseholdID: 1, UserID: 10, ChoreID: 100, CompletedAt: d},
+		{HouseholdID: 1, UserID: 10, ChoreID: 101, CompletedAt: d},
+	}
+	svc, _ := seedService(t, logs)
+	start := time.Date(2026, 4, 1, 0, 0, 0, 0, utc)
+	end := time.Date(2026, 5, 1, 0, 0, 0, 0, utc)
+
+	cid := int64(100)
+	hours, err := svc.GetBusyHours(context.Background(), 1, start, end, utc, &cid, nil)
+	if err != nil {
+		t.Fatalf("GetBusyHours: %v", err)
+	}
+	for _, h := range hours {
+		if h.Hour == 9 && h.Count != 1 {
+			t.Errorf("hour 9 count = %d, want 1 (filtered to chore 100)", h.Count)
+		}
+	}
+}
+
+func TestGetBusyHours_FilterByUser(t *testing.T) {
+	d := time.Date(2026, 4, 10, 9, 0, 0, 0, utc)
+	logs := []chorelog.ChoreLog{
+		{HouseholdID: 1, UserID: 10, ChoreID: 100, CompletedAt: d},
+		{HouseholdID: 1, UserID: 20, ChoreID: 100, CompletedAt: d},
+	}
+	svc, _ := seedService(t, logs)
+	start := time.Date(2026, 4, 1, 0, 0, 0, 0, utc)
+	end := time.Date(2026, 5, 1, 0, 0, 0, 0, utc)
+
+	uid := int64(10)
+	hours, err := svc.GetBusyHours(context.Background(), 1, start, end, utc, nil, &uid)
+	if err != nil {
+		t.Fatalf("GetBusyHours: %v", err)
+	}
+	for _, h := range hours {
+		if h.Hour == 9 && h.Count != 1 {
+			t.Errorf("hour 9 count = %d, want 1 (filtered to user 10)", h.Count)
 		}
 	}
 }

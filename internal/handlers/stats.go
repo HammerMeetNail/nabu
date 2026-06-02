@@ -219,7 +219,19 @@ func (h *StatsHandler) BusyHours(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	hours, err := h.service.GetBusyHours(r.Context(), *user.HouseholdID, start, end, loc)
+	var choreID, userID *int64
+	if cidStr := r.URL.Query().Get("choreId"); cidStr != "" {
+		if cid, err := strconv.ParseInt(cidStr, 10, 64); err == nil {
+			choreID = &cid
+		}
+	}
+	if uidStr := r.URL.Query().Get("userId"); uidStr != "" {
+		if uid, err := strconv.ParseInt(uidStr, 10, 64); err == nil {
+			userID = &uid
+		}
+	}
+
+	hours, err := h.service.GetBusyHours(r.Context(), *user.HouseholdID, start, end, loc, choreID, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

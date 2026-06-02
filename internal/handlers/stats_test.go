@@ -342,6 +342,32 @@ func TestStatsBusyHoursWithDates(t *testing.T) {
 	}
 }
 
+func TestStatsBusyHoursWithFilters(t *testing.T) {
+	handler, sessionID, authService := setupStatsTest(t)
+	req := withUser(httptest.NewRequest(http.MethodGet,
+		"/api/stats/busy-hours?choreId=1&userId=2", nil), authService, sessionID)
+	rec := httptest.NewRecorder()
+	handler.BusyHours(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"busyHours"`) {
+		t.Fatalf("body = %s", rec.Body.String())
+	}
+}
+
+func TestStatsBusyHoursWithInvalidFilters(t *testing.T) {
+	handler, sessionID, authService := setupStatsTest(t)
+	// Non-numeric filter values should be ignored (not cause an error)
+	req := withUser(httptest.NewRequest(http.MethodGet,
+		"/api/stats/busy-hours?choreId=abc&userId=xyz", nil), authService, sessionID)
+	rec := httptest.NewRecorder()
+	handler.BusyHours(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func TestStatsOverviewNoHousehold(t *testing.T) {
 	authStore := auth.NewMemoryStore()
 	authService := auth.NewService(authStore)

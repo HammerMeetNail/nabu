@@ -11,8 +11,13 @@ export async function loadHeatmap() {
   return data;
 }
 
-export async function loadBusyHours() {
-  const { data } = await apiFetch("/api/stats/busy-hours");
+export async function loadBusyHours({ choreId, userId } = {}) {
+  const params = new URLSearchParams();
+  if (choreId) params.set("choreId", choreId);
+  if (userId) params.set("userId", userId);
+  const qs = params.toString();
+  const url = qs ? `/api/stats/busy-hours?${qs}` : "/api/stats/busy-hours";
+  const { data } = await apiFetch(url);
   return data;
 }
 
@@ -91,6 +96,20 @@ export function renderStatsPage(state) {
 
     <div class="card mb-3">
       <h3>Busy Hours</h3>
+      <div class="busy-hours-filters">
+        <select class="busy-hours-filter" data-action="busy-hours-filter" data-filter="choreId">
+          <option value="">All chores</option>
+          ${chores.map(c =>
+            `<option value="${c.id}"${state.stats?.busyHoursFilter?.choreId === c.id ? " selected" : ""}>${escapeHTML(c.name)}</option>`
+          ).join("")}
+        </select>
+        <select class="busy-hours-filter" data-action="busy-hours-filter" data-filter="userId">
+          <option value="">All members</option>
+          ${members.map(m =>
+            `<option value="${m.userId}"${state.stats?.busyHoursFilter?.userId === m.userId ? " selected" : ""}>${escapeHTML(m.displayName || m.email)}</option>`
+          ).join("")}
+        </select>
+      </div>
       ${renderBusyHoursChart(busyHours)}
     </div>
 

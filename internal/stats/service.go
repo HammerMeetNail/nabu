@@ -255,16 +255,23 @@ func (s *Service) GetCategoryBreakdown(ctx context.Context, householdID int64, s
 	return breakdown, nil
 }
 
-func (s *Service) GetBusyHours(ctx context.Context, householdID int64, start, end time.Time, loc *time.Location) ([]BusyHour, error) {
+func (s *Service) GetBusyHours(ctx context.Context, householdID int64, start, end time.Time, loc *time.Location, choreID, userID *int64) ([]BusyHour, error) {
 	logs, err := s.fetchLogsInRange(ctx, householdID, start, end, loc)
 	if err != nil {
 		return nil, err
 	}
 	hourCount := map[int]int{}
 	for _, l := range logs {
-		if logInRange(l, start, end, loc) {
-			hourCount[l.CompletedAt.In(loc).Hour()]++
+		if !logInRange(l, start, end, loc) {
+			continue
 		}
+		if choreID != nil && l.ChoreID != *choreID {
+			continue
+		}
+		if userID != nil && l.UserID != *userID {
+			continue
+		}
+		hourCount[l.CompletedAt.In(loc).Hour()]++
 	}
 
 	var hours []BusyHour

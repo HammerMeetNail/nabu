@@ -1379,6 +1379,23 @@ details[open] .member-chevron {
 }
 
 /* Busy Hours */
+.busy-hours-filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.busy-hours-filter {
+  flex: 1;
+  font-size: 12px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 32px;
+}
+
 .busy-hours-chart {
   display: flex;
   flex-direction: column;
