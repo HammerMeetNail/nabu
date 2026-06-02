@@ -609,6 +609,8 @@ async function loadAllStatsData() {
     if (busyData && busyData.busyHours) {
       state.stats = state.stats || {};
       state.stats.busyHours = busyData.busyHours;
+      state.stats.busyHoursStart = busyData.start;
+      state.stats.busyHoursEnd = busyData.end;
     }
   } catch {}
   try {
@@ -2129,6 +2131,8 @@ export async function init() {
       loadBusyHours(state.stats.busyHoursFilter).then(data => {
         if (data && data.busyHours) {
           state.stats.busyHours = data.busyHours;
+          state.stats.busyHoursStart = data.start;
+          state.stats.busyHoursEnd = data.end;
         }
       }).catch(() => {}).then(() => render(app));
     }

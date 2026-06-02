@@ -44,6 +44,15 @@ export async function loadChoreTimeSeries(choreId, period) {
   return data;
 }
 
+function formatRangeLabel(start, end) {
+  if (!start || !end) return "";
+  const fmt = (s) => {
+    const d = new Date(s + "T00:00:00");
+    return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  };
+  return `${fmt(start)} – ${fmt(end)}`;
+}
+
 function formatHour(h) {
   if (h === 0) return "12a";
   if (h < 12) return h + "a";
@@ -96,6 +105,7 @@ export function renderStatsPage(state) {
 
     <div class="card mb-3">
       <h3>Busy Hours</h3>
+      ${renderBusyHoursDateRange(stats.busyHoursStart, stats.busyHoursEnd)}
       <div class="busy-hours-filters">
         <select class="busy-hours-filter" data-action="busy-hours-filter" data-filter="choreId">
           <option value="">All chores</option>
@@ -229,6 +239,12 @@ function renderHeatmapGrid(heatmap) {
   html += '</div>';
   html += '</div>';
   return html;
+}
+
+function renderBusyHoursDateRange(start, end) {
+  const label = formatRangeLabel(start, end);
+  if (!label) return "";
+  return `<div class="busy-hours-date-range text-secondary">${label}</div>`;
 }
 
 function renderBusyHoursChart(busyHours) {

@@ -1379,6 +1379,11 @@ details[open] .member-chevron {
 }
 
 /* Busy Hours */
+.busy-hours-date-range {
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
 .busy-hours-filters {
   display: flex;
   gap: 8px;

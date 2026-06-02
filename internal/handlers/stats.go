@@ -237,7 +237,11 @@ func (h *StatsHandler) BusyHours(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"busyHours": hours})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"busyHours": hours,
+		"start":     start.Format("2006-01-02"),
+		"end":       end.Format("2006-01-02"),
+	})
 }
 
 func (h *StatsHandler) ChoreStats(w http.ResponseWriter, r *http.Request) {
