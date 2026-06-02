@@ -322,7 +322,12 @@ func TestGetChoreTimeSeriesCrossHousehold(t *testing.T) {
 // ─── Top Chores ───────────────────────────────────────────────────────────────
 
 func TestGetTopChores_Basic(t *testing.T) {
-	ref := time.Now().UTC().Add(-1 * time.Hour)
+	now := time.Now().UTC()
+	midnight := now.Truncate(24 * time.Hour)
+	if now.Hour() < 4 {
+		t.Skip("skip: test requires UTC hour >= 4 to avoid day boundary")
+	}
+	ref := midnight.Add(3 * time.Hour) // 3am today
 	logs := []chorelog.ChoreLog{
 		{HouseholdID: 1, UserID: 10, ChoreID: 100, CompletedAt: ref},
 		{HouseholdID: 1, UserID: 10, ChoreID: 100, CompletedAt: ref.Add(-30 * time.Minute)},
@@ -373,7 +378,12 @@ func TestGetTopChores_Empty(t *testing.T) {
 }
 
 func TestGetTopChores_Limit(t *testing.T) {
-	ref := time.Now().UTC().Add(-1 * time.Hour)
+	now := time.Now().UTC()
+	midnight := now.Truncate(24 * time.Hour)
+	if now.Hour() < 4 {
+		t.Skip("skip: test requires UTC hour >= 4 to avoid day boundary")
+	}
+	ref := midnight.Add(3 * time.Hour) // 3am today
 
 	cs := &stubChoreStore{chores: []stats.ChoreInfo{}}
 	for i := int64(1); i <= 6; i++ {
@@ -417,7 +427,12 @@ func TestGetTopChores_Limit(t *testing.T) {
 }
 
 func TestGetTopChores_WeekAndDayCounts(t *testing.T) {
-	ref := time.Now().UTC().Add(-1 * time.Hour)
+	now := time.Now().UTC()
+	midnight := now.Truncate(24 * time.Hour)
+	if now.Hour() < 4 {
+		t.Skip("skip: test requires UTC hour >= 4 to avoid day boundary")
+	}
+	ref := midnight.Add(3 * time.Hour) // 3am today
 
 	logs := []chorelog.ChoreLog{
 		{HouseholdID: 1, UserID: 10, ChoreID: 100, CompletedAt: ref},

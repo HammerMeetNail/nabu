@@ -516,7 +516,7 @@ function renderSettingsView() {
           <span class="notif-pref-desc">${escapeHTML(t.description)}</span>
         </label>
         <label class="notif-pref-toggle">
-          <input type="checkbox" data-action="toggle-notif-pref" data-notif-type="${escapeHTML(t.type)}"${typeChecked}${pushEnabled ? '' : ' disabled'}>
+          <input type="checkbox" data-action="toggle-notif-pref" data-notif-type="${escapeHTML(t.type)}"${typeChecked}>
           <span class="toggle-slider"></span>
         </label>
       </div>`;
