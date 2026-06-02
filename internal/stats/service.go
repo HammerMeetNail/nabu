@@ -524,7 +524,7 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 	return overview, nil
 }
 
-func (s *Service) GetTopChores(ctx context.Context, householdID int64, n int, loc *time.Location) ([]TopChoresEntry, error) {
+func (s *Service) GetTopChores(ctx context.Context, householdID int64, userID int64, n int, loc *time.Location) ([]TopChoresEntry, error) {
 	if n <= 0 {
 		n = 5
 	}
@@ -551,6 +551,9 @@ func (s *Service) GetTopChores(ctx context.Context, householdID int64, n int, lo
 	}
 	counts := map[int64]countSet{}
 	for _, l := range logs {
+		if userID > 0 && l.UserID != userID {
+			continue
+		}
 		local := l.CompletedAt.In(loc)
 		if !local.Before(monthStart) && local.Before(now) {
 			cs := counts[l.ChoreID]

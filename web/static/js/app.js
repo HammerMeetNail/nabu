@@ -618,10 +618,13 @@ async function loadAllStatsData() {
     }
   } catch {}
   try {
-    const tcData = await loadTopChores();
+    state.stats = state.stats || {};
+    const uid = state.stats.topChoresUserId = state.stats.topChoresUserId || (state.user && state.user.id) || 0;
+    const tcData = await loadTopChores(uid);
     if (tcData && tcData.topChores) {
       state.stats = state.stats || {};
-      state.stats.topChores = tcData.topChores;
+      state.stats.topChoresByUser = state.stats.topChoresByUser || {};
+      state.stats.topChoresByUser[uid] = tcData.topChores;
     }
   } catch {}
   await loadBabyTimeSeries();
@@ -2063,6 +2066,25 @@ export async function init() {
         const visible = val.classList.contains("chart-bar-val--visible");
         document.querySelectorAll(".chart-bar-val--visible").forEach(el => el.classList.remove("chart-bar-val--visible"));
         if (!visible) val.classList.add("chart-bar-val--visible");
+        break;
+      }
+
+      case "top-chores-user": {
+        e.preventDefault();
+        const uid = parseInt(actionEl.dataset.userId, 10);
+        if (!uid) break;
+        state.stats = state.stats || {};
+        state.stats.topChoresUserId = uid;
+        state.stats.topChoresByUser = state.stats.topChoresByUser || {};
+        if (state.stats.topChoresByUser[uid]) {
+          render(app);
+        } else {
+          loadTopChores(uid).then(data => {
+            if (data && data.topChores) {
+              state.stats.topChoresByUser[uid] = data.topChores;
+            }
+          }).catch(() => {}).then(() => render(app));
+        }
         break;
       }
     }

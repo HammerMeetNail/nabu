@@ -285,7 +285,17 @@ func (h *StatsHandler) TopChores(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	entries, err := h.service.GetTopChores(r.Context(), *user.HouseholdID, 5, h.userLocation(r))
+	var userID int64
+	if uidStr := r.URL.Query().Get("userId"); uidStr != "" {
+		uid, err := strconv.ParseInt(uidStr, 10, 64)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid userId")
+			return
+		}
+		userID = uid
+	}
+
+	entries, err := h.service.GetTopChores(r.Context(), *user.HouseholdID, userID, 5, h.userLocation(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
