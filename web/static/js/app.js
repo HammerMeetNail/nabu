@@ -2126,8 +2126,11 @@ export async function init() {
       state.stats = state.stats || {};
       state.stats.busyHoursFilter = state.stats.busyHoursFilter || {};
       const raw = actionEl.value;
-      const val = raw ? parseInt(raw, 10) : null;
-      state.stats.busyHoursFilter[filter] = val;
+      if (filter === "start" || filter === "end") {
+        state.stats.busyHoursFilter[filter] = raw || null;
+      } else {
+        state.stats.busyHoursFilter[filter] = raw ? parseInt(raw, 10) : null;
+      }
       loadBusyHours(state.stats.busyHoursFilter).then(data => {
         if (data && data.busyHours) {
           state.stats.busyHours = data.busyHours;

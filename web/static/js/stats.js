@@ -11,10 +11,12 @@ export async function loadHeatmap() {
   return data;
 }
 
-export async function loadBusyHours({ choreId, userId } = {}) {
+export async function loadBusyHours({ choreId, userId, start, end } = {}) {
   const params = new URLSearchParams();
   if (choreId) params.set("choreId", choreId);
   if (userId) params.set("userId", userId);
+  if (start) params.set("start", start);
+  if (end) params.set("end", end);
   const qs = params.toString();
   const url = qs ? `/api/stats/busy-hours?${qs}` : "/api/stats/busy-hours";
   const { data } = await apiFetch(url);
@@ -119,6 +121,12 @@ export function renderStatsPage(state) {
             `<option value="${m.userId}"${state.stats?.busyHoursFilter?.userId === m.userId ? " selected" : ""}>${escapeHTML(m.displayName || m.email)}</option>`
           ).join("")}
         </select>
+      </div>
+      <div class="busy-hours-date-filters">
+        <input type="date" class="busy-hours-filter" data-action="busy-hours-filter" data-filter="start"
+          value="${state.stats?.busyHoursFilter?.start || state.stats?.busyHoursStart || ""}">
+        <input type="date" class="busy-hours-filter" data-action="busy-hours-filter" data-filter="end"
+          value="${state.stats?.busyHoursFilter?.end || state.stats?.busyHoursEnd || ""}">
       </div>
       ${renderBusyHoursChart(busyHours)}
     </div>

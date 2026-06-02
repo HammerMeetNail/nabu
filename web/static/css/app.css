@@ -1387,6 +1387,12 @@ details[open] .member-chevron {
 .busy-hours-filters {
   display: flex;
   gap: 8px;
+  margin-bottom: 4px;
+}
+
+.busy-hours-date-filters {
+  display: flex;
+  gap: 8px;
   margin-bottom: 8px;
 }
 

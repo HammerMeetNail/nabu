@@ -66,17 +66,17 @@ test.describe("Busy hours filter", () => {
 
     await page.click("a[data-nav=\"stats\"]");
     await page.waitForSelector(".busy-hours-chart", { timeout: 10000 });
-    await page.waitForSelector(".busy-hours-filter", { timeout: 5000 });
+    await page.waitForSelector(".busy-hours-filters select", { timeout: 5000 });
 
     // Both filter dropdowns should be present
-    await expect(page.locator(".busy-hours-filter")).toHaveCount(2);
+    await expect(page.locator(".busy-hours-filters select")).toHaveCount(2);
 
     // "All chores" should show activity at both hours
     const allHourRows = page.locator(".busy-hour-row");
     await expect(allHourRows).toHaveCount(24);
 
     // Filter by "Feed Cats"
-    const choreFilter = page.locator(".busy-hours-filter").first();
+    const choreFilter = page.locator(".busy-hours-filters select").first();
     await choreFilter.selectOption({ label: "Feed Cats" });
     await page.waitForSelector(".busy-hours-chart", { timeout: 5000 });
 
@@ -101,10 +101,10 @@ test.describe("Busy hours filter", () => {
 
     await page.click("a[data-nav=\"stats\"]");
     await page.waitForSelector(".busy-hours-chart", { timeout: 10000 });
-    await page.waitForSelector(".busy-hours-filter", { timeout: 5000 });
+    await page.waitForSelector(".busy-hours-filters select", { timeout: 5000 });
 
     // The user filter dropdown should list the current user
-    const userFilter = page.locator(".busy-hours-filter").nth(1);
+    const userFilter = page.locator(".busy-hours-filters select").nth(1);
     const userOptions = userFilter.locator("option");
     await expect(userOptions).toHaveCount(2); // "All members" + the user
 
