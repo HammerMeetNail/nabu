@@ -337,7 +337,7 @@ func TestGetTopChores_Basic(t *testing.T) {
 	}
 	svc, _ := seedService(t, logs)
 
-	entries, err := svc.GetTopChores(context.Background(), 1, 5, utc)
+	entries, err := svc.GetTopChores(context.Background(), 1, 0, 5, utc)
 	if err != nil {
 		t.Fatalf("GetTopChores: %v", err)
 	}
@@ -366,9 +366,50 @@ func TestGetTopChores_Basic(t *testing.T) {
 	}
 }
 
+func TestGetTopChores_PerUser(t *testing.T) {
+	now := time.Now().UTC()
+	midnight := now.Truncate(24 * time.Hour)
+	if now.Hour() < 4 {
+		t.Skip("skip: test requires UTC hour >= 4 to avoid day boundary")
+	}
+	ref := midnight.Add(3 * time.Hour)
+	logs := []chorelog.ChoreLog{
+		{HouseholdID: 1, UserID: 10, ChoreID: 100, CompletedAt: ref},
+		{HouseholdID: 1, UserID: 10, ChoreID: 100, CompletedAt: ref.Add(-1 * time.Hour)},
+		{HouseholdID: 1, UserID: 20, ChoreID: 101, CompletedAt: ref.Add(-30 * time.Minute)},
+		{HouseholdID: 1, UserID: 20, ChoreID: 101, CompletedAt: ref.Add(-2 * time.Hour)},
+	}
+	svc, _ := seedService(t, logs)
+
+	entries, err := svc.GetTopChores(context.Background(), 1, 10, 5, utc)
+	if err != nil {
+		t.Fatalf("GetTopChores(user 10): %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected 1 entry for user 10, got %d", len(entries))
+	}
+	if entries[0].ChoreName != "Dishes" {
+		t.Errorf("user 10 top chore should be Dishes, got %s", entries[0].ChoreName)
+	}
+	if entries[0].ThisMonth != 2 {
+		t.Errorf("user 10 Dishes ThisMonth = %d, want 2", entries[0].ThisMonth)
+	}
+
+	entries2, err := svc.GetTopChores(context.Background(), 1, 20, 5, utc)
+	if err != nil {
+		t.Fatalf("GetTopChores(user 20): %v", err)
+	}
+	if len(entries2) != 1 {
+		t.Fatalf("expected 1 entry for user 20, got %d", len(entries2))
+	}
+	if entries2[0].ChoreName != "Vacuum" {
+		t.Errorf("user 20 top chore should be Vacuum, got %s", entries2[0].ChoreName)
+	}
+}
+
 func TestGetTopChores_Empty(t *testing.T) {
 	svc, _ := seedService(t, nil)
-	entries, err := svc.GetTopChores(context.Background(), 1, 5, utc)
+	entries, err := svc.GetTopChores(context.Background(), 1, 0, 5, utc)
 	if err != nil {
 		t.Fatalf("GetTopChores: %v", err)
 	}
@@ -408,7 +449,7 @@ func TestGetTopChores_Limit(t *testing.T) {
 
 	svc := stats.NewService(logStore, cs)
 
-	entries, err := svc.GetTopChores(context.Background(), 1, 3, utc)
+	entries, err := svc.GetTopChores(context.Background(), 1, 0, 3, utc)
 	if err != nil {
 		t.Fatalf("GetTopChores: %v", err)
 	}
@@ -441,7 +482,7 @@ func TestGetTopChores_WeekAndDayCounts(t *testing.T) {
 	}
 	svc, _ := seedService(t, logs)
 
-	entries, err := svc.GetTopChores(context.Background(), 1, 5, utc)
+	entries, err := svc.GetTopChores(context.Background(), 1, 0, 5, utc)
 	if err != nil {
 		t.Fatalf("GetTopChores: %v", err)
 	}

@@ -99,13 +99,19 @@ test.describe("Stats top chores", () => {
     await expect(rows.nth(2).locator(".top-chore-rank")).toContainText("3");
   });
 
-  test("top chores shows zero counts when no chores logged", async ({
+  test("top chores shows user pills and empty state when no chores logged", async ({
     page,
   }) => {
     await setupWithChores(page);
 
     await page.click("a[data-nav=\"stats\"]");
     await page.waitForSelector(".stats-page", { timeout: 10000 });
+
+    await expect(page.locator(".top-chore-pills")).toBeVisible({
+      timeout: 5000,
+    });
+    await expect(page.locator(".top-chore-pill")).toHaveCount(1);
+    await expect(page.locator(".top-chore-pill--active")).toHaveCount(1);
 
     await expect(page.locator(".top-chore-list")).toBeVisible({
       timeout: 5000,
@@ -135,5 +141,32 @@ test.describe("Stats top chores", () => {
     await expect(row.locator(".top-chore-count--day")).toBeVisible();
     await expect(row.locator(".top-chore-count--week")).toBeVisible();
     await expect(row.locator(".top-chore-count--month")).toBeVisible();
+  });
+
+  test("user pill toggles per-user top chores", async ({ page }) => {
+    const { chores, csrf } = await setupWithChores(page);
+
+    const feedCats = chores.find((c) => c.name === "Feed Cats");
+    const washDishes = chores.find((c) => c.name === "Wash Dishes");
+
+    if (feedCats) {
+      await postLog(page, csrf, feedCats.id, { hour: 8 });
+      await postLog(page, csrf, feedCats.id, { hour: 10 });
+    }
+    if (washDishes) {
+      await postLog(page, csrf, washDishes.id, { hour: 9 });
+    }
+
+    await page.click("a[data-nav=\"stats\"]");
+    await page.waitForSelector(".stats-page", { timeout: 10000 });
+
+    const pills = page.locator(".top-chore-pill");
+    await expect(pills).toHaveCount(1);
+
+    const activePill = page.locator(".top-chore-pill--active");
+    await expect(activePill).toHaveCount(1);
+
+    const rows = page.locator(".top-chore-row");
+    await expect(rows).toHaveCount(2);
   });
 });

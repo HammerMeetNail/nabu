@@ -21,8 +21,9 @@ export async function loadChoreStats() {
   return data;
 }
 
-export async function loadTopChores() {
-  const { data } = await apiFetch("/api/stats/top-chores");
+export async function loadTopChores(userId) {
+  const url = userId ? `/api/stats/top-chores?userId=${userId}` : "/api/stats/top-chores";
+  const { data } = await apiFetch(url);
   return data;
 }
 
@@ -55,7 +56,6 @@ export function renderStatsPage(state) {
   const heatmap = stats.heatmap || [];
   const busyHours = stats.busyHours || [];
   const choreStats = stats.choreStats || [];
-  const topChores = stats.topChores || [];
   const chores = state.chores || [];
   const members = state.members || [];
 
@@ -99,10 +99,7 @@ export function renderStatsPage(state) {
       ${renderLeaderboardList(leaderboard, memberMap, stats.leaderboardPeriod)}
     </div>
 
-    <div class="card mb-3">
-      <h3>Top Chores</h3>
-      ${renderTopChoresList(topChores)}
-    </div>
+    ${renderTopChoresSection(state)}
 
     <div class="card mb-3">
       <h3>Categories</h3>
@@ -300,6 +297,28 @@ function renderTopChoresList(topChores) {
       <span class="top-chore-header-label">Month</span>
     </div>
     ${rows}
+  </div>`;
+}
+
+function renderTopChoresSection(state) {
+  const stats = state.stats || {};
+  const members = state.members || [];
+  const topChoresUserId = stats.topChoresUserId;
+  const topChores = stats.topChoresByUser?.[topChoresUserId] || [];
+
+  const userPills = members.map(m => {
+    const active = m.userId === topChoresUserId ? " top-chore-pill--active" : "";
+    const initial = (m.displayName || m.email).charAt(0).toUpperCase();
+    return `<button class="top-chore-pill${active}" data-action="top-chores-user" data-user-id="${m.userId}" aria-pressed="${m.userId === topChoresUserId}">
+      <span class="avatar-circle-sm" style="background:${m.avatarColor || "#19323C"}">${initial}</span>
+      <span>${escapeHTML(m.displayName || m.email)}</span>
+    </button>`;
+  }).join("");
+
+  return `<div class="card mb-3">
+    <h3>Top Chores</h3>
+    <div class="top-chore-pills" role="group" aria-label="Select user">${userPills}</div>
+    ${renderTopChoresList(topChores)}
   </div>`;
 }
 
