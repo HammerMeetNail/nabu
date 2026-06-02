@@ -502,28 +502,43 @@ function renderSettingsView() {
 
   let notifPrefsCard = "";
   if (notifPrefsLoaded && notifTypes.length > 0) {
-    const pushEnabled = state.notificationPrefs?.pushEnabled;
+    const pushEnabled = state.notificationPrefs?.pushEnabled !== false;
+    const checked = pushEnabled ? " checked" : "";
+
     const rows = notifTypes.map(t => {
       const enabledTypes = state.notificationPrefs?.enabledPushTypes || [];
-      // No explicit prefs set yet (pushEnabled defaults to true, empty list).
-      const allEnabled = enabledTypes.length === 0 && pushEnabled !== false;
+      const allEnabled = enabledTypes.length === 0 && pushEnabled;
       const isEnabled = allEnabled || enabledTypes.includes(t.type);
-      const checked = isEnabled ? " checked" : "";
-      return `<div class="notif-pref-row">
+      const typeChecked = isEnabled ? " checked" : "";
+      return `<div class="notif-pref-row${pushEnabled ? '' : ' notif-pref-row--disabled'}">
         <label class="notif-pref-label">
           <span class="notif-pref-title">${escapeHTML(t.label)}</span>
           <span class="notif-pref-desc">${escapeHTML(t.description)}</span>
         </label>
         <label class="notif-pref-toggle">
-          <input type="checkbox" data-action="toggle-notif-pref" data-notif-type="${escapeHTML(t.type)}"${checked}>
+          <input type="checkbox" data-action="toggle-notif-pref" data-notif-type="${escapeHTML(t.type)}"${typeChecked}${pushEnabled ? '' : ' disabled'}>
           <span class="toggle-slider"></span>
         </label>
       </div>`;
     }).join("");
 
+    const permBtn = typeof Notification !== 'undefined' && Notification.permission === 'default'
+      ? `<p class="mt-2"><button type="button" class="btn btn-sm btn-primary" data-action="enable-notifications">Enable Notifications</button></p>`
+      : '';
+
     notifPrefsCard = `<div class="card mt-3">
       <h3>Notifications</h3>
       <p class="text-secondary">Applies to your account across all households.</p>
+      <div class="notif-pref-row">
+        <label class="notif-pref-label">
+          <span class="notif-pref-title">Push Notifications</span>
+        </label>
+        <label class="notif-pref-toggle">
+          <input type="checkbox" data-action="toggle-push-enabled"${checked}>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      ${permBtn}
       <div class="notif-pref-list">${rows}</div>
     </div>`;
   }
@@ -1153,6 +1168,17 @@ export async function init() {
     }
 
     switch (action) {
+      case "google-signin":
+        if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+          Notification.requestPermission().then(() => {
+            window.location.href = "/api/auth/google/login";
+          }).catch(() => {
+            window.location.href = "/api/auth/google/login";
+          });
+        } else {
+          window.location.href = "/api/auth/google/login";
+        }
+        break;
       case "show-login":
       case "show-register":
       case "show-magic-link":
@@ -1954,6 +1980,33 @@ export async function init() {
           state.historyChoreFilter = updated.length >= (state.chores || []).length ? null : updated;
         }
         render(app);
+        break;
+      }
+
+      case "toggle-push-enabled": {
+        e.preventDefault();
+        const isChecked = actionEl.checked;
+        const enabledTypes = state.notificationPrefs?.enabledPushTypes || [];
+        const pushEnabled = isChecked;
+        saveNotificationPreferences({ pushEnabled, enabledPushTypes: isChecked ? enabledTypes : [] })
+          .then(data => {
+            state.notificationPrefs = data.preferences;
+            render(app);
+          })
+          .catch(() => {
+            actionEl.checked = !isChecked;
+          });
+        break;
+      }
+
+      case "enable-notifications": {
+        e.preventDefault();
+        if (typeof Notification === 'undefined') break;
+        Notification.requestPermission().then(result => {
+          if (result === 'granted') {
+            maybeSubscribePush().catch(() => {});
+          }
+        }).catch(() => {});
         break;
       }
 
