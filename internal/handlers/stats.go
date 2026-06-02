@@ -52,14 +52,26 @@ func (h *StatsHandler) Leaderboard(w http.ResponseWriter, r *http.Request) {
 
 	var board []stats.LeaderboardEntry
 	var err error
+	var rangeStart, rangeEnd time.Time
 
 	switch period {
 	case "month":
 		loc := h.userLocation(r)
 		now := nowInLoc(loc)
+		rangeStart = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
+		rangeEnd = rangeStart.AddDate(0, 1, 0)
 		board, err = h.service.GetMonthlyLeaderboard(r.Context(), *user.HouseholdID, now.Year(), now.Month(), loc)
 	default:
-		board, err = h.service.GetWeeklyLeaderboard(r.Context(), *user.HouseholdID, h.userLocation(r))
+		loc := h.userLocation(r)
+		now := nowInLoc(loc)
+		weekday := int(now.Weekday()) - int(time.Monday)
+		if weekday < 0 {
+			weekday += 7
+		}
+		y, m, d := now.Date()
+		rangeStart = time.Date(y, m, d-weekday, 0, 0, 0, 0, loc)
+		rangeEnd = rangeStart.AddDate(0, 0, 7)
+		board, err = h.service.GetWeeklyLeaderboard(r.Context(), *user.HouseholdID, loc)
 	}
 
 	if err != nil {
@@ -67,7 +79,11 @@ func (h *StatsHandler) Leaderboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"leaderboard": board})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"leaderboard": board,
+		"start":       rangeStart.Format("2006-01-02"),
+		"end":         rangeEnd.Format("2006-01-02"),
+	})
 }
 
 func (h *StatsHandler) Streaks(w http.ResponseWriter, r *http.Request) {
@@ -157,7 +173,11 @@ func (h *StatsHandler) Breakdown(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"breakdown": breakdown})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"breakdown": breakdown,
+		"start":     start.Format("2006-01-02"),
+		"end":       end.Format("2006-01-02"),
+	})
 }
 
 func (h *StatsHandler) Recap(w http.ResponseWriter, r *http.Request) {
@@ -251,13 +271,40 @@ func (h *StatsHandler) ChoreStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	choreStats, err := h.service.GetChoreStats(r.Context(), *user.HouseholdID, h.userLocation(r))
+	loc := h.userLocation(r)
+	var customStart, customEnd *time.Time
+	startStr := r.URL.Query().Get("start")
+	endStr := r.URL.Query().Get("end")
+	if startStr != "" && endStr != "" {
+		if parsed, err := time.ParseInLocation("2006-01-02", startStr, loc); err == nil {
+			customStart = &parsed
+		}
+		if parsed, err := time.ParseInLocation("2006-01-02", endStr, loc); err == nil {
+			customEnd = &parsed
+		}
+	}
+
+	choreStats, err := h.service.GetChoreStats(r.Context(), *user.HouseholdID, loc, customStart, customEnd)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"choreStats": choreStats})
+	now := nowInLoc(loc)
+	fetchStart := now.AddDate(0, 0, -29)
+	fetchEnd := now.AddDate(0, 0, 1)
+	if customStart != nil {
+		fetchStart = *customStart
+	}
+	if customEnd != nil {
+		fetchEnd = *customEnd
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"choreStats": choreStats,
+		"start":      fetchStart.Format("2006-01-02"),
+		"end":        fetchEnd.Format("2006-01-02"),
+	})
 }
 
 func (h *StatsHandler) ChoreStatsByID(w http.ResponseWriter, r *http.Request) {
@@ -278,7 +325,7 @@ func (h *StatsHandler) ChoreStatsByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	allStats, err := h.service.GetChoreStats(r.Context(), *user.HouseholdID, h.userLocation(r))
+	allStats, err := h.service.GetChoreStats(r.Context(), *user.HouseholdID, h.userLocation(r), nil, nil)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

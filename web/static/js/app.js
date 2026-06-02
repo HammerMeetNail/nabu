@@ -614,10 +614,13 @@ async function loadAllStatsData() {
     }
   } catch {}
   try {
-    const csData = await loadChoreStats();
+    const csFilter = state.stats?.choreStatsFilter || {};
+    const csData = await loadChoreStats(csFilter);
     if (csData && csData.choreStats) {
       state.stats = state.stats || {};
       state.stats.choreStats = csData.choreStats;
+      state.stats.choreStatsStart = csData.start;
+      state.stats.choreStatsEnd = csData.end;
     }
   } catch {}
   try {
@@ -2136,6 +2139,20 @@ export async function init() {
           state.stats.busyHours = data.busyHours;
           state.stats.busyHoursStart = data.start;
           state.stats.busyHoursEnd = data.end;
+        }
+      }).catch(() => {}).then(() => render(app));
+    }
+    if (actionEl?.dataset?.action === "chore-stats-filter") {
+      const filter = actionEl.dataset.filter;
+      state.stats = state.stats || {};
+      state.stats.choreStatsFilter = state.stats.choreStatsFilter || {};
+      const raw = actionEl.value;
+      state.stats.choreStatsFilter[filter] = raw || null;
+      loadChoreStats(state.stats.choreStatsFilter).then(data => {
+        if (data && data.choreStats) {
+          state.stats.choreStats = data.choreStats;
+          state.stats.choreStatsStart = data.start;
+          state.stats.choreStatsEnd = data.end;
         }
       }).catch(() => {}).then(() => render(app));
     }

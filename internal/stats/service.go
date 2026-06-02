@@ -358,14 +358,21 @@ func wkStart(t time.Time, loc *time.Location) time.Time {
 	return time.Date(start.Year(), start.Month(), start.Day(), 0, 0, 0, 0, loc)
 }
 
-func (s *Service) GetChoreStats(ctx context.Context, householdID int64, loc *time.Location) ([]ChoreStats, error) {
+func (s *Service) GetChoreStats(ctx context.Context, householdID int64, loc *time.Location, customStart, customEnd *time.Time) ([]ChoreStats, error) {
 	now := nowIn(loc)
 	weekStart := wkStart(now, loc)
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
-	days30Start := now.AddDate(0, 0, -29)
-	end := now.AddDate(0, 0, 1)
 
-	logs, err := s.fetchLogsInRange(ctx, householdID, days30Start, end, loc)
+	var fetchStart, fetchEnd time.Time
+	if customStart != nil && customEnd != nil {
+		fetchStart = *customStart
+		fetchEnd = *customEnd
+	} else {
+		fetchStart = now.AddDate(0, 0, -29)
+		fetchEnd = now.AddDate(0, 0, 1)
+	}
+
+	logs, err := s.fetchLogsInRange(ctx, householdID, fetchStart, fetchEnd, loc)
 	if err != nil {
 		return nil, err
 	}
@@ -420,7 +427,7 @@ func (s *Service) GetChoreStats(ctx context.Context, householdID int64, loc *tim
 		if ch.HasVolumeML && volumeLogs > 0 {
 			avg := float64(totalVolume) / float64(volumeLogs)
 			cs.AvgVolume = &avg
-			for d := days30Start; !d.After(now); d = d.AddDate(0, 0, 1) {
+			for d := fetchStart; !d.After(now); d = d.AddDate(0, 0, 1) {
 				key := d.Format("2006-01-02")
 				cs.VolumeHistory = append(cs.VolumeHistory, VolumeDay{Date: key, TotalML: volumeByDay[key]})
 			}

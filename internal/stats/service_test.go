@@ -282,7 +282,7 @@ func TestGetChoreStats_WeekAndMonthCounts(t *testing.T) {
 		{HouseholdID: 1, UserID: 10, ChoreID: 100, CompletedAt: now},
 	}
 	svc, _ := seedService(t, logs)
-	result, err := svc.GetChoreStats(context.Background(), 1, utc)
+	result, err := svc.GetChoreStats(context.Background(), 1, utc, nil, nil)
 	if err != nil {
 		t.Fatalf("GetChoreStats: %v", err)
 	}
@@ -312,7 +312,7 @@ func TestGetChoreStats_VolumeHistory(t *testing.T) {
 	svc, cs := seedService(t, logs)
 	cs.chores[0].HasVolumeML = true
 
-	result, err := svc.GetChoreStats(context.Background(), 1, utc)
+	result, err := svc.GetChoreStats(context.Background(), 1, utc, nil, nil)
 	if err != nil {
 		t.Fatalf("GetChoreStats: %v", err)
 	}

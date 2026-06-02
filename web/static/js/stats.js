@@ -23,8 +23,13 @@ export async function loadBusyHours({ choreId, userId, start, end } = {}) {
   return data;
 }
 
-export async function loadChoreStats() {
-  const { data } = await apiFetch("/api/stats/chores");
+export async function loadChoreStats({ start, end } = {}) {
+  const params = new URLSearchParams();
+  if (start) params.set("start", start);
+  if (end) params.set("end", end);
+  const qs = params.toString();
+  const url = qs ? `/api/stats/chores?${qs}` : "/api/stats/chores";
+  const { data } = await apiFetch(url);
   return data;
 }
 
@@ -53,6 +58,17 @@ function formatRangeLabel(start, end) {
     return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   };
   return `${fmt(start)} – ${fmt(end)}`;
+}
+
+function currentWeekLabel() {
+  const now = new Date();
+  const day = now.getDay();
+  const monday = new Date(now);
+  monday.setDate(now.getDate() - ((day + 6) % 7));
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const fmt = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return `${fmt(monday)} – ${fmt(sunday)}`;
 }
 
 function formatHour(h) {
@@ -133,6 +149,7 @@ export function renderStatsPage(state) {
 
     <div class="card mb-3">
       <h3>Leaderboard</h3>
+      ${renderWeekDateRange()}
       ${renderLeaderboardList(leaderboard, memberMap, stats.leaderboardPeriod)}
     </div>
 
@@ -140,11 +157,18 @@ export function renderStatsPage(state) {
 
     <div class="card mb-3">
       <h3>Categories</h3>
+      ${renderWeekDateRange()}
       ${renderCategoryBars(breakdown)}
     </div>
 
     <div class="card mb-3">
       <h3>Chores</h3>
+      <div class="busy-hours-date-filters">
+        <input type="date" class="busy-hours-filter" data-action="chore-stats-filter" data-filter="start"
+          value="${state.stats?.choreStatsFilter?.start || state.stats?.choreStatsStart || ""}">
+        <input type="date" class="busy-hours-filter" data-action="chore-stats-filter" data-filter="end"
+          value="${state.stats?.choreStatsFilter?.end || state.stats?.choreStatsEnd || ""}">
+      </div>
       ${renderChoreStatsList(choreStats, choreMap)}
     </div>
 
@@ -252,7 +276,11 @@ function renderHeatmapGrid(heatmap) {
 function renderBusyHoursDateRange(start, end) {
   const label = formatRangeLabel(start, end);
   if (!label) return "";
-  return `<div class="busy-hours-date-range text-secondary">${label}</div>`;
+  return `<div class="stats-date-range">${label}</div>`;
+}
+
+function renderWeekDateRange() {
+  return `<div class="stats-date-range">${currentWeekLabel()}</div>`;
 }
 
 function renderBusyHoursChart(busyHours) {
