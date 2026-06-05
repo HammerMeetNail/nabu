@@ -35,10 +35,17 @@ struct ContentView: View {
             if !hasCheckedSession {
                 dataLoader.configure(api: environment.apiClient, state: state)
                 auth.configure(api: environment.apiClient)
-                state.user = await auth.loadSession()
-                hasCheckedSession = true
-                if state.user?.householdId != nil {
-                    await loadAppData()
+                if TestHooks.seedHomeForUITest {
+                    // State was already injected by AppEnvironment.configure().
+                    // Skip the network session check so tests never touch the real API.
+                    hasCheckedSession = true
+                    hasLoadedData = true
+                } else {
+                    state.user = await auth.loadSession()
+                    hasCheckedSession = true
+                    if state.user?.householdId != nil {
+                        await loadAppData()
+                    }
                 }
             }
         }

@@ -4,8 +4,7 @@ struct HomeView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var environment: AppEnvironment
     @State private var showingQuickLog = false
-    @State private var showingLogSheet = false
-    @State private var selectedChore: Chore?
+    @State private var selectedChore: Chore?   // non-nil drives the log sheet
     @State private var editingLog: ChoreLog?
     @State private var undoLogId: Int?
     @State private var undoChoreName: String?
@@ -51,20 +50,20 @@ struct HomeView: View {
             .sheet(isPresented: $showingQuickLog) {
                 QuickLogSheet(state: state, logStore: logStore)
             }
-            .sheet(isPresented: $showingLogSheet) {
-                if let chore = selectedChore {
-                    LogSheet(
-                        state: state,
-                        chore: chore,
-                        log: editingLog,
-                        logStore: logStore,
-                        onUndo: { logId, choreName in
-                            undoLogId = logId
-                            undoChoreName = choreName
-                            showingLogSheet = false
-                        }
-                    )
-                }
+            // Use .sheet(item:) so the chore is always non-nil in the closure — no
+            // if-let race between selectedChore being set and the closure being evaluated.
+            .sheet(item: $selectedChore) { chore in
+                LogSheet(
+                    state: state,
+                    chore: chore,
+                    log: editingLog,
+                    logStore: logStore,
+                    onUndo: { logId, choreName in
+                        undoLogId = logId
+                        undoChoreName = choreName
+                        selectedChore = nil   // dismisses the sheet
+                    }
+                )
             }
             .overlay(alignment: .bottom) {
                 if let logId = undoLogId, let name = undoChoreName {
@@ -116,14 +115,12 @@ struct HomeView: View {
                     latestLogs: state.latestLogs,
                     isJiggling: state.jiggleMode,
                     onTap: { chore in
-                        selectedChore = chore
                         editingLog = nil
-                        showingLogSheet = true
+                        selectedChore = chore
                     },
                     onLongPress: { chore in
-                        selectedChore = chore
                         editingLog = nil
-                        showingLogSheet = true
+                        selectedChore = chore
                     }
                 )
                 .padding()

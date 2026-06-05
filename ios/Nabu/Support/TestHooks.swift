@@ -21,4 +21,10 @@ enum TestHooks {
     static var useMockAPI: Bool {
         ProcessInfo.processInfo.arguments.contains("-useMockAPI")
     }
+
+    /// Skips the auth/session check and seeds a logged-in state with a single
+    /// chore on the home grid.  Used by XCUITests for the home tab.
+    static var seedHomeForUITest: Bool {
+        ProcessInfo.processInfo.arguments.contains("-seedHomeForUITest")
+    }
 }
