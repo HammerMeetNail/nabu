@@ -1,0 +1,21 @@
+# Xcode
+DerivedData/
+*.xcuserdata
+*.xcworkspace/xcuserdata/
+*.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
+
+# Build
+build/
+*.o
+*.dylib
+
+# CocoaPods
+Pods/
+
+# SwiftPM
+.build/
+.swiftpm/
+
+# Playground
+timeline.xctimeline
+playground.xcworkspace

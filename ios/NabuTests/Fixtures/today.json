@@ -1,0 +1,35 @@
+{
+  "logs": [
+    {
+      "id": 1,
+      "householdId": 1,
+      "userId": 1,
+      "choreId": 1,
+      "completedAt": "2024-12-25T14:30:00Z",
+      "note": "",
+      "indicators": ["🍼 formula"],
+      "slotHour": 14,
+      "createdAt": "2024-12-25T14:30:01Z",
+      "volumeML": 120
+    },
+    {
+      "id": 2,
+      "householdId": 1,
+      "userId": 1,
+      "choreId": 2,
+      "completedAt": "2024-12-25T10:00:00Z",
+      "note": "",
+      "indicators": [],
+      "slotHour": 10,
+      "createdAt": "2024-12-25T10:00:01Z"
+    }
+  ],
+  "summary": {
+    "date": "2024-12-25",
+    "totalChores": 5,
+    "choresDone": 2,
+    "byUser": {"1": 2},
+    "byCategory": {"feeding": 1, "cleaning": 1}
+  },
+  "date": "2024-12-25"
+}

@@ -1,0 +1,8 @@
+{
+  "leaderboard": [
+    {"userId": 1, "count": 12},
+    {"userId": 2, "count": 8}
+  ],
+  "start": "2024-12-18",
+  "end": "2024-12-25"
+}

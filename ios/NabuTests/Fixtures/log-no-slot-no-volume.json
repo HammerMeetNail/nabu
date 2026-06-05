@@ -1,0 +1,12 @@
+{
+  "log": {
+    "id": 2,
+    "householdId": 1,
+    "userId": 1,
+    "choreId": 1,
+    "completedAt": "2024-12-25T08:00:00Z",
+    "note": "",
+    "indicators": [],
+    "createdAt": "2024-12-25T08:00:01Z"
+  }
+}

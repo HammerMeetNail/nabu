@@ -1,0 +1,39 @@
+{
+  "household": {
+    "id": 1,
+    "name": "My Home",
+    "initials": "MH",
+    "inviteCode": "ABC123",
+    "createdAt": "2024-12-25T14:30:00Z"
+  },
+  "members": [
+    {
+      "userId": 1,
+      "email": "alice@test.com",
+      "displayName": "Alice",
+      "avatarColor": "#2E86AB",
+      "emailVerified": true,
+      "role": "owner"
+    },
+    {
+      "userId": 2,
+      "email": "bob@test.com",
+      "displayName": "Bob",
+      "avatarColor": "#F59E0B",
+      "emailVerified": false,
+      "role": "member"
+    }
+  ],
+  "invites": [
+    {
+      "id": 1,
+      "householdId": 1,
+      "code": "XYZ789",
+      "createdBy": 1,
+      "maxUses": 10,
+      "usedCount": 2,
+      "expiresAt": null,
+      "createdAt": "2024-12-25T14:30:00Z"
+    }
+  ]
+}

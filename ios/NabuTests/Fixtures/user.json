@@ -1,0 +1,12 @@
+{
+  "user": {
+    "id": 1,
+    "householdId": 1,
+    "email": "test@nabu.local",
+    "displayName": "Alice",
+    "avatarColor": "#2E86AB",
+    "emailVerified": true,
+    "role": "owner",
+    "createdAt": "2024-12-25T14:30:00Z"
+  }
+}

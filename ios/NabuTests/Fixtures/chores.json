@@ -1,0 +1,36 @@
+{
+  "chores": [
+    {
+      "id": 1,
+      "householdId": 1,
+      "name": "Feed Cats",
+      "icon": "\ud83d\udc31",
+      "color": "#F59E0B",
+      "sortOrder": 0,
+      "category": "feeding",
+      "isPredefined": true,
+      "predefinedKey": "Feed Cats",
+      "createdBy": null,
+      "createdAt": "2024-12-25T14:30:00Z",
+      "indicatorLabels": ["\ud83c\udf7c formula", "\ud83e\udd5b breast"],
+      "indicatorDefaults": [],
+      "hasVolumeML": true
+    },
+    {
+      "id": 2,
+      "householdId": 1,
+      "name": "Laundry",
+      "icon": "\ud83d\udc55",
+      "color": "#A78BFA",
+      "sortOrder": 1,
+      "category": "cleaning",
+      "isPredefined": false,
+      "predefinedKey": "Laundry",
+      "createdBy": 1,
+      "createdAt": "2024-12-25T14:30:00Z",
+      "indicatorLabels": [],
+      "indicatorDefaults": [],
+      "hasVolumeML": false
+    }
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "overview": {
+    "leaderboard": [{"userId": 1, "count": 12}],
+    "streaks": {"current": 5, "longest": 14},
+    "breakdown": [{"category": "feeding", "count": 5}],
+    "recap": {
+      "totalChores": 12,
+      "topPerformer": {"userId": 1, "count": 8},
+      "mostActiveDay": "Monday",
+      "byCategory": [{"category": "feeding", "count": 3}]
+    }
+  }
+}

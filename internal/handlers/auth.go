@@ -255,6 +255,10 @@ func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 	h.setOIDCCookie(w, "nabu_oidc_state", state, 600)
 	h.setOIDCCookie(w, "nabu_oidc_nonce", nonce, 600)
 
+	if redirect := r.URL.Query().Get("redirect"); redirect != "" {
+		h.setOIDCCookie(w, "nabu_oidc_redirect", redirect, 600)
+	}
+
 	http.Redirect(w, r, url, http.StatusFound)
 }
 
@@ -282,8 +286,12 @@ func (h *AuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 
 	h.SetSessionCookie(w, session.ID)
 
+	redirectURL := h.appBaseURL
+	if stored := h.getOIDCCookie(r, "nabu_oidc_redirect"); stored != "" {
+		redirectURL = stored
+	}
 	_ = user
-	http.Redirect(w, r, h.appBaseURL, http.StatusFound)
+	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
 func (h *AuthHandler) authResponse(user auth.User, session auth.Session) map[string]any {

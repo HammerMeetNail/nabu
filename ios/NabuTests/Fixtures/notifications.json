@@ -1,0 +1,23 @@
+{
+  "notifications": [
+    {
+      "id": 1,
+      "userId": 1,
+      "type": "chore_logged",
+      "title": "\ud83d\udc31 Feed Cats",
+      "body": "Alice logged this",
+      "isRead": false,
+      "createdAt": "2024-12-25T14:30:00Z"
+    },
+    {
+      "id": 2,
+      "userId": 1,
+      "type": "household_joined",
+      "title": "Bob joined",
+      "body": "Bob joined My Home",
+      "isRead": true,
+      "createdAt": "2024-12-24T10:00:00Z"
+    }
+  ],
+  "unreadCount": 1
+}

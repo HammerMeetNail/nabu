@@ -1,0 +1,14 @@
+{
+  "log": {
+    "id": 1,
+    "householdId": 1,
+    "userId": 1,
+    "choreId": 1,
+    "completedAt": "2024-12-25T14:30:00Z",
+    "note": "Used the good litter",
+    "indicators": ["\ud83c\udf7c formula"],
+    "slotHour": 14,
+    "createdAt": "2024-12-25T14:30:01Z",
+    "volumeML": 120
+  }
+}

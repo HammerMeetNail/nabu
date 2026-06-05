@@ -7,19 +7,19 @@ Living matrix tracking feature parity between the PWA and native iOS app.
 | Phase | Description | Status |
 |-------|-------------|--------|
 | 0 | Guardrails and parity infrastructure | Done |
-| 1 | iOS project skeleton | Pending |
-| 2 | API models and contract tests | Pending |
-| 3 | Auth, session, and onboarding | Pending |
-| 4 | Bootstrap data loading and preferences | Pending |
-| 5 | Home and log sheet | Pending |
-| 6 | Chores management | Pending |
-| 7 | Activity history, day, and week | Pending |
-| 8 | Schedule | Pending |
-| 9 | Household, members, and multi-household | Pending |
-| 10 | Notifications and APNs | Pending |
-| 11 | Stats | Pending |
-| 12 | Security, accessibility, and polish | Pending |
-| 13 | Release readiness | Pending |
+| 1 | iOS project skeleton | Done |
+| 2 | API models and contract tests | Done |
+| 3 | Auth, session, and onboarding | Done |
+| 4 | Bootstrap data loading and preferences | Done |
+| 5 | Home and log sheet | Done |
+| 6 | Chores management | Done |
+| 7 | Activity history, day, and week | Done |
+| 8 | Schedule | Done |
+| 9 | Household, members, and multi-household | Done |
+| 10 | Notifications and APNs | Done |
+| 11 | Stats | Done |
+| 12 | Security, accessibility, and polish | Done |
+| 13 | Release readiness | Done |
 
 ## How to use
 

@@ -1,0 +1,15 @@
+{
+  "preferences": {
+    "userId": 1,
+    "pushEnabled": true,
+    "emailEnabled": false,
+    "quietHoursStart": "22:00",
+    "quietHoursEnd": "07:00",
+    "timezone": "America/New_York",
+    "enabledPushTypes": ["chore_logged", "household_joined"]
+  },
+  "availableTypes": [
+    {"type": "chore_logged", "label": "Chore Logged", "description": "When someone else in your household logs a chore."},
+    {"type": "household_joined", "label": "Household Joined", "description": "When someone joins your household."}
+  ]
+}
