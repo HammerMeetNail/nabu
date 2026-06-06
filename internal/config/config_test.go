@@ -6,6 +6,7 @@ func TestLoadDefaults(t *testing.T) {
 	t.Setenv("PORT", "")
 	t.Setenv("APP_ENV", "")
 	t.Setenv("APP_BASE_URL", "")
+	t.Setenv("DATABASE_URL", "")
 
 	cfg, err := Load()
 	if err != nil {
