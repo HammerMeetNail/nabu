@@ -402,7 +402,7 @@ func (s *Service) GetChoreStats(ctx context.Context, householdID int64, loc *tim
 			for _, ind := range l.Indicators {
 				indicatorCounts[ind]++
 			}
-			if l.IndicatorVolumes != nil && len(l.IndicatorVolumes) > 0 {
+			if len(l.IndicatorVolumes) > 0 {
 				for _, vol := range l.IndicatorVolumes {
 					if vol <= 0 {
 						continue
@@ -694,7 +694,7 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 		for i, b := range buckets {
 			if !t.Before(b.start) && t.Before(b.end) {
 				periodData[i].count++
-				if l.IndicatorVolumes != nil && len(l.IndicatorVolumes) > 0 {
+				if len(l.IndicatorVolumes) > 0 {
 					for ind, vol := range l.IndicatorVolumes {
 						if vol <= 0 {
 							continue

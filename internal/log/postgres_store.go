@@ -43,7 +43,7 @@ func NewPostgresStore(db *sql.DB) *PostgresStore {
 func (s *PostgresStore) CreateLog(ctx context.Context, log ChoreLog) (ChoreLog, error) {
 	indJSON, _ := json.Marshal(nilToEmptyLog(log.Indicators))
 	var indVolJSON string
-	if log.IndicatorVolumes != nil && len(log.IndicatorVolumes) > 0 {
+	if len(log.IndicatorVolumes) > 0 {
 		b, _ := json.Marshal(log.IndicatorVolumes)
 		indVolJSON = string(b)
 	}
@@ -89,7 +89,7 @@ func (s *PostgresStore) GetLog(ctx context.Context, id int64) (ChoreLog, error) 
 func (s *PostgresStore) UpdateLog(ctx context.Context, log ChoreLog) error {
 	indJSON, _ := json.Marshal(nilToEmptyLog(log.Indicators))
 	var indVolJSON string
-	if log.IndicatorVolumes != nil && len(log.IndicatorVolumes) > 0 {
+	if len(log.IndicatorVolumes) > 0 {
 		b, _ := json.Marshal(log.IndicatorVolumes)
 		indVolJSON = string(b)
 	}

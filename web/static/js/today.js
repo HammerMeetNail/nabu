@@ -205,8 +205,11 @@ export function renderHistoryView(state) {
       rawDayGroups.push({ date: dateKey, label: dayLabel, rows: [] });
     }
     const chore = (state.chores || []).find(c => c.id === l.choreId);
-    const indicatorIcons = (l.indicators || []).map(label => escapeHTML(label.split(' ')[0]));
     const indicatorVolumes = l.indicatorVolumes || {};
+    const volKeys = new Set(Object.keys(indicatorVolumes));
+    const indicatorIcons = (l.indicators || [])
+      .filter(label => !volKeys.has(label))
+      .map(label => escapeHTML(label.split(' ')[0]));
     rawDayGroups[rawDayGroups.length - 1].rows.push({
       icon: chore?.icon || '',
       name: chore?.name || `Chore #${l.choreId}`,
@@ -300,7 +303,7 @@ export function renderHistoryView(state) {
         });
         const indicatorVolStr = indicatorVolParts.length > 0 ? ` · ${indicatorVolParts.join(' ')}` : '';
         const legacyVolumeStr = !indicatorVolParts.length && r.volumeML != null ? ` · ${r.volumeML}mL` : '';
-        const indicatorIconsStr = r.indicatorIcons.length && !indicatorVolParts.length ? ` · ${r.indicatorIcons.join(' ')}` : '';
+        const indicatorIconsStr = r.indicatorIcons.length ? ` · ${r.indicatorIcons.join(' ')}` : '';
         return `
         <button type="button" class="hist-row" style="--chore-color:${r.color}"
           data-action="view-log"
