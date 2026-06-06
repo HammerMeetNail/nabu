@@ -107,18 +107,18 @@ final class AppEnvironment: ObservableObject {
                 id: 101, householdId: 1, userId: 1, choreId: 1,
                 completedAt: twoMinutesAgo, note: "", indicators: [],
                 slotHour: Calendar.current.component(.hour, from: twoMinutesAgo),
-                createdAt: twoMinutesAgo, volumeML: nil
+                createdAt: twoMinutesAgo, volumeML: nil, indicatorVolumes: nil
             ),
             4: ChoreLog(
                 id: 104, householdId: 1, userId: 1, choreId: 4,
                 completedAt: oneHourAgo, note: "", indicators: ["Formula"],
                 slotHour: Calendar.current.component(.hour, from: oneHourAgo),
-                createdAt: oneHourAgo, volumeML: 120
+                createdAt: oneHourAgo, volumeML: 120, indicatorVolumes: nil
             ),
             5: ChoreLog(
                 id: 105, householdId: 1, userId: 1, choreId: 5,
                 completedAt: yesterday, note: "", indicators: [],
-                slotHour: 8, createdAt: yesterday, volumeML: nil
+                slotHour: 8, createdAt: yesterday, volumeML: nil, indicatorVolumes: nil
             ),
         ]
 
@@ -181,7 +181,8 @@ final class AppEnvironment: ObservableObject {
         let log = ChoreLog(
             id: 9001, householdId: 1, userId: userId, choreId: choreId,
             completedAt: Date(), note: note, indicators: indicators,
-            slotHour: slotHour, createdAt: Date(), volumeML: volumeML
+            slotHour: slotHour, createdAt: Date(), volumeML: volumeML,
+            indicatorVolumes: nil
         )
         let response = LogResponse(log: log)
         let data = try! apiEncoder.encode(response)

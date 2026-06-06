@@ -10,6 +10,7 @@ struct LogSheet: View {
 
     @State private var note = ""
     @State private var selectedIndicators: [String] = []
+    @State private var indicatorVolumes: [String: Int] = [:]
     @State private var volumeML: Int? = nil
     @State private var selectedUserId: Int?
     @State private var whenDate: Date = Date()
@@ -30,12 +31,52 @@ struct LogSheet: View {
                 }
 
                 if hasIndicators {
-                    Section("How did it go?") {
-                        chipList
+                    Section("Type") {
+                        ForEach(chore.indicatorLabels, id: \.self) { label in
+                            let isOn = selectedIndicators.contains(label)
+                            HStack(spacing: 8) {
+                                Button {
+                                    toggleIndicator(label)
+                                } label: {
+                                    Text(label)
+                                        .font(.subheadline)
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 8)
+                                        .frame(minHeight: 36)
+                                        .background(isOn ? Color.accentColor : DesignColors.surfaceSecondary)
+                                        .foregroundColor(isOn ? .white : .primary)
+                                        .clipShape(Capsule())
+                                }
+                                .buttonStyle(.plain)
+
+                                if isOn {
+                                    Picker("", selection: Binding(
+                                        get: { indicatorVolumes[label] ?? nil as Int? },
+                                        set: { indicatorVolumes[label] = $0 }
+                                    )) {
+                                        Text("--").tag(Int?.none)
+                                        ForEach(Array(stride(from: 0, through: 200, by: 5)), id: \.self) { ml in
+                                            Text("\(ml) mL").tag(Optional(ml))
+                                        }
+                                    }
+                                    .pickerStyle(.menu)
+                                    .frame(maxWidth: 140)
+                                } else {
+                                    Picker("", selection: Binding.constant(nil as Int?)) {
+                                        Text("--").tag(Int?.none)
+                                    }
+                                    .pickerStyle(.menu)
+                                    .frame(maxWidth: 140)
+                                    .disabled(true)
+                                    .opacity(0)
+                                }
+                            }
+                        }
                     }
                 }
 
-                if chore.hasVolumeML {
+                // Volume-only chores (no indicators, but hasVolumeML)
+                if chore.hasVolumeML && !hasIndicators {
                     Section("Volume") {
                         Picker("Volume", selection: Binding(
                             get: { volumeML },
@@ -47,7 +88,6 @@ struct LogSheet: View {
                             }
                         }
                         .pickerStyle(.menu)
-                        .accessibilityIdentifier("volume-picker")
                     }
                 }
 
@@ -121,28 +161,10 @@ struct LogSheet: View {
     private var hasWhenPicker: Bool { true }
     private var hasIndicators: Bool { !chore.indicatorLabels.isEmpty }
 
-    private var chipList: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 8)], spacing: 8) {
-            ForEach(chore.indicatorLabels, id: \.self) { label in
-                Button {
-                    toggleIndicator(label)
-                } label: {
-                    Text(label)
-                        .font(.subheadline)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(selectedIndicators.contains(label) ? Color.accentColor : DesignColors.surfaceSecondary)
-                        .foregroundColor(selectedIndicators.contains(label) ? .white : .primary)
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-
     private func toggleIndicator(_ label: String) {
         if let idx = selectedIndicators.firstIndex(of: label) {
             selectedIndicators.remove(at: idx)
+            indicatorVolumes.removeValue(forKey: label)
         } else {
             selectedIndicators.append(label)
         }
@@ -152,6 +174,7 @@ struct LogSheet: View {
         if let log = log {
             note = log.note
             selectedIndicators = log.indicators
+            indicatorVolumes = log.indicatorVolumes ?? [:]
             volumeML = log.volumeML
             selectedUserId = log.userId
             whenDate = log.completedAt
@@ -159,6 +182,7 @@ struct LogSheet: View {
             selectedIndicators = chore.indicatorDefaults
             if let latestLog = state.latestLogs[chore.id] {
                 volumeML = latestLog.volumeML
+                indicatorVolumes = latestLog.indicatorVolumes ?? [:]
             }
         }
     }
@@ -176,15 +200,33 @@ struct LogSheet: View {
         let dateStr = dateFormatter.string(from: whenDate)
         let hour = Calendar.current.component(.hour, from: whenDate)
 
+        // For chores with both indicators and volume: require at least one
+        // indicator selected with a volume set.
+        if chore.hasVolumeML && hasIndicators {
+            let activeVolumes = indicatorVolumes.filter { k, _ in
+                selectedIndicators.contains(k)
+            }.compactMapValues { $0 }
+            if activeVolumes.isEmpty || selectedIndicators.isEmpty {
+                errorMessage = "Select a volume and food type"
+                isSaving = false
+                return
+            }
+        }
+
+        // Only send volumes for selected indicators
+        let activeVolumes: [String: Int] = indicatorVolumes.filter { k, _ in
+            selectedIndicators.contains(k)
+        }
+
         Task {
             do {
                 if let logId = log?.id {
                     let _ = try await logStore.updateLog(
                         logId: logId, note: note, indicators: selectedIndicators,
                         volumeML: volumeML, userId: selectedUserId,
-                        completedAt: completedAtISO, hour: hour, date: dateStr
+                        completedAt: completedAtISO, hour: hour, date: dateStr,
+                        indicatorVolumes: activeVolumes.isEmpty ? nil : activeVolumes
                     )
-                    // Update state
                     if let idx = state.todayLogs.firstIndex(where: { $0.id == logId }) {
                         let updated = state.todayLogs[idx]
                         let newLog = ChoreLog(
@@ -193,7 +235,8 @@ struct LogSheet: View {
                             choreId: updated.choreId, completedAt: whenDate,
                             note: note, indicators: selectedIndicators,
                             slotHour: hour, createdAt: updated.createdAt,
-                            volumeML: volumeML
+                            volumeML: volumeML,
+                            indicatorVolumes: activeVolumes.isEmpty ? nil : activeVolumes
                         )
                         state.todayLogs[idx] = newLog
                     }
@@ -202,7 +245,8 @@ struct LogSheet: View {
                         choreId: chore.id, note: note, date: dateStr,
                         indicators: selectedIndicators, slotHour: hour,
                         completedAt: completedAtISO, volumeML: volumeML,
-                        userId: selectedUserId
+                        userId: selectedUserId,
+                        indicatorVolumes: activeVolumes.isEmpty ? nil : activeVolumes
                     )
                     state.todayLogs.insert(response.log, at: 0)
                     state.latestLogs[chore.id] = response.log
@@ -211,7 +255,6 @@ struct LogSheet: View {
             } catch {
                 errorMessage = error.localizedDescription
                 isSaving = false
-                // Refresh chores in case the saved chore ID went stale.
                 refreshChores()
             }
         }
@@ -222,9 +265,7 @@ struct LogSheet: View {
             do {
                 let data: ChoresResponse = try await logStore.api.get("/api/chores")
                 state.chores = data.chores
-            } catch {
-                // Silent — the error message from the save failure is already shown.
-            }
+            } catch {}
         }
     }
 }

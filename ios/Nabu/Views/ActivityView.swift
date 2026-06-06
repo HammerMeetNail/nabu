@@ -167,11 +167,18 @@ struct HistoryListView: View {
                         if !log.note.isEmpty {
                             Text("· \(log.note)")
                         }
-                        if let volume = log.volumeML {
+                        let volKeys = Set(log.indicatorVolumes?.keys.map { $0 } ?? [])
+                        if volKeys.isEmpty, let volume = log.volumeML {
                             Text("· \(volume)mL")
                         }
-                        ForEach(log.indicators, id: \.self) { indicator in
-                            Text(indicator)
+                        let volParts = (log.indicatorVolumes ?? [:]).map { k, v in
+                            "\(k.split(separator: " ").first ?? "") \(v)mL"
+                        }
+                        if !volParts.isEmpty {
+                            Text("· \(volParts.joined(separator: " "))")
+                        }
+                        ForEach(log.indicators.filter { !volKeys.contains($0) }, id: \.self) { indicator in
+                            Text(indicator.split(separator: " ").first.map(String.init) ?? "")
                         }
                     }
                     .font(.caption)
@@ -340,8 +347,16 @@ struct DayView: View {
                 .font(.caption2)
                 .lineLimit(1)
             if !log.indicators.isEmpty {
-                Text(log.indicators.joined(separator: " "))
-                    .font(.caption2)
+                let volKeys = Set(log.indicatorVolumes?.keys.map { $0 } ?? [])
+                let nonVolIndicators = log.indicators.filter { !volKeys.contains($0) }
+                let volParts = (log.indicatorVolumes ?? [:]).compactMap { k, v in
+                    "\(k.split(separator: " ").first ?? "")\(v)"
+                }
+                let allParts = volParts + nonVolIndicators
+                if !allParts.isEmpty {
+                    Text(allParts.joined(separator: " "))
+                        .font(.caption2)
+                }
             }
         }
         .padding(.horizontal, 8)

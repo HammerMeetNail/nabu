@@ -95,11 +95,13 @@ struct CreateLogRequest: Codable {
     let completedAt: String?
     let volumeML: Int?
     let userId: Int?
+    let indicatorVolumes: [String: Int]?
 
     enum CodingKeys: String, CodingKey {
         case choreId, note, indicators, date, hour, completedAt
         case volumeML = "volumeML"
         case userId
+        case indicatorVolumes
     }
 }
 
@@ -111,11 +113,13 @@ struct UpdateLogRequest: Codable {
     let completedAt: String?
     let hour: Int?
     let date: String?
+    let indicatorVolumes: [String: Int]?
 
     enum CodingKeys: String, CodingKey {
         case note, indicators, date, hour, completedAt
-        case volumeML = "volumeMl"
+        case volumeML = "volumeML"
         case userId
+        case indicatorVolumes
     }
 }
 

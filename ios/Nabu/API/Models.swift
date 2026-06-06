@@ -184,6 +184,7 @@ struct ChoreLog: Codable, Identifiable, Equatable {
     let slotHour: Int?
     let createdAt: Date
     let volumeML: Int?
+    let indicatorVolumes: [String: Int]?
 }
 
 // MARK: - DailySummary
