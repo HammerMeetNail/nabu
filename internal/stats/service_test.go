@@ -36,7 +36,7 @@ func seedService(t *testing.T, logs []chorelog.ChoreLog) (*stats.Service, *stubC
 	ctx := context.Background()
 	for _, l := range logs {
 		d := l.CompletedAt
-		_, err := logSvc.LogChore(ctx, l.HouseholdID, l.UserID, l.ChoreID, l.Note, l.Indicators, &d, l.SlotHour, &d, l.VolumeML)
+		_, err := logSvc.LogChore(ctx, l.HouseholdID, l.UserID, l.ChoreID, l.Note, l.Indicators, l.IndicatorVolumes, &d, l.SlotHour, &d, l.VolumeML)
 		if err != nil {
 			t.Fatalf("seed log: %v", err)
 		}
@@ -484,7 +484,7 @@ func TestGetTopChores_Limit(t *testing.T) {
 		count := 6 - i
 		for j := 0; j < count; j++ {
 			d := ref.Add(time.Duration(-j) * time.Hour)
-			_, err := logSvc.LogChore(ctx, 1, 10, ch.ID, "", nil, &d, nil, &d, nil)
+			_, err := logSvc.LogChore(ctx, 1, 10, ch.ID, "", nil, nil, &d, nil, &d, nil)
 			if err != nil {
 				t.Fatalf("seed log: %v", err)
 			}

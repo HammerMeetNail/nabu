@@ -6,17 +6,18 @@ import (
 )
 
 type ChoreLog struct {
-	ID          int64     `json:"id"`
-	HouseholdID int64     `json:"householdId"`
-	UserID      int64     `json:"userId"`
-	ChoreID     int64     `json:"choreId"`
-	CompletedAt time.Time `json:"completedAt"`
-	Note        string    `json:"note"`
-	Indicators  []string  `json:"indicators"`
-	SlotHour    *int      `json:"slotHour,omitempty"` // calendar hour (0-23) the log was made from; nil = anytime
-	CreatedAt   time.Time `json:"createdAt"`
-	LogDate     *string   `json:"-"`
-	VolumeML    *int      `json:"volumeML,omitempty"`
+	ID               int64          `json:"id"`
+	HouseholdID      int64          `json:"householdId"`
+	UserID           int64          `json:"userId"`
+	ChoreID          int64          `json:"choreId"`
+	CompletedAt      time.Time      `json:"completedAt"`
+	Note             string         `json:"note"`
+	Indicators       []string       `json:"indicators"`
+	IndicatorVolumes map[string]int `json:"indicatorVolumes,omitempty"`
+	SlotHour         *int           `json:"slotHour,omitempty"` // calendar hour (0-23) the log was made from; nil = anytime
+	CreatedAt        time.Time      `json:"createdAt"`
+	LogDate          *string        `json:"-"`
+	VolumeML         *int           `json:"volumeML,omitempty"`
 }
 
 type DailySummary struct {

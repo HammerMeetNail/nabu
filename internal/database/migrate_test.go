@@ -3,8 +3,10 @@ package database
 import (
 	"context"
 	"errors"
+	"os"
 	"regexp"
 	"testing"
+	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	migrationassets "github.com/HammerMeetNail/nabu/migrations"
@@ -188,5 +190,34 @@ func TestOpenReturnsDatabaseHandle(t *testing.T) {
 
 	if db.Driver() == nil {
 		t.Fatal("expected database driver")
+	}
+}
+
+func TestMigrateAgainstRealPostgres(t *testing.T) {
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		dsn = "postgres://nabu:nabu@localhost:5432/nabu?sslmode=disable"
+	}
+	db, err := Open(dsn)
+	if err != nil {
+		t.Skipf("skipping real-postgres test: %v", err)
+	}
+	defer db.Close()
+
+	// Verify connectivity before attempting a migration that would be
+	// destructive (we drop the migration tracking table below).
+	pingCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := db.PingContext(pingCtx); err != nil {
+		t.Skipf("skipping real-postgres test (no reachable DB): %v", err)
+	}
+
+	// Wipe the migration tracking table so Migrate re-applies every file.
+	if _, err := db.ExecContext(context.Background(), `DROP TABLE IF EXISTS schema_migrations`); err != nil {
+		t.Fatalf("drop schema_migrations: %v", err)
+	}
+
+	if err := Migrate(context.Background(), db); err != nil {
+		t.Fatalf("Migrate against real Postgres failed: %v", err)
 	}
 }

@@ -33,14 +33,14 @@ func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int
 		indicatorDefaults = []string{}
 	}
 	return s.store.CreateChore(ctx, Chore{
-		HouseholdID:      householdID,
-		Name:             name,
-		Icon:             icon,
-		Color:            color,
-		Category:         category,
-		IsPredefined:     false,
-		CreatedBy:        &userID,
-		IndicatorLabels:  indicatorLabels,
+		HouseholdID:       householdID,
+		Name:              name,
+		Icon:              icon,
+		Color:             color,
+		Category:          category,
+		IsPredefined:      false,
+		CreatedBy:         &userID,
+		IndicatorLabels:   indicatorLabels,
 		IndicatorDefaults: indicatorDefaults,
 	})
 }

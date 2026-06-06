@@ -333,6 +333,29 @@ export function renderEditScheduleSheet(chore, sch, date) {
 
 // ─── Render: log-with-indicators bottom sheet ────────────────────────────────
 
+function renderIndicatorVolumeRow(label, on, selectedML = null) {
+  const options = Array.from({ length: 41 }, (_, i) => i * 5);
+  const optsHTML = options.map(v => {
+    const sel = selectedML === v ? " selected" : "";
+    return `<option value="${v}"${sel}>${v} mL</option>`;
+  }).join("");
+  return `<div class="indicator-row">
+    <button type="button"
+      class="log-chip${on ? " log-chip--on" : ""}"
+      data-action="toggle-indicator"
+      data-label="${escapeHTML(label)}"
+      aria-pressed="${on}">
+      ${escapeHTML(label)}
+    </button>
+    <select class="indicator-volume-select select-input"
+      data-indicator="${escapeHTML(label)}"
+      ${on ? "" : "style=\"display:none\""}>
+      <option value=""${selectedML == null ? " selected" : ""}>--</option>
+      ${optsHTML}
+    </select>
+  </div>`;
+}
+
 /**
  * Renders the log sheet for both "log" mode (log=null) and "edit log" mode.
  *
@@ -341,35 +364,29 @@ export function renderEditScheduleSheet(chore, sch, date) {
  * @param {string}      date   ISO date "YYYY-MM-DD"
  * @param {object[]}    members   Household members
  * @param {number}      currentUserId  Current auth user's ID
- * @param {number|null} cachedVolumeML Volume from previous log or null
+ * @param {number|null} cachedVolumeML Volume from previous log or null (DEPRECATED; use cachedIndicatorVolumes)
+ * @param {object}      cachedIndicatorVolumes Map of indicator label -> volume mL (from latest log)
  * @param {object}      opts   { showWhen: bool, slotHour: number|null }
  */
 export function renderLogSheet(chore, log, date, members, currentUserId, cachedVolumeML = null, opts = {}) {
   const title = `${escapeHTML(chore.icon)} ${escapeHTML(chore.name)}`;
   const noteVal = log ? escapeHTML(log.note || "") : "";
   const activeIndicators = new Set(log?.indicators || (chore.indicatorDefaults || []));
+  const logIndicatorVolumes = log?.indicatorVolumes || {};
+  const cachedIndicatorVolumes = (log ? null : (opts.cachedIndicatorVolumes || null));
 
-  const chips = (chore.indicatorLabels || []).map(label => {
+  const indicatorRows = (chore.indicatorLabels || []).map(label => {
     const on = activeIndicators.has(label);
-    return `<button type="button"
-      class="log-chip${on ? " log-chip--on" : ""}"
-      data-action="toggle-indicator"
-      data-label="${escapeHTML(label)}"
-      aria-pressed="${on}">
-      ${escapeHTML(label)}
-    </button>`;
+    const volume = log ? (logIndicatorVolumes[label] ?? null)
+      : ((cachedIndicatorVolumes?.[label]) ?? null);
+    return renderIndicatorVolumeRow(label, on, volume);
   }).join("");
 
-  const chipsSection = chips ? `
-    <div class="sheet-chip-row">
-      <p class="field-label">How did it go?</p>
-      <div class="chip-list">${chips}</div>
+  const indicatorSection = indicatorRows ? `
+    <div class="sheet-indicator-row">
+      <p class="field-label">Type</p>
+      <div class="indicator-rows">${indicatorRows}</div>
     </div>` : "";
-
-  const volumeML = log ? (log.volumeML ?? null) : (cachedVolumeML ?? null);
-  const volumeSection = chore.hasVolumeML
-    ? renderVolumeSelect(volumeML)
-    : "";
 
   const selectedMemberId = log?.userId ?? (currentUserId || null);
   const memberSection = renderMemberSelect(members, currentUserId, selectedMemberId, "log");
@@ -435,8 +452,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
       <div class="sheet-handle" aria-hidden="true"></div>
       <h2 class="sheet-title">${title}</h2>
       ${whenSection}
-      ${chipsSection}
-      ${volumeSection}
+      ${indicatorSection}
       ${memberSection}
       ${noteSection}
       ${actions}

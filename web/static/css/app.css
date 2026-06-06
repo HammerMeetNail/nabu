@@ -2113,6 +2113,41 @@ details[open] .chore-stat-chevron {
   gap: 8px;
 }
 
+/* ─── Log sheet: per-indicator rows ─────────────────────────────────────────── */
+
+.sheet-indicator-row {
+  margin-bottom: 14px;
+}
+
+.sheet-indicator-row .field-label {
+  margin-bottom: 8px;
+}
+
+.indicator-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.indicator-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.indicator-row .log-chip {
+  min-height: 36px;
+  padding: 4px 14px;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.indicator-volume-select {
+  flex: 1;
+  min-width: 0;
+  max-width: 140px;
+}
+
 .log-chip {
   display: inline-flex;
   align-items: center;

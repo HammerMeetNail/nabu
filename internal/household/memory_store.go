@@ -7,11 +7,11 @@ import (
 )
 
 type MemoryStore struct {
-	mu             sync.RWMutex
-	idSeq          int64
-	households     map[int64]Household
+	mu         sync.RWMutex
+	idSeq      int64
+	households map[int64]Household
 	// userHH maps userID -> active householdID
-	userHH         map[int64]int64
+	userHH map[int64]int64
 	// userHouseholds maps userID -> []HouseholdWithRole
 	userHouseholds map[int64][]HouseholdWithRole
 	invites        map[int64]Invite
