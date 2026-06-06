@@ -80,6 +80,20 @@ jobs:
     runs-on: ubuntu-latest
     needs: [changes]
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.tests == 'true'
+    services:
+      postgres:
+        image: docker.io/postgres:17-alpine
+        env:
+          POSTGRES_DB: nabu
+          POSTGRES_USER: nabu
+          POSTGRES_PASSWORD: nabu
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nabu -d nabu"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
@@ -88,6 +102,8 @@ jobs:
           cache: true
       - run: go mod download
       - run: go test -v -race -coverprofile=coverage.out ./...
+        env:
+          DATABASE_URL: postgres://nabu:nabu@localhost:5432/nabu?sslmode=disable
       - uses: codecov/codecov-action@v5
         with:
           files: coverage.out
