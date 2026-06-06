@@ -30,7 +30,7 @@ struct LogSheet: View {
                     }
                 }
 
-                if hasIndicators {
+                if hasIndicators && chore.hasVolumeML {
                     Section("Type") {
                         ForEach(chore.indicatorLabels, id: \.self) { label in
                             let isOn = selectedIndicators.contains(label)
@@ -62,16 +62,14 @@ struct LogSheet: View {
                                     .pickerStyle(.menu)
                                     .frame(maxWidth: 140)
                                 } else {
-                                    Picker("", selection: Binding.constant(nil as Int?)) {
-                                        Text("--").tag(Int?.none)
-                                    }
-                                    .pickerStyle(.menu)
-                                    .frame(maxWidth: 140)
-                                    .disabled(true)
-                                    .opacity(0)
+                                    Spacer().frame(width: 140)
                                 }
                             }
                         }
+                    }
+                } else if hasIndicators {
+                    Section("How did it go?") {
+                        chipGrid
                     }
                 }
 
@@ -160,6 +158,25 @@ struct LogSheet: View {
 
     private var hasWhenPicker: Bool { true }
     private var hasIndicators: Bool { !chore.indicatorLabels.isEmpty }
+
+    private var chipGrid: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 80), spacing: 8)], spacing: 8) {
+            ForEach(chore.indicatorLabels, id: \.self) { label in
+                Button {
+                    toggleIndicator(label)
+                } label: {
+                    Text(label)
+                        .font(.subheadline)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(selectedIndicators.contains(label) ? Color.accentColor : DesignColors.surfaceSecondary)
+                        .foregroundColor(selectedIndicators.contains(label) ? .white : .primary)
+                        .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
 
     private func toggleIndicator(_ label: String) {
         if let idx = selectedIndicators.firstIndex(of: label) {
