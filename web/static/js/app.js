@@ -1438,11 +1438,13 @@ export async function init() {
         });
         break;
       }
-      case "undo-chore":
+      case "undo-chore": {
         e.preventDefault();
-        undoLog(parseInt(actionEl.dataset.logId)).then(async () => {
+        const uLogId = parseInt(actionEl.dataset.logId);
+        undoLog(uLogId).then(async () => {
           state.activeSheet     = null;
           state.activeSheetData = {};
+          state.historyLogs = (state.historyLogs || []).filter(l => l.id !== uLogId);
           await reloadViewData();
           render(app);
         }).catch((err) => {
@@ -1453,6 +1455,7 @@ export async function init() {
           showToast(err.message || "Failed to remove log", "error");
         });
         break;
+      }
       case "view-log": {
         e.preventDefault();
         const choreId = parseInt(actionEl.dataset.choreId, 10);
@@ -1571,6 +1574,20 @@ export async function init() {
           : logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId, indicatorVolumes);
         doLog.then(async (data) => {
           const newLogId = data?.log?.id;
+          if (logId) {
+            const histIdx = (state.historyLogs || []).findIndex(l => l.id === parseInt(logId, 10));
+            if (histIdx >= 0) {
+              const old = state.historyLogs[histIdx];
+              const updated = { ...old, note, indicators };
+              if (Object.keys(indicatorVolumes).length > 0) updated.indicatorVolumes = indicatorVolumes;
+              if (volumeML !== null) updated.volumeML = volumeML;
+              if (userId !== null) updated.userId = userId;
+              if (completedAt) updated.completedAt = completedAt;
+              if (date) updated.logDate = date;
+              if (slotHour !== null) updated.slotHour = slotHour;
+              state.historyLogs[histIdx] = updated;
+            }
+          }
           state.activeSheet     = null;
           state.activeSheetData = {};
           if (state.currentRoute === "/" || state.currentRoute === "/today") {
@@ -2831,9 +2848,30 @@ async function reloadViewData() {
   if (state.currentRoute === "/activity") {
     if (state.activityView === "history") {
       try {
+        const prevLogs = [...(state.historyLogs || [])];
+        const prevBefore = state.historyBefore;
+        const prevHasMore = state.historyHasMore;
+
         const data = await loadHistory();
-        state.historyLogs = data?.logs || [];
+        let newLogs = data?.logs || [];
         state.historyHasMore = data?.hasMore || false;
+        state.historyBefore = data?.start || null;
+
+        if (prevBefore) {
+          const newStart = data?.start;
+          if (newStart) {
+            const newLogIds = new Set(newLogs.map(l => l.id));
+            const olderLogs = prevLogs.filter(l => {
+              const d = (l.completedAt || "").substring(0, 10);
+              return d && d < newStart && !newLogIds.has(l.id);
+            });
+            newLogs = [...newLogs, ...olderLogs];
+            state.historyBefore = prevBefore;
+            state.historyHasMore = prevHasMore;
+          }
+        }
+
+        state.historyLogs = newLogs;
       } catch {}
     } else if (state.calendarView === "week") {
       await loadWeekData();
