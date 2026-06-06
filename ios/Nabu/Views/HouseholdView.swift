@@ -308,6 +308,10 @@ struct HouseholdView: View {
             state.members = data.members
             state.invites = data.invites
             state.activeHouseholdId = data.household.id
+            // Reload chores for the newly activated household.
+            if let chores: ChoresResponse = try? await environment.apiClient.get("/api/chores") {
+                state.chores = chores.chores
+            }
         } catch {}
     }
 }

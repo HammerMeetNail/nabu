@@ -29,6 +29,52 @@ Every iOS feature must have:
 
 Before finishing any iOS work, run the documented test commands and verify all tests pass.
 
+### Running XCUITests against a real server
+
+The E2E test class `NabuHomeEndToEndUITests` in `ios/NabuUITests/NabuUITests.swift` exercises the full register → onboard → seed → log flow against a real (non-mock) server.
+
+**Provision the server (once):**
+
+```bash
+# In-memory server (no Postgres needed):
+make run
+# or: go run ./cmd/server
+
+# Postgres-backed server (via Podman):
+make local
+```
+
+The server must be listening on `http://localhost:8080`.
+
+**Run the E2E test:**
+
+```bash
+xcodebuild test \
+  -project ios/Nabu.xcodeproj \
+  -scheme Nabu \
+  -destination 'platform=iOS Simulator,name=iPhone 16' \
+  -only-testing:NabuUITests/NabuHomeEndToEndUITests
+```
+
+**How it works:**
+
+The test generates a unique email, then launches the app with these launch arguments:
+
+```
+-disableAnimations -resetState -nabuBaseURL http://localhost:8080 -nabuAutoRegister <email> <password>
+```
+
+`ContentView.task` in `ios/Nabu/ContentView.swift` parses these arguments via `parseTestCreds()` and programmatically calls `auth.register()` → `auth.createHousehold()` → `auth.seedDefaults()` → `loadAppData()` — bypassing the registration/onboarding UI entirely.
+
+A CSRF pre-flight (`GET /api/me`) runs before the `POST /api/auth/register` to obtain a `nabu_csrf` cookie; the native app has no HTML page load to set it the way the PWA does.
+
+**Key encoding rules enforced by this test:**
+
+- The Go server uses camelCase JSON tags (`choreId`, `volumeML`, `completedAt`). The iOS `apiEncoder` in `ios/Nabu/API/Models.swift` must use `.useDefaultKeys` — never `.convertToSnakeCase`.
+- Go's `time.Time` marshals to RFC3339 with fractional seconds (e.g. `2026-06-06T16:23:47.081048Z`). The iOS `apiDecoder` uses a custom `ISO8601DateFormatter` with `.withFractionalSeconds` and a fallback without fractions.
+- Server JSON fields that may be `null` (like `indicatorLabels` on a chore with no indicators) must use `decodeIfPresent(… ) ?? []` in custom `init(from:)` — Swift will not coerce `null` to `[String]`.
+- The log handler in `internal/handlers/log.go` validates that the chore exists and belongs to the user's household before creating a log (defense in depth against FK violations from stale client-side chore lists).
+
 ## Reference files
 
 - Root plan: `docs/plans/ios.md`

@@ -98,7 +98,7 @@ struct CreateLogRequest: Codable {
 
     enum CodingKeys: String, CodingKey {
         case choreId, note, indicators, date, hour, completedAt
-        case volumeML = "volumeMl"
+        case volumeML = "volumeML"
         case userId
     }
 }

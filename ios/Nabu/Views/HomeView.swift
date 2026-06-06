@@ -35,6 +35,7 @@ struct HomeView: View {
                             Image(systemName: "plus.circle.fill")
                                 .font(.title2)
                         }
+                        .accessibilityIdentifier("quick-log-button")
                     }
                 }
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -44,6 +45,7 @@ struct HomeView: View {
                         } label: {
                             Image(systemName: state.jiggleMode ? "checkmark" : "pencil")
                         }
+                        .accessibilityIdentifier("jiggle-button")
                     }
                 }
             }

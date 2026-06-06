@@ -59,6 +59,7 @@ struct RegisterView: View {
                         .buttonStyle(NabuPrimaryButtonStyle())
                         .disabled(email.isEmpty || password.isEmpty || confirmPassword.isEmpty
                                   || auth.isLoading || googleAuth.isAuthenticating || !isValid)
+                        .accessibilityIdentifier("register-submit-button")
 
                         OrDivider()
 

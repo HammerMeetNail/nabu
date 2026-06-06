@@ -12,9 +12,18 @@ final class MockAPIServer {
         handlers[path] = handler
     }
 
-    func handle(_ request: URLRequest) -> (Int, Data)? {
+    func handle(_ request: URLRequest) -> (Data, URLResponse)? {
         guard let url = request.url else { return nil }
         let path = url.path
-        return handlers[path]?(request)
+        guard let (statusCode, data) = handlers[path]?(request) else {
+            return nil
+        }
+        let response = HTTPURLResponse(
+            url: url,
+            statusCode: statusCode,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        return (data, response)
     }
 }

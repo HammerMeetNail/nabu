@@ -105,6 +105,19 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		logUserID = *req.UserID
 	}
 
+	// Verify the chore belongs to this household (defense in depth).
+	if h.choreStore != nil {
+		chore, err := h.choreStore.GetChore(r.Context(), req.ChoreID)
+		if err != nil {
+			writeError(w, http.StatusNotFound, "chore not found")
+			return
+		}
+		if chore.HouseholdID != *user.HouseholdID {
+			writeError(w, http.StatusForbidden, "chore does not belong to your household")
+			return
+		}
+	}
+
 	var logDate *time.Time
 	if req.Date != "" {
 		t, err := time.Parse("2006-01-02", req.Date)

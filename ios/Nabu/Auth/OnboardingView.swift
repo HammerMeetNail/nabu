@@ -91,15 +91,19 @@ struct CreateHouseholdView: View {
             }
             .buttonStyle(NabuPrimaryButtonStyle())
             .disabled(name.isEmpty || initials.count < 2 || auth.isLoading)
+            .accessibilityIdentifier("create-household-button")
         }
     }
 
     private func createAndSeed() {
         Task {
             if let household = await auth.createHousehold(name: name, initials: initials) {
+                // Seed defaults BEFORE setting state.household so that
+                // the onChange handler's loadAppData() picks up the freshly
+                // seeded chores, avoiding FK violations on log save.
+                let _ = await auth.seedDefaults()
                 state.household = household
                 state.activeHouseholdId = household.id
-                let _ = await auth.seedDefaults()
             }
         }
     }
@@ -144,9 +148,11 @@ struct JoinHouseholdView: View {
     private func join() {
         Task {
             if let household = await auth.joinHousehold(code: code) {
+                // Seed defaults BEFORE setting state.household — same race
+                // condition fix as CreateHouseholdView.createAndSeed().
+                let _ = await auth.seedDefaults()
                 state.household = household
                 state.activeHouseholdId = household.id
-                let _ = await auth.seedDefaults()
             }
         }
     }

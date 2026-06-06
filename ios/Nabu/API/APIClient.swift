@@ -5,6 +5,7 @@ struct APIClient {
     var session: URLSession
     var cookieStore: CookieStore
     var csrfProvider: CSRFTokenProvider
+    var mockHandler: ((URLRequest) -> (Data, URLResponse)?)?
 
     init(baseURL: URL) {
         self.baseURL = baseURL
@@ -71,7 +72,14 @@ struct APIClient {
     }
 
     private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+
+        if let handler = mockHandler, let mock = handler(request) {
+            (data, response) = mock
+        } else {
+            (data, response) = try await session.data(for: request)
+        }
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.invalidResponse

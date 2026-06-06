@@ -7,10 +7,19 @@ struct QuickLogSheet: View {
 
     @State private var note = ""
     @State private var isSaving = false
+    @State private var errorMessage: String?
 
     var body: some View {
         NavigationStack {
             Form {
+                if let error = errorMessage {
+                    Section {
+                        Text(error)
+                            .foregroundColor(.red)
+                            .font(.subheadline)
+                    }
+                }
+
                 Section {
                     TextField("Add a note...", text: $note, axis: .vertical)
                         .lineLimit(2...4)
@@ -77,6 +86,7 @@ struct QuickLogSheet: View {
                 state.latestLogs[chore.id] = response.log
                 dismiss()
             } catch {
+                errorMessage = error.localizedDescription
                 isSaving = false
             }
         }

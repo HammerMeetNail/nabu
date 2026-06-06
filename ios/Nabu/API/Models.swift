@@ -24,7 +24,25 @@ struct LocalDate: Codable, Hashable, Equatable {
 
 let apiDecoder: JSONDecoder = {
     let d = JSONDecoder()
-    d.dateDecodingStrategy = .iso8601
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    d.dateDecodingStrategy = .custom { decoder in
+        let container = try decoder.singleValueContainer()
+        let string = try container.decode(String.self)
+        if let date = formatter.date(from: string) {
+            return date
+        }
+        // Fallback: try without fractional seconds
+        let basicFormatter = ISO8601DateFormatter()
+        basicFormatter.formatOptions = [.withInternetDateTime]
+        if let date = basicFormatter.date(from: string) {
+            return date
+        }
+        throw DecodingError.dataCorruptedError(
+            in: container,
+            debugDescription: "Expected ISO8601 date, got: \(string)"
+        )
+    }
     d.keyDecodingStrategy = .convertFromSnakeCase
     return d
 }()
@@ -32,7 +50,8 @@ let apiDecoder: JSONDecoder = {
 let apiEncoder: JSONEncoder = {
     let e = JSONEncoder()
     e.dateEncodingStrategy = .iso8601
-    e.keyEncodingStrategy = .convertToSnakeCase
+    // NOTE: Do NOT use .convertToSnakeCase — the Go server uses camelCase JSON tags.
+    e.keyEncodingStrategy = .useDefaultKeys
     return e
 }()
 
@@ -109,6 +128,47 @@ struct Chore: Codable, Identifiable, Equatable {
     let indicatorLabels: [String]
     let indicatorDefaults: [String]
     let hasVolumeML: Bool
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(Int.self, forKey: .id)
+        householdId = try container.decode(Int.self, forKey: .householdId)
+        name = try container.decode(String.self, forKey: .name)
+        icon = try container.decode(String.self, forKey: .icon)
+        color = try container.decode(String.self, forKey: .color)
+        sortOrder = try container.decode(Int.self, forKey: .sortOrder)
+        category = try container.decode(String.self, forKey: .category)
+        isPredefined = try container.decode(Bool.self, forKey: .isPredefined)
+        predefinedKey = try container.decodeIfPresent(String.self, forKey: .predefinedKey)
+        createdBy = try container.decodeIfPresent(Int.self, forKey: .createdBy)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        indicatorLabels = try container.decodeIfPresent([String].self, forKey: .indicatorLabels) ?? []
+        indicatorDefaults = try container.decodeIfPresent([String].self, forKey: .indicatorDefaults) ?? []
+        hasVolumeML = try container.decode(Bool.self, forKey: .hasVolumeML)
+    }
+
+    init(id: Int, householdId: Int, name: String, icon: String, color: String, sortOrder: Int, category: String, isPredefined: Bool, predefinedKey: String?, createdBy: Int?, createdAt: Date, indicatorLabels: [String], indicatorDefaults: [String], hasVolumeML: Bool) {
+        self.id = id
+        self.householdId = householdId
+        self.name = name
+        self.icon = icon
+        self.color = color
+        self.sortOrder = sortOrder
+        self.category = category
+        self.isPredefined = isPredefined
+        self.predefinedKey = predefinedKey
+        self.createdBy = createdBy
+        self.createdAt = createdAt
+        self.indicatorLabels = indicatorLabels
+        self.indicatorDefaults = indicatorDefaults
+        self.hasVolumeML = hasVolumeML
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, householdId, name, icon, color, sortOrder, category
+        case isPredefined, predefinedKey, createdBy, createdAt
+        case indicatorLabels, indicatorDefaults, hasVolumeML
+    }
 }
 
 // MARK: - ChoreLog

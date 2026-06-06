@@ -25,6 +25,7 @@ struct LogSheet: View {
                     Section {
                         DatePicker("When", selection: $whenDate)
                             .datePickerStyle(.compact)
+                            .accessibilityIdentifier("when-picker")
                     }
                 }
 
@@ -46,6 +47,7 @@ struct LogSheet: View {
                             }
                         }
                         .pickerStyle(.menu)
+                        .accessibilityIdentifier("volume-picker")
                     }
                 }
 
@@ -70,6 +72,12 @@ struct LogSheet: View {
                 }
 
                 Section {
+                    if let error = errorMessage {
+                        Text(error)
+                            .foregroundColor(.red)
+                            .font(.subheadline)
+                    }
+
                     Button {
                         saveLog()
                     } label: {
@@ -83,6 +91,7 @@ struct LogSheet: View {
                         }
                     }
                     .disabled(isSaving)
+                    .accessibilityIdentifier("save-log-button")
                 }
 
                 if isEditing, let logId = log?.id {
@@ -102,7 +111,7 @@ struct LogSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.fraction(0.75), .large])
         .presentationDragIndicator(.visible)
         .onAppear {
             setupFromLog()
@@ -200,8 +209,21 @@ struct LogSheet: View {
                 }
                 dismiss()
             } catch {
-                errorMessage = "Failed to save log"
+                errorMessage = error.localizedDescription
                 isSaving = false
+                // Refresh chores in case the saved chore ID went stale.
+                refreshChores()
+            }
+        }
+    }
+
+    private func refreshChores() {
+        Task {
+            do {
+                let data: ChoresResponse = try await logStore.api.get("/api/chores")
+                state.chores = data.chores
+            } catch {
+                // Silent — the error message from the save failure is already shown.
             }
         }
     }

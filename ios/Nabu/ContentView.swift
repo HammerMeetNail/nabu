@@ -33,13 +33,27 @@ struct ContentView: View {
         .pageBackground()
         .task {
             if !hasCheckedSession {
+                let args = ProcessInfo.processInfo.arguments
                 dataLoader.configure(api: environment.apiClient, state: state)
                 auth.configure(api: environment.apiClient)
                 if TestHooks.seedHomeForUITest {
-                    // State was already injected by AppEnvironment.configure().
-                    // Skip the network session check so tests never touch the real API.
                     hasCheckedSession = true
                     hasLoadedData = true
+                } else if let (email, password) = parseTestCreds(args) {
+                    // Pre-flight GET to obtain a CSRF cookie before the register POST.
+                    let _: StatusResponse? = try? await auth.api.get("/api/me")
+                    if let user = await auth.register(email: email, password: password) {
+                        state.user = user
+                        if let hh = await auth.createHousehold(name: "E2E Home", initials: "EH") {
+                            state.household = hh
+                            _ = await auth.seedDefaults()
+                            await loadAppData()
+                        }
+                    } else {
+                        // Registration failed — show login screen
+                        await auth.logout()
+                    }
+                    hasCheckedSession = true
                 } else {
                     state.user = await auth.loadSession()
                     hasCheckedSession = true
@@ -67,6 +81,19 @@ struct ContentView: View {
         guard state.user != nil else { return }
         await dataLoader.reloadAfterAuth()
         hasLoadedData = state.household != nil
+    }
+
+    private func parseTestCreds(_ args: [String]) -> (String, String)? {
+        // Format: -nabuAutoRegister email password (three consecutive args)
+        if let idx = args.firstIndex(of: "-nabuAutoRegister"), idx + 2 < args.count {
+            return (args[idx + 1], args[idx + 2])
+        }
+        // Format: -NabuEmail email -NabuPassword password
+        if let ei = args.firstIndex(of: "-NabuEmail"), ei + 1 < args.count,
+           let pi = args.firstIndex(of: "-NabuPassword"), pi + 1 < args.count {
+            return (args[ei + 1], args[pi + 1])
+        }
+        return nil
     }
 }
 
