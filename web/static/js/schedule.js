@@ -375,18 +375,38 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
   const logIndicatorVolumes = log?.indicatorVolumes || {};
   const cachedIndicatorVolumes = (log ? null : (opts.cachedIndicatorVolumes || null));
 
-  const indicatorRows = (chore.indicatorLabels || []).map(label => {
-    const on = activeIndicators.has(label);
-    const volume = log ? (logIndicatorVolumes[label] ?? null)
-      : ((cachedIndicatorVolumes?.[label]) ?? null);
-    return renderIndicatorVolumeRow(label, on, volume);
-  }).join("");
+  const indicatorSection = (() => {
+    const labels = chore.indicatorLabels || [];
+    if (labels.length === 0) return "";
 
-  const indicatorSection = indicatorRows ? `
-    <div class="sheet-indicator-row">
-      <p class="field-label">Type</p>
-      <div class="indicator-rows">${indicatorRows}</div>
-    </div>` : "";
+    if (chore.hasVolumeML) {
+      const rows = labels.map(label => {
+        const on = activeIndicators.has(label);
+        const volume = log ? (logIndicatorVolumes[label] ?? null)
+          : ((cachedIndicatorVolumes?.[label]) ?? null);
+        return renderIndicatorVolumeRow(label, on, volume);
+      }).join("");
+      return `<div class="sheet-indicator-row">
+        <p class="field-label">Type</p>
+        <div class="indicator-rows">${rows}</div>
+      </div>`;
+    }
+
+    const chips = labels.map(label => {
+      const on = activeIndicators.has(label);
+      return `<button type="button"
+        class="log-chip${on ? " log-chip--on" : ""}"
+        data-action="toggle-indicator"
+        data-label="${escapeHTML(label)}"
+        aria-pressed="${on}">
+        ${escapeHTML(label)}
+      </button>`;
+    }).join("");
+    return `<div class="sheet-chip-row">
+      <p class="field-label">How did it go?</p>
+      <div class="chip-list">${chips}</div>
+    </div>`;
+  })();
 
   const selectedMemberId = log?.userId ?? (currentUserId || null);
   const memberSection = renderMemberSelect(members, currentUserId, selectedMemberId, "log");
