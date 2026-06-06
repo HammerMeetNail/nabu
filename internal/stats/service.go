@@ -402,7 +402,17 @@ func (s *Service) GetChoreStats(ctx context.Context, householdID int64, loc *tim
 			for _, ind := range l.Indicators {
 				indicatorCounts[ind]++
 			}
-			if l.VolumeML != nil && *l.VolumeML > 0 {
+			if l.IndicatorVolumes != nil && len(l.IndicatorVolumes) > 0 {
+				for _, vol := range l.IndicatorVolumes {
+					if vol <= 0 {
+						continue
+					}
+					dayKey := l.CompletedAt.In(loc).Format("2006-01-02")
+					volumeByDay[dayKey] += vol
+					totalVolume += vol
+					volumeLogs++
+				}
+			} else if l.VolumeML != nil && *l.VolumeML > 0 {
 				dayKey := l.CompletedAt.In(loc).Format("2006-01-02")
 				volumeByDay[dayKey] += *l.VolumeML
 				totalVolume += *l.VolumeML
@@ -684,14 +694,19 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 		for i, b := range buckets {
 			if !t.Before(b.start) && t.Before(b.end) {
 				periodData[i].count++
-				if l.VolumeML != nil {
-					periodData[i].totalML += *l.VolumeML
-					for _, ind := range l.Indicators {
+				if l.IndicatorVolumes != nil && len(l.IndicatorVolumes) > 0 {
+					for ind, vol := range l.IndicatorVolumes {
+						if vol <= 0 {
+							continue
+						}
+						periodData[i].totalML += vol
 						if periodData[i].volumeByIndicator == nil {
 							periodData[i].volumeByIndicator = map[string]int{}
 						}
-						periodData[i].volumeByIndicator[ind] += *l.VolumeML
+						periodData[i].volumeByIndicator[ind] += vol
 					}
+				} else if l.VolumeML != nil {
+					periodData[i].totalML += *l.VolumeML
 				}
 				for _, ind := range l.Indicators {
 					if periodData[i].indicators == nil {

@@ -48,8 +48,9 @@ export async function loadMoreHistory(before) {
   return data;
 }
 
-export async function logChore(choreId, note, date = "", indicators = [], slotHour = null, completedAt = null, volumeML = null, userId = null) {
+export async function logChore(choreId, note, date = "", indicators = [], slotHour = null, completedAt = null, volumeML = null, userId = null, indicatorVolumes = {}) {
   const body = { choreId, note, indicators };
+  if (Object.keys(indicatorVolumes).length > 0) body.indicatorVolumes = indicatorVolumes;
   if (date) body.date = date;
   if (slotHour !== null) body.hour = slotHour;
   if (completedAt) body.completedAt = completedAt;
@@ -68,8 +69,9 @@ export async function undoLog(logId) {
   return data;
 }
 
-export async function updateLog(logId, note, indicators = [], volumeML = null, userId = null, date = "", slotHour = null, completedAt = null) {
+export async function updateLog(logId, note, indicators = [], volumeML = null, userId = null, date = "", slotHour = null, completedAt = null, indicatorVolumes = {}) {
   const body = { note, indicators };
+  if (Object.keys(indicatorVolumes).length > 0) body.indicatorVolumes = indicatorVolumes;
   if (volumeML !== null) body.volumeML = volumeML;
   if (userId !== null) body.userId = userId;
   if (date) body.date = date;
@@ -204,6 +206,7 @@ export function renderHistoryView(state) {
     }
     const chore = (state.chores || []).find(c => c.id === l.choreId);
     const indicatorIcons = (l.indicators || []).map(label => escapeHTML(label.split(' ')[0]));
+    const indicatorVolumes = l.indicatorVolumes || {};
     rawDayGroups[rawDayGroups.length - 1].rows.push({
       icon: chore?.icon || '',
       name: chore?.name || `Chore #${l.choreId}`,
@@ -212,6 +215,7 @@ export function renderHistoryView(state) {
       time: timeStr,
       note: l.note || '',
       volumeML: l.volumeML,
+      indicatorVolumes,
       indicatorIcons,
       logId: l.id,
       choreId: l.choreId,
@@ -290,8 +294,13 @@ export function renderHistoryView(state) {
   const html = chunked.map(chunk => {
     const days = chunk.days.map(g => {
       const rows = g.rows.map(r => {
-        const volumeStr = r.volumeML != null ? ` · ${r.volumeML}mL` : '';
-        const indicatorIconsStr = r.indicatorIcons.length ? ` · ${r.indicatorIcons.join(' ')}` : '';
+        const indicatorVolParts = Object.entries(r.indicatorVolumes || {}).map(([label, ml]) => {
+          const icon = escapeHTML(label.split(' ')[0]);
+          return `${icon} ${ml}mL`;
+        });
+        const indicatorVolStr = indicatorVolParts.length > 0 ? ` · ${indicatorVolParts.join(' ')}` : '';
+        const legacyVolumeStr = !indicatorVolParts.length && r.volumeML != null ? ` · ${r.volumeML}mL` : '';
+        const indicatorIconsStr = r.indicatorIcons.length && !indicatorVolParts.length ? ` · ${r.indicatorIcons.join(' ')}` : '';
         return `
         <button type="button" class="hist-row" style="--chore-color:${r.color}"
           data-action="view-log"
@@ -301,7 +310,7 @@ export function renderHistoryView(state) {
           <span class="hist-icon">${r.icon}</span>
           <div class="hist-body">
             <span class="hist-name">${escapeHTML(r.name)}</span>
-            <span class="hist-meta">${r.time} · ${escapeHTML(r.who)}${r.note ? ` · ${escapeHTML(r.note)}` : ''}${volumeStr}${indicatorIconsStr}</span>
+            <span class="hist-meta">${r.time} · ${escapeHTML(r.who)}${r.note ? ` · ${escapeHTML(r.note)}` : ''}${indicatorVolStr}${legacyVolumeStr}${indicatorIconsStr}</span>
           </div>
         </button>`;
       }).join('');

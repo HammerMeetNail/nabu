@@ -58,6 +58,7 @@ func (s *MemoryStore) UpdateLog(_ context.Context, log ChoreLog) error {
 		existing.Indicators = log.Indicators
 	}
 	existing.VolumeML = log.VolumeML
+	existing.IndicatorVolumes = log.IndicatorVolumes
 	existing.UserID = log.UserID
 	existing.CompletedAt = log.CompletedAt
 	existing.SlotHour = log.SlotHour

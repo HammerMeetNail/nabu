@@ -17,11 +17,11 @@ type User struct {
 }
 
 type Session struct {
-	ID          string    `json:"id"`
-	UserID      int64     `json:"userId"`
-	ExpiresAt   time.Time `json:"expiresAt"`
-	LastSeenAt  time.Time `json:"lastSeenAt"`
-	CreatedAt   time.Time `json:"createdAt"`
+	ID         string    `json:"id"`
+	UserID     int64     `json:"userId"`
+	ExpiresAt  time.Time `json:"expiresAt"`
+	LastSeenAt time.Time `json:"lastSeenAt"`
+	CreatedAt  time.Time `json:"createdAt"`
 }
 
 type AuthToken struct {

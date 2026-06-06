@@ -1,7 +1,7 @@
 import { apiFetch } from "./api.js";
 import { escapeHTML } from "./utils.js";
 import { sortChoresByOrder } from "./preferences.js";
-import { renderMemberSelect, renderVolumeSelect } from "./schedule.js";
+import { renderMemberSelect } from "./schedule.js";
 import { renderChoresView as renderChoresViewList } from "./chores.js";
 
 /**

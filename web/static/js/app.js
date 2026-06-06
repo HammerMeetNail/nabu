@@ -257,8 +257,8 @@ function renderHistoryView() {
     const chore = (state.chores || []).find(c => c.id === choreId);
     if (chore) {
       const log = logId ? ((state.historyLogs || []).find(l => l.id === logId) || null) : null;
-      const cachedVolumeML = state.latestLogs[choreId]?.volumeML ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours() });
+      const cachedIndicatorVolumes = state.latestLogs[choreId]?.indicatorVolumes ?? null;
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicatorVolumes });
 
   return `<div class="sheet-overlay-wrapper">
         ${mainView}
@@ -281,8 +281,8 @@ function renderHomeViewWrapper() {
     const { choreId } = state.activeSheetData || {};
     const chore = (state.chores || []).find(c => c.id === choreId);
     if (chore) {
-      const cachedML = state.latestLogs[choreId]?.volumeML ?? null;
-      const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, cachedML, { showWhen: true });
+      const cachedIndicatorVolumes = state.latestLogs[choreId]?.indicatorVolumes ?? null;
+      const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, null, { showWhen: true, cachedIndicatorVolumes });
       return `<div class="sheet-overlay-wrapper">
         ${header}
         ${mainView}
@@ -377,8 +377,8 @@ function renderCalendarView() {
         ? (state.weekLogs || [])
         : (state.todayLogs || []);
       const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
-      const cachedVolumeML = state.latestLogs[choreId]?.volumeML ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours() });
+      const cachedIndicatorVolumes = state.latestLogs[choreId]?.indicatorVolumes ?? null;
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicatorVolumes });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}
@@ -449,8 +449,8 @@ function renderScheduleView() {
     if (chore) {
       const allLogs = state.todayLogs || [];
       const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
-      const cachedVolumeML = state.latestLogs[choreId]?.volumeML ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, cachedVolumeML, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), scheduleId });
+      const cachedIndicatorVolumes = state.latestLogs[choreId]?.indicatorVolumes ?? null;
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), scheduleId, cachedIndicatorVolumes });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}
@@ -1173,6 +1173,11 @@ export async function init() {
       actionEl.classList.toggle("log-chip--on");
       actionEl.setAttribute("aria-pressed",
         String(actionEl.classList.contains("log-chip--on")));
+      const row = actionEl.closest(".indicator-row");
+      const volumeSelect = row?.querySelector(".indicator-volume-select");
+      if (volumeSelect) {
+        volumeSelect.style.display = actionEl.classList.contains("log-chip--on") ? "" : "none";
+      }
       return;
     }
 
@@ -1508,6 +1513,14 @@ export async function init() {
         const note    = (document.querySelector('#log-note')?.value || "").trim();
         const indicators = [...document.querySelectorAll('.log-chip--on')]
           .map(el => el.dataset.label);
+        const indicatorVolumes = {};
+        document.querySelectorAll('.indicator-volume-select').forEach(select => {
+          const indicator = select.dataset.indicator;
+          const val = select.value;
+          if (indicator && val !== "") {
+            indicatorVolumes[indicator] = parseInt(val, 10);
+          }
+        });
         const volumeVal = document.querySelector('#log-volume')?.value;
         const volumeML = volumeVal && volumeVal !== "" ? parseInt(volumeVal, 10) : null;
         const memberVal = document.querySelector('#log-member')?.value;
@@ -1516,7 +1529,7 @@ export async function init() {
         // Require volume AND indicator for chores that have both features.
         const chore = (state.chores || []).find(c => c.id === choreId);
         if (chore && chore.hasVolumeML && (chore.indicatorLabels || []).length > 0) {
-          if (volumeML === null || indicators.length === 0) {
+          if (Object.keys(indicatorVolumes).length === 0 || indicators.length === 0) {
             showToast("Select a volume and food type", "error");
             break;
           }
@@ -1554,8 +1567,8 @@ export async function init() {
         }
 
         const doLog = logId
-          ? updateLog(parseInt(logId, 10), note, indicators, volumeML, userId, date, slotHour, completedAt)
-          : logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId);
+          ? updateLog(parseInt(logId, 10), note, indicators, volumeML, userId, date, slotHour, completedAt, indicatorVolumes)
+          : logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId, indicatorVolumes);
         doLog.then(async (data) => {
           const newLogId = data?.log?.id;
           state.activeSheet     = null;
