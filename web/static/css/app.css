@@ -1004,7 +1004,7 @@ details[open] .member-chevron {
   background: var(--surface);
 }
 
-.sch-row--done { opacity: 0.5; text-decoration: line-through; }
+.sch-row--done { background: #fef3c7; border-radius: 8px; margin: 2px 4px; }
 
 .sch-row-main {
   display: flex;
