@@ -19,7 +19,9 @@ type Chore struct {
 	CreatedAt         time.Time `json:"createdAt"`
 	IndicatorLabels   []string  `json:"indicatorLabels"`
 	IndicatorDefaults []string  `json:"indicatorDefaults"`
-	HasVolumeML       bool      `json:"hasVolumeML"`
+	HasVolumeML           bool      `json:"hasVolumeML"`
+	FollowUpEnabled       bool      `json:"followUpEnabled"`
+	LastFollowUpMinutes   int       `json:"lastFollowUpMinutes"`
 }
 
 type Store interface {

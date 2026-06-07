@@ -168,6 +168,18 @@ export function renderChoreSheet(chore) {
       <button type="button" class="btn-add-indicator" data-action="add-indicator-label">+ Add label</button>
     </div>
 
+    <div class="chore-edit-field">
+      <label class="chore-edit-label">
+        Follow-up
+        <span class="chore-edit-hint">Schedule next occurrence after logging</span>
+      </label>
+      <label class="indicator-default-toggle chore-followup-toggle">
+        <input type="checkbox" data-action="toggle-followup-enabled"
+          ${chore?.followUpEnabled ? ' checked' : ''} />
+        <span class="indicator-default-label">Enable follow-up scheduling</span>
+      </label>
+    </div>
+
     <div class="chore-sheet-footer">
       <div class="chore-sheet-footer-left">${deleteOrRestore}</div>
       <div class="chore-sheet-footer-right">

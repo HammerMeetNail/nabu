@@ -85,6 +85,16 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	logHandler.WithNotification(notifService, choreStore, householdStore)
 	householdHandler.WithNotification(notifService, householdStore)
 
+	var scheduleStore schedule.Store
+	if db != nil {
+		scheduleStore = schedule.NewPostgresStore(db)
+	} else {
+		scheduleStore = schedule.NewMemoryStore()
+	}
+	scheduleService := schedule.NewService()
+	scheduleHandler := handlers.NewScheduleHandler(scheduleStore, scheduleService)
+	logHandler.WithScheduleStore(scheduleStore)
+
 	var vapidSigner *push.VAPIDSigner
 	if cfg.VAPIDPublicKey != "" && cfg.VAPIDPrivateKey != "" {
 		var err error
@@ -103,15 +113,6 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	preferencesHandler := handlers.NewPreferencesHandler(userPrefsService)
 	statsService := stats.NewService(logStore, &choreStatsAdapter{choreStore})
 	statsHandler := handlers.NewStatsHandler(statsService, userPrefsStore)
-
-	var scheduleStore schedule.Store
-	if db != nil {
-		scheduleStore = schedule.NewPostgresStore(db)
-	} else {
-		scheduleStore = schedule.NewMemoryStore()
-	}
-	scheduleService := schedule.NewService()
-	scheduleHandler := handlers.NewScheduleHandler(scheduleStore, scheduleService)
 
 	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitAuthMax, time.Minute)
 	rateLimiter.SetTrustedProxies(cfg.TrustedProxyCIDRs)

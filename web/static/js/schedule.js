@@ -411,6 +411,21 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
   const selectedMemberId = log?.userId ?? (currentUserId || null);
   const memberSection = renderMemberSelect(members, currentUserId, selectedMemberId, "log");
 
+  const followUpSection = !log && chore.followUpEnabled ? (() => {
+    const totalMins = chore.lastFollowUpMinutes || 0;
+    const d = Math.floor(totalMins / 1440);
+    const h = Math.floor((totalMins % 1440) / 60);
+    const m = totalMins % 60;
+    return `<div class="sheet-followup-row">
+      <span class="field-label">Follow-up in</span>
+      <div class="followup-inputs">
+        <label><input type="number" id="followup-days" class="text-input followup-input" min="0" value="${d}" placeholder="0"> d</label>
+        <label><input type="number" id="followup-hours" class="text-input followup-input" min="0" max="23" value="${h}" placeholder="0"> h</label>
+        <label><input type="number" id="followup-mins" class="text-input followup-input" min="0" max="59" value="${m}" placeholder="0"> m</label>
+      </div>
+    </div>`;
+  })() : "";
+
   const noteSection = `
     <div class="sheet-note-row">
       <label for="log-note" class="field-label">Note (optional)</label>
@@ -473,6 +488,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
       <h2 class="sheet-title">${title}</h2>
       ${whenSection}
       ${indicatorSection}
+      ${followUpSection}
       ${memberSection}
       ${noteSection}
       ${actions}

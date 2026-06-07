@@ -67,6 +67,7 @@ type ChoreSchedule struct {
 	StartDate      *DateOnly     `json:"startDate,omitempty"` // for "once" frequency
 	TargetCount    int           `json:"targetCount"`
 	IsActive       bool          `json:"isActive"`
+	IsFollowUp     bool          `json:"isFollowUp"`
 	AssignedUserID *int64        `json:"assignedUserId"`
 	CreatedAt      time.Time     `json:"createdAt"`
 	UpdatedAt      time.Time     `json:"updatedAt"`

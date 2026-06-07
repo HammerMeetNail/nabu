@@ -125,7 +125,7 @@ func TestService_UpdateChore_PartialUpdate(t *testing.T) {
 
 	c, _ := svc.CreateChore(ctx, 1, 10, "Old Name", "🐱", "#000", "cleaning", nil, nil)
 
-	err := svc.UpdateChore(ctx, c.ID, 1, "New Name", "", "", "", nil, nil)
+	err := svc.UpdateChore(ctx, c.ID, 1, "New Name", "", "", "", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("UpdateChore: %v", err)
 	}
@@ -148,7 +148,7 @@ func TestService_UpdateChore_UpdateIndicators(t *testing.T) {
 	ctx := context.Background()
 
 	c, _ := svc.CreateChore(ctx, 1, 10, "Task", "", "", "", []string{"label1"}, nil)
-	err := svc.UpdateChore(ctx, c.ID, 1, "", "", "", "", []string{"new1", "new2"}, nil)
+	err := svc.UpdateChore(ctx, c.ID, 1, "", "", "", "", []string{"new1", "new2"}, nil, nil)
 	if err != nil {
 		t.Fatalf("UpdateChore: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestService_UpdateChore_UpdateIndicators(t *testing.T) {
 
 func TestService_UpdateChore_NotFound(t *testing.T) {
 	svc := chore.NewService(chore.NewMemoryStore())
-	err := svc.UpdateChore(context.Background(), 9999, 1, "X", "", "", "", nil, nil)
+	err := svc.UpdateChore(context.Background(), 9999, 1, "X", "", "", "", nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected error for missing chore")
 	}
@@ -299,7 +299,7 @@ func TestService_RestoreDefaultChore(t *testing.T) {
 	originalName := target.Name
 
 	// Mutate it via UpdateChore
-	_ = svc.UpdateChore(ctx, target.ID, 1, "Modified Name", "", "", "", nil, nil)
+	_ = svc.UpdateChore(ctx, target.ID, 1, "Modified Name", "", "", "", nil, nil, nil)
 
 	// Restore it
 	err := svc.RestoreDefaultChore(ctx, target.ID, 1)
@@ -339,7 +339,7 @@ func TestService_UpdateChore_WithIconColorCategory(t *testing.T) {
 	c, _ := svc.CreateChore(ctx, 1, 10, "Sweep", "🧹", "#000", "cleaning", nil, nil)
 
 	// Pass non-empty icon, color, and category – covers all three update branches
-	err := svc.UpdateChore(ctx, c.ID, 1, "", "🫧", "#AABBCC", "hygiene", nil, nil)
+	err := svc.UpdateChore(ctx, c.ID, 1, "", "🫧", "#AABBCC", "hygiene", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("UpdateChore: %v", err)
 	}

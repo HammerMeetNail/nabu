@@ -159,6 +159,7 @@ func (h *ChoreHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Category          string   `json:"category"`
 		IndicatorLabels   []string `json:"indicatorLabels"`
 		IndicatorDefaults []string `json:"indicatorDefaults"`
+		FollowUpEnabled   *bool    `json:"followUpEnabled"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -170,7 +171,7 @@ func (h *ChoreHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.UpdateChore(r.Context(), id, *user.HouseholdID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults); err != nil {
+	if err := h.service.UpdateChore(r.Context(), id, *user.HouseholdID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults, req.FollowUpEnabled); err != nil {
 		writeError(w, http.StatusForbidden, err.Error())
 		return
 	}
