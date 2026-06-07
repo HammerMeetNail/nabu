@@ -55,7 +55,8 @@ final class DataLoaderTests: XCTestCase {
     func testActivityViewWithLogs() {
         let log = ChoreLog(id: 1, householdId: 1, userId: 1, choreId: 1,
                            completedAt: Date(), note: "", indicators: [],
-                           slotHour: 9, createdAt: Date(), volumeML: nil)
+                           slotHour: 9, createdAt: Date(), volumeML: nil,
+                           indicatorVolumes: nil)
         state.todayLogs = [log]
         XCTAssertFalse(state.todayLogs.isEmpty)
     }

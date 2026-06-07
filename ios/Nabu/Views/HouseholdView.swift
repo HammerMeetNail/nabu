@@ -159,6 +159,12 @@ struct HouseholdView: View {
                             }
                         }
                     }
+
+                    NavigationLink {
+                        NotificationPreferencesView()
+                    } label: {
+                        Label("Notification Preferences", systemImage: "bell.badge")
+                    }
                 }
 
                 Section {

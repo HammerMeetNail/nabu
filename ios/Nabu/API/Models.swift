@@ -128,6 +128,8 @@ struct Chore: Codable, Identifiable, Equatable {
     let indicatorLabels: [String]
     let indicatorDefaults: [String]
     let hasVolumeML: Bool
+    let followUpEnabled: Bool
+    let lastFollowUpMinutes: Int
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -145,6 +147,8 @@ struct Chore: Codable, Identifiable, Equatable {
         indicatorLabels = try container.decodeIfPresent([String].self, forKey: .indicatorLabels) ?? []
         indicatorDefaults = try container.decodeIfPresent([String].self, forKey: .indicatorDefaults) ?? []
         hasVolumeML = try container.decode(Bool.self, forKey: .hasVolumeML)
+        followUpEnabled = try container.decodeIfPresent(Bool.self, forKey: .followUpEnabled) ?? false
+        lastFollowUpMinutes = try container.decodeIfPresent(Int.self, forKey: .lastFollowUpMinutes) ?? 0
     }
 
     init(id: Int, householdId: Int, name: String, icon: String, color: String, sortOrder: Int, category: String, isPredefined: Bool, predefinedKey: String?, createdBy: Int?, createdAt: Date, indicatorLabels: [String], indicatorDefaults: [String], hasVolumeML: Bool) {
@@ -162,12 +166,15 @@ struct Chore: Codable, Identifiable, Equatable {
         self.indicatorLabels = indicatorLabels
         self.indicatorDefaults = indicatorDefaults
         self.hasVolumeML = hasVolumeML
+        self.followUpEnabled = false
+        self.lastFollowUpMinutes = 0
     }
 
     enum CodingKeys: String, CodingKey {
         case id, householdId, name, icon, color, sortOrder, category
         case isPredefined, predefinedKey, createdBy, createdAt
         case indicatorLabels, indicatorDefaults, hasVolumeML
+        case followUpEnabled, lastFollowUpMinutes
     }
 }
 
@@ -216,6 +223,7 @@ struct ChoreSchedule: Codable, Identifiable, Equatable {
     let startDate: String?
     let targetCount: Int
     let isActive: Bool
+    let isFollowUp: Bool
     let assignedUserId: Int?
     let createdAt: Date
     let updatedAt: Date

@@ -284,6 +284,7 @@ final class ModelDecodingTests: XCTestCase {
               "startDate": null,
               "targetCount": 0,
               "isActive": true,
+              "isFollowUp": false,
               "assignedUserId": 1,
               "createdAt": "2024-12-25T14:30:00Z",
               "updatedAt": "2024-12-25T14:30:00Z"
@@ -305,6 +306,7 @@ final class ModelDecodingTests: XCTestCase {
               "startDate": "2024-01-01",
               "targetCount": 0,
               "isActive": true,
+              "isFollowUp": false,
               "assignedUserId": null,
               "createdAt": "2024-12-25T14:30:00Z",
               "updatedAt": "2024-12-25T14:30:00Z"

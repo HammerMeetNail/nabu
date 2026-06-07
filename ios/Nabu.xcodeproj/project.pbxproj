@@ -62,6 +62,7 @@
 		E8FCB2E4799DC95953BF2D54 /* LogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CC042FD2FD2699642D0DE0A /* LogStore.swift */; };
 		EB10CC22BFD126AA3376AD5C /* HouseholdView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DA2BDB9721C408CA80FDC0B /* HouseholdView.swift */; };
 		EE9B096B5E77323156340F8A /* NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA47955EB0BEED65A2E7D6A1 /* NotificationsView.swift */; };
+		F749DD2E3A14408E862CBC5C /* NotificationPreferencesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AEB5F0349354099A801015D /* NotificationPreferencesView.swift */; };
 		F2B0E6A8C59F0742067090A6 /* APIClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78EBF8DB9842E99BC6BA535E /* APIClient.swift */; };
 		FCDB1679E4531AD5E72300AB /* GoogleOAuthCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86D12489385D51739FB63B1D /* GoogleOAuthCoordinator.swift */; };
 /* End PBXBuildFile section */
@@ -127,6 +128,7 @@
 		F5AC6C0A4901CAA9D3720902 /* ChoreStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChoreStore.swift; sourceTree = "<group>"; };
 		F8D6860772FD1D27C92F7B78 /* ScheduleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleStore.swift; sourceTree = "<group>"; };
 		FA47955EB0BEED65A2E7D6A1 /* NotificationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsView.swift; sourceTree = "<group>"; };
+		6AEB5F0349354099A801015D /* NotificationPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPreferencesView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -263,6 +265,7 @@
 				4E8F3699DE10AAEC9B1D4309 /* ScheduleView.swift */,
 				2DA2BDB9721C408CA80FDC0B /* HouseholdView.swift */,
 				FA47955EB0BEED65A2E7D6A1 /* NotificationsView.swift */,
+				6AEB5F0349354099A801015D /* NotificationPreferencesView.swift */,
 				C8A56EC19E09D88AA99BFC6A /* StatsView.swift */,
 			);
 			path = Views;
@@ -508,6 +511,7 @@
 				561EC4912267CE43DE21AF81 /* ScheduleView.swift in Sources */,
 				EB10CC22BFD126AA3376AD5C /* HouseholdView.swift in Sources */,
 				EE9B096B5E77323156340F8A /* NotificationsView.swift in Sources */,
+				F749DD2E3A14408E862CBC5C /* NotificationPreferencesView.swift in Sources */,
 				47CFB6E9DDAD437CC519734F /* StatsView.swift in Sources */,
 				692181CBA6119E3233ABCD46 /* Colors.swift in Sources */,
 				AA1234567890ABCDEF123456 /* Components.swift in Sources */,

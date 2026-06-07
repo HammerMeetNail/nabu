@@ -51,7 +51,8 @@ final class ScheduleTests: XCTestCase {
                                 timesOfDay: [], daysOfWeek: [], intervalDays: 0,
                                 dayOfMonth: 0, monthWeekday: nil, monthOfYear: 0,
                                 recurrenceEnd: nil, startDate: nil, targetCount: 0,
-                                isActive: true, assignedUserId: nil,
+                                isActive: true,
+                                isFollowUp: false, assignedUserId: nil,
                                 createdAt: Date(), updatedAt: Date())
         let summary = recurrenceSummary(sch)
         XCTAssertTrue(summary.contains("Once"))
@@ -64,7 +65,8 @@ final class ScheduleTests: XCTestCase {
                                 timesOfDay: [], daysOfWeek: [], intervalDays: 0,
                                 dayOfMonth: 0, monthWeekday: nil, monthOfYear: 0,
                                 recurrenceEnd: nil, startDate: nil, targetCount: 0,
-                                isActive: true, assignedUserId: nil,
+                                isActive: true,
+                                isFollowUp: false, assignedUserId: nil,
                                 createdAt: Date(), updatedAt: Date())
         let summary = recurrenceSummary(sch)
         XCTAssertTrue(summary.contains("Every day"))
@@ -76,7 +78,8 @@ final class ScheduleTests: XCTestCase {
                                 timesOfDay: [], daysOfWeek: [1, 3, 5], intervalDays: 0,
                                 dayOfMonth: 0, monthWeekday: nil, monthOfYear: 0,
                                 recurrenceEnd: nil, startDate: nil, targetCount: 0,
-                                isActive: true, assignedUserId: nil,
+                                isActive: true,
+                                isFollowUp: false, assignedUserId: nil,
                                 createdAt: Date(), updatedAt: Date())
         let summary = recurrenceSummary(sch)
         XCTAssertTrue(summary.contains("Every Mon, Wed, Fri"))
@@ -92,7 +95,8 @@ final class ScheduleTests: XCTestCase {
                                 timesOfDay: [], daysOfWeek: [], intervalDays: 0,
                                 dayOfMonth: 0, monthWeekday: nil, monthOfYear: 0,
                                 recurrenceEnd: end, startDate: nil, targetCount: 0,
-                                isActive: true, assignedUserId: nil,
+                                isActive: true,
+                                isFollowUp: false, assignedUserId: nil,
                                 createdAt: Date(), updatedAt: Date())
         let summary = recurrenceSummary(sch)
         XCTAssertTrue(summary.contains("until Jul 4"))
@@ -104,7 +108,8 @@ final class ScheduleTests: XCTestCase {
                                 timesOfDay: [], daysOfWeek: [], intervalDays: 3,
                                 dayOfMonth: 0, monthWeekday: nil, monthOfYear: 0,
                                 recurrenceEnd: nil, startDate: nil, targetCount: 0,
-                                isActive: true, assignedUserId: nil,
+                                isActive: true,
+                                isFollowUp: false, assignedUserId: nil,
                                 createdAt: Date(), updatedAt: Date())
         let summary = recurrenceSummary(sch)
         XCTAssertTrue(summary.contains("Every 3 days"))
@@ -116,7 +121,8 @@ final class ScheduleTests: XCTestCase {
                                 timesOfDay: [], daysOfWeek: [], intervalDays: 0,
                                 dayOfMonth: 15, monthWeekday: nil, monthOfYear: 0,
                                 recurrenceEnd: nil, startDate: nil, targetCount: 0,
-                                isActive: true, assignedUserId: nil,
+                                isActive: true,
+                                isFollowUp: false, assignedUserId: nil,
                                 createdAt: Date(), updatedAt: Date())
         let summary = recurrenceSummary(sch)
         XCTAssertTrue(summary.contains("Monthly on the 15th"))
@@ -133,5 +139,168 @@ final class ScheduleTests: XCTestCase {
         let result = weekStart(from: "2026-06-07") // Sunday
         // Sunday's Monday should be the previous day
         XCTAssertEqual(result, "2026-06-01")
+    }
+
+    // MARK: - isActiveForDay
+
+    func testDailyScheduleAlwaysActive() {
+        let sch = ChoreSchedule(id: 1, householdId: 1, choreId: 1,
+                                frequencyType: "daily", timePeriod: "anytime",
+                                specificTime: nil, timesOfDay: [],
+                                daysOfWeek: [], intervalDays: 0,
+                                dayOfMonth: 0, monthWeekday: nil,
+                                monthOfYear: 0, recurrenceEnd: nil,
+                                startDate: nil, targetCount: 0,
+                                isActive: true,
+                                isFollowUp: false, assignedUserId: nil,
+                                createdAt: Date(), updatedAt: Date())
+        XCTAssertTrue(isActiveForDay(sch, "2026-04-28"))
+        XCTAssertTrue(isActiveForDay(sch, "2026-01-01"))
+    }
+
+    func testInactiveScheduleReturnsFalse() {
+        let sch = ChoreSchedule(id: 1, householdId: 1, choreId: 1,
+                                frequencyType: "daily", timePeriod: "anytime",
+                                specificTime: nil, timesOfDay: [],
+                                daysOfWeek: [], intervalDays: 0,
+                                dayOfMonth: 0, monthWeekday: nil,
+                                monthOfYear: 0, recurrenceEnd: nil,
+                                startDate: nil, targetCount: 0,
+                                isActive: false,
+                                isFollowUp: false, assignedUserId: nil,
+                                createdAt: Date(), updatedAt: Date())
+        XCTAssertFalse(isActiveForDay(sch, "2026-04-28"))
+    }
+
+    func testWeeklyScheduleMatchesCorrectDays() {
+        let sch = ChoreSchedule(id: 1, householdId: 1, choreId: 1,
+                                frequencyType: "weekly", timePeriod: "anytime",
+                                specificTime: nil, timesOfDay: [],
+                                daysOfWeek: [1, 3], intervalDays: 0,
+                                dayOfMonth: 0, monthWeekday: nil,
+                                monthOfYear: 0, recurrenceEnd: nil,
+                                startDate: nil, targetCount: 0,
+                                isActive: true,
+                                isFollowUp: false, assignedUserId: nil,
+                                createdAt: Date(), updatedAt: Date())
+        XCTAssertTrue(isActiveForDay(sch, "2026-04-27"))
+        XCTAssertFalse(isActiveForDay(sch, "2026-04-28"))
+        XCTAssertTrue(isActiveForDay(sch, "2026-04-29"))
+    }
+
+    func testEveryNDaysSchedule() {
+        let df = ISO8601DateFormatter()
+        df.formatOptions = [.withFullDate]
+        let createdAt = df.date(from: "2026-04-01T00:00:00Z")!
+        let sch = ChoreSchedule(id: 1, householdId: 1, choreId: 1,
+                                frequencyType: "every_n_days", timePeriod: "anytime",
+                                specificTime: nil, timesOfDay: [],
+                                daysOfWeek: [], intervalDays: 3,
+                                dayOfMonth: 0, monthWeekday: nil,
+                                monthOfYear: 0, recurrenceEnd: nil,
+                                startDate: nil, targetCount: 0,
+                                isActive: true,
+                                isFollowUp: false, assignedUserId: nil,
+                                createdAt: createdAt, updatedAt: Date())
+        XCTAssertTrue(isActiveForDay(sch, "2026-04-01"))
+        XCTAssertFalse(isActiveForDay(sch, "2026-04-02"))
+        XCTAssertTrue(isActiveForDay(sch, "2026-04-04"))
+    }
+
+    func testMonthlyByDateSchedule() {
+        let sch = ChoreSchedule(id: 1, householdId: 1, choreId: 1,
+                                frequencyType: "monthly_by_date", timePeriod: "anytime",
+                                specificTime: nil, timesOfDay: [],
+                                daysOfWeek: [], intervalDays: 0,
+                                dayOfMonth: 15, monthWeekday: nil,
+                                monthOfYear: 0, recurrenceEnd: nil,
+                                startDate: nil, targetCount: 0,
+                                isActive: true,
+                                isFollowUp: false, assignedUserId: nil,
+                                createdAt: Date(), updatedAt: Date())
+        XCTAssertTrue(isActiveForDay(sch, "2026-04-15"))
+        XCTAssertFalse(isActiveForDay(sch, "2026-04-16"))
+        XCTAssertTrue(isActiveForDay(sch, "2026-05-15"))
+    }
+
+    func testMonthlyByWeekdaySecondMonday() {
+        let sch = ChoreSchedule(id: 1, householdId: 1, choreId: 1,
+                                frequencyType: "monthly_by_weekday", timePeriod: "anytime",
+                                specificTime: nil, timesOfDay: [],
+                                daysOfWeek: [], intervalDays: 0,
+                                dayOfMonth: 0,
+                                monthWeekday: MonthWeekday(week: 2, day: 1),
+                                monthOfYear: 0, recurrenceEnd: nil,
+                                startDate: nil, targetCount: 0,
+                                isActive: true,
+                                isFollowUp: false, assignedUserId: nil,
+                                createdAt: Date(), updatedAt: Date())
+        XCTAssertTrue(isActiveForDay(sch, "2026-04-13"))
+        XCTAssertFalse(isActiveForDay(sch, "2026-04-06"))
+        XCTAssertFalse(isActiveForDay(sch, "2026-04-20"))
+    }
+
+    func testYearlySchedule() {
+        let sch = ChoreSchedule(id: 1, householdId: 1, choreId: 1,
+                                frequencyType: "yearly", timePeriod: "anytime",
+                                specificTime: nil, timesOfDay: [],
+                                daysOfWeek: [], intervalDays: 0,
+                                dayOfMonth: 28, monthWeekday: nil,
+                                monthOfYear: 4, recurrenceEnd: nil,
+                                startDate: nil, targetCount: 0,
+                                isActive: true,
+                                isFollowUp: false, assignedUserId: nil,
+                                createdAt: Date(), updatedAt: Date())
+        XCTAssertTrue(isActiveForDay(sch, "2026-04-28"))
+        XCTAssertFalse(isActiveForDay(sch, "2026-04-29"))
+        XCTAssertTrue(isActiveForDay(sch, "2027-04-28"))
+    }
+
+    func testRespectsRecurrenceEnd() {
+        let df = DateFormatter()
+        df.dateFormat = "yyyy-MM-dd"
+        let end = df.date(from: "2026-04-30")!
+        let sch = ChoreSchedule(id: 1, householdId: 1, choreId: 1,
+                                frequencyType: "daily", timePeriod: "anytime",
+                                specificTime: nil, timesOfDay: [],
+                                daysOfWeek: [], intervalDays: 0,
+                                dayOfMonth: 0, monthWeekday: nil,
+                                monthOfYear: 0, recurrenceEnd: end,
+                                startDate: nil, targetCount: 0,
+                                isActive: true,
+                                isFollowUp: false, assignedUserId: nil,
+                                createdAt: Date(), updatedAt: Date())
+        XCTAssertTrue(isActiveForDay(sch, "2026-04-28"))
+        XCTAssertFalse(isActiveForDay(sch, "2026-05-01"))
+    }
+
+    func testOnceScheduleActiveOnlyOnStartDate() {
+        let sch = ChoreSchedule(id: 1, householdId: 1, choreId: 1,
+                                frequencyType: "once", timePeriod: "anytime",
+                                specificTime: nil, timesOfDay: [],
+                                daysOfWeek: [], intervalDays: 0,
+                                dayOfMonth: 0, monthWeekday: nil,
+                                monthOfYear: 0, recurrenceEnd: nil,
+                                startDate: "2026-04-30", targetCount: 0,
+                                isActive: true,
+                                isFollowUp: false, assignedUserId: nil,
+                                createdAt: Date(), updatedAt: Date())
+        XCTAssertTrue(isActiveForDay(sch, "2026-04-30"))
+        XCTAssertFalse(isActiveForDay(sch, "2026-04-29"))
+        XCTAssertFalse(isActiveForDay(sch, "2026-05-01"))
+    }
+
+    func testOnceScheduleWithNoStartDateReturnsFalse() {
+        let sch = ChoreSchedule(id: 1, householdId: 1, choreId: 1,
+                                frequencyType: "once", timePeriod: "anytime",
+                                specificTime: nil, timesOfDay: [],
+                                daysOfWeek: [], intervalDays: 0,
+                                dayOfMonth: 0, monthWeekday: nil,
+                                monthOfYear: 0, recurrenceEnd: nil,
+                                startDate: nil, targetCount: 0,
+                                isActive: true,
+                                isFollowUp: false, assignedUserId: nil,
+                                createdAt: Date(), updatedAt: Date())
+        XCTAssertFalse(isActiveForDay(sch, "2026-04-30"))
     }
 }

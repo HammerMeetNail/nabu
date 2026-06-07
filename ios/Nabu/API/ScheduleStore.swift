@@ -109,3 +109,61 @@ private func ordinalSuffix(_ n: Int) -> String {
         }
     }
 }
+
+func isActiveForDay(_ sch: ChoreSchedule, _ isoDate: String) -> Bool {
+    guard sch.isActive else { return false }
+
+    let f = DateFormatter()
+    f.dateFormat = "yyyy-MM-dd"
+    f.locale = Locale(identifier: "en_US_POSIX")
+
+    guard let date = f.date(from: isoDate) else { return false }
+
+    if let end = sch.recurrenceEnd, date > end { return false }
+
+    let cal = Calendar(identifier: .gregorian)
+    let wd = cal.component(.weekday, from: date) - 1
+
+    switch sch.frequencyType {
+    case "once":
+        guard let start = sch.startDate else { return false }
+        return isoDate == String(start.prefix(10))
+    case "daily":
+        return true
+    case "weekly":
+        return sch.daysOfWeek.contains(wd)
+    case "every_n_days":
+        guard sch.intervalDays > 0 else { return false }
+        let originStr: String
+        if let start = sch.startDate {
+            originStr = String(start.prefix(10))
+        } else {
+            let df = ISO8601DateFormatter()
+            df.formatOptions = [.withFullDate]
+            originStr = df.string(from: sch.createdAt)
+        }
+        guard let origin = f.date(from: originStr) else { return false }
+        let diffDays = cal.dateComponents([.day], from: origin, to: date).day ?? 0
+        return diffDays >= 0 && diffDays % sch.intervalDays == 0
+    case "monthly_by_date":
+        return cal.component(.day, from: date) == sch.dayOfMonth
+    case "monthly_by_weekday":
+        guard let mw = sch.monthWeekday else { return false }
+        if cal.component(.weekday, from: date) - 1 != mw.day { return false }
+        let month = cal.component(.month, from: date)
+        let year = cal.component(.year, from: date)
+        var count = 0
+        for day in 1...cal.component(.day, from: date) {
+            let comps = DateComponents(year: year, month: month, day: day)
+            if let d = cal.date(from: comps), cal.component(.weekday, from: d) - 1 == mw.day {
+                count += 1
+            }
+        }
+        return count == mw.week
+    case "yearly":
+        return cal.component(.day, from: date) == sch.dayOfMonth
+            && cal.component(.month, from: date) == sch.monthOfYear
+    default:
+        return false
+    }
+}

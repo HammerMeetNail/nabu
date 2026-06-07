@@ -6,9 +6,10 @@ struct ScheduleView: View {
     @State private var showingEditSheet = false
     @State private var editingSchedule: ChoreSchedule?
     @State private var showingPickChore = false
-    @State private var schedules: [ChoreSchedule] = []
 
     private let scheduleStore: ScheduleStore
+
+    private var schedules: [ChoreSchedule] { state.schedules }
 
     init(scheduleStore: ScheduleStore) {
         self.scheduleStore = scheduleStore
@@ -70,7 +71,7 @@ struct ScheduleView: View {
         var items: [UpcomingItem] = []
         for dayOffset in 0..<14 {
             let date = shiftISO(today, by: dayOffset)
-            for sch in schedules where sch.isActive {
+            for sch in schedules where isActiveForDay(sch, date) {
                 guard let chore = state.chores.first(where: { $0.id == sch.choreId }) else { continue }
                 let f = DateFormatter()
                 f.dateFormat = "yyyy-MM-dd"
@@ -180,7 +181,8 @@ struct ScheduleView: View {
         do {
             let body = CreateLogRequest(choreId: item.chore.id, note: nil, indicators: nil,
                                           date: dateStr, hour: hour, completedAt: completedAt,
-                                          volumeML: nil, userId: nil, indicatorVolumes: nil)
+                                          volumeML: nil, userId: nil, indicatorVolumes: nil,
+                                          followUpMinutes: nil)
             let resp: LogResponse = try await environment.apiClient.post("/api/logs", body: body)
             state.todayLogs.insert(resp.log, at: 0)
         } catch {}
@@ -188,8 +190,7 @@ struct ScheduleView: View {
 
     private func loadSchedules() async {
         do {
-            schedules = try await scheduleStore.loadSchedules()
-            state.schedules = schedules
+            state.schedules = try await scheduleStore.loadSchedules()
         } catch {}
     }
 }

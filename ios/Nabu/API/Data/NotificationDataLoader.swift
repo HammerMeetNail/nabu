@@ -29,4 +29,10 @@ final class NotificationDataLoader {
             // Silent failure
         }
     }
+
+    func saveNotificationPreferences(_ prefs: PatchNotificationPrefsRequest) async throws -> NotificationPrefsResponse {
+        let data: NotificationPrefsResponse = try await api.patch("/api/notification-preferences", body: prefs)
+        state.notificationPrefs = data.preferences
+        return data
+    }
 }

@@ -16,6 +16,9 @@ struct LogSheet: View {
     @State private var whenDate: Date = Date()
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var followUpDays: Int = 0
+    @State private var followUpHours: Int = 0
+    @State private var followUpMins: Int = 0
 
     private var isEditing: Bool { log != nil }
 
@@ -101,6 +104,27 @@ struct LogSheet: View {
                             }
                         }
                         .pickerStyle(.menu)
+                    }
+                }
+
+                if !isEditing && chore.followUpEnabled {
+                    Section("Follow-up in") {
+                        HStack(spacing: 6) {
+                            Picker("Days", selection: $followUpDays) {
+                                ForEach(0..<15, id: \.self) { d in Text("\(d)d").tag(d) }
+                            }
+                            .pickerStyle(.menu)
+                            Picker("Hours", selection: $followUpHours) {
+                                ForEach(0..<24, id: \.self) { h in Text("\(h)h").tag(h) }
+                            }
+                            .pickerStyle(.menu)
+                            Picker("Mins", selection: $followUpMins) {
+                                ForEach([0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55], id: \.self) { m in
+                                    Text("\(m)m").tag(m)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                        }
                     }
                 }
 
@@ -201,6 +225,10 @@ struct LogSheet: View {
                 volumeML = latestLog.volumeML
                 indicatorVolumes = latestLog.indicatorVolumes ?? [:]
             }
+            let totalMins = chore.lastFollowUpMinutes
+            followUpDays = totalMins / 1440
+            followUpHours = (totalMins % 1440) / 60
+            followUpMins = ((totalMins % 60) / 5) * 5
         }
     }
 
@@ -258,12 +286,14 @@ struct LogSheet: View {
                         state.todayLogs[idx] = newLog
                     }
                 } else {
+                    let followUpMinutes = followUpDays * 1440 + followUpHours * 60 + followUpMins
                     let response = try await logStore.createLog(
                         choreId: chore.id, note: note, date: dateStr,
                         indicators: selectedIndicators, slotHour: hour,
                         completedAt: completedAtISO, volumeML: volumeML,
                         userId: selectedUserId,
-                        indicatorVolumes: activeVolumes.isEmpty ? nil : activeVolumes
+                        indicatorVolumes: activeVolumes.isEmpty ? nil : activeVolumes,
+                        followUpMinutes: followUpMinutes > 0 ? followUpMinutes : nil
                     )
                     state.todayLogs.insert(response.log, at: 0)
                     state.latestLogs[chore.id] = response.log

@@ -58,24 +58,28 @@ final class ActivityTests: XCTestCase {
     func testAnytimeLogsHaveNullSlotHour() {
         let log = ChoreLog(id: 1, householdId: 1, userId: 1, choreId: 1,
                            completedAt: Date(), note: "", indicators: [],
-                           slotHour: nil, createdAt: Date(), volumeML: nil)
+                           slotHour: nil, createdAt: Date(), volumeML: nil,
+                           indicatorVolumes: nil)
         XCTAssertNil(log.slotHour)
     }
 
     func testTimedLogsHaveSlotHour() {
         let log = ChoreLog(id: 1, householdId: 1, userId: 1, choreId: 1,
                            completedAt: Date(), note: "", indicators: [],
-                           slotHour: 9, createdAt: Date(), volumeML: nil)
+                           slotHour: 9, createdAt: Date(), volumeML: nil,
+                           indicatorVolumes: nil)
         XCTAssertEqual(log.slotHour, 9)
     }
 
     func testFilterAnytimeLogs() {
         let anytime = ChoreLog(id: 1, householdId: 1, userId: 1, choreId: 1,
                                 completedAt: Date(), note: "", indicators: [],
-                                slotHour: nil, createdAt: Date(), volumeML: nil)
+                                slotHour: nil, createdAt: Date(), volumeML: nil,
+                                indicatorVolumes: nil)
         let timed = ChoreLog(id: 2, householdId: 1, userId: 1, choreId: 2,
                               completedAt: Date(), note: "", indicators: [],
-                              slotHour: 9, createdAt: Date(), volumeML: nil)
+                              slotHour: 9, createdAt: Date(), volumeML: nil,
+                              indicatorVolumes: nil)
         let logs = [anytime, timed]
         let anytimeLogs = logs.filter { $0.slotHour == nil }
         XCTAssertEqual(anytimeLogs.count, 1)
@@ -91,10 +95,12 @@ final class ActivityTests: XCTestCase {
 
         let log1 = ChoreLog(id: 1, householdId: 1, userId: 1, choreId: 1,
                             completedAt: d1, note: "", indicators: [],
-                            slotHour: 9, createdAt: Date(), volumeML: nil)
+                            slotHour: 9, createdAt: Date(), volumeML: nil,
+                            indicatorVolumes: nil)
         let log2 = ChoreLog(id: 2, householdId: 1, userId: 1, choreId: 2,
                             completedAt: d2, note: "", indicators: [],
-                            slotHour: 10, createdAt: Date(), volumeML: nil)
+                            slotHour: 10, createdAt: Date(), volumeML: nil,
+                            indicatorVolumes: nil)
 
         let logs = [log1, log2]
         var groups: [String: [ChoreLog]] = [:]

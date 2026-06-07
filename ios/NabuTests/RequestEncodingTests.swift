@@ -111,7 +111,9 @@ final class RequestEncodingTests: XCTestCase {
             hour: 14,
             completedAt: "2024-12-25T14:30:00Z",
             volumeML: nil,
-            userId: nil
+            userId: nil,
+            indicatorVolumes: nil,
+            followUpMinutes: nil
         )
         let data = try encoder.encode(req)
         let dict = json(data)
@@ -130,8 +132,9 @@ final class RequestEncodingTests: XCTestCase {
             hour: 8,
             completedAt: "2024-12-25T08:00:00Z",
             volumeML: 120,
-            userId: nil
-        )
+            userId: nil,
+            indicatorVolumes: nil,
+            followUpMinutes: nil)
         let data = try encoder.encode(req)
         let dict = json(data)
         XCTAssertEqual(dict["volume_ml"] as? Int, 120)
@@ -147,8 +150,9 @@ final class RequestEncodingTests: XCTestCase {
             hour: nil,
             completedAt: "2024-12-25T12:00:00Z",
             volumeML: nil,
-            userId: nil
-        )
+            userId: nil,
+            indicatorVolumes: nil,
+            followUpMinutes: nil)
         let data = try encoder.encode(req)
         let dict = json(data)
         XCTAssertNil(dict["hour"])
@@ -163,8 +167,9 @@ final class RequestEncodingTests: XCTestCase {
             hour: 10,
             completedAt: "2024-12-25T10:00:00Z",
             volumeML: nil,
-            userId: 2
-        )
+            userId: 2,
+            indicatorVolumes: nil,
+            followUpMinutes: nil)
         let data = try encoder.encode(req)
         let dict = json(data)
         XCTAssertEqual(dict["user_id"] as? Int, 2)
@@ -178,8 +183,8 @@ final class RequestEncodingTests: XCTestCase {
             userId: nil,
             completedAt: nil,
             hour: nil,
-            date: nil
-        )
+            date: nil,
+            indicatorVolumes: nil)
         let data = try encoder.encode(req)
         let dict = json(data)
         XCTAssertEqual(dict["note"] as? String, "updated note")

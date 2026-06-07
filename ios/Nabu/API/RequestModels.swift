@@ -96,12 +96,14 @@ struct CreateLogRequest: Codable {
     let volumeML: Int?
     let userId: Int?
     let indicatorVolumes: [String: Int]?
+    let followUpMinutes: Int?
 
     enum CodingKeys: String, CodingKey {
         case choreId, note, indicators, date, hour, completedAt
         case volumeML = "volumeML"
         case userId
         case indicatorVolumes
+        case followUpMinutes
     }
 }
 

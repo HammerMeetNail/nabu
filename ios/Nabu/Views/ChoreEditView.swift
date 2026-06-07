@@ -25,6 +25,7 @@ struct ChoreEditView: View {
     @State private var color: String = "#2E86AB"
     @State private var indicatorLabels: [String] = []
     @State private var indicatorDefaults: Set<String> = []
+    @State private var followUpEnabled: Bool = false
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -99,6 +100,14 @@ struct ChoreEditView: View {
 
                 if !isNew {
                     Section {
+                        Toggle("Enable follow-up scheduling", isOn: $followUpEnabled)
+                    } header: {
+                        Text("Follow-up")
+                    } footer: {
+                        Text("Schedule next occurrence after logging")
+                    }
+
+                    Section {
                         if chore?.isPredefined == true {
                             Button("Restore default") {
                                 Task { await restoreDefaults() }
@@ -130,6 +139,7 @@ struct ChoreEditView: View {
                 color = chore.color
                 indicatorLabels = chore.indicatorLabels
                 indicatorDefaults = Set(chore.indicatorDefaults)
+                followUpEnabled = chore.followUpEnabled
             }
         }
     }
@@ -195,7 +205,8 @@ struct ChoreEditView: View {
             } else if let choreId = chore?.id {
                 let _ = try await choreStore.updateChore(
                     choreId: choreId, name: trimmedName, icon: icon, color: color,
-                    indicatorLabels: cleanedLabels, indicatorDefaults: cleanedDefaults
+                    indicatorLabels: cleanedLabels, indicatorDefaults: cleanedDefaults,
+                    followUpEnabled: followUpEnabled
                 )
                 if let idx = state.chores.firstIndex(where: { $0.id == choreId }) {
                     state.chores[idx] = Chore(

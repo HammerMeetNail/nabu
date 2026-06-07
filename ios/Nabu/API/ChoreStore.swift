@@ -19,17 +19,20 @@ final class ChoreStore {
     }
 
     func updateChore(choreId: Int, name: String, icon: String, color: String,
-                     indicatorLabels: [String], indicatorDefaults: [String]) async throws -> ChoreResponse {
+                     indicatorLabels: [String], indicatorDefaults: [String],
+                     followUpEnabled: Bool? = nil) async throws -> ChoreResponse {
         struct UpdateBody: Codable {
             var name: String
             var icon: String
             var color: String
             var indicatorLabels: [String]
             var indicatorDefaults: [String]
+            var followUpEnabled: Bool?
         }
         let body = UpdateBody(name: name, icon: icon, color: color,
                               indicatorLabels: indicatorLabels,
-                              indicatorDefaults: indicatorDefaults)
+                              indicatorDefaults: indicatorDefaults,
+                              followUpEnabled: followUpEnabled)
         return try await api.patch("/api/chores/\(choreId)", body: body)
     }
 

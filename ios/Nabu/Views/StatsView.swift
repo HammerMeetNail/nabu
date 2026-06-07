@@ -21,9 +21,7 @@ struct StatsView: View {
     @State private var bhFilterStart: String = ""
     @State private var bhFilterEnd: String = ""
 
-    // Chart tap state: tracks which bar index is selected per chart
-    @State private var selectedFeedBar: Int? = nil
-    @State private var selectedChangeBar: Int? = nil
+
 
     // Chore stats filter state
     @State private var csFilterStart: String = ""
@@ -254,51 +252,43 @@ struct StatsView: View {
         ]
         let stackKeys = extractStackKeys(periods, volumeMode: true)
         let maxML = max(1, periods.map { $0.totalML ?? 0 }.max() ?? 1)
-        let colW: CGFloat = 18
+        let count = periods.count
         let spacing: CGFloat = 4
         let chartH: CGFloat = 80
+        let leftMargin: CGFloat = 28
+        let rightMargin: CGFloat = 8
 
-        VStack(alignment: .leading, spacing: 4) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .bottom, spacing: 0) {
-                        Text("mL")
-                            .font(.system(size: 8))
-                            .foregroundColor(DesignColors.textSecondary)
-                            .frame(width: 24, height: chartH + 14, alignment: .bottom)
-                            .padding(.bottom, 2)
+        GeometryReader { geo in
+            let availableWidth = geo.size.width - leftMargin - rightMargin
+            let totalSpacing = spacing * CGFloat(max(count - 1, 0))
+            let colW = count > 0 ? max(8, (availableWidth - totalSpacing) / CGFloat(count)) : 18
 
-                        HStack(alignment: .bottom, spacing: spacing) {
-                            ForEach(Array(periods.enumerated()), id: \.offset) { i, p in
-                                babyVolumeBarColumn(p, i: i, maxML: maxML, colW: colW, chartH: chartH, stackKeys: stackKeys, stackColors: stackColors, selectedBar: selectedFeedBar, isSelected: selectedFeedBar == i)
-                                    .onTapGesture {
-                                        selectedFeedBar = selectedFeedBar == i ? nil : i
-                                    }
-                            }
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .bottom, spacing: 0) {
+                    Text("mL")
+                        .font(.system(size: 8))
+                        .foregroundColor(DesignColors.textSecondary)
+                        .frame(width: leftMargin, height: chartH + 14, alignment: .bottom)
+                        .padding(.bottom, 2)
+
+                    HStack(alignment: .bottom, spacing: spacing) {
+                        ForEach(Array(periods.enumerated()), id: \.offset) { i, p in
+                            babyVolumeBarColumn(p, i: i, maxML: maxML, colW: colW, chartH: chartH, stackKeys: stackKeys, stackColors: stackColors)
                         }
                     }
-
-                    babyVolumeLegend(periods)
                 }
+
+                babyVolumeLegend(periods)
             }
         }
+        .frame(height: chartH + 60)
     }
 
     @ViewBuilder
-    private func babyVolumeBarColumn(_ p: TimeSeriesPeriod, i: Int, maxML: Int, colW: CGFloat, chartH: CGFloat, stackKeys: [String], stackColors: [String: Color], selectedBar: Int?, isSelected: Bool) -> some View {
+    private func babyVolumeBarColumn(_ p: TimeSeriesPeriod, i: Int, maxML: Int, colW: CGFloat, chartH: CGFloat, stackKeys: [String], stackColors: [String: Color]) -> some View {
         let totalML = p.totalML ?? 0
         let valText = volumeBarLabel(p, stackKeys: stackKeys)
         VStack(spacing: 2) {
-            // Value label above bar (shown on selection)
-            Text(valText)
-                .font(.system(size: 8, weight: .bold))
-                .foregroundColor(.white)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(width: colW * 3)
-                .opacity(isSelected ? 1 : 0)
-                .offset(y: isSelected ? 0 : 4)
-
             ZStack(alignment: .bottom) {
                 Rectangle()
                     .fill(Color.clear)
@@ -309,6 +299,16 @@ struct StatsView: View {
                 }
             }
             .frame(width: colW, height: chartH)
+            .overlay(alignment: .top) {
+                if !valText.isEmpty {
+                    Text(valText)
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundColor(.white)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .offset(y: -14)
+                        .allowsHitTesting(false)
+                }
+            }
 
             Text(formatBabyXLabel(p, period: babyPeriod))
                 .font(.system(size: 7))
@@ -316,6 +316,7 @@ struct StatsView: View {
                 .lineLimit(1)
                 .frame(width: colW)
         }
+        .frame(width: colW)
     }
 
     private func volumeBarLabel(_ p: TimeSeriesPeriod, stackKeys: [String]) -> String {
@@ -411,51 +412,44 @@ struct StatsView: View {
         let maxCount = max(1, periods.map { p in
             indicatorKeys.reduce(0) { $0 + (p.indicators?[$1] ?? 0) }
         }.max() ?? 1)
-        let colW: CGFloat = 18
+        let count = periods.count
         let spacing: CGFloat = 4
         let chartH: CGFloat = 80
+        let leftMargin: CGFloat = 28
+        let rightMargin: CGFloat = 8
 
-        VStack(alignment: .leading, spacing: 4) {
-            ScrollView(.horizontal, showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(alignment: .bottom, spacing: 0) {
-                        Text("cnt")
-                            .font(.system(size: 8))
-                            .foregroundColor(DesignColors.textSecondary)
-                            .frame(width: 24, height: chartH + 14, alignment: .bottom)
-                            .padding(.bottom, 2)
+        GeometryReader { geo in
+            let availableWidth = geo.size.width - leftMargin - rightMargin
+            let totalSpacing = spacing * CGFloat(max(count - 1, 0))
+            let colW = count > 0 ? max(8, (availableWidth - totalSpacing) / CGFloat(count)) : 18
 
-                        HStack(alignment: .bottom, spacing: spacing) {
-                            ForEach(Array(periods.enumerated()), id: \.offset) { i, p in
-                                babyIndicatorBarColumn(p, i: i, maxCount: maxCount, colW: colW, chartH: chartH, indicatorKeys: indicatorKeys, indicatorColors: indicatorColors, selectedBar: selectedChangeBar, isSelected: selectedChangeBar == i)
-                                    .onTapGesture {
-                                        selectedChangeBar = selectedChangeBar == i ? nil : i
-                                    }
-                            }
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .bottom, spacing: 0) {
+                    Text("cnt")
+                        .font(.system(size: 8))
+                        .foregroundColor(DesignColors.textSecondary)
+                        .frame(width: leftMargin, height: chartH + 14, alignment: .bottom)
+                        .padding(.bottom, 2)
+
+                    HStack(alignment: .bottom, spacing: spacing) {
+                        ForEach(Array(periods.enumerated()), id: \.offset) { i, p in
+                            babyIndicatorBarColumn(p, i: i, maxCount: maxCount, colW: colW, chartH: chartH, indicatorKeys: indicatorKeys, indicatorColors: indicatorColors)
                         }
                     }
-
-                    babyIndicatorLegend(periods, indicatorKeys: indicatorKeys, indicatorColors: indicatorColors)
                 }
+
+                babyIndicatorLegend(periods, indicatorKeys: indicatorKeys, indicatorColors: indicatorColors)
             }
         }
+        .frame(height: chartH + 60)
     }
 
     @ViewBuilder
-    private func babyIndicatorBarColumn(_ p: TimeSeriesPeriod, i: Int, maxCount: Int, colW: CGFloat, chartH: CGFloat, indicatorKeys: [String], indicatorColors: [String: Color], selectedBar: Int?, isSelected: Bool) -> some View {
+    private func babyIndicatorBarColumn(_ p: TimeSeriesPeriod, i: Int, maxCount: Int, colW: CGFloat, chartH: CGFloat, indicatorKeys: [String], indicatorColors: [String: Color]) -> some View {
         let periodTotal = indicatorKeys.reduce(0) { $0 + (p.indicators?[$1] ?? 0) }
         let valText = indicatorBarLabel(p, indicatorKeys: indicatorKeys)
 
         VStack(spacing: 2) {
-            Text(valText)
-                .font(.system(size: 8, weight: .bold))
-                .foregroundColor(.white)
-                .lineLimit(3)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(width: colW * 3)
-                .opacity(isSelected ? 1 : 0)
-                .offset(y: isSelected ? 0 : 4)
-
             ZStack(alignment: .bottom) {
                 Rectangle()
                     .fill(Color.clear)
@@ -466,6 +460,16 @@ struct StatsView: View {
                 }
             }
             .frame(width: colW, height: chartH)
+            .overlay(alignment: .top) {
+                if !valText.isEmpty {
+                    Text(valText)
+                        .font(.system(size: 7, weight: .bold))
+                        .foregroundColor(.white)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .offset(y: -14)
+                        .allowsHitTesting(false)
+                }
+            }
 
             Text(formatBabyXLabel(p, period: babyPeriod))
                 .font(.system(size: 7))
@@ -473,6 +477,7 @@ struct StatsView: View {
                 .lineLimit(1)
                 .frame(width: colW)
         }
+        .frame(width: colW)
     }
 
     private func indicatorBarLabel(_ p: TimeSeriesPeriod, indicatorKeys: [String]) -> String {

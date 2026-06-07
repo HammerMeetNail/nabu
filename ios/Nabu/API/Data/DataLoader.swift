@@ -33,6 +33,7 @@ final class DataLoader: ObservableObject {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.household.loadHouseholdData() }
             group.addTask { await self.preferences.loadPreferences() }
+            group.addTask { await self.notifs.loadNotificationPreferences() }
         }
         await preferences.syncTimezone()
 

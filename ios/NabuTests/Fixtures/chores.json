@@ -14,7 +14,9 @@
       "createdAt": "2024-12-25T14:30:00Z",
       "indicatorLabels": ["\ud83c\udf7c formula", "\ud83e\udd5b breast"],
       "indicatorDefaults": [],
-      "hasVolumeML": true
+      "hasVolumeML": true,
+      "followUpEnabled": false,
+      "lastFollowUpMinutes": 0
     },
     {
       "id": 2,
@@ -30,7 +32,9 @@
       "createdAt": "2024-12-25T14:30:00Z",
       "indicatorLabels": [],
       "indicatorDefaults": [],
-      "hasVolumeML": false
+      "hasVolumeML": false,
+      "followUpEnabled": false,
+      "lastFollowUpMinutes": 0
     }
   ]
 }
