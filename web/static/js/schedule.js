@@ -419,9 +419,24 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     return `<div class="sheet-followup-row">
       <span class="field-label">Follow-up in</span>
       <div class="followup-inputs">
-        <label><input type="number" id="followup-days" class="text-input followup-input" min="0" value="${d}" placeholder="0"> d</label>
-        <label><input type="number" id="followup-hours" class="text-input followup-input" min="0" max="23" value="${h}" placeholder="0"> h</label>
-        <label><input type="number" id="followup-mins" class="text-input followup-input" min="0" max="59" value="${m}" placeholder="0"> m</label>
+        <div class="followup-stepper">
+          <button type="button" class="stepper-btn" data-action="followup-decr" data-unit="days" aria-label="Fewer days">−</button>
+          <span class="stepper-value" id="followup-days" data-followup-unit="days">${d}</span>
+          <button type="button" class="stepper-btn" data-action="followup-incr" data-unit="days" aria-label="More days">+</button>
+          <span class="stepper-label">d</span>
+        </div>
+        <div class="followup-stepper">
+          <button type="button" class="stepper-btn" data-action="followup-decr" data-unit="hours" aria-label="Fewer hours">−</button>
+          <span class="stepper-value" id="followup-hours" data-followup-unit="hours">${h}</span>
+          <button type="button" class="stepper-btn" data-action="followup-incr" data-unit="hours" aria-label="More hours">+</button>
+          <span class="stepper-label">h</span>
+        </div>
+        <div class="followup-stepper">
+          <button type="button" class="stepper-btn" data-action="followup-decr" data-unit="mins" aria-label="Fewer minutes">−</button>
+          <span class="stepper-value" id="followup-mins" data-followup-unit="mins">${m}</span>
+          <button type="button" class="stepper-btn" data-action="followup-incr" data-unit="mins" aria-label="More minutes">+</button>
+          <span class="stepper-label">m</span>
+        </div>
       </div>
     </div>`;
   })() : "";

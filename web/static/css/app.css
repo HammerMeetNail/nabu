@@ -2307,30 +2307,52 @@ details[open] .chore-stat-chevron {
 
 .followup-inputs {
   display: flex;
-  gap: 4px;
+  gap: 8px;
   align-items: center;
 }
 
-.followup-inputs label {
+.followup-stepper {
   display: flex;
   align-items: center;
-  gap: 2px;
-  font-size: 14px;
-  color: #6b7280;
+  gap: 0;
+  background: #f3f4f6;
+  border-radius: 8px;
+  overflow: hidden;
 }
 
-.followup-input {
-  width: 48px;
+.stepper-btn {
+  width: 32px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  font-size: 18px;
+  line-height: 1;
+  color: #374151;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.stepper-btn:active {
+  background: #e5e7eb;
+}
+
+.stepper-value {
+  min-width: 28px;
   text-align: center;
-  padding: 6px 4px;
   font-size: 15px;
-  -moz-appearance: textfield;
+  font-weight: 500;
+  color: #111827;
+  user-select: none;
 }
 
-.followup-input::-webkit-outer-spin-button,
-.followup-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
+.stepper-label {
+  padding-right: 8px;
+  font-size: 13px;
+  color: #6b7280;
 }
 
 /* Follow-up toggle in chore edit sheet */

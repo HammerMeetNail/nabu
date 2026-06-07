@@ -1509,6 +1509,22 @@ export async function init() {
         break;
       }
 
+      case "followup-decr":
+      case "followup-incr": {
+        e.preventDefault();
+        const unit = actionEl.dataset.unit;
+        const span = document.querySelector(`[data-followup-unit="${unit}"]`);
+        if (!span) break;
+        let val = parseInt(span.textContent, 10) || 0;
+        const isIncr = action === "followup-incr";
+        val = isIncr ? val + 1 : val - 1;
+        if (val < 0) val = 0;
+        if (unit === "hours" && val > 23) val = 23;
+        if (unit === "mins" && val > 59) val = 59;
+        span.textContent = val;
+        break;
+      }
+
       case "save-log": {
         e.preventDefault();
         const logId   = actionEl.dataset.logId;
@@ -1572,9 +1588,9 @@ export async function init() {
         const doLog = logId
           ? updateLog(parseInt(logId, 10), note, indicators, volumeML, userId, date, slotHour, completedAt, indicatorVolumes)
           : (() => {
-            const followUpDays = parseInt(document.querySelector('#followup-days')?.value || '0', 10) || 0;
-            const followUpHours = parseInt(document.querySelector('#followup-hours')?.value || '0', 10) || 0;
-            const followUpMins = parseInt(document.querySelector('#followup-mins')?.value || '0', 10) || 0;
+            const followUpDays = parseInt(document.querySelector('#followup-days')?.textContent || '0', 10) || 0;
+            const followUpHours = parseInt(document.querySelector('#followup-hours')?.textContent || '0', 10) || 0;
+            const followUpMins = parseInt(document.querySelector('#followup-mins')?.textContent || '0', 10) || 0;
             const followUpMinutes = followUpDays * 1440 + followUpHours * 60 + followUpMins;
             return logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId, indicatorVolumes, followUpMinutes);
           })();
