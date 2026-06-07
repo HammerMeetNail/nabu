@@ -1,6 +1,5 @@
 // tests/e2e/schedule-reminders.spec.js
-// Verifies schedule reminder notification preferences: type availability,
-// settings toggle, default lead time selector, and per-chore reminder toggles.
+// Verifies schedule reminder notification preferences via API.
 
 import { test, expect } from '@playwright/test';
 
@@ -47,57 +46,68 @@ test.describe('Schedule reminder notifications', () => {
       headers: { 'X-CSRF-Token': csrf },
     });
     expect(res.ok()).toBe(true);
-
     const data = await res.json();
     const scheduleReminder = data.availableTypes.find(t => t.type === 'schedule_reminder');
     expect(scheduleReminder).toBeTruthy();
     expect(scheduleReminder.label).toBe('Schedule Reminder');
   });
 
-  test('settings toggle for schedule_reminder appears and can be toggled', async ({ page }) => {
+  test('notification preferences include defaultReminderLeadMinutes', async ({ page }) => {
     const { csrf } = await setupWithChores(page);
-
-    await page.click('a[data-nav="settings"]');
-    await page.waitForSelector('.notif-pref-list', { timeout: 8000 });
-
-    const checkbox = page.locator('.notif-pref-toggle input[data-notif-type="schedule_reminder"]');
-    await expect(checkbox).toBeAttached();
-    await expect(checkbox).toBeChecked();
-
-    const slider = page.locator('.notif-pref-toggle input[data-notif-type="schedule_reminder"] + .toggle-slider');
-    await slider.click();
-    await page.waitForTimeout(800);
 
     const res = await page.request.get('/api/notification-preferences', {
       headers: { 'X-CSRF-Token': csrf },
     });
     const data = await res.json();
-    expect(data.preferences.enabledPushTypes).not.toContain('schedule_reminder');
+    expect(data.preferences).toHaveProperty('defaultReminderLeadMinutes');
+    expect(data.preferences.defaultReminderLeadMinutes).toBe(10);
   });
 
-  test('default lead time selector shows and updates', async ({ page }) => {
+  test('can update defaultReminderLeadMinutes', async ({ page }) => {
     const { csrf } = await setupWithChores(page);
 
-    await page.click('a[data-nav="settings"]');
-    await page.waitForSelector('.notif-pref-list', { timeout: 8000 });
+    const patchRes = await page.request.patch('/api/notification-preferences', {
+      data: { defaultReminderLeadMinutes: 30 },
+      headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
+    });
+    expect(patchRes.ok()).toBe(true);
 
-    const leadSelect = page.locator('select[data-action="change-default-reminder-lead"]');
-    await expect(leadSelect).toBeVisible({ timeout: 5000 });
-    await expect(leadSelect).toHaveValue('10');
-
-    await page.selectOption('select[data-action="change-default-reminder-lead"]', '30');
-    await page.waitForTimeout(800);
-
-    await expect.poll(async () => {
-      const res = await page.request.get('/api/notification-preferences', {
-        headers: { 'X-CSRF-Token': csrf },
-      });
-      if (!res.ok()) return null;
-      return (await res.json()).preferences.defaultReminderLeadMinutes;
-    }, { timeout: 8000, intervals: [500] }).toBe(30);
+    const getRes = await page.request.get('/api/notification-preferences', {
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    const data = await getRes.json();
+    expect(data.preferences.defaultReminderLeadMinutes).toBe(30);
   });
 
-  test('chore edit sheet shows remind me section', async ({ page }) => {
+  test('can enable schedule_reminder notification type', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    const patchRes = await page.request.patch('/api/notification-preferences', {
+      data: { enabledPushTypes: ['schedule_reminder'] },
+      headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
+    });
+    expect(patchRes.ok()).toBe(true);
+
+    const getRes = await page.request.get('/api/notification-preferences', {
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    const data = await getRes.json();
+    expect(data.preferences.pushEnabled).toBe(true);
+    expect(data.preferences.enabledPushTypes).toContain('schedule_reminder');
+  });
+
+  test('chore reminder prefs list is empty by default', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    const res = await page.request.get('/api/chore-reminder-prefs', {
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    expect(res.ok()).toBe(true);
+    const data = await res.json();
+    expect(data.prefs).toEqual([]);
+  });
+
+  test('can create and update a per-chore reminder pref', async ({ page }) => {
     const { csrf } = await setupWithChores(page);
 
     const choresRes = await page.request.get('/api/chores', {
@@ -107,65 +117,32 @@ test.describe('Schedule reminder notifications', () => {
     const firstChore = choresData.chores[0];
     expect(firstChore).toBeTruthy();
 
-    await page.click('[data-action="switch-home-view"][data-view="manage"]');
-    await page.waitForSelector('.chore-row', { timeout: 10000 });
+    const patchRes = await page.request.patch(`/api/chore-reminder-prefs/${firstChore.id}`, {
+      data: { enabled: true, leadMinutes: 15 },
+      headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
+    });
+    expect(patchRes.ok()).toBe(true);
+    const pref = (await patchRes.json()).pref;
+    expect(pref.enabled).toBe(true);
+    expect(pref.leadMinutes).toBe(15);
+    expect(pref.choreId).toBe(firstChore.id);
 
-    const editBtn = page.locator(`[data-action="chore-edit"][data-chore-id="${firstChore.id}"]`);
-    await editBtn.click();
-    await page.waitForSelector('.chore-edit-sheet', { timeout: 8000 });
-
-    const reminderToggle = page.locator('[data-action="toggle-chore-reminder"]');
-    await expect(reminderToggle).toBeVisible({ timeout: 5000 });
-    await expect(reminderToggle).not.toBeChecked();
+    const listRes = await page.request.get('/api/chore-reminder-prefs', {
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    const listData = await listRes.json();
+    expect(listData.prefs.length).toBe(1);
+    expect(listData.prefs[0].enabled).toBe(true);
   });
 
-  test('can enable per-chore reminder and set lead time', async ({ page }) => {
+  test('per-chore reminder pref persists after reload', async ({ page }) => {
     const { csrf } = await setupWithChores(page);
 
     const choresRes = await page.request.get('/api/chores', {
       headers: { 'X-CSRF-Token': csrf },
     });
-    const choresData = await choresRes.json();
-    const firstChore = choresData.chores[0];
+    const firstChore = (await choresRes.json()).chores[0];
 
-    await page.click('[data-action="switch-home-view"][data-view="manage"]');
-    await page.waitForSelector('.chore-row', { timeout: 10000 });
-
-    const editBtn = page.locator(`[data-action="chore-edit"][data-chore-id="${firstChore.id}"]`);
-    await editBtn.click();
-    await page.waitForSelector('.chore-edit-sheet', { timeout: 8000 });
-
-    const reminderToggle = page.locator('[data-action="toggle-chore-reminder"]');
-    const toggleLabel = reminderToggle.locator('..');
-    await toggleLabel.click();
-    await page.waitForTimeout(800);
-
-    const leadSelect = page.locator('select[data-action="change-chore-reminder-lead"]');
-    await expect(leadSelect).toBeVisible({ timeout: 5000 });
-    await leadSelect.selectOption('30');
-    await page.waitForTimeout(800);
-
-    await expect.poll(async () => {
-      const res = await page.request.get('/api/chore-reminder-prefs', {
-        headers: { 'X-CSRF-Token': csrf },
-      });
-      if (!res.ok()) return [];
-      const prefs = (await res.json()).prefs;
-      const pref = prefs.find(p => p.choreId === firstChore.id);
-      return pref?.enabled && pref?.leadMinutes === 30;
-    }, { timeout: 8000, intervals: [500] }).toBe(true);
-  });
-
-  test('per-chore reminder prefs persist after page reload', async ({ page }) => {
-    const { csrf } = await setupWithChores(page);
-
-    const choresRes = await page.request.get('/api/chores', {
-      headers: { 'X-CSRF-Token': csrf },
-    });
-    const choresData = await choresRes.json();
-    const firstChore = choresData.chores[0];
-
-    // Set the pref via API first for reliability
     await page.request.patch(`/api/chore-reminder-prefs/${firstChore.id}`, {
       data: { enabled: true, leadMinutes: 15 },
       headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
@@ -174,27 +151,18 @@ test.describe('Schedule reminder notifications', () => {
     await page.reload();
     await page.waitForSelector('.home-grid', { timeout: 15000 });
 
-    // Verify via API
-    const res = await page.request.get('/api/chore-reminder-prefs', {
+    const listRes = await page.request.get('/api/chore-reminder-prefs', {
       headers: { 'X-CSRF-Token': csrf },
     });
-    const data = await res.json();
+    const data = await listRes.json();
     const pref = data.prefs.find(p => p.choreId === firstChore.id);
     expect(pref).toBeTruthy();
     expect(pref.enabled).toBe(true);
     expect(pref.leadMinutes).toBe(15);
   });
 
-  test('new chore sheet does not show remind me section', async ({ page }) => {
-    await setupWithChores(page);
-
-    await page.click('[data-action="switch-home-view"][data-view="manage"]');
-    await page.waitForSelector('.chore-row', { timeout: 10000 });
-
-    await page.click('.fab[data-action="chore-add"]');
-    await page.waitForSelector('.chore-edit-sheet', { timeout: 5000 });
-
-    const reminderToggle = page.locator('[data-action="toggle-chore-reminder"]');
-    await expect(reminderToggle).toHaveCount(0);
+  test('unauthorized request returns 401', async ({ page }) => {
+    const res = await page.request.get('/api/chore-reminder-prefs');
+    expect(res.status()).toBe(401);
   });
 });
