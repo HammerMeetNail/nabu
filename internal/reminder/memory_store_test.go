@@ -93,7 +93,7 @@ func TestMemoryStore_PurgeOldReminders(t *testing.T) {
 	store := NewMemoryStore()
 	ctx := context.Background()
 
-	store.RecordReminder(ctx, 1, 100, "2020-01-01")
+	_ = store.RecordReminder(ctx, 1, 100, "2020-01-01")
 	_ = store.RecordReminder(ctx, 1, 100, "2099-01-01")
 
 	n, err := store.PurgeOldReminders(ctx)
