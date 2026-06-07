@@ -12,6 +12,7 @@ import (
 	"github.com/HammerMeetNail/nabu/internal/log"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
 	"github.com/HammerMeetNail/nabu/internal/notification"
+	"github.com/HammerMeetNail/nabu/internal/schedule"
 )
 
 type LogHandler struct {
@@ -19,6 +20,7 @@ type LogHandler struct {
 	notifService   *notification.Service // optional; nil disables notifications
 	choreStore     chore.Store
 	householdStore household.Store
+	scheduleStore  schedule.Store
 }
 
 func NewLogHandler(service *log.Service) *LogHandler {
@@ -31,6 +33,13 @@ func (h *LogHandler) WithNotification(ns *notification.Service, cs chore.Store, 
 	h.notifService = ns
 	h.choreStore = cs
 	h.householdStore = hs
+	return h
+}
+
+// WithScheduleStore attaches a schedule store so the handler can manage
+// follow-up schedules when logs are created.
+func (h *LogHandler) WithScheduleStore(ss schedule.Store) *LogHandler {
+	h.scheduleStore = ss
 	return h
 }
 
@@ -76,6 +85,7 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		CompletedAt      string         `json:"completedAt"` // optional RFC3339 timestamp for backdating
 		VolumeML         *int           `json:"volumeML"`    // optional volume in mL
 		UserID           *int64         `json:"userId"`      // optional: log on behalf of another household member
+		FollowUpMinutes  int            `json:"followUpMinutes"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -143,6 +153,39 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
+	}
+
+	if h.scheduleStore != nil {
+		if err := h.scheduleStore.DeleteFollowUpSchedulesByChore(r.Context(), req.ChoreID); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		if req.FollowUpMinutes > 0 {
+			followUpTime := entry.CompletedAt.Add(time.Duration(req.FollowUpMinutes) * time.Minute)
+			specificTime := followUpTime.UTC().Format("15:04")
+			startDate := schedule.DateOnly{Time: followUpTime.UTC().Truncate(24 * time.Hour)}
+			_, err := h.scheduleStore.Create(r.Context(), schedule.ChoreSchedule{
+				HouseholdID:   *user.HouseholdID,
+				ChoreID:       req.ChoreID,
+				FrequencyType: "once",
+				TimePeriod:    schedule.PeriodAnytime,
+				SpecificTime:  specificTime,
+				StartDate:     &startDate,
+				IsActive:      true,
+				IsFollowUp:    true,
+			})
+			if err != nil {
+				writeError(w, http.StatusInternalServerError, err.Error())
+				return
+			}
+		}
+		if h.choreStore != nil {
+			c, err := h.choreStore.GetChore(r.Context(), req.ChoreID)
+			if err == nil && c.HouseholdID == *user.HouseholdID {
+				c.LastFollowUpMinutes = req.FollowUpMinutes
+				_ = h.choreStore.UpdateChore(r.Context(), c)
+			}
+		}
 	}
 
 	// Fire-and-forget: notify other household members.

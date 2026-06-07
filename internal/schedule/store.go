@@ -11,4 +11,5 @@ type Store interface {
 	ListByHousehold(ctx context.Context, householdID int64) ([]ChoreSchedule, error)
 	Update(ctx context.Context, s ChoreSchedule) (ChoreSchedule, error)
 	Delete(ctx context.Context, id int64) error
+	DeleteFollowUpSchedulesByChore(ctx context.Context, choreID int64) error
 }

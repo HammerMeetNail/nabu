@@ -2291,6 +2291,48 @@ details[open] .chore-stat-chevron {
   max-width: 140px;
 }
 
+/* Follow-up scheduling inside log sheet */
+.sheet-followup-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.sheet-followup-row .field-label {
+  margin: 0;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.followup-inputs {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.followup-select {
+  padding: 8px 4px 8px 8px;
+  font-size: 15px;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
+  color: #111827;
+  min-width: 0;
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236b7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  padding-right: 24px;
+}
+
+/* Follow-up toggle in chore edit sheet */
+.chore-followup-toggle {
+  margin-top: 8px;
+}
+
 /* Frequency (repeat) row inside bottom sheets */
 .sheet-freq-row {
   display: flex;

@@ -251,6 +251,30 @@ test.describe('Feed Baby volume picker', () => {
     await expect(page.locator(formulaVol)).toHaveValue('');
   });
 
+  test('home log sheet volume does not pre-fill when previous food type differs from defaults', async ({ page }) => {
+    const { feedBaby } = await setupWithChores(page);
+
+    const card = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
+
+    // First log: toggle formula off, breast on, set 95 mL on breast
+    await card.click();
+    await expect(page.locator(formulaVol)).toBeVisible({ timeout: 3000 });
+    await page.locator('.log-chip').nth(0).click(); // toggle formula off
+    await page.locator('.log-chip').nth(1).click(); // toggle breast on
+    await expect(page.locator('.log-chip').nth(1)).toHaveClass(/log-chip--on/);
+    await page.selectOption(breastVol, '95');
+    await page.click('[data-action="save-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    // Open again: formula is default-on (breast not selected), so formula volume should be empty
+    await card.click();
+    await expect(page.locator(formulaVol)).toBeVisible({ timeout: 3000 });
+    await expect(page.locator(formulaVol)).toHaveValue('');
+    // Formula should be selected, breast should not
+    await expect(page.locator('.log-chip').nth(0)).toHaveClass(/log-chip--on/);
+    await expect(page.locator('.log-chip').nth(1)).not.toHaveClass(/log-chip--on/);
+  });
+
   test('calendar log sheet pre-populates per-indicator volume from previous log', async ({ page }) => {
     const { feedBaby } = await setupWithChores(page);
 

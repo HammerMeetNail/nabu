@@ -53,7 +53,7 @@ func (s *Service) GetChore(ctx context.Context, choreID int64) (Chore, error) {
 	return s.store.GetChore(ctx, choreID)
 }
 
-func (s *Service) UpdateChore(ctx context.Context, choreID int64, householdID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string) error {
+func (s *Service) UpdateChore(ctx context.Context, choreID int64, householdID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool) error {
 	existing, err := s.store.GetChore(ctx, choreID)
 	if err != nil {
 		return err
@@ -78,6 +78,9 @@ func (s *Service) UpdateChore(ctx context.Context, choreID int64, householdID in
 	}
 	if indicatorDefaults != nil {
 		existing.IndicatorDefaults = indicatorDefaults
+	}
+	if followUpEnabled != nil {
+		existing.FollowUpEnabled = *followUpEnabled
 	}
 	return s.store.UpdateChore(ctx, existing)
 }

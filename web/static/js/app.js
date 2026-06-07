@@ -1571,7 +1571,13 @@ export async function init() {
 
         const doLog = logId
           ? updateLog(parseInt(logId, 10), note, indicators, volumeML, userId, date, slotHour, completedAt, indicatorVolumes)
-          : logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId, indicatorVolumes);
+          : (() => {
+            const followUpDays = parseInt(document.querySelector('#followup-days')?.value || '0', 10) || 0;
+            const followUpHours = parseInt(document.querySelector('#followup-hours')?.value || '0', 10) || 0;
+            const followUpMins = parseInt(document.querySelector('#followup-mins')?.value || '0', 10) || 0;
+            const followUpMinutes = followUpDays * 1440 + followUpHours * 60 + followUpMins;
+            return logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId, indicatorVolumes, followUpMinutes);
+          })();
         doLog.then(async (data) => {
           const newLogId = data?.log?.id;
           if (logId) {
@@ -1860,9 +1866,11 @@ export async function init() {
             showToast(`${icon} ${name} added`, "success");
           }).catch(() => showToast("Failed to create chore", "error"));
         } else {
+          const followUpEnabledEl = document.querySelector("[data-action='toggle-followup-enabled']");
+          const followUpEnabled = followUpEnabledEl?.checked;
           apiFetch(`/api/chores/${choreId}`, {
             method: "PATCH",
-            body: JSON.stringify({ name, icon, color, indicatorLabels, indicatorDefaults }),
+            body: JSON.stringify({ name, icon, color, indicatorLabels, indicatorDefaults, followUpEnabled }),
           }).then(async () => {
             state.activeSheet = null;
             state.activeSheetData = {};

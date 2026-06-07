@@ -74,3 +74,14 @@ func (s *MemoryStore) Delete(ctx context.Context, id int64) error {
 	delete(s.records, id)
 	return nil
 }
+
+func (s *MemoryStore) DeleteFollowUpSchedulesByChore(ctx context.Context, choreID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, sch := range s.records {
+		if sch.ChoreID == choreID && sch.IsFollowUp {
+			delete(s.records, id)
+		}
+	}
+	return nil
+}
