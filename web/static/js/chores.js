@@ -87,7 +87,7 @@ export function renderChoresView(state) {
  * Render the chore add/edit bottom sheet.
  * @param {object|null} chore  null = add new chore; object = edit existing
  */
-export function renderChoreSheet(chore) {
+export function renderChoreSheet(chore, opts = {}) {
   const isNew = !chore;
   const title = isNew ? "Add Chore" : "Edit Chore";
   const icon = chore?.icon || "📋";
@@ -97,6 +97,34 @@ export function renderChoreSheet(chore) {
   const indicatorDefaults = chore?.indicatorDefaults || [];
   const isPredefined = chore?.isPredefined || false;
   const choreId = chore?.id ?? null;
+
+  const { scheduleReminderEnabled = false, reminderPref = null, defaultLeadMinutes = 10 } = opts;
+  const leadTimes = [5, 10, 15, 30, 60];
+
+  const reminderEnabled = reminderPref?.enabled ?? false;
+  const reminderLead = reminderPref?.leadMinutes ?? defaultLeadMinutes;
+
+  const reminderSection = scheduleReminderEnabled && !isNew ? `
+    <div class="chore-edit-field">
+      <label class="chore-edit-label">
+        Remind me
+        <span class="chore-edit-hint">Get a push notification before this chore</span>
+      </label>
+      <label class="indicator-default-toggle chore-followup-toggle">
+        <input type="checkbox" data-action="toggle-chore-reminder"
+          data-chore-id="${choreId}"
+          ${reminderEnabled ? ' checked' : ''} />
+        <span class="indicator-default-label">Enable reminder</span>
+      </label>
+      ${reminderEnabled ? `
+        <div class="mt-2">
+          <select data-action="change-chore-reminder-lead" data-chore-id="${choreId}" class="lead-time-select">
+            ${leadTimes.map(m => `<option value="${m}"${m === reminderLead ? ' selected' : ''}>${m} min before</option>`).join("")}
+          </select>
+        </div>
+      ` : ''}
+    </div>
+  ` : '';
 
   const swatches = COLOR_SWATCHES.map(c =>
     `<button type="button"
@@ -179,6 +207,8 @@ export function renderChoreSheet(chore) {
         <span class="indicator-default-label">Enable follow-up scheduling</span>
       </label>
     </div>
+
+    ${reminderSection}
 
     <div class="chore-sheet-footer">
       <div class="chore-sheet-footer-left">${deleteOrRestore}</div>

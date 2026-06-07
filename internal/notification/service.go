@@ -73,6 +73,11 @@ func AvailableNotificationTypes() []NotificationTypeInfo {
 			Label:       "Household Joined",
 			Description: "When someone joins your household.",
 		},
+		{
+			Type:        "schedule_reminder",
+			Label:       "Schedule Reminder",
+			Description: "When a scheduled chore's time is approaching.",
+		},
 	}
 }
 

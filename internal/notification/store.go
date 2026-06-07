@@ -16,13 +16,14 @@ type Notification struct {
 }
 
 type ReminderPreference struct {
-	UserID           int64    `json:"userId"`
-	PushEnabled      bool     `json:"pushEnabled"`
-	EmailEnabled     bool     `json:"emailEnabled"`
-	QuietHoursStart  string   `json:"quietHoursStart"`
-	QuietHoursEnd    string   `json:"quietHoursEnd"`
-	Timezone         string   `json:"timezone"`
-	EnabledPushTypes []string `json:"enabledPushTypes"`
+	UserID                     int64    `json:"userId"`
+	PushEnabled                bool     `json:"pushEnabled"`
+	EmailEnabled               bool     `json:"emailEnabled"`
+	QuietHoursStart            string   `json:"quietHoursStart"`
+	QuietHoursEnd              string   `json:"quietHoursEnd"`
+	Timezone                   string   `json:"timezone"`
+	EnabledPushTypes           []string `json:"enabledPushTypes"`
+	DefaultReminderLeadMinutes int      `json:"defaultReminderLeadMinutes"`
 }
 
 type Store interface {
@@ -116,7 +117,7 @@ func (s *MemoryStore) DeleteNotification(_ context.Context, id, userID int64) er
 func (s *MemoryStore) GetReminderPreferences(_ context.Context, userID int64) (ReminderPreference, error) {
 	p, ok := s.prefs[userID]
 	if !ok {
-		return ReminderPreference{UserID: userID, PushEnabled: true, Timezone: "UTC", EnabledPushTypes: []string{}}, nil
+		return ReminderPreference{UserID: userID, PushEnabled: true, Timezone: "UTC", EnabledPushTypes: []string{}, DefaultReminderLeadMinutes: 10}, nil
 	}
 	if p.EnabledPushTypes == nil {
 		p.EnabledPushTypes = []string{}

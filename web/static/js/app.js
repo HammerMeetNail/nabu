@@ -27,7 +27,7 @@ import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPi
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, sortChoresByOrder, syncTimezone } from "./preferences.js";
 import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeManageView, renderConfirmRemoveFromHomeSheet } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
-import { loadNotifications, markRead, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences } from "./notifications.js";
+import { loadNotifications, markRead, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
 import { renderScheduleTab } from "./schedule-tab.js";
 import { renderProfileSheet } from "./profile.js";
 
@@ -186,130 +186,28 @@ export function render(root) {
         break;
       default:
         html = renderHomeViewWrapper();
+      }
     }
-  }
-
-  // Preserve the day-hour-grid-wrapper scroll position across re-renders.
-  // morph.js reuses DOM nodes by position, but template whitespace differences
-  // (e.g. when a sheet opens/closes) can cause it to destroy and recreate the
-  // wrapper element, resetting scrollTop to 0 and triggering the auto-scroll.
-  const prevWrapper = root.querySelector(".day-hour-grid-wrapper");
-  const savedScroll = prevWrapper ? prevWrapper.scrollTop : -1;
-
-  // morph.js handles incremental DOM updates well for same-structure renders
-  // (e.g. toggling day pills, updating a counter), but it cannot cleanly
-  // transition between a sheet-overlay and a plain view — stale nodes leak
-  // into the new tree.  Detect this boundary and do a clean replace instead.
-  const currentHasSheet = root.querySelector(".sheet-overlay-wrapper") !== null;
-  const incomingHasSheet = html.includes("sheet-overlay-wrapper");
-  if (currentHasSheet !== incomingHasSheet) {
-    root.innerHTML = html;
-  } else {
-    morphInnerHTML(root, html);
-  }
-  updateTabs(tabRoute);
-  updateTopBar();
-
-  // Auto-scroll the day-hour-grid-wrapper to show the current time when it is
-  // first rendered (scrollTop === 0).  This prevents the grid from always
-  // starting at midnight — an hour that is rarely relevant — and ensures that
-  // cards in the 9 AM–3 PM range are visible without manual scrolling.
-  const wrapper = root.querySelector(".day-hour-grid-wrapper");
-  if (wrapper) {
-    if (savedScroll > 0) {
-      // Restore the position the user was at before this re-render.
-      wrapper.scrollTop = savedScroll;
-    } else if (savedScroll === -1) {
-      // First render (no prior wrapper): scroll to current hour.
-      const h = new Date().getHours();
-      const ROW_HEIGHT = 48; // must match CSS .day-hour-row height
-      // Show 2 rows before the current hour; clamp between 7 AM and 11 AM so
-      // that mid-morning and noon chores are always in the visible area without
-      // requiring the user to scroll.
-      wrapper.scrollTop = Math.min(Math.max(7, h - 2), 11) * ROW_HEIGHT;
+    if (actionEl?.dataset?.action === "change-chore-reminder-lead") {
+      const choreId = parseInt(actionEl.dataset.choreId, 10);
+      if (!choreId) return;
+      const leadMinutes = parseInt(actionEl.value, 10);
+      if (isNaN(leadMinutes)) return;
+      const pref = getChoreReminderPref(choreId) || { choreId, enabled: true, leadMinutes };
+      pref.leadMinutes = leadMinutes;
+      saveChoreReminderPref(choreId, { enabled: true, leadMinutes })
+        .then(updated => {
+          const idx = (state.choreReminderPrefs || []).findIndex(p => p.choreId === choreId);
+          if (idx >= 0) {
+            state.choreReminderPrefs[idx] = updated;
+          } else {
+            state.choreReminderPrefs = [...(state.choreReminderPrefs || []), updated];
+          }
+          render(app);
+        })
+        .catch(() => {});
     }
-  }
-}
-
-function renderActivityView() {
-  const chores = state.chores || [];
-  if (!state.household && state.user) {
-    return `<div class="card mt-3"><h2>Welcome!</h2>
-      <p>Hi ${escapeHTML(state.user.email || '')}! Set up your household to get started.</p>
-      <a class="btn btn-primary mt-2" href="#" data-nav="settings">Set Up Household</a></div>`;
-  }
-  if (chores.length === 0) {
-    return `<div class="today-view"><h2>Activity</h2>
-    <div class="empty-state"><div class="empty-state-icon">🏠</div>
-    <div class="empty-state-title">No chores set up yet</div>
-    <p>Use the Home tab to add chores.</p></div></div>`;
-  }
-  if (state.activityView === "history") {
-    return renderHistoryView();
-  }
-  return renderCalendarView();
-}
-
-function renderHistoryView() {
-  const mainView = renderHistoryPage(state);
-  if (state.activeSheet === "log") {
-    const { choreId, logId, date } = state.activeSheetData || {};
-    const chore = (state.chores || []).find(c => c.id === choreId);
-    if (chore) {
-      const log = logId ? ((state.historyLogs || []).find(l => l.id === logId) || null) : null;
-      const cachedIndicatorVolumes = state.latestLogs[choreId]?.indicatorVolumes ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicatorVolumes });
-
-  return `<div class="sheet-overlay-wrapper">
-        ${mainView}
-        <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
-        ${sheetHTML}
-      </div>`;
-    }
-  }
-  return mainView;
-}
-
-function renderHomeViewWrapper() {
-  const header = renderHomeHeader(state);
-  const isManage = state.homeView === "manage";
-  const mainView = isManage
-    ? renderHomeManageView(state)
-    : renderHomeViewGrid(state);
-
-  if (state.activeSheet === "home-log") {
-    const { choreId } = state.activeSheetData || {};
-    const chore = (state.chores || []).find(c => c.id === choreId);
-    if (chore) {
-      const cachedIndicatorVolumes = state.latestLogs[choreId]?.indicatorVolumes ?? null;
-      const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, null, { showWhen: true, cachedIndicatorVolumes });
-      return `<div class="sheet-overlay-wrapper">
-        ${header}
-        ${mainView}
-        <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
-        ${sheetHTML}
-      </div>`;
-    }
-  }
-  if (state.activeSheet === "confirm-remove-home-chore") {
-    const { choreId } = state.activeSheetData || {};
-    const chore = (state.chores || []).find(c => c.id === choreId);
-    if (chore) {
-      const sheetHTML = renderConfirmRemoveFromHomeSheet(chore);
-      return `<div class="sheet-overlay-wrapper">
-        ${header}
-        ${mainView}
-        <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
-        ${sheetHTML}
-      </div>`;
-    }
-  }
-  if (state.activeSheet === "chore-edit") {
-    const { choreId } = state.activeSheetData || {};
-    const isNew = choreId === null || choreId === undefined;
-    const chore = isNew ? null : (state.chores || []).find(c => c.id === choreId);
-    if (isNew || chore) {
-      const sheetHTML = renderChoreSheet(isNew ? null : chore);
+  });
       return `<div class="sheet-overlay-wrapper">
         ${header}
         ${mainView}
@@ -526,6 +424,21 @@ function renderSettingsView() {
       ? `<p class="mt-2"><button type="button" class="btn btn-sm btn-primary" data-action="enable-notifications">Enable Notifications</button></p>`
       : '';
 
+    const scheduleReminderEnabled = enabledTypes.includes("schedule_reminder") || (enabledTypes.length === 0 && pushEnabled);
+    const defaultLead = state.notificationPrefs?.defaultReminderLeadMinutes ?? 10;
+    const leadTimes = [5, 10, 15, 30, 60];
+    const leadSelect = scheduleReminderEnabled ? `
+      <div class="notif-pref-row">
+        <label class="notif-pref-label">
+          <span class="notif-pref-title">Reminder lead time</span>
+          <span class="notif-pref-desc">Minutes before a scheduled chore's time</span>
+        </label>
+        <select data-action="change-default-reminder-lead" class="lead-time-select">
+          ${leadTimes.map(m => `<option value="${m}"${m === defaultLead ? ' selected' : ''}>${m} min</option>`).join("")}
+        </select>
+      </div>
+    ` : '';
+
     notifPrefsCard = `<div class="card mt-3">
       <h3>Notifications</h3>
       <p class="text-secondary">Applies to your account across all households.</p>
@@ -540,6 +453,7 @@ function renderSettingsView() {
       </div>
       ${permBtn}
       <div class="notif-pref-list">${rows}</div>
+      ${leadSelect}
     </div>`;
   }
 
@@ -726,6 +640,27 @@ async function loadNotificationPrefs() {
     state.notificationPrefs = data.preferences;
     state.availableNotificationTypes = data.availableTypes;
   } catch {}
+}
+
+async function loadChoreReminderPrefsData() {
+  if (!state.user || !state.household) return;
+  try {
+    state.choreReminderPrefs = await loadChoreReminderPrefs();
+  } catch {}
+}
+
+function scheduleReminderTypeEnabled() {
+  const prefs = state.notificationPrefs;
+  if (!prefs) return false;
+  if (!prefs.pushEnabled && prefs.pushEnabled !== undefined) return false;
+  const types = prefs.enabledPushTypes || [];
+  if (types.length === 0) return true;
+  return types.includes("schedule_reminder");
+}
+
+function getChoreReminderPref(choreId) {
+  if (!choreId) return null;
+  return (state.choreReminderPrefs || []).find(p => p.choreId === choreId) || null;
 }
 
 function showToastWithUndo(message, logId) {
@@ -1115,7 +1050,7 @@ export async function init() {
       if (state.currentRoute === "/settings") {
         state._loadedHousehold = true;
         render(app);
-        loadNotificationPrefs().then(() => render(app));
+        Promise.all([loadNotificationPrefs(), loadChoreReminderPrefsData()]).then(() => render(app));
         return;
       }
       if (state.currentRoute === "/activity") {
@@ -1307,7 +1242,7 @@ export async function init() {
         state._loadedHousehold = true;
         state.currentRoute = "/settings";
         render(app);
-        loadNotificationPrefs().then(() => render(app));
+        Promise.all([loadNotificationPrefs(), loadChoreReminderPrefsData()]).then(() => render(app));
         break;
       }
       case "create-invite":
@@ -1805,7 +1740,7 @@ export async function init() {
         const choreId = parseInt(actionEl.dataset.choreId, 10);
         state.activeSheet = "chore-edit";
         state.activeSheetData = { choreId };
-        render(app);
+        loadChoreReminderPrefsData().then(() => render(app));
         break;
       }
 
@@ -1957,6 +1892,28 @@ export async function init() {
         break;
       }
 
+      case "toggle-chore-reminder": {
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
+        if (!choreId) break;
+        const enabled = actionEl.checked;
+        const pref = getChoreReminderPref(choreId) || { choreId, enabled: false, leadMinutes: state.notificationPrefs?.defaultReminderLeadMinutes ?? 10 };
+        pref.enabled = enabled;
+        saveChoreReminderPref(choreId, { enabled, leadMinutes: pref.leadMinutes })
+          .then(updated => {
+            const idx = (state.choreReminderPrefs || []).findIndex(p => p.choreId === choreId);
+            if (idx >= 0) {
+              state.choreReminderPrefs[idx] = updated;
+            } else {
+              state.choreReminderPrefs = [...(state.choreReminderPrefs || []), updated];
+            }
+            render(app);
+          })
+          .catch(() => {
+            actionEl.checked = !enabled;
+          });
+        break;
+      }
+
       case "add-indicator-label": {
         e.preventDefault();
         const list = document.querySelector("#indicator-labels-list");
@@ -2094,6 +2051,18 @@ export async function init() {
             actionEl.checked = !isChecked;
           });
           break;
+      }
+
+      case "change-default-reminder-lead": {
+        const leadMinutes = parseInt(actionEl.value, 10);
+        if (isNaN(leadMinutes)) break;
+        saveNotificationPreferences({ defaultReminderLeadMinutes: leadMinutes })
+          .then(data => {
+            state.notificationPrefs = data.preferences;
+            render(app);
+          })
+          .catch(() => {});
+        break;
       }
 
       case "stats-baby-period": {

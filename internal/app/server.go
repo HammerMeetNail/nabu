@@ -25,6 +25,7 @@ import (
 	"github.com/HammerMeetNail/nabu/internal/middleware"
 	"github.com/HammerMeetNail/nabu/internal/notification"
 	"github.com/HammerMeetNail/nabu/internal/push"
+	"github.com/HammerMeetNail/nabu/internal/reminder"
 	"github.com/HammerMeetNail/nabu/internal/schedule"
 	"github.com/HammerMeetNail/nabu/internal/stats"
 	"github.com/HammerMeetNail/nabu/internal/userprefs"
@@ -95,6 +96,13 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	scheduleHandler := handlers.NewScheduleHandler(scheduleStore, scheduleService)
 	logHandler.WithScheduleStore(scheduleStore)
 
+	var reminderStore reminder.Store
+	if db != nil {
+		reminderStore = reminder.NewPostgresStore(db)
+	} else {
+		reminderStore = reminder.NewMemoryStore()
+	}
+
 	var vapidSigner *push.VAPIDSigner
 	if cfg.VAPIDPublicKey != "" && cfg.VAPIDPrivateKey != "" {
 		var err error
@@ -109,6 +117,14 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		notifService.WithPushSender(pushService)
 	}
 	pushHandler := handlers.NewPushHandler(pushStore)
+
+	reminderSched := reminder.NewScheduler(
+		reminderStore, scheduleStore, scheduleService,
+		notifStore, choreStore, householdStore, pushService,
+	)
+	go reminderSched.Start(context.Background())
+
+	reminderHandler := handlers.NewChoreReminderPrefsHandler(reminderStore)
 	userPrefsService := userprefs.NewService(userPrefsStore)
 	preferencesHandler := handlers.NewPreferencesHandler(userPrefsService)
 	statsService := stats.NewService(logStore, &choreStatsAdapter{choreStore})
@@ -243,6 +259,17 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 			notifPrefsHandler.Update(w, r)
 		default:
 			w.Header().Set("Allow", "GET, PATCH")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
+
+	mux.HandleFunc("/api/chore-reminder-prefs", method(http.MethodGet, middleware.RequireAuth(reminderHandler.List)))
+	mux.HandleFunc("/api/chore-reminder-prefs/{choreId}", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPatch:
+			reminderHandler.Update(w, r)
+		default:
+			w.Header().Set("Allow", "PATCH")
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	}))

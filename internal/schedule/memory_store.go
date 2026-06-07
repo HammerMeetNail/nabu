@@ -75,6 +75,19 @@ func (s *MemoryStore) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (s *MemoryStore) ListActiveWithTime(ctx context.Context) ([]ChoreSchedule, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var out []ChoreSchedule
+	for _, sch := range s.records {
+		if sch.IsActive && sch.SpecificTime != "" &&
+			(sch.RecurrenceEnd == nil || !time.Now().UTC().After(*sch.RecurrenceEnd)) {
+			out = append(out, sch)
+		}
+	}
+	return out, nil
+}
+
 func (s *MemoryStore) DeleteFollowUpSchedulesByChore(ctx context.Context, choreID int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

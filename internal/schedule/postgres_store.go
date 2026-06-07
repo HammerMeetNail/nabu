@@ -159,6 +159,29 @@ func (s *PostgresStore) Delete(ctx context.Context, id int64) error {
 	return err
 }
 
+func (s *PostgresStore) ListActiveWithTime(ctx context.Context) ([]ChoreSchedule, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT `+scheduleColumns+`
+		 FROM chore_schedules
+		 WHERE is_active = TRUE
+		   AND specific_time IS NOT NULL AND specific_time != ''
+		   AND (recurrence_end_date IS NULL OR recurrence_end_date >= CURRENT_DATE)
+		 ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ChoreSchedule
+	for rows.Next() {
+		sch, err := s.scan(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, sch)
+	}
+	return out, rows.Err()
+}
+
 func (s *PostgresStore) DeleteFollowUpSchedulesByChore(ctx context.Context, choreID int64) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM chore_schedules WHERE chore_id=$1 AND is_follow_up=TRUE`, choreID)
 	return err

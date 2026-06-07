@@ -42,9 +42,10 @@ func (h *NotificationPreferencesHandler) Update(w http.ResponseWriter, r *http.R
 	}
 
 	var req struct {
-		PushEnabled      *bool     `json:"pushEnabled"`
-		EmailEnabled     *bool     `json:"emailEnabled"`
-		EnabledPushTypes *[]string `json:"enabledPushTypes"`
+		PushEnabled                *bool     `json:"pushEnabled"`
+		EmailEnabled               *bool     `json:"emailEnabled"`
+		EnabledPushTypes           *[]string `json:"enabledPushTypes"`
+		DefaultReminderLeadMinutes *int      `json:"defaultReminderLeadMinutes"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -65,6 +66,9 @@ func (h *NotificationPreferencesHandler) Update(w http.ResponseWriter, r *http.R
 	}
 	if req.EnabledPushTypes != nil {
 		current.EnabledPushTypes = *req.EnabledPushTypes
+	}
+	if req.DefaultReminderLeadMinutes != nil {
+		current.DefaultReminderLeadMinutes = *req.DefaultReminderLeadMinutes
 	}
 
 	if err := h.service.UpdateNotificationPreferences(r.Context(), current); err != nil {

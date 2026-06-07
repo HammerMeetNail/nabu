@@ -139,6 +139,21 @@ export async function deleteNotification(id) {
   await apiFetch(`/api/notifications/${id}`, { method: "DELETE" });
 }
 
+export async function loadChoreReminderPrefs() {
+  const { response, data } = await apiFetch("/api/chore-reminder-prefs");
+  if (!response.ok) return [];
+  return data.prefs || [];
+}
+
+export async function saveChoreReminderPref(choreId, pref) {
+  const { response, data } = await apiFetch(`/api/chore-reminder-prefs/${choreId}`, {
+    method: "PATCH",
+    body: JSON.stringify(pref),
+  });
+  if (!response.ok) throw new Error("Failed to save chore reminder pref");
+  return data.pref;
+}
+
 /**
  * Render the notification panel HTML.
  * @param {Array} notifications

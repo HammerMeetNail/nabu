@@ -87,12 +87,13 @@ func (s *PostgresStore) GetReminderPreferences(ctx context.Context, userID int64
 	err := s.db.QueryRowContext(ctx,
 		`SELECT user_id, push_enabled, email_enabled,
 		        COALESCE(quiet_hours_start, ''), COALESCE(quiet_hours_end, ''), timezone,
-		        COALESCE(enabled_push_types, '[]')
+		        COALESCE(enabled_push_types, '[]'),
+		        COALESCE(default_reminder_lead_minutes, 10)
 		 FROM reminder_preferences WHERE user_id = $1`,
 		userID,
-	).Scan(&p.UserID, &p.PushEnabled, &p.EmailEnabled, &p.QuietHoursStart, &p.QuietHoursEnd, &p.Timezone, &rawTypes)
+	).Scan(&p.UserID, &p.PushEnabled, &p.EmailEnabled, &p.QuietHoursStart, &p.QuietHoursEnd, &p.Timezone, &rawTypes, &p.DefaultReminderLeadMinutes)
 	if err == sql.ErrNoRows {
-		return ReminderPreference{UserID: userID, PushEnabled: true, Timezone: "UTC", EnabledPushTypes: []string{}}, nil
+		return ReminderPreference{UserID: userID, PushEnabled: true, Timezone: "UTC", EnabledPushTypes: []string{}, DefaultReminderLeadMinutes: 10}, nil
 	}
 	if err != nil {
 		return p, err
@@ -120,16 +121,17 @@ func (s *PostgresStore) UpdateReminderPreferences(ctx context.Context, prefs Rem
 		return err
 	}
 	_, err = s.db.ExecContext(ctx,
-		`INSERT INTO reminder_preferences (user_id, push_enabled, email_enabled, quiet_hours_start, quiet_hours_end, timezone, enabled_push_types)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`INSERT INTO reminder_preferences (user_id, push_enabled, email_enabled, quiet_hours_start, quiet_hours_end, timezone, enabled_push_types, default_reminder_lead_minutes)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		 ON CONFLICT (user_id) DO UPDATE SET
 		   push_enabled = EXCLUDED.push_enabled,
 		   email_enabled = EXCLUDED.email_enabled,
 		   quiet_hours_start = EXCLUDED.quiet_hours_start,
 		   quiet_hours_end = EXCLUDED.quiet_hours_end,
 		   timezone = EXCLUDED.timezone,
-		   enabled_push_types = EXCLUDED.enabled_push_types`,
-		prefs.UserID, prefs.PushEnabled, prefs.EmailEnabled, qhs, qhe, prefs.Timezone, rawTypes,
+		   enabled_push_types = EXCLUDED.enabled_push_types,
+		   default_reminder_lead_minutes = EXCLUDED.default_reminder_lead_minutes`,
+		prefs.UserID, prefs.PushEnabled, prefs.EmailEnabled, qhs, qhe, prefs.Timezone, rawTypes, prefs.DefaultReminderLeadMinutes,
 	)
 	return err
 }
