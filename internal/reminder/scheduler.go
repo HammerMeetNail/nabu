@@ -47,6 +47,7 @@ func NewScheduler(
 }
 
 func (s *Scheduler) Start(ctx context.Context) {
+	log.Printf("reminder: scheduler started (interval=%v)", tickInterval)
 	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
 
@@ -83,10 +84,15 @@ func (s *Scheduler) tick(ctx context.Context) error {
 		return fmt.Errorf("list active schedules: %w", err)
 	}
 
+	activeToday := 0
+	sent := 0
+
 	for _, sch := range schedules {
 		if !s.schedSvc.IsActiveForDay(sch, now) {
 			continue
 		}
+
+		activeToday++
 
 		if sch.SpecificTime == "" {
 			continue
@@ -135,11 +141,18 @@ func (s *Scheduler) tick(ctx context.Context) error {
 				log.Printf("reminder: push to %d: %v", userID, err)
 				continue
 			}
+			sent++
+
+			log.Printf("reminder: sent to user %d title=%q", userID, title)
 
 			if err := s.store.RecordReminder(ctx, sch.ID, userID, today); err != nil {
 				log.Printf("reminder: record: %v", err)
 			}
 		}
+	}
+
+	if activeToday > 0 || sent > 0 {
+		log.Printf("reminder: tick done active=%d sent=%d", activeToday, sent)
 	}
 
 	return nil
