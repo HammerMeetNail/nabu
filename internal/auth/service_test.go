@@ -392,6 +392,63 @@ func TestChangePasswordWeak(t *testing.T) {
 	}
 }
 
+func TestLoginPreservesOtherDeviceSession(t *testing.T) {
+	store := NewMemoryStore()
+	svc := NewService(store)
+
+	_, deviceA, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	_, _, err = svc.Login(context.Background(), "alice@example.com", "password123")
+	if err != nil {
+		t.Fatalf("Login (device B): %v", err)
+	}
+
+	_, err = svc.Authenticate(context.Background(), deviceA.ID)
+	if err != nil {
+		t.Fatalf("device A session should still be valid after device B login: %v", err)
+	}
+}
+
+func TestPasswordChangeInvalidatesAllSessions(t *testing.T) {
+	store := NewMemoryStore()
+	svc := NewService(store)
+	mailer := mail.NewMemorySender()
+	svc.SetMailer(mailer, "http://localhost:8080")
+
+	user, deviceA, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	_, oldDeviceB, err := svc.Login(context.Background(), "alice@example.com", "password123")
+	if err != nil {
+		t.Fatalf("Login (device B): %v", err)
+	}
+
+	_, newSession, err := svc.ChangePassword(context.Background(), user.ID, "password123", "newpassword456")
+	if err != nil {
+		t.Fatalf("ChangePassword: %v", err)
+	}
+
+	_, err = svc.Authenticate(context.Background(), deviceA.ID)
+	if err != ErrSessionNotFound {
+		t.Fatalf("device A session should be invalid after password change: error = %v", err)
+	}
+
+	_, err = svc.Authenticate(context.Background(), oldDeviceB.ID)
+	if err != ErrSessionNotFound {
+		t.Fatalf("old device B session should be invalid after password change: error = %v", err)
+	}
+
+	_, err = svc.Authenticate(context.Background(), newSession.ID)
+	if err != nil {
+		t.Fatalf("new session (from ChangePassword) should be valid: %v", err)
+	}
+}
+
 func TestSetAuditLogger(t *testing.T) {
 	svc := NewService(NewMemoryStore())
 	// nil logger should be a no-op

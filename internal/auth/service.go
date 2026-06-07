@@ -126,7 +126,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (User, Sess
 		return User{}, Session{}, ErrInvalidCredentials
 	}
 
-	session, err := s.rotatedSession(ctx, user.ID)
+	session, err := s.newSession(ctx, user.ID)
 	if err != nil {
 		return User{}, Session{}, err
 	}
@@ -269,7 +269,7 @@ func (s *Service) ConsumeMagicLink(ctx context.Context, token string) (User, Ses
 		if err != nil {
 			return User{}, Session{}, err
 		}
-		session, err := s.rotatedSession(ctx, user.ID)
+		session, err := s.newSession(ctx, user.ID)
 		if err != nil {
 			return User{}, Session{}, err
 		}
@@ -281,7 +281,7 @@ func (s *Service) ConsumeMagicLink(ctx context.Context, token string) (User, Ses
 	if err != nil {
 		return User{}, Session{}, err
 	}
-	session, err := s.rotatedSession(ctx, user.ID)
+	session, err := s.newSession(ctx, user.ID)
 	if err != nil {
 		return User{}, Session{}, err
 	}
@@ -422,7 +422,7 @@ func (s *Service) CompleteGoogleOIDC(ctx context.Context, code, expectedNonce st
 	existingUser, existingErr := s.store.FindUserByEmail(ctx, identity.Email)
 	switch existingErr {
 	case nil:
-		session, err := s.rotatedSession(ctx, existingUser.ID)
+		session, err := s.newSession(ctx, existingUser.ID)
 		if err != nil {
 			return User{}, Session{}, err
 		}
@@ -443,7 +443,7 @@ func (s *Service) CompleteGoogleOIDC(ctx context.Context, code, expectedNonce st
 		if err != nil {
 			return User{}, Session{}, err
 		}
-		session, err := s.rotatedSession(ctx, user.ID)
+		session, err := s.newSession(ctx, user.ID)
 		if err != nil {
 			return User{}, Session{}, err
 		}
