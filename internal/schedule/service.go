@@ -4,6 +4,7 @@ package schedule
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -24,7 +25,8 @@ func (d DateOnly) MarshalJSON() ([]byte, error) {
 	if d.IsZero() {
 		return []byte("null"), nil
 	}
-	return json.Marshal(d.Time.UTC().Format("2006-01-02"))
+	y, m, day := d.Date()
+	return json.Marshal(fmt.Sprintf("%04d-%02d-%02d", y, m, day))
 }
 
 func (d *DateOnly) UnmarshalJSON(data []byte) error {

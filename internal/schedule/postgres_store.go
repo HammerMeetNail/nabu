@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -77,7 +78,8 @@ func (s *PostgresStore) Create(ctx context.Context, sch ChoreSchedule) (ChoreSch
 
 	var startDateParam interface{}
 	if sch.StartDate != nil && !sch.StartDate.IsZero() {
-		startDateParam = sch.StartDate.Time.UTC().Format("2006-01-02")
+		y, m, d := sch.StartDate.Date()
+		startDateParam = fmt.Sprintf("%04d-%02d-%02d", y, m, d)
 	}
 
 	row := s.db.QueryRowContext(ctx, `
@@ -130,7 +132,8 @@ func (s *PostgresStore) Update(ctx context.Context, sch ChoreSchedule) (ChoreSch
 
 	var startDateParam interface{}
 	if sch.StartDate != nil && !sch.StartDate.IsZero() {
-		startDateParam = sch.StartDate.Time.UTC().Format("2006-01-02")
+		y, m, d := sch.StartDate.Date()
+		startDateParam = fmt.Sprintf("%04d-%02d-%02d", y, m, d)
 	}
 
 	row := s.db.QueryRowContext(ctx, `
