@@ -64,7 +64,7 @@ test.describe('Schedule reminder notifications', () => {
     await expect(checkbox).toBeAttached();
     await expect(checkbox).toBeChecked();
 
-    const slider = page.locator('.notif-pref-toggle .toggle-slider').first();
+    const slider = page.locator('.notif-pref-toggle input[data-notif-type="schedule_reminder"] + .toggle-slider');
     await slider.click();
     await page.waitForTimeout(800);
 
