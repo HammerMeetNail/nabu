@@ -1740,6 +1740,7 @@ export async function init() {
         const choreId = parseInt(actionEl.dataset.choreId, 10);
         state.activeSheet = "chore-edit";
         state.activeSheetData = { choreId };
+        render(app);
         Promise.all([loadNotificationPrefs(), loadChoreReminderPrefsData()]).then(() => render(app));
         break;
       }
