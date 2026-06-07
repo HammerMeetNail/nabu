@@ -69,11 +69,8 @@ test.describe('Log follow-up scheduling', () => {
     // The follow-up inputs should be visible
     await expect(page.locator('#followup-hours')).toBeVisible({ timeout: 2000 });
 
-    // Set follow-up: 3 hours (click + three times)
-    const incrHours = page.locator('.stepper-btn[data-action="followup-incr"][data-unit="hours"]');
-    await incrHours.click();
-    await incrHours.click();
-    await incrHours.click();
+    // Set follow-up: 3 hours
+    await page.selectOption('#followup-hours', '3');
 
     // Select formula indicator (required for Fast Feed Baby)
     const chip = page.locator('.log-chip[data-label="🍼 formula"]');
@@ -111,14 +108,11 @@ test.describe('Log follow-up scheduling', () => {
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
 
     // Verify the follow-up inputs are pre-filled with 3 hours (last used)
-    const hoursVal = await page.locator('#followup-hours').textContent();
+    const hoursVal = await page.locator('#followup-hours').inputValue();
     expect(hoursVal).toBe('3');
 
-    // Clear the follow-up hours (set to 0 — click − three times)
-    const decrHours = page.locator('.stepper-btn[data-action="followup-decr"][data-unit="hours"]');
-    await decrHours.click();
-    await decrHours.click();
-    await decrHours.click();
+    // Clear the follow-up hours (set to 0)
+    await page.selectOption('#followup-hours', '0');
 
     // Select indicator again
     const chip2 = page.locator('.log-chip[data-label="🍼 formula"]');
@@ -165,11 +159,7 @@ test.describe('Log follow-up scheduling', () => {
     await expect(page.locator('#followup-hours')).toBeVisible({ timeout: 2000 });
 
     // Set follow-up: 4 hours
-    const incrHours2 = page.locator('.stepper-btn[data-action="followup-incr"][data-unit="hours"]');
-    await incrHours2.click();
-    await incrHours2.click();
-    await incrHours2.click();
-    await incrHours2.click();
+    await page.selectOption('#followup-hours', '4');
 
     // Select indicator and volume
     const chip = page.locator('.log-chip[data-label="🍼 formula"]');

@@ -2307,52 +2307,25 @@ details[open] .chore-stat-chevron {
 
 .followup-inputs {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
 }
 
-.followup-stepper {
-  display: flex;
-  align-items: center;
-  gap: 0;
-  background: #f3f4f6;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.stepper-btn {
-  width: 32px;
-  height: 36px;
-  border: none;
-  background: transparent;
-  font-size: 18px;
-  line-height: 1;
-  color: #374151;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  -webkit-tap-highlight-color: transparent;
-  user-select: none;
-}
-
-.stepper-btn:active {
-  background: #e5e7eb;
-}
-
-.stepper-value {
-  min-width: 28px;
-  text-align: center;
+.followup-select {
+  padding: 8px 4px 8px 8px;
   font-size: 15px;
-  font-weight: 500;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  background: #fff;
   color: #111827;
-  user-select: none;
-}
-
-.stepper-label {
-  padding-right: 8px;
-  font-size: 13px;
-  color: #6b7280;
+  min-width: 0;
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236b7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  padding-right: 24px;
 }
 
 /* Follow-up toggle in chore edit sheet */

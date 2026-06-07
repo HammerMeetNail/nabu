@@ -415,28 +415,21 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     const totalMins = chore.lastFollowUpMinutes || 0;
     const d = Math.floor(totalMins / 1440);
     const h = Math.floor((totalMins % 1440) / 60);
-    const m = totalMins % 60;
+    const m = Math.round((totalMins % 60) / 5) * 5;
+
+    const dayOpts = Array.from({ length: 15 }, (_, i) =>
+      `<option value="${i}"${i === d ? ' selected' : ''}>${i}d</option>`).join('');
+    const hourOpts = Array.from({ length: 24 }, (_, i) =>
+      `<option value="${i}"${i === h ? ' selected' : ''}>${i}h</option>`).join('');
+    const minOpts = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55].map(v =>
+      `<option value="${v}"${v === m ? ' selected' : ''}>${v}m</option>`).join('');
+
     return `<div class="sheet-followup-row">
       <span class="field-label">Follow-up in</span>
       <div class="followup-inputs">
-        <div class="followup-stepper">
-          <button type="button" class="stepper-btn" data-action="followup-decr" data-unit="days" aria-label="Fewer days">−</button>
-          <span class="stepper-value" id="followup-days" data-followup-unit="days">${d}</span>
-          <button type="button" class="stepper-btn" data-action="followup-incr" data-unit="days" aria-label="More days">+</button>
-          <span class="stepper-label">d</span>
-        </div>
-        <div class="followup-stepper">
-          <button type="button" class="stepper-btn" data-action="followup-decr" data-unit="hours" aria-label="Fewer hours">−</button>
-          <span class="stepper-value" id="followup-hours" data-followup-unit="hours">${h}</span>
-          <button type="button" class="stepper-btn" data-action="followup-incr" data-unit="hours" aria-label="More hours">+</button>
-          <span class="stepper-label">h</span>
-        </div>
-        <div class="followup-stepper">
-          <button type="button" class="stepper-btn" data-action="followup-decr" data-unit="mins" aria-label="Fewer minutes">−</button>
-          <span class="stepper-value" id="followup-mins" data-followup-unit="mins">${m}</span>
-          <button type="button" class="stepper-btn" data-action="followup-incr" data-unit="mins" aria-label="More minutes">+</button>
-          <span class="stepper-label">m</span>
-        </div>
+        <select id="followup-days" class="followup-select">${dayOpts}</select>
+        <select id="followup-hours" class="followup-select">${hourOpts}</select>
+        <select id="followup-mins" class="followup-select">${minOpts}</select>
       </div>
     </div>`;
   })() : "";
