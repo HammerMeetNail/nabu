@@ -39,9 +39,9 @@ async function setupWithChores(page) {
   return { csrf, chores, email };
 }
 
-async function enableFollowUp(page, choreId, csrf) {
+async function enableFollowUp(page, choreId, choreName, csrf) {
   await page.request.patch(`/api/chores/${choreId}`, {
-    data: { followUpEnabled: true },
+    data: { name: choreName, followUpEnabled: true },
     headers: { 'X-CSRF-Token': csrf },
   });
 }
@@ -55,7 +55,7 @@ test.describe('Log follow-up scheduling', () => {
     expect(feedBaby).toBeDefined();
 
     // Enable follow-up for Feed Baby
-    await enableFollowUp(page, feedBaby.id, csrf);
+    await enableFollowUp(page, feedBaby.id, feedBaby.name, csrf);
 
     // Reload to get the updated chore
     await page.reload();
@@ -148,7 +148,7 @@ test.describe('Log follow-up scheduling', () => {
     const feedBaby = chores.find(c => c.name === 'Feed Baby');
     expect(feedBaby).toBeDefined();
 
-    await enableFollowUp(page, feedBaby.id, csrf);
+    await enableFollowUp(page, feedBaby.id, feedBaby.name, csrf);
     await page.reload();
     await page.waitForSelector('.home-grid', { timeout: 15000 });
 
@@ -174,7 +174,7 @@ test.describe('Log follow-up scheduling', () => {
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
     // Navigate to schedule tab
-    await page.click('.nav-item[data-nav="schedule"]');
+    await page.click('[data-nav="schedule"]');
     await page.waitForSelector('.schedule-view', { timeout: 5000 });
 
     // The follow-up should appear in the upcoming list with the chore name
