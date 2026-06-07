@@ -1,4 +1,4 @@
-CREATE TABLE chore_reminder_prefs (
+CREATE TABLE IF NOT EXISTS chore_reminder_prefs (
     user_id        BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     chore_id       BIGINT NOT NULL REFERENCES chores(id) ON DELETE CASCADE,
     enabled        BOOLEAN NOT NULL DEFAULT false,
@@ -6,7 +6,7 @@ CREATE TABLE chore_reminder_prefs (
     UNIQUE (user_id, chore_id)
 );
 
-CREATE TABLE schedule_reminders (
+CREATE TABLE IF NOT EXISTS schedule_reminders (
     schedule_id    BIGINT NOT NULL REFERENCES chore_schedules(id) ON DELETE CASCADE,
     user_id        BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     scheduled_date DATE NOT NULL,
@@ -15,4 +15,4 @@ CREATE TABLE schedule_reminders (
 );
 
 ALTER TABLE reminder_preferences
-    ADD COLUMN default_reminder_lead_minutes INTEGER NOT NULL DEFAULT 10;
+    ADD COLUMN IF NOT EXISTS default_reminder_lead_minutes INTEGER NOT NULL DEFAULT 10;
