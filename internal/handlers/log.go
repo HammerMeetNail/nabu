@@ -86,6 +86,7 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		VolumeML         *int           `json:"volumeML"`    // optional volume in mL
 		UserID           *int64         `json:"userId"`      // optional: log on behalf of another household member
 		FollowUpMinutes  int            `json:"followUpMinutes"`
+		FollowUpTime     string         `json:"followUpTime"` // local ISO datetime for schedule placement
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -160,11 +161,15 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		if req.FollowUpMinutes > 0 {
-			followUpTime := entry.CompletedAt.Add(time.Duration(req.FollowUpMinutes) * time.Minute)
-			specificTime := followUpTime.UTC().Format("15:04")
-			startDate := schedule.DateOnly{Time: followUpTime.UTC().Truncate(24 * time.Hour)}
-			_, err := h.scheduleStore.Create(r.Context(), schedule.ChoreSchedule{
+		if req.FollowUpMinutes > 0 && req.FollowUpTime != "" {
+			t, err := time.Parse("2006-01-02T15:04", req.FollowUpTime)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "invalid followUpTime format")
+				return
+			}
+			specificTime := t.Format("15:04")
+			startDate := schedule.DateOnly{Time: t.Truncate(24 * time.Hour)}
+			_, err = h.scheduleStore.Create(r.Context(), schedule.ChoreSchedule{
 				HouseholdID:   *user.HouseholdID,
 				ChoreID:       req.ChoreID,
 				FrequencyType: "once",

@@ -1576,7 +1576,14 @@ export async function init() {
             const followUpHours = parseInt(document.querySelector('#followup-hours')?.value || '0', 10) || 0;
             const followUpMins = parseInt(document.querySelector('#followup-mins')?.value || '0', 10) || 0;
             const followUpMinutes = followUpDays * 1440 + followUpHours * 60 + followUpMins;
-            return logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId, indicatorVolumes, followUpMinutes);
+            let followUpTime = null;
+            if (followUpMinutes > 0 && whenInput?.value) {
+              const when = new Date(whenInput.value);
+              const fu = new Date(when.getTime() + followUpMinutes * 60000);
+              const pad = n => String(n).padStart(2, "0");
+              followUpTime = `${fu.getFullYear()}-${pad(fu.getMonth() + 1)}-${pad(fu.getDate())}T${pad(fu.getHours())}:${pad(fu.getMinutes())}`;
+            }
+            return logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId, indicatorVolumes, followUpMinutes, followUpTime);
           })();
         doLog.then(async (data) => {
           const newLogId = data?.log?.id;

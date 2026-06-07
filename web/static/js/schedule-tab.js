@@ -63,7 +63,7 @@ export function renderScheduleTab(state) {
         sch,
         iso,
         isToday: i === 0,
-        isDone: !!logMap[chore.id],
+        isDone: sch.frequencyType !== "once" && !!logMap[chore.id],
       });
     });
 

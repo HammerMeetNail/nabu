@@ -48,7 +48,7 @@ export async function loadMoreHistory(before) {
   return data;
 }
 
-export async function logChore(choreId, note, date = "", indicators = [], slotHour = null, completedAt = null, volumeML = null, userId = null, indicatorVolumes = {}, followUpMinutes = 0) {
+export async function logChore(choreId, note, date = "", indicators = [], slotHour = null, completedAt = null, volumeML = null, userId = null, indicatorVolumes = {}, followUpMinutes = 0, followUpTime = null) {
   const body = { choreId, note, indicators };
   if (Object.keys(indicatorVolumes).length > 0) body.indicatorVolumes = indicatorVolumes;
   if (date) body.date = date;
@@ -57,6 +57,7 @@ export async function logChore(choreId, note, date = "", indicators = [], slotHo
   if (volumeML !== null) body.volumeML = volumeML;
   if (userId !== null) body.userId = userId;
   if (followUpMinutes > 0) body.followUpMinutes = followUpMinutes;
+  if (followUpTime) body.followUpTime = followUpTime;
   const { data } = await apiFetch("/api/logs", {
     method: "POST",
     body: JSON.stringify(body),

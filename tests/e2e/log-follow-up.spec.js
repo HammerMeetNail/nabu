@@ -96,6 +96,7 @@ test.describe('Log follow-up scheduling', () => {
     expect(followUpSch).toBeDefined();
     expect(followUpSch.frequencyType).toBe('once');
     expect(followUpSch.isFollowUp).toBe(true);
+    expect(followUpSch.specificTime).toMatch(/^\d{2}:\d{2}$/);
 
     // Now log Feed Baby directly from the home tab (tap without sheet)
     await page.reload();
@@ -178,7 +179,10 @@ test.describe('Log follow-up scheduling', () => {
     await page.waitForSelector('.schedule-view', { timeout: 5000 });
 
     // The follow-up should appear in the upcoming list with the chore name
+    // and must NOT be crossed out as "done"
     await expect(page.locator('.sch-name').filter({ hasText: 'Feed Baby' })).toBeVisible({ timeout: 5000 });
+    const followUpRow = page.locator('.sch-row').filter({ has: page.locator('.sch-name', { hasText: 'Feed Baby' }) });
+    await expect(followUpRow).not.toHaveClass(/sch-row--done/);
   });
 
   test('follow-up toggle is visible in chore edit sheet', async ({ page }) => {
