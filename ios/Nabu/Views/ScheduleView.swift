@@ -6,6 +6,7 @@ struct ScheduleView: View {
     @State private var showingEditSheet = false
     @State private var editingSchedule: ChoreSchedule?
     @State private var showingPickChore = false
+    @State private var loadError: String? = nil
 
     private let scheduleStore: ScheduleStore
 
@@ -18,12 +19,26 @@ struct ScheduleView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if state.chores.isEmpty {
+                if let err = loadError {
+                    VStack(spacing: 16) {
+                        Text("⚠️")
+                            .font(.system(size: 48))
+                        Text("Schedule load failed")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                        Text(err)
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                            .font(.caption)
+                    }
+                    .frame(maxHeight: .infinity)
+                } else if state.chores.isEmpty {
                     emptyView(icon: "🏠", title: "No chores set up yet",
-                              message: "Use the Home tab to add chores.")
+                              message: "Use the Home tab to add chores.\n(chores=\(state.chores.count) schedules=\(state.schedules.count))")
                 } else if upcomingRows.isEmpty {
                     emptyView(icon: "📅", title: "Nothing upcoming",
-                              message: "No active schedules for the next 14 days.")
+                              message: "No active schedules for the next 14 days.\n(chores=\(state.chores.count) schedules=\(state.schedules.count))")
                 } else {
                     List {
                         ForEach(groupedUpcoming(), id: \.key) { group in
@@ -55,7 +70,6 @@ struct ScheduleView: View {
             }
         }
         .task {
-            NSLog("[Nabu] ScheduleView.task fired, loading schedules...")
             await loadSchedules()
         }
     }
@@ -69,15 +83,11 @@ struct ScheduleView: View {
 
     private var upcomingRows: [UpcomingItem] {
         let today = todayISO()
-        NSLog("[Nabu] upcomingRows: schedules=\(schedules.count) chores=\(state.chores.count) todayLogs=\(state.todayLogs.count)")
         var items: [UpcomingItem] = []
         for dayOffset in 0..<14 {
             let date = shiftISO(today, by: dayOffset)
             for sch in schedules where isActiveForDay(sch, date) {
-                guard let chore = state.chores.first(where: { $0.id == sch.choreId }) else {
-                    NSLog("[Nabu] no chore for schedule choreId=\(sch.choreId)")
-                    continue
-                }
+                guard let chore = state.chores.first(where: { $0.id == sch.choreId }) else { continue }
                 let f = DateFormatter()
                 f.dateFormat = "yyyy-MM-dd"
                 let isDone = sch.frequencyType != "once" && state.todayLogs.contains {
@@ -86,7 +96,6 @@ struct ScheduleView: View {
                 items.append(UpcomingItem(schedule: sch, chore: chore, date: date, isDone: isDone))
             }
         }
-        NSLog("[Nabu] upcomingRows result: \(items.count) items")
         return items
     }
 
@@ -199,11 +208,10 @@ struct ScheduleView: View {
 
     private func loadSchedules() async {
         do {
-            let loaded = try await scheduleStore.loadSchedules()
-            NSLog("[Nabu] ScheduleView.loadSchedules OK: \(loaded.count) schedules")
-            state.schedules = loaded
+            state.schedules = try await scheduleStore.loadSchedules()
+            loadError = nil
         } catch {
-            NSLog("[Nabu] ScheduleView.loadSchedules ERROR: \(error.localizedDescription)")
+            loadError = error.localizedDescription
         }
     }
 }
