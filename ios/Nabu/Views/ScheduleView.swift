@@ -55,6 +55,7 @@ struct ScheduleView: View {
             }
         }
         .task {
+            print("[ScheduleView] task fired, loading schedules...")
             await loadSchedules()
         }
     }
@@ -68,11 +69,15 @@ struct ScheduleView: View {
 
     private var upcomingRows: [UpcomingItem] {
         let today = todayISO()
+        print("[ScheduleView] upcomingRows: schedules=\(schedules.count), chores=\(state.chores.count), todayLogs=\(state.todayLogs.count)")
         var items: [UpcomingItem] = []
         for dayOffset in 0..<14 {
             let date = shiftISO(today, by: dayOffset)
             for sch in schedules where isActiveForDay(sch, date) {
-                guard let chore = state.chores.first(where: { $0.id == sch.choreId }) else { continue }
+                guard let chore = state.chores.first(where: { $0.id == sch.choreId }) else {
+                    print("[ScheduleView] no chore found for schedule choreId=\(sch.choreId)")
+                    continue
+                }
                 let f = DateFormatter()
                 f.dateFormat = "yyyy-MM-dd"
                 let isDone = sch.frequencyType != "once" && state.todayLogs.contains {
@@ -81,6 +86,7 @@ struct ScheduleView: View {
                 items.append(UpcomingItem(schedule: sch, chore: chore, date: date, isDone: isDone))
             }
         }
+        print("[ScheduleView] upcomingRows count=\(items.count)")
         return items
     }
 
@@ -193,8 +199,12 @@ struct ScheduleView: View {
 
     private func loadSchedules() async {
         do {
-            state.schedules = try await scheduleStore.loadSchedules()
-        } catch {}
+            let loaded = try await scheduleStore.loadSchedules()
+            print("[ScheduleView] loadSchedules success: count=\(loaded.count)")
+            state.schedules = loaded
+        } catch {
+            print("[ScheduleView] loadSchedules ERROR: \(error)")
+        }
     }
 }
 

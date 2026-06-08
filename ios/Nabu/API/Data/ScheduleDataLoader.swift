@@ -13,9 +13,10 @@ final class ScheduleDataLoader {
     func loadSchedules() async {
         do {
             let data: SchedulesResponse = try await api.get("/api/schedules")
+            print("[ScheduleDataLoader] loadSchedules success: count=\(data.schedules.count)")
             state.schedules = data.schedules
         } catch {
-            // Silent failure
+            print("[ScheduleDataLoader] loadSchedules ERROR: \(error)")
         }
     }
 }
