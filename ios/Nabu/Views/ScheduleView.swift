@@ -19,26 +19,12 @@ struct ScheduleView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if let err = loadError {
-                    VStack(spacing: 16) {
-                        Text("⚠️")
-                            .font(.system(size: 48))
-                        Text("Schedule load failed")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                        Text(err)
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
-                            .font(.caption)
-                    }
-                    .frame(maxHeight: .infinity)
-                } else if state.chores.isEmpty {
+                if state.chores.isEmpty {
                     emptyView(icon: "🏠", title: "No chores set up yet",
-                              message: "Use the Home tab to add chores.\n(chores=\(state.chores.count) schedules=\(state.schedules.count))")
+                              message: "Use the Home tab to add chores.")
                 } else if upcomingRows.isEmpty {
                     emptyView(icon: "📅", title: "Nothing upcoming",
-                              message: "No active schedules for the next 14 days.\n(chores=\(state.chores.count) schedules=\(state.schedules.count))")
+                              message: "No active schedules for the next 14 days.")
                 } else {
                     List {
                         ForEach(groupedUpcoming(), id: \.key) { group in
