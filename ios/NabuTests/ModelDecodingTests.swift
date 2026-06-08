@@ -373,6 +373,78 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertNil(sch.assignedUserId)
     }
 
+    func testDecodeScheduleWithAPIDecoder() throws {
+        // Use the real apiDecoder with Go-style fractional-second timestamps
+        let json = #"""
+        {
+          "schedules": [
+            {
+              "id": 1,
+              "householdId": 1,
+              "choreId": 1,
+              "frequencyType": "weekly",
+              "timePeriod": "anytime",
+              "specificTime": "09:00",
+              "timesOfDay": [],
+              "daysOfWeek": [1, 3],
+              "intervalDays": 0,
+              "targetCount": 0,
+              "isActive": true,
+              "isFollowUp": false,
+              "assignedUserId": null,
+              "createdAt": "2026-06-08T12:00:00.123456Z",
+              "updatedAt": "2026-06-08T12:00:00.123456Z"
+            }
+          ]
+        }
+        """#.data(using: .utf8)!
+        let response = try apiDecoder.decode(SchedulesResponse.self, from: json)
+        XCTAssertEqual(response.schedules.count, 1)
+        let sch = response.schedules[0]
+        XCTAssertEqual(sch.frequencyType, "weekly")
+        XCTAssertEqual(sch.daysOfWeek, [1, 3])
+        XCTAssertEqual(sch.specificTime, "09:00")
+        XCTAssertTrue(sch.isActive)
+    }
+
+    func testDecodeScheduleWithNullDaysOfWeekAndGoTimestamps() throws {
+        // Realistic Go server response: null daysOfWeek, omitted dayOfMonth/monthOfYear,
+        // RecurrenceEnd as Date, fractional-second timestamps.
+        let json = #"""
+        {
+          "schedules": [
+            {
+              "id": 2,
+              "householdId": 1,
+              "choreId": 3,
+              "frequencyType": "daily",
+              "timePeriod": "anytime",
+              "timesOfDay": [],
+              "daysOfWeek": null,
+              "intervalDays": 0,
+              "targetCount": 0,
+              "isActive": true,
+              "isFollowUp": false,
+              "assignedUserId": null,
+              "recurrenceEnd": "2026-12-31T00:00:00Z",
+              "createdAt": "2026-06-08T15:30:00.123456789Z",
+              "updatedAt": "2026-06-08T15:30:00.123456789Z"
+            }
+          ]
+        }
+        """#.data(using: .utf8)!
+        let response = try apiDecoder.decode(SchedulesResponse.self, from: json)
+        XCTAssertEqual(response.schedules.count, 1)
+        let sch = response.schedules[0]
+        XCTAssertEqual(sch.frequencyType, "daily")
+        XCTAssertEqual(sch.daysOfWeek, [])
+        XCTAssertEqual(sch.dayOfMonth, 0)
+        XCTAssertEqual(sch.monthOfYear, 0)
+        XCTAssertNil(sch.specificTime)
+        XCTAssertNotNil(sch.recurrenceEnd)
+        XCTAssertNil(sch.monthWeekday)
+    }
+
     // MARK: - Notifications
 
     func testDecodeNotificationsResponse() throws {
