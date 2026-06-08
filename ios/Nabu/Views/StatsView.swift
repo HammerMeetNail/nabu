@@ -31,6 +31,8 @@ struct StatsView: View {
     @State private var babyPeriod: String = "daily"
     @State private var feedBabyTS: ChoreTimeSeries?
     @State private var changeBabyTS: ChoreTimeSeries?
+    @State private var selectedFeedBar: Int? = nil
+    @State private var selectedChangeBar: Int? = nil
 
     private var currentTopChores: [TopChore] {
         topChoresByUser[topChoresUserId ?? 0] ?? []
@@ -209,11 +211,31 @@ struct StatsView: View {
                 Text("No data")
                     .font(.caption2).foregroundColor(DesignColors.textSecondary)
             } else if isVolume {
-                babyVolumeChart(ts.periods)
+                babyVolumeChart(ts.periods, selectedBar: $selectedFeedBar)
             } else {
-                babyIndicatorChart(ts.periods)
+                babyIndicatorChart(ts.periods, selectedBar: $selectedChangeBar)
             }
         }
+    }
+
+    private func niceAxisStep(_ max: Int) -> Int {
+        if max <= 2 { return 1 }
+        if max <= 10 { return 2 }
+        if max <= 25 { return 5 }
+        if max <= 100 { return 25 }
+        let magnitude = Int(pow(10.0, floor(log10(Double(max)))))
+        let residual = Double(max) / Double(magnitude)
+        if residual <= 2 { return magnitude / 2 }
+        if residual <= 5 { return magnitude }
+        return magnitude * 2
+    }
+
+    private func computeTicks(max: Int) -> [Int] {
+        let step = niceAxisStep(max)
+        var ticks: [Int] = []
+        var v = 0
+        while v <= max + step / 2 { ticks.append(v); v += step }
+        return ticks
     }
 
     private func buildVolumeSegments(_ p: TimeSeriesPeriod, maxML: Int, chartH: CGFloat, stackKeys: [String]) -> [(key: String, ml: Int, offset: CGFloat)] {
@@ -245,7 +267,7 @@ struct StatsView: View {
     // MARK: - Baby Volume Chart
 
     @ViewBuilder
-    private func babyVolumeChart(_ periods: [TimeSeriesPeriod]) -> some View {
+    private func babyVolumeChart(_ periods: [TimeSeriesPeriod], selectedBar: Binding<Int?>) -> some View {
         let stackColors: [String: Color] = [
             "🍼 formula": Color(hexUnsafe: "EC4899"),
             "🤱 breast": Color(hexUnsafe: "F59E0B"),
@@ -255,37 +277,76 @@ struct StatsView: View {
         let count = periods.count
         let spacing: CGFloat = 4
         let chartH: CGFloat = 80
-        let leftMargin: CGFloat = 28
-        let rightMargin: CGFloat = 8
+        let leftMargin: CGFloat = 38
+        let rightMargin: CGFloat = 6
+
+        let ticks = computeTicks(max: maxML)
 
         GeometryReader { geo in
             let availableWidth = geo.size.width - leftMargin - rightMargin
             let totalSpacing = spacing * CGFloat(max(count - 1, 0))
             let colW = count > 0 ? max(8, (availableWidth - totalSpacing) / CGFloat(count)) : 18
+            let xAxisH: CGFloat = 14
 
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .bottom, spacing: 0) {
-                    Text("mL")
-                        .font(.system(size: 8))
-                        .foregroundColor(DesignColors.textSecondary)
-                        .frame(width: leftMargin, height: chartH + 14, alignment: .bottom)
-                        .padding(.bottom, 2)
+                    ZStack(alignment: .topLeading) {
+                        ForEach(ticks, id: \.self) { t in
+                            let y = chartH - CGFloat(t) / CGFloat(maxML) * chartH
+                            Text("\(t)")
+                                .font(.system(size: 9))
+                                .foregroundColor(Color(hexUnsafe: "9ca3af"))
+                                .frame(width: leftMargin - 4, alignment: .trailing)
+                                .position(x: (leftMargin - 4) / 2, y: y + 4)
+                        }
+                        Text("mL")
+                            .font(.system(size: 9))
+                            .foregroundColor(Color(hexUnsafe: "9ca3af"))
+                            .rotationEffect(.degrees(-90))
+                            .fixedSize()
+                            .position(x: 8, y: chartH / 2)
+                    }
+                    .frame(width: leftMargin, height: chartH + xAxisH)
 
-                    HStack(alignment: .bottom, spacing: spacing) {
-                        ForEach(Array(periods.enumerated()), id: \.offset) { i, p in
-                            babyVolumeBarColumn(p, i: i, maxML: maxML, colW: colW, chartH: chartH, stackKeys: stackKeys, stackColors: stackColors)
+                    ZStack(alignment: .bottomLeading) {
+                        ForEach(ticks, id: \.self) { t in
+                            let y = xAxisH + CGFloat(t) / CGFloat(maxML) * chartH
+                            Rectangle()
+                                .fill(Color(hexUnsafe: "e5e7eb"))
+                                .frame(width: availableWidth, height: 0.5)
+                                .offset(y: -y)
+                        }
+                        Rectangle()
+                            .fill(Color(hexUnsafe: "d1d5db"))
+                            .frame(width: availableWidth, height: 1)
+                            .offset(y: -xAxisH)
+
+                        HStack(alignment: .bottom, spacing: spacing) {
+                            ForEach(Array(periods.enumerated()), id: \.offset) { i, p in
+                                let showXLabel = babyPeriod != "daily" || i % 2 == 0
+                                let rawLabel = volumeBarLabel(p, stackKeys: stackKeys)
+                                let estW = CGFloat(rawLabel.count) * 7
+                                let colCenter = CGFloat(i) * colW + colW / 2
+                                let labelAlign: Alignment = colCenter + estW / 2 > availableWidth ? .topTrailing
+                                    : colCenter - estW / 2 < 0 ? .topLeading
+                                    : .top
+                                babyVolumeBarColumn(p, i: i, maxML: maxML, colW: colW, chartH: chartH, stackKeys: stackKeys, stackColors: stackColors, selectedBar: selectedBar, showXLabel: showXLabel, labelAlign: labelAlign)
+                            }
                         }
                     }
+                    .frame(width: availableWidth, height: chartH + xAxisH)
                 }
 
                 babyVolumeLegend(periods)
+                    .padding(.leading, leftMargin)
+                    .padding(.top, 4)
             }
         }
         .frame(height: chartH + 60)
     }
 
     @ViewBuilder
-    private func babyVolumeBarColumn(_ p: TimeSeriesPeriod, i: Int, maxML: Int, colW: CGFloat, chartH: CGFloat, stackKeys: [String], stackColors: [String: Color]) -> some View {
+    private func babyVolumeBarColumn(_ p: TimeSeriesPeriod, i: Int, maxML: Int, colW: CGFloat, chartH: CGFloat, stackKeys: [String], stackColors: [String: Color], selectedBar: Binding<Int?>, showXLabel: Bool, labelAlign: Alignment = .top) -> some View {
         let totalML = p.totalML ?? 0
         let valText = volumeBarLabel(p, stackKeys: stackKeys)
         VStack(spacing: 2) {
@@ -299,22 +360,34 @@ struct StatsView: View {
                 }
             }
             .frame(width: colW, height: chartH)
-            .overlay(alignment: .top) {
-                if !valText.isEmpty {
+            .overlay(alignment: labelAlign) {
+                if selectedBar.wrappedValue == i, !valText.isEmpty {
                     Text(valText)
                         .font(.system(size: 7, weight: .bold))
                         .foregroundColor(.white)
+                        .shadow(color: Color(hexUnsafe: "374151"), radius: 0, x: 0.75, y: 0.75)
                         .fixedSize(horizontal: true, vertical: false)
                         .offset(y: -14)
                         .allowsHitTesting(false)
                 }
             }
+            .onTapGesture {
+                if selectedBar.wrappedValue == i {
+                    selectedBar.wrappedValue = nil
+                } else {
+                    selectedBar.wrappedValue = i
+                }
+            }
 
-            Text(formatBabyXLabel(p, period: babyPeriod))
-                .font(.system(size: 7))
-                .foregroundColor(DesignColors.textSecondary)
-                .lineLimit(1)
-                .frame(width: colW)
+            if showXLabel {
+                Text(formatBabyXLabel(p, period: babyPeriod))
+                    .font(.system(size: 7))
+                    .foregroundColor(Color(hexUnsafe: "9ca3af"))
+                    .lineLimit(1)
+                    .frame(width: colW)
+            } else {
+                Color.clear.frame(width: colW, height: 14)
+            }
         }
         .frame(width: colW)
     }
@@ -394,14 +467,14 @@ struct StatsView: View {
                 }
                 Spacer()
             }
-            .padding(.leading, 28)
+            .padding(.leading, 38)
         }
     }
 
     // MARK: - Baby Indicator Chart
 
     @ViewBuilder
-    private func babyIndicatorChart(_ periods: [TimeSeriesPeriod]) -> some View {
+    private func babyIndicatorChart(_ periods: [TimeSeriesPeriod], selectedBar: Binding<Int?>) -> some View {
         let indicatorColors: [String: Color] = [
             "💩 poo": Color(hexUnsafe: "8B4513"),
             "💛 pee": Color(hexUnsafe: "FACC15"),
@@ -415,37 +488,76 @@ struct StatsView: View {
         let count = periods.count
         let spacing: CGFloat = 4
         let chartH: CGFloat = 80
-        let leftMargin: CGFloat = 28
-        let rightMargin: CGFloat = 8
+        let leftMargin: CGFloat = 38
+        let rightMargin: CGFloat = 6
+
+        let ticks = computeTicks(max: maxCount)
 
         GeometryReader { geo in
             let availableWidth = geo.size.width - leftMargin - rightMargin
             let totalSpacing = spacing * CGFloat(max(count - 1, 0))
             let colW = count > 0 ? max(8, (availableWidth - totalSpacing) / CGFloat(count)) : 18
+            let xAxisH: CGFloat = 14
 
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .bottom, spacing: 0) {
-                    Text("cnt")
-                        .font(.system(size: 8))
-                        .foregroundColor(DesignColors.textSecondary)
-                        .frame(width: leftMargin, height: chartH + 14, alignment: .bottom)
-                        .padding(.bottom, 2)
+                    ZStack(alignment: .topLeading) {
+                        ForEach(ticks, id: \.self) { t in
+                            let y = chartH - CGFloat(t) / CGFloat(maxCount) * chartH
+                            Text("\(t)")
+                                .font(.system(size: 9))
+                                .foregroundColor(Color(hexUnsafe: "9ca3af"))
+                                .frame(width: leftMargin - 4, alignment: .trailing)
+                                .position(x: (leftMargin - 4) / 2, y: y + 4)
+                        }
+                        Text("cnt")
+                            .font(.system(size: 9))
+                            .foregroundColor(Color(hexUnsafe: "9ca3af"))
+                            .rotationEffect(.degrees(-90))
+                            .fixedSize()
+                            .position(x: 8, y: chartH / 2)
+                    }
+                    .frame(width: leftMargin, height: chartH + xAxisH)
 
-                    HStack(alignment: .bottom, spacing: spacing) {
-                        ForEach(Array(periods.enumerated()), id: \.offset) { i, p in
-                            babyIndicatorBarColumn(p, i: i, maxCount: maxCount, colW: colW, chartH: chartH, indicatorKeys: indicatorKeys, indicatorColors: indicatorColors)
+                    ZStack(alignment: .bottomLeading) {
+                        ForEach(ticks, id: \.self) { t in
+                            let y = xAxisH + CGFloat(t) / CGFloat(maxCount) * chartH
+                            Rectangle()
+                                .fill(Color(hexUnsafe: "e5e7eb"))
+                                .frame(width: availableWidth, height: 0.5)
+                                .offset(y: -y)
+                        }
+                        Rectangle()
+                            .fill(Color(hexUnsafe: "d1d5db"))
+                            .frame(width: availableWidth, height: 1)
+                            .offset(y: -xAxisH)
+
+                        HStack(alignment: .bottom, spacing: spacing) {
+                            ForEach(Array(periods.enumerated()), id: \.offset) { i, p in
+                                let showXLabel = babyPeriod != "daily" || i % 2 == 0
+                                let rawLabel = indicatorBarLabel(p, indicatorKeys: indicatorKeys)
+                                let estW = CGFloat(rawLabel.count) * 7
+                                let colCenter = CGFloat(i) * colW + colW / 2
+                                let labelAlign: Alignment = colCenter + estW / 2 > availableWidth ? .topTrailing
+                                    : colCenter - estW / 2 < 0 ? .topLeading
+                                    : .top
+                                babyIndicatorBarColumn(p, i: i, maxCount: maxCount, colW: colW, chartH: chartH, indicatorKeys: indicatorKeys, indicatorColors: indicatorColors, selectedBar: selectedBar, showXLabel: showXLabel, labelAlign: labelAlign)
+                            }
                         }
                     }
+                    .frame(width: availableWidth, height: chartH + xAxisH)
                 }
 
                 babyIndicatorLegend(periods, indicatorKeys: indicatorKeys, indicatorColors: indicatorColors)
+                    .padding(.leading, leftMargin)
+                    .padding(.top, 4)
             }
         }
         .frame(height: chartH + 60)
     }
 
     @ViewBuilder
-    private func babyIndicatorBarColumn(_ p: TimeSeriesPeriod, i: Int, maxCount: Int, colW: CGFloat, chartH: CGFloat, indicatorKeys: [String], indicatorColors: [String: Color]) -> some View {
+    private func babyIndicatorBarColumn(_ p: TimeSeriesPeriod, i: Int, maxCount: Int, colW: CGFloat, chartH: CGFloat, indicatorKeys: [String], indicatorColors: [String: Color], selectedBar: Binding<Int?>, showXLabel: Bool, labelAlign: Alignment = .top) -> some View {
         let periodTotal = indicatorKeys.reduce(0) { $0 + (p.indicators?[$1] ?? 0) }
         let valText = indicatorBarLabel(p, indicatorKeys: indicatorKeys)
 
@@ -460,22 +572,34 @@ struct StatsView: View {
                 }
             }
             .frame(width: colW, height: chartH)
-            .overlay(alignment: .top) {
-                if !valText.isEmpty {
+            .overlay(alignment: labelAlign) {
+                if selectedBar.wrappedValue == i, !valText.isEmpty {
                     Text(valText)
                         .font(.system(size: 7, weight: .bold))
                         .foregroundColor(.white)
+                        .shadow(color: Color(hexUnsafe: "374151"), radius: 0, x: 0.75, y: 0.75)
                         .fixedSize(horizontal: true, vertical: false)
                         .offset(y: -14)
                         .allowsHitTesting(false)
                 }
             }
+            .onTapGesture {
+                if selectedBar.wrappedValue == i {
+                    selectedBar.wrappedValue = nil
+                } else {
+                    selectedBar.wrappedValue = i
+                }
+            }
 
-            Text(formatBabyXLabel(p, period: babyPeriod))
-                .font(.system(size: 7))
-                .foregroundColor(DesignColors.textSecondary)
-                .lineLimit(1)
-                .frame(width: colW)
+            if showXLabel {
+                Text(formatBabyXLabel(p, period: babyPeriod))
+                    .font(.system(size: 7))
+                    .foregroundColor(Color(hexUnsafe: "9ca3af"))
+                    .lineLimit(1)
+                    .frame(width: colW)
+            } else {
+                Color.clear.frame(width: colW, height: 14)
+            }
         }
         .frame(width: colW)
     }
@@ -527,7 +651,7 @@ struct StatsView: View {
                 }
                 Spacer()
             }
-            .padding(.leading, 28)
+            .padding(.leading, 38)
         }
     }
 
@@ -1178,6 +1302,8 @@ struct StatsView: View {
     private func setBabyPeriod(_ period: String) async {
         guard period != babyPeriod else { return }
         babyPeriod = period
+        selectedFeedBar = nil
+        selectedChangeBar = nil
         await loadBabyTimeSeries()
     }
 
