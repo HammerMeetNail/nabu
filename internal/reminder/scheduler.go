@@ -153,9 +153,7 @@ func (s *Scheduler) tick(ctx context.Context) error {
 		}
 	}
 
-	if activeToday > 0 || sent > 0 {
-		log.Printf("reminder: tick done active=%d sent=%d", activeToday, sent)
-	}
+	log.Printf("reminder: tick done active=%d sent=%d (total schedules=%d)", activeToday, sent, len(schedules))
 
 	return nil
 }
