@@ -501,49 +501,56 @@ function renderSettingsView() {
   `;
 
   const notifTypes = state.availableNotificationTypes || [];
-  const enabledTypes = state.notificationPrefs?.enabledPushTypes || [];
   const notifPrefsLoaded = !!state.notificationPrefs;
 
   let notifPrefsCard = "";
   if (notifPrefsLoaded && notifTypes.length > 0) {
-    const pushEnabled = state.notificationPrefs?.pushEnabled !== false;
+    const prefs = state.notificationPrefs;
+    const pushEnabled = prefs?.pushEnabled !== false;
     const checked = pushEnabled ? " checked" : "";
-
-    const rows = notifTypes.map(t => {
-      const enabledTypes = state.notificationPrefs?.enabledPushTypes || [];
-      const allEnabled = enabledTypes.length === 0 && pushEnabled;
-      const isEnabled = allEnabled || enabledTypes.includes(t.type);
-      const typeChecked = isEnabled ? " checked" : "";
-      return `<div class="notif-pref-row${pushEnabled ? '' : ' notif-pref-row--disabled'}">
-        <label class="notif-pref-label">
-          <span class="notif-pref-title">${escapeHTML(t.label)}</span>
-          <span class="notif-pref-desc">${escapeHTML(t.description)}</span>
-        </label>
-        <label class="notif-pref-toggle">
-          <input type="checkbox" data-action="toggle-notif-pref" data-notif-type="${escapeHTML(t.type)}"${typeChecked}>
-          <span class="toggle-slider"></span>
-        </label>
-      </div>`;
-    }).join("");
 
     const permBtn = typeof Notification !== 'undefined' && Notification.permission === 'default'
       ? `<p class="mt-2"><button type="button" class="btn btn-sm btn-primary" data-action="enable-notifications">Enable Notifications</button></p>`
       : '';
 
-    const scheduleReminderEnabled = enabledTypes.includes("schedule_reminder") || (enabledTypes.length === 0 && pushEnabled);
-    const defaultLead = state.notificationPrefs?.defaultReminderLeadMinutes ?? 10;
+    const defaultLead = prefs?.defaultReminderLeadMinutes ?? 10;
     const leadTimes = [5, 10, 15, 30, 60];
-    const leadSelect = scheduleReminderEnabled ? `
-      <div class="notif-pref-row">
-        <label class="notif-pref-label">
-          <span class="notif-pref-title">Reminder lead time</span>
-          <span class="notif-pref-desc">Minutes before a scheduled chore's time</span>
-        </label>
-        <select data-action="change-default-reminder-lead" class="lead-time-select">
-          ${leadTimes.map(m => `<option value="${m}"${m === defaultLead ? ' selected' : ''}>${m} min</option>`).join("")}
-        </select>
-      </div>
-    ` : '';
+
+    // Per-type push toggles — only visible when push is enabled.
+    // Schedule Reminder has a nested lead time selector.
+    let pushTypeRows = "";
+    if (pushEnabled) {
+      const rows = notifTypes.map(t => {
+        const allEnabled = (prefs?.enabledPushTypes || []).length === 0;
+        const isEnabled = allEnabled || (prefs?.enabledPushTypes || []).includes(t.type);
+        const typeChecked = isEnabled ? " checked" : "";
+
+        let nested = "";
+        if (t.type === "schedule_reminder" && isEnabled) {
+          nested = `<div class="notif-pref-row notif-pref-row--nested">
+            <label class="notif-pref-label">
+              <span class="notif-pref-title">Reminder lead time</span>
+              <span class="notif-pref-desc">Minutes before a scheduled chore's time</span>
+            </label>
+            <select data-action="change-default-reminder-lead" class="notif-pref-select">
+              ${leadTimes.map(m => `<option value="${m}"${m === defaultLead ? ' selected' : ''}>${m} min</option>`).join("")}
+            </select>
+          </div>`;
+        }
+
+        return `<div class="notif-pref-row">
+          <label class="notif-pref-label">
+            <span class="notif-pref-title">${escapeHTML(t.label)}</span>
+            <span class="notif-pref-desc">${escapeHTML(t.description)}</span>
+          </label>
+          <label class="notif-pref-toggle">
+            <input type="checkbox" data-action="toggle-notif-pref" data-notif-type="${escapeHTML(t.type)}"${typeChecked}>
+            <span class="toggle-slider"></span>
+          </label>
+        </div>${nested}`;
+      }).join("");
+      pushTypeRows = `<div class="notif-pref-list">${rows}</div>`;
+    }
 
     notifPrefsCard = `<div class="card mt-3">
       <h3>Notifications</h3>
@@ -558,8 +565,7 @@ function renderSettingsView() {
         </label>
       </div>
       ${permBtn}
-      <div class="notif-pref-list">${rows}</div>
-      ${leadSelect}
+      ${pushTypeRows}
     </div>`;
   }
 
@@ -2160,18 +2166,6 @@ export async function init() {
           break;
       }
 
-      case "change-default-reminder-lead": {
-        const leadMinutes = parseInt(actionEl.value, 10);
-        if (isNaN(leadMinutes)) break;
-        saveNotificationPreferences({ defaultReminderLeadMinutes: leadMinutes })
-          .then(data => {
-            state.notificationPrefs = data.preferences;
-            render(app);
-          })
-          .catch(() => {});
-        break;
-      }
-
       case "stats-baby-period": {
         e.preventDefault();
         const period = actionEl.dataset.period;
@@ -2320,6 +2314,16 @@ export async function init() {
           } else {
             state.choreReminderPrefs = [...(state.choreReminderPrefs || []), updated];
           }
+          render(app);
+        })
+        .catch(() => {});
+    }
+    if (actionEl?.dataset?.action === "change-default-reminder-lead") {
+      const leadMinutes = parseInt(actionEl.value, 10);
+      if (isNaN(leadMinutes)) return;
+      saveNotificationPreferences({ defaultReminderLeadMinutes: leadMinutes })
+        .then(data => {
+          state.notificationPrefs = data.preferences;
           render(app);
         })
         .catch(() => {});

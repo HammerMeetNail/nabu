@@ -170,6 +170,7 @@ struct PatchNotificationPrefsRequest: Codable {
     let pushEnabled: Bool?
     let emailEnabled: Bool?
     let enabledPushTypes: [String]?
+    let defaultReminderLeadMinutes: Int?
 }
 
 struct PatchUserPreferencesRequest: Codable {

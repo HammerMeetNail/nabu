@@ -264,6 +264,7 @@ struct ReminderPreference: Codable, Equatable {
     let quietHoursEnd: String
     let timezone: String
     let enabledPushTypes: [String]
+    let defaultReminderLeadMinutes: Int
 }
 
 struct UserPreferences: Codable, Equatable {

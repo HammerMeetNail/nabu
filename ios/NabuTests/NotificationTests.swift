@@ -53,7 +53,7 @@ final class NotificationTests: XCTestCase {
         let prefs = ReminderPreference(
             userId: 1, pushEnabled: true, emailEnabled: false,
             quietHoursStart: "", quietHoursEnd: "", timezone: "UTC",
-            enabledPushTypes: []
+            enabledPushTypes: [], defaultReminderLeadMinutes: 10
         )
         XCTAssertTrue(prefs.pushEnabled)
         XCTAssertFalse(prefs.emailEnabled)
@@ -64,7 +64,7 @@ final class NotificationTests: XCTestCase {
         let prefs = ReminderPreference(
             userId: 1, pushEnabled: false, emailEnabled: false,
             quietHoursStart: "", quietHoursEnd: "", timezone: "UTC",
-            enabledPushTypes: []
+            enabledPushTypes: [], defaultReminderLeadMinutes: 10
         )
         XCTAssertFalse(prefs.pushEnabled)
         XCTAssertTrue(prefs.enabledPushTypes.isEmpty)
@@ -74,7 +74,7 @@ final class NotificationTests: XCTestCase {
         let prefs = ReminderPreference(
             userId: 1, pushEnabled: true, emailEnabled: false,
             quietHoursStart: "", quietHoursEnd: "", timezone: "UTC",
-            enabledPushTypes: ["chore_logged"]
+            enabledPushTypes: ["chore_logged"], defaultReminderLeadMinutes: 10
         )
         XCTAssertTrue(prefs.pushEnabled)
         XCTAssertEqual(prefs.enabledPushTypes, ["chore_logged"])
@@ -120,7 +120,8 @@ final class NotificationTests: XCTestCase {
             "quietHoursStart": "",
             "quietHoursEnd": "",
             "timezone": "UTC",
-            "enabledPushTypes": ["chore_logged", "household_joined"]
+            "enabledPushTypes": ["chore_logged", "household_joined"],
+            "defaultReminderLeadMinutes": 10
           },
           "availableTypes": [
             {"type": "chore_logged", "label": "Chore Logged", "description": "When someone else in your household logs a chore."},
@@ -147,7 +148,8 @@ final class NotificationTests: XCTestCase {
             "quietHoursStart": "",
             "quietHoursEnd": "",
             "timezone": "UTC",
-            "enabledPushTypes": []
+            "enabledPushTypes": [],
+            "defaultReminderLeadMinutes": 10
           },
           "availableTypes": [
             {"type": "chore_logged", "label": "Chore Logged", "description": "When someone else in your household logs a chore."},
@@ -175,7 +177,7 @@ final class NotificationTests: XCTestCase {
         state.notificationPrefs = ReminderPreference(
             userId: 1, pushEnabled: true, emailEnabled: false,
             quietHoursStart: "", quietHoursEnd: "", timezone: "UTC",
-            enabledPushTypes: ["chore_logged"]
+            enabledPushTypes: ["chore_logged"], defaultReminderLeadMinutes: 10
         )
         state.availableNotificationTypes = [
             NotificationTypeInfo(type: "chore_logged", label: "Chore Logged", description: "desc")

@@ -6,7 +6,8 @@
     "quietHoursStart": "22:00",
     "quietHoursEnd": "07:00",
     "timezone": "America/New_York",
-    "enabledPushTypes": ["chore_logged", "household_joined"]
+    "enabledPushTypes": ["chore_logged", "household_joined"],
+    "defaultReminderLeadMinutes": 10
   },
   "availableTypes": [
     {"type": "chore_logged", "label": "Chore Logged", "description": "When someone else in your household logs a chore."},

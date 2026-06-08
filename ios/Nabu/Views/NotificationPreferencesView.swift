@@ -9,6 +9,8 @@ struct NotificationPreferencesView: View {
     @State private var saving = false
     @State private var lastKnownEnabledTypes: [String] = []
 
+    private let leadTimes = [5, 10, 15, 30, 60]
+
     var body: some View {
         Group {
             if loading {
@@ -37,7 +39,7 @@ struct NotificationPreferencesView: View {
                         }
                     }
 
-                    if !types.isEmpty {
+                    if prefs.pushEnabled && !types.isEmpty {
                         Section {
                             ForEach(types) { type in
                                 let isEnabled = typeEnabled(type.type)
@@ -57,9 +59,37 @@ struct NotificationPreferencesView: View {
                                         }
                                     ))
                                     .labelsHidden()
-                                    .disabled(!prefs.pushEnabled || saving)
+                                    .disabled(saving)
                                 }
-                                .opacity(prefs.pushEnabled ? 1 : 0.4)
+
+                                if type.type == "schedule_reminder" && isEnabled {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Reminder lead time")
+                                                .font(.subheadline)
+                                            Text("Minutes before a scheduled chore's time")
+                                                .font(.caption)
+                                                .foregroundColor(.secondary)
+                                        }
+                                        Spacer()
+                                        Picker("Lead time", selection: Binding(
+                                            get: { prefs.defaultReminderLeadMinutes },
+                                            set: { newValue in
+                                                Task { await savePrefs(PatchNotificationPrefsRequest(
+                                                    pushEnabled: nil, emailEnabled: nil,
+                                                    enabledPushTypes: nil,
+                                                    defaultReminderLeadMinutes: newValue
+                                                )) }
+                                            }
+                                        )) {
+                                            ForEach(leadTimes, id: \.self) { m in
+                                                Text("\(m) min").tag(m)
+                                            }
+                                        }
+                                        .pickerStyle(.menu)
+                                    }
+                                    .padding(.leading, 16)
+                                }
                             }
                         }
                     }
@@ -100,7 +130,7 @@ struct NotificationPreferencesView: View {
             prefs = ReminderPreference(
                 userId: 0, pushEnabled: true, emailEnabled: false,
                 quietHoursStart: "", quietHoursEnd: "", timezone: "UTC",
-                enabledPushTypes: []
+                enabledPushTypes: [], defaultReminderLeadMinutes: 10
             )
             types = []
         }
@@ -130,7 +160,7 @@ struct NotificationPreferencesView: View {
             types = []
         }
         await savePrefs(PatchNotificationPrefsRequest(
-            pushEnabled: enabled, emailEnabled: nil, enabledPushTypes: types))
+            pushEnabled: enabled, emailEnabled: nil, enabledPushTypes: types, defaultReminderLeadMinutes: nil))
     }
 
     private func toggleType(_ type: String, enabled: Bool) async {
@@ -148,6 +178,6 @@ struct NotificationPreferencesView: View {
 
         let pushEnabled = !newTypes.isEmpty
         await savePrefs(PatchNotificationPrefsRequest(
-            pushEnabled: pushEnabled, emailEnabled: nil, enabledPushTypes: newTypes))
+            pushEnabled: pushEnabled, emailEnabled: nil, enabledPushTypes: newTypes, defaultReminderLeadMinutes: nil))
     }
 }

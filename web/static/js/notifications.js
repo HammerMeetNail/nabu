@@ -99,7 +99,7 @@ export async function loadNotificationPreferences() {
 
 /**
  * Save notification preferences.
- * @param {{ pushEnabled?: boolean, enabledPushTypes?: string[] }} prefs
+ * @param {{ pushEnabled?: boolean, emailEnabled?: boolean, enabledPushTypes?: string[], defaultReminderLeadMinutes?: number }} prefs
  * @returns {Promise<object>} The updated preferences
  */
 export async function saveNotificationPreferences(prefs) {
