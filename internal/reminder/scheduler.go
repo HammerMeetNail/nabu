@@ -12,18 +12,20 @@ import (
 	"github.com/HammerMeetNail/nabu/internal/household"
 	"github.com/HammerMeetNail/nabu/internal/notification"
 	"github.com/HammerMeetNail/nabu/internal/schedule"
+	"github.com/HammerMeetNail/nabu/internal/userprefs"
 )
 
 const tickInterval = 30 * time.Second
 
 type Scheduler struct {
-	store      Store
-	schedStore schedule.Store
-	schedSvc   *schedule.Service
-	notifStore notification.Store
-	choreStore chore.Store
-	hhStore    household.Store
-	pushSender notification.PushSender
+	store        Store
+	schedStore   schedule.Store
+	schedSvc     *schedule.Service
+	notifStore   notification.Store
+	choreStore   chore.Store
+	hhStore      household.Store
+	userPrefs    userprefs.Store
+	pushSender   notification.PushSender
 }
 
 func NewScheduler(
@@ -33,6 +35,7 @@ func NewScheduler(
 	notifStore notification.Store,
 	choreStore chore.Store,
 	hhStore household.Store,
+	userPrefs userprefs.Store,
 	pushSender notification.PushSender,
 ) *Scheduler {
 	return &Scheduler{
@@ -42,6 +45,7 @@ func NewScheduler(
 		notifStore: notifStore,
 		choreStore: choreStore,
 		hhStore:    hhStore,
+		userPrefs:  userPrefs,
 		pushSender: pushSender,
 	}
 }
@@ -221,14 +225,22 @@ func (s *Scheduler) userHasScheduleReminderEnabled(ctx context.Context, userID i
 
 func (s *Scheduler) userLocation(ctx context.Context, userID int64) *time.Location {
 	prefs, err := s.notifStore.GetReminderPreferences(ctx, userID)
-	if err != nil || prefs.Timezone == "" {
-		return time.UTC
+	if err == nil && prefs.Timezone != "" && prefs.Timezone != "UTC" {
+		loc, err := time.LoadLocation(prefs.Timezone)
+		if err == nil {
+			return loc
+		}
 	}
-	loc, err := time.LoadLocation(prefs.Timezone)
-	if err != nil {
-		return time.UTC
+
+	up, err := s.userPrefs.Get(ctx, userID)
+	if err == nil && up.Timezone != "" {
+		loc, err := time.LoadLocation(up.Timezone)
+		if err == nil {
+			return loc
+		}
 	}
-	return loc
+
+	return time.UTC
 }
 
 func (s *Scheduler) getLeadMinutes(ctx context.Context, userID, choreID int64) int {
