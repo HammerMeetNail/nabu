@@ -113,9 +113,15 @@ func (s *Scheduler) tick(ctx context.Context) error {
 			remindAt := computeRemindTime(now, sch.SpecificTime, leadMin)
 
 			if now.Before(remindAt) {
-				log.Printf("reminder: skip schedule=%d chore=%d user=%d now=%s remindAt=%s (not yet)",
+				continue
+			}
+
+			schedTime := computeScheduleTime(now, sch.SpecificTime)
+			maxLate := schedTime.Add(time.Duration(leadMin+5) * time.Minute)
+			if now.After(maxLate) {
+				log.Printf("reminder: skip schedule=%d chore=%d user=%d now=%s sched=%s (too late)",
 					sch.ID, sch.ChoreID, userID,
-					now.Format("15:04"), remindAt.Format("15:04"))
+					now.Format("15:04"), schedTime.Format("15:04"))
 				continue
 			}
 
@@ -283,6 +289,14 @@ func computeRemindTime(now time.Time, specificTime string, leadMinutes int) time
 
 	remind := time.Date(now.Year(), now.Month(), now.Day(), sh, sm, 0, 0, time.UTC)
 	return remind.Add(-time.Duration(leadMinutes) * time.Minute)
+}
+
+func computeScheduleTime(now time.Time, specificTime string) time.Time {
+	sh, sm, err := parseHM(specificTime)
+	if err != nil {
+		return now
+	}
+	return time.Date(now.Year(), now.Month(), now.Day(), sh, sm, 0, 0, time.UTC)
 }
 
 func formatTime(specificTime string) string {
