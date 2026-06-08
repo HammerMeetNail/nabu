@@ -94,14 +94,13 @@ func (s *Scheduler) tick(ctx context.Context) error {
 
 		activeToday++
 
-		if sch.SpecificTime == "" {
-			continue
-		}
-
 		users := s.eligibleUsers(ctx, sch)
 		if len(users) == 0 {
 			continue
 		}
+
+		log.Printf("reminder: checking schedule=%d chore=%d time=%q users=%v",
+			sch.ID, sch.ChoreID, sch.SpecificTime, users)
 
 		ch, err := s.choreStore.GetChore(ctx, sch.ChoreID)
 		if err != nil {
@@ -114,6 +113,9 @@ func (s *Scheduler) tick(ctx context.Context) error {
 			remindAt := computeRemindTime(now, sch.SpecificTime, leadMin)
 
 			if now.Before(remindAt) {
+				log.Printf("reminder: skip schedule=%d chore=%d user=%d now=%s remindAt=%s (not yet)",
+					sch.ID, sch.ChoreID, userID,
+					now.Format("15:04"), remindAt.Format("15:04"))
 				continue
 			}
 
