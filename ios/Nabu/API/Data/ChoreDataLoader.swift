@@ -13,9 +13,10 @@ final class ChoreDataLoader {
     func loadChoreData() async {
         do {
             let data: ChoresResponse = try await api.get("/api/chores")
+            NSLog("[Nabu] ChoreDataLoader OK: \(data.chores.count) chores")
             state.chores = data.chores
         } catch {
-            // Silent failure
+            NSLog("[Nabu] ChoreDataLoader ERROR: \(error.localizedDescription)")
         }
     }
 }

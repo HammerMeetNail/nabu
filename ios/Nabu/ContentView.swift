@@ -57,6 +57,7 @@ struct ContentView: View {
                 } else {
                     state.user = await auth.loadSession()
                     hasCheckedSession = true
+                    NSLog("[Nabu] ContentView: user=\(state.user?.email ?? "nil") householdId=\(state.user?.householdId ?? -1)")
                     if state.user?.householdId != nil {
                         await loadAppData()
                     }
@@ -79,8 +80,10 @@ struct ContentView: View {
 
     func loadAppData() async {
         guard state.user != nil else { return }
+        NSLog("[Nabu] ContentView.loadAppData calling reloadAfterAuth")
         await dataLoader.reloadAfterAuth()
         hasLoadedData = state.household != nil
+        NSLog("[Nabu] ContentView.loadAppData done. hasLoadedData=\(hasLoadedData)")
     }
 
     private func parseTestCreds(_ args: [String]) -> (String, String)? {

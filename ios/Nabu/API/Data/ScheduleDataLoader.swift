@@ -13,10 +13,10 @@ final class ScheduleDataLoader {
     func loadSchedules() async {
         do {
             let data: SchedulesResponse = try await api.get("/api/schedules")
-            print("[ScheduleDataLoader] loadSchedules success: count=\(data.schedules.count)")
+            NSLog("[Nabu] ScheduleDataLoader.loadSchedules OK: \(data.schedules.count) schedules")
             state.schedules = data.schedules
         } catch {
-            print("[ScheduleDataLoader] loadSchedules ERROR: \(error)")
+            NSLog("[Nabu] ScheduleDataLoader.loadSchedules ERROR: \(error.localizedDescription)")
         }
     }
 }

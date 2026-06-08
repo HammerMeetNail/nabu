@@ -30,6 +30,7 @@ final class DataLoader: ObservableObject {
 
     // Called after initial auth (login/register/onboarding)
     func reloadAfterAuth() async {
+        NSLog("[Nabu] DataLoader.reloadAfterAuth starting")
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.household.loadHouseholdData() }
             group.addTask { await self.preferences.loadPreferences() }
@@ -37,8 +38,12 @@ final class DataLoader: ObservableObject {
         }
         await preferences.syncTimezone()
 
-        guard state.household != nil else { return }
+        guard state.household != nil else {
+            NSLog("[Nabu] DataLoader: no household, aborting second task group")
+            return
+        }
 
+        NSLog("[Nabu] DataLoader: loading chores/logs/schedules/notifs")
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.chores.loadChoreData() }
             group.addTask { await self.logs.loadTodayData() }
@@ -46,6 +51,7 @@ final class DataLoader: ObservableObject {
             group.addTask { await self.schedules.loadSchedules() }
             group.addTask { await self.notifs.loadNotifData() }
         }
+        NSLog("[Nabu] DataLoader.reloadAfterAuth complete. schedules=\(state.schedules.count) chores=\(state.chores.count)")
     }
 
     // Called on foreground / visibility change

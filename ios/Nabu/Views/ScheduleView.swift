@@ -55,7 +55,7 @@ struct ScheduleView: View {
             }
         }
         .task {
-            print("[ScheduleView] task fired, loading schedules...")
+            NSLog("[Nabu] ScheduleView.task fired, loading schedules...")
             await loadSchedules()
         }
     }
@@ -69,13 +69,13 @@ struct ScheduleView: View {
 
     private var upcomingRows: [UpcomingItem] {
         let today = todayISO()
-        print("[ScheduleView] upcomingRows: schedules=\(schedules.count), chores=\(state.chores.count), todayLogs=\(state.todayLogs.count)")
+        NSLog("[Nabu] upcomingRows: schedules=\(schedules.count) chores=\(state.chores.count) todayLogs=\(state.todayLogs.count)")
         var items: [UpcomingItem] = []
         for dayOffset in 0..<14 {
             let date = shiftISO(today, by: dayOffset)
             for sch in schedules where isActiveForDay(sch, date) {
                 guard let chore = state.chores.first(where: { $0.id == sch.choreId }) else {
-                    print("[ScheduleView] no chore found for schedule choreId=\(sch.choreId)")
+                    NSLog("[Nabu] no chore for schedule choreId=\(sch.choreId)")
                     continue
                 }
                 let f = DateFormatter()
@@ -86,7 +86,7 @@ struct ScheduleView: View {
                 items.append(UpcomingItem(schedule: sch, chore: chore, date: date, isDone: isDone))
             }
         }
-        print("[ScheduleView] upcomingRows count=\(items.count)")
+        NSLog("[Nabu] upcomingRows result: \(items.count) items")
         return items
     }
 
@@ -200,10 +200,10 @@ struct ScheduleView: View {
     private func loadSchedules() async {
         do {
             let loaded = try await scheduleStore.loadSchedules()
-            print("[ScheduleView] loadSchedules success: count=\(loaded.count)")
+            NSLog("[Nabu] ScheduleView.loadSchedules OK: \(loaded.count) schedules")
             state.schedules = loaded
         } catch {
-            print("[ScheduleView] loadSchedules ERROR: \(error)")
+            NSLog("[Nabu] ScheduleView.loadSchedules ERROR: \(error.localizedDescription)")
         }
     }
 }
