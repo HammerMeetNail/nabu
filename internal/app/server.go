@@ -120,7 +120,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 
 	reminderSched := reminder.NewScheduler(
 		reminderStore, scheduleStore, scheduleService,
-		notifStore, choreStore, householdStore, pushService,
+		notifStore, choreStore, householdStore, userPrefsStore, pushService,
 	)
 	go reminderSched.Start(context.Background())
 

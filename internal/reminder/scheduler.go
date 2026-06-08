@@ -12,18 +12,20 @@ import (
 	"github.com/HammerMeetNail/nabu/internal/household"
 	"github.com/HammerMeetNail/nabu/internal/notification"
 	"github.com/HammerMeetNail/nabu/internal/schedule"
+	"github.com/HammerMeetNail/nabu/internal/userprefs"
 )
 
 const tickInterval = 30 * time.Second
 
 type Scheduler struct {
-	store      Store
-	schedStore schedule.Store
-	schedSvc   *schedule.Service
-	notifStore notification.Store
-	choreStore chore.Store
-	hhStore    household.Store
-	pushSender notification.PushSender
+	store        Store
+	schedStore   schedule.Store
+	schedSvc     *schedule.Service
+	notifStore   notification.Store
+	choreStore   chore.Store
+	hhStore      household.Store
+	userPrefs    userprefs.Store
+	pushSender   notification.PushSender
 }
 
 func NewScheduler(
@@ -33,6 +35,7 @@ func NewScheduler(
 	notifStore notification.Store,
 	choreStore chore.Store,
 	hhStore household.Store,
+	userPrefs userprefs.Store,
 	pushSender notification.PushSender,
 ) *Scheduler {
 	return &Scheduler{
@@ -42,6 +45,7 @@ func NewScheduler(
 		notifStore: notifStore,
 		choreStore: choreStore,
 		hhStore:    hhStore,
+		userPrefs:  userPrefs,
 		pushSender: pushSender,
 	}
 }
@@ -77,7 +81,6 @@ func (s *Scheduler) Start(ctx context.Context) {
 
 func (s *Scheduler) tick(ctx context.Context) error {
 	now := time.Now().UTC()
-	today := now.Format("2006-01-02")
 
 	schedules, err := s.schedStore.ListActiveWithTime(ctx)
 	if err != nil {
@@ -110,26 +113,33 @@ func (s *Scheduler) tick(ctx context.Context) error {
 
 		for _, userID := range users {
 			leadMin := s.getLeadMinutes(ctx, userID, sch.ChoreID)
-			remindAt := computeRemindTime(now, sch.SpecificTime, leadMin)
+			loc := s.userLocation(ctx, userID)
+			userNow := now.In(loc)
+			userToday := userNow.Format("2006-01-02")
 
-			if now.Before(remindAt) {
+			remindAt := computeRemindTime(userNow, sch.SpecificTime, leadMin)
+
+			if userNow.Before(remindAt) {
+				log.Printf("reminder: skip schedule=%d chore=%d user=%d now=%s remindAt=%s tz=%s (not yet)",
+					sch.ID, sch.ChoreID, userID,
+					userNow.Format("15:04"), remindAt.Format("15:04"), loc.String())
 				continue
 			}
 
-			schedTime := computeScheduleTime(now, sch.SpecificTime)
+			schedTime := computeScheduleTime(userNow, sch.SpecificTime)
 			maxLate := schedTime.Add(time.Duration(leadMin+5) * time.Minute)
-			if now.After(maxLate) {
+			if userNow.After(maxLate) {
 				log.Printf("reminder: skip schedule=%d chore=%d user=%d now=%s sched=%s (too late)",
 					sch.ID, sch.ChoreID, userID,
-					now.Format("15:04"), schedTime.Format("15:04"))
+					userNow.Format("15:04"), schedTime.Format("15:04"))
 				continue
 			}
 
-			if inQuiet, _ := s.isInQuietHours(ctx, userID, now); inQuiet {
+			if inQuiet, _ := s.isInQuietHours(ctx, userID, userNow); inQuiet {
 				continue
 			}
 
-			alreadySent, err := s.store.HasReminder(ctx, sch.ID, userID, today)
+			alreadySent, err := s.store.HasReminder(ctx, sch.ID, userID, userToday)
 			if err != nil {
 				log.Printf("reminder: check dedup: %v", err)
 				continue
@@ -153,7 +163,7 @@ func (s *Scheduler) tick(ctx context.Context) error {
 
 			log.Printf("reminder: sent to user %d title=%q", userID, title)
 
-			if err := s.store.RecordReminder(ctx, sch.ID, userID, today); err != nil {
+			if err := s.store.RecordReminder(ctx, sch.ID, userID, userToday); err != nil {
 				log.Printf("reminder: record: %v", err)
 			}
 		}
@@ -211,6 +221,26 @@ func (s *Scheduler) userHasScheduleReminderEnabled(ctx context.Context, userID i
 		}
 	}
 	return false
+}
+
+func (s *Scheduler) userLocation(ctx context.Context, userID int64) *time.Location {
+	prefs, err := s.notifStore.GetReminderPreferences(ctx, userID)
+	if err == nil && prefs.Timezone != "" && prefs.Timezone != "UTC" {
+		loc, err := time.LoadLocation(prefs.Timezone)
+		if err == nil {
+			return loc
+		}
+	}
+
+	up, err := s.userPrefs.Get(ctx, userID)
+	if err == nil && up.Timezone != "" {
+		loc, err := time.LoadLocation(up.Timezone)
+		if err == nil {
+			return loc
+		}
+	}
+
+	return time.UTC
 }
 
 func (s *Scheduler) getLeadMinutes(ctx context.Context, userID, choreID int64) int {
@@ -287,7 +317,7 @@ func computeRemindTime(now time.Time, specificTime string, leadMinutes int) time
 		return now.Add(-time.Minute)
 	}
 
-	remind := time.Date(now.Year(), now.Month(), now.Day(), sh, sm, 0, 0, time.UTC)
+	remind := time.Date(now.Year(), now.Month(), now.Day(), sh, sm, 0, 0, now.Location())
 	return remind.Add(-time.Duration(leadMinutes) * time.Minute)
 }
 
@@ -296,7 +326,7 @@ func computeScheduleTime(now time.Time, specificTime string) time.Time {
 	if err != nil {
 		return now
 	}
-	return time.Date(now.Year(), now.Month(), now.Day(), sh, sm, 0, 0, time.UTC)
+	return time.Date(now.Year(), now.Month(), now.Day(), sh, sm, 0, 0, now.Location())
 }
 
 func formatTime(specificTime string) string {
