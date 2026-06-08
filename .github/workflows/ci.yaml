@@ -48,6 +48,53 @@ jobs:
             tests:
               - '**/*_test.go'
 
+  parity:
+    name: Client Parity
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: dorny/paths-filter@v3
+        id: client
+        with:
+          filters: |
+            pwa:
+              - 'web/static/js/**'
+              - 'web/static/css/**'
+              - 'web/templates/**'
+            ios:
+              - 'ios/**'
+      - name: Check PR description for parity statement
+        if: steps.client.outputs.pwa == 'true' || steps.client.outputs.ios == 'true'
+        run: |
+          PR_BODY="${{ github.event.pull_request.body }}"
+          PR_BODY_LOWER=$(echo "$PR_BODY" | tr '[:upper:]' '[:lower:]')
+
+          if echo "$PR_BODY_LOWER" | grep -q "pwa and ios both updated"; then
+            echo "::notice::✅ Parity: PWA and iOS both updated."
+            exit 0
+          fi
+          if echo "$PR_BODY_LOWER" | grep -q "pwa-only change"; then
+            echo "::notice::✅ Parity: PWA-only change acknowledged."
+            exit 0
+          fi
+          if echo "$PR_BODY_LOWER" | grep -q "ios-only change"; then
+            echo "::notice::✅ Parity: iOS-only change acknowledged."
+            exit 0
+          fi
+
+          echo "::error::❌ PR changes client code (PWA or iOS) but description is missing a parity statement."
+          echo ""
+          echo "Required — include one of these verbatim in the PR description:"
+          echo '  - "PWA and iOS both updated."'
+          echo '  - "PWA-only change; iOS not affected because <reason>."'
+          echo '  - "iOS-only change; PWA not affected because <reason>."'
+          echo ""
+          echo "See docs/plans/client-parity.md for the feature matrix."
+          exit 1
+
   secrets:
     name: Secret Scan
     runs-on: ubuntu-latest

@@ -74,6 +74,8 @@ The main checkout at the workspace root stays clean and is only used for referen
 | E2E debug mode (step-through) | `make e2e-debug` |
 | Go coverage | `make coverage` |
 | Lint Go | `make lint` |
+| Install git hooks | `make hooks` |
+| Check client parity | `make check-parity` |
 
 After changing files in `web/templates/` or `web/static/`, run `make local-fresh` — these assets are embedded into the Go binary via `web/assets.go` (`//go:embed`).
 
@@ -158,6 +160,8 @@ Every feature, bug fix, validation change, security fix, API change, or UI behav
 - "PWA and iOS both updated."
 - "PWA-only change; iOS not affected because \<reason\>."
 - "iOS-only change; PWA not affected because \<reason\>."
+
+CI enforces this via the `parity` job (`.github/workflows/ci.yaml`). Run `bash scripts/check-parity.sh` locally to see all pending parity gaps. Use the `client-parity` skill (`/client-parity`) for parity-aware guidance during development.
 
 See `ios/AGENTS.md` for iOS-specific agent instructions.
 

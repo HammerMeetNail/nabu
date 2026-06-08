@@ -1,7 +1,7 @@
 GO ?= go
 COMPOSE ?= podman compose
 
-.PHONY: test test-go test-js fmt run e2e e2e-watch e2e-debug backup restore local local-fresh down seed lint coverage
+.PHONY: test test-go test-js fmt run e2e e2e-watch e2e-debug backup restore local local-fresh down seed lint coverage hooks check-parity
 
 test: test-go test-js
 
@@ -60,3 +60,12 @@ lint:
 coverage:
 	$(GO) test -race -coverprofile=coverage.out ./...
 	$(GO) tool cover -func=coverage.out
+
+hooks:
+	@echo "Installing git hooks..."
+	@cp scripts/pre-push-hook.sh .git/hooks/pre-push
+	@chmod +x .git/hooks/pre-push
+	@echo "  pre-push: parity check (skip with SKIP_PARITY=1)"
+
+check-parity:
+	bash scripts/check-parity.sh
