@@ -267,6 +267,21 @@ struct ReminderPreference: Codable, Equatable {
     let defaultReminderLeadMinutes: Int
 }
 
+struct ChoreReminderPref: Codable, Equatable {
+    let userId: Int
+    let choreId: Int
+    let enabled: Bool
+    let leadMinutes: Int
+}
+
+struct ChoreReminderPrefsResponse: Codable {
+    let prefs: [ChoreReminderPref]
+}
+
+struct ChoreReminderPrefResponse: Codable {
+    let pref: ChoreReminderPref
+}
+
 struct UserPreferences: Codable, Equatable {
     let choreOrder: [Int]
     let hiddenHomeChoreIds: [Int]

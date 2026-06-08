@@ -12,13 +12,15 @@ final class LogStore {
                    indicators: [String] = [], slotHour: Int? = nil,
                    completedAt: String? = nil, volumeML: Int? = nil,
                    userId: Int? = nil, indicatorVolumes: [String: Int]? = nil,
-                   followUpMinutes: Int? = nil) async throws -> LogResponse {
+                   followUpMinutes: Int? = nil,
+                   followUpTime: String? = nil) async throws -> LogResponse {
         let body = CreateLogRequest(
             choreId: choreId, note: note, indicators: indicators,
             date: date, hour: slotHour, completedAt: completedAt,
             volumeML: volumeML, userId: userId,
             indicatorVolumes: indicatorVolumes,
-            followUpMinutes: followUpMinutes
+            followUpMinutes: followUpMinutes,
+            followUpTime: followUpTime
         )
         return try await api.post("/api/logs", body: body)
     }

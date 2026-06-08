@@ -17,6 +17,7 @@ final class AppState: ObservableObject {
     @Published var unreadNotifications = 0
     @Published var notificationPrefs: ReminderPreference?
     @Published var availableNotificationTypes: [NotificationTypeInfo] = []
+    @Published var choreReminderPrefs: [ChoreReminderPref] = []
     @Published var choreOrder: [Int] = []
     @Published var hiddenHomeChoreIDs: [Int] = []
     @Published var currentTab: MainTab = .home
@@ -46,6 +47,7 @@ final class AppState: ObservableObject {
         unreadNotifications = 0
         notificationPrefs = nil
         availableNotificationTypes = []
+        choreReminderPrefs = []
         choreOrder = []
         hiddenHomeChoreIDs = []
         currentTab = .home

@@ -115,11 +115,11 @@ When implementing an iOS feature or changing PWA behavior, update the correspond
 | CSRF protection | `api.js` | `API/CSRFTokenProvider.swift`, `APIClientTests.swift` | All state-changing endpoints | iOS pending | |
 | **Schedule Reminders** |
 | Schedule reminder notification type | `notifications.js`, `settings-notification-prefs.spec.js` | `NotificationPreferencesView.swift`, `NotificationTests.swift` | `/api/notification-preferences` | iOS pending | |
-| Per-chore reminder pref | `chores.js`, `app.js` | Missing | `/api/chore-reminder-prefs`, `/api/chore-reminder-prefs/{id}` | iOS pending | ChoreEditView needs "Remind me" toggle + lead time picker |
+| Per-chore reminder pref | `chores.js`, `app.js` | `ChoreEditView.swift`, `Models.swift` | `/api/chore-reminder-prefs`, `/api/chore-reminder-prefs/{id}` | Done | |
 | Default lead time in settings | `notifications.js`, `settings-notification-prefs.spec.js` | `NotificationPreferencesView.swift` | `/api/notification-preferences` | Done | |
-| Schedule done visual (amber bg) | `schedule-tab.js`, `app.css` | ScheduleView line 148 still uses opacity | N/A (client rendering) | iOS pending | Switch from `.opacity(0.5)` to amber background |
-| Once schedules not crossed out | `schedule-tab.js` | ScheduleView line 78-79 missing freq check | N/A (client rendering) | iOS pending | Add `&& sch.frequencyType != "once"` |
-| followUpTime in log request | `today.js`, `app.js` | `LogSheet.swift` missing computation | `/api/logs` | iOS pending | Compute `followUpTime` from when picker + followUpMinutes |
+| Schedule done visual (amber bg) | `schedule-tab.js`, `app.css` | `ScheduleView.swift` | N/A (client rendering) | Done | |
+| Once schedules not crossed out | `schedule-tab.js` | `ScheduleView.swift` | N/A (client rendering) | Done | |
+| followUpTime in log request | `today.js`, `app.js` | `LogSheet.swift`, `LogStore.swift`, `RequestModels.swift` | `/api/logs` | Done | |
 | **Service Worker** |
 | Update/reload | `sw-update-reload.spec.js` | N/A (native app) | N/A | N/A | PWA-only; native apps use App Store updates |
 

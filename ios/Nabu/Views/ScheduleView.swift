@@ -75,7 +75,7 @@ struct ScheduleView: View {
                 guard let chore = state.chores.first(where: { $0.id == sch.choreId }) else { continue }
                 let f = DateFormatter()
                 f.dateFormat = "yyyy-MM-dd"
-                let isDone = state.todayLogs.contains {
+                let isDone = sch.frequencyType != "once" && state.todayLogs.contains {
                     $0.choreId == sch.choreId && f.string(from: $0.completedAt) == date
                 }
                 items.append(UpcomingItem(schedule: sch, chore: chore, date: date, isDone: isDone))
@@ -145,7 +145,10 @@ struct ScheduleView: View {
             }
             .buttonStyle(.plain)
         }
-        .opacity(item.isDone ? 0.5 : 1.0)
+        .background(item.isDone ? Color(hex: "#fef3c7") : Color.clear)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, 4)
+        .padding(.vertical, 1)
         .overlay(
             Rectangle()
                 .fill(Color(hex: item.chore.color) ?? .gray)

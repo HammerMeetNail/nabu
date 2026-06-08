@@ -28,8 +28,18 @@ struct ChoreEditView: View {
     @State private var followUpEnabled: Bool = false
     @State private var isSaving = false
     @State private var errorMessage: String?
+    @State private var reminderEnabled: Bool = false
+    @State private var reminderLeadMinutes: Int = 10
 
     private var isNew: Bool { chore == nil }
+
+    private var scheduleReminderTypeEnabled: Bool {
+        let prefs = state.notificationPrefs
+        guard let prefs = prefs, prefs.pushEnabled != false else { return false }
+        let types = prefs.enabledPushTypes
+        if types.isEmpty { return true }
+        return types.contains("schedule_reminder")
+    }
 
     var body: some View {
         NavigationStack {
@@ -107,6 +117,35 @@ struct ChoreEditView: View {
                         Text("Schedule next occurrence after logging")
                     }
 
+                    if scheduleReminderTypeEnabled {
+                        Section {
+                            Toggle("Remind me", isOn: Binding(
+                                get: { reminderEnabled },
+                                set: { newValue in
+                                    reminderEnabled = newValue
+                                    saveReminderPref()
+                                }
+                            ))
+                            if reminderEnabled {
+                                Picker("Lead time", selection: Binding(
+                                    get: { reminderLeadMinutes },
+                                    set: { newValue in
+                                        reminderLeadMinutes = newValue
+                                        saveReminderPref()
+                                    }
+                                )) {
+                                    ForEach([5, 10, 15, 30, 60], id: \.self) { m in
+                                        Text("\(m) min before").tag(m)
+                                    }
+                                }
+                            }
+                        } header: {
+                            Text("Reminder")
+                        } footer: {
+                            Text("Get a push notification before this chore")
+                        }
+                    }
+
                     Section {
                         if chore?.isPredefined == true {
                             Button("Restore default") {
@@ -140,7 +179,46 @@ struct ChoreEditView: View {
                 indicatorLabels = chore.indicatorLabels
                 indicatorDefaults = Set(chore.indicatorDefaults)
                 followUpEnabled = chore.followUpEnabled
+                loadReminderPref()
             }
+        }
+    }
+
+    private func loadReminderPref() {
+        guard let choreId = chore?.id else { return }
+        Task {
+            do {
+                let data: ChoreReminderPrefsResponse = try await environment.apiClient.get("/api/chore-reminder-prefs")
+                await MainActor.run {
+                    state.choreReminderPrefs = data.prefs
+                    let pref = data.prefs.first(where: { $0.choreId == choreId })
+                    reminderEnabled = pref?.enabled ?? false
+                    reminderLeadMinutes = pref?.leadMinutes ?? state.notificationPrefs?.defaultReminderLeadMinutes ?? 10
+                }
+            } catch {}
+        }
+    }
+
+    private func saveReminderPref() {
+        guard let choreId = chore?.id else { return }
+        let leadMinutes = reminderLeadMinutes
+        let enabled = reminderEnabled
+        struct Body: Codable {
+            let enabled: Bool
+            let leadMinutes: Int
+        }
+        let body = Body(enabled: enabled, leadMinutes: leadMinutes)
+        Task {
+            do {
+                let data: ChoreReminderPrefResponse = try await environment.apiClient.patch("/api/chore-reminder-prefs/\(choreId)", body: body)
+                await MainActor.run {
+                    if let idx = state.choreReminderPrefs.firstIndex(where: { $0.choreId == choreId }) {
+                        state.choreReminderPrefs[idx] = data.pref
+                    } else {
+                        state.choreReminderPrefs.append(data.pref)
+                    }
+                }
+            } catch {}
         }
     }
 

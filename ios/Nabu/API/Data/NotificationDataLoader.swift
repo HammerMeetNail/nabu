@@ -35,4 +35,26 @@ final class NotificationDataLoader {
         state.notificationPrefs = data.preferences
         return data
     }
+
+    func loadChoreReminderPrefs() async {
+        do {
+            let data: ChoreReminderPrefsResponse = try await api.get("/api/chore-reminder-prefs")
+            state.choreReminderPrefs = data.prefs
+        } catch {}
+    }
+
+    func saveChoreReminderPref(choreId: Int, enabled: Bool, leadMinutes: Int) async throws -> ChoreReminderPref {
+        struct Body: Codable {
+            let enabled: Bool
+            let leadMinutes: Int
+        }
+        let body = Body(enabled: enabled, leadMinutes: leadMinutes)
+        let data: ChoreReminderPrefResponse = try await api.patch("/api/chore-reminder-prefs/\(choreId)", body: body)
+        if let idx = state.choreReminderPrefs.firstIndex(where: { $0.choreId == choreId }) {
+            state.choreReminderPrefs[idx] = data.pref
+        } else {
+            state.choreReminderPrefs.append(data.pref)
+        }
+        return data.pref
+    }
 }

@@ -97,6 +97,7 @@ struct CreateLogRequest: Codable {
     let userId: Int?
     let indicatorVolumes: [String: Int]?
     let followUpMinutes: Int?
+    let followUpTime: String?
 
     enum CodingKeys: String, CodingKey {
         case choreId, note, indicators, date, hour, completedAt
@@ -104,6 +105,7 @@ struct CreateLogRequest: Codable {
         case userId
         case indicatorVolumes
         case followUpMinutes
+        case followUpTime
     }
 }
 

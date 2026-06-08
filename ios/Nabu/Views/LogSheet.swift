@@ -287,13 +287,23 @@ struct LogSheet: View {
                     }
                 } else {
                     let followUpMinutes = followUpDays * 1440 + followUpHours * 60 + followUpMins
+                    let followUpTime: String? = {
+                        if followUpMinutes > 0 {
+                            let fu = whenDate.addingTimeInterval(TimeInterval(followUpMinutes * 60))
+                            let f = DateFormatter()
+                            f.dateFormat = "yyyy-MM-dd'T'HH:mm"
+                            return f.string(from: fu)
+                        }
+                        return nil
+                    }()
                     let response = try await logStore.createLog(
                         choreId: chore.id, note: note, date: dateStr,
                         indicators: selectedIndicators, slotHour: hour,
                         completedAt: completedAtISO, volumeML: volumeML,
                         userId: selectedUserId,
                         indicatorVolumes: activeVolumes.isEmpty ? nil : activeVolumes,
-                        followUpMinutes: followUpMinutes > 0 ? followUpMinutes : nil
+                        followUpMinutes: followUpMinutes > 0 ? followUpMinutes : nil,
+                        followUpTime: followUpTime
                     )
                     state.todayLogs.insert(response.log, at: 0)
                     state.latestLogs[chore.id] = response.log
