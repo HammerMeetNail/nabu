@@ -84,7 +84,8 @@ final class NotificationTests: XCTestCase {
         let req = PatchNotificationPrefsRequest(
             pushEnabled: true,
             emailEnabled: nil,
-            enabledPushTypes: ["chore_logged"]
+            enabledPushTypes: ["chore_logged"],
+            defaultReminderLeadMinutes: nil
         )
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .useDefaultKeys
@@ -99,7 +100,8 @@ final class NotificationTests: XCTestCase {
         let req = PatchNotificationPrefsRequest(
             pushEnabled: false,
             emailEnabled: nil,
-            enabledPushTypes: []
+            enabledPushTypes: [],
+            defaultReminderLeadMinutes: nil
         )
         let encoder = JSONEncoder()
         encoder.keyEncodingStrategy = .useDefaultKeys

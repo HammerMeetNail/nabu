@@ -113,7 +113,8 @@ final class RequestEncodingTests: XCTestCase {
             volumeML: nil,
             userId: nil,
             indicatorVolumes: nil,
-            followUpMinutes: nil
+            followUpMinutes: nil,
+            followUpTime: nil
         )
         let data = try encoder.encode(req)
         let dict = json(data)
@@ -134,7 +135,8 @@ final class RequestEncodingTests: XCTestCase {
             volumeML: 120,
             userId: nil,
             indicatorVolumes: nil,
-            followUpMinutes: nil)
+            followUpMinutes: nil,
+            followUpTime: nil)
         let data = try encoder.encode(req)
         let dict = json(data)
         XCTAssertEqual(dict["volume_ml"] as? Int, 120)
@@ -152,7 +154,8 @@ final class RequestEncodingTests: XCTestCase {
             volumeML: nil,
             userId: nil,
             indicatorVolumes: nil,
-            followUpMinutes: nil)
+            followUpMinutes: nil,
+            followUpTime: nil)
         let data = try encoder.encode(req)
         let dict = json(data)
         XCTAssertNil(dict["hour"])
@@ -169,7 +172,8 @@ final class RequestEncodingTests: XCTestCase {
             volumeML: nil,
             userId: 2,
             indicatorVolumes: nil,
-            followUpMinutes: nil)
+            followUpMinutes: nil,
+            followUpTime: nil)
         let data = try encoder.encode(req)
         let dict = json(data)
         XCTAssertEqual(dict["user_id"] as? Int, 2)
@@ -210,7 +214,8 @@ final class RequestEncodingTests: XCTestCase {
         let req = PatchNotificationPrefsRequest(
             pushEnabled: true,
             emailEnabled: nil,
-            enabledPushTypes: ["chore_logged"]
+            enabledPushTypes: ["chore_logged"],
+            defaultReminderLeadMinutes: nil
         )
         let data = try encoder.encode(req)
         let dict = json(data)

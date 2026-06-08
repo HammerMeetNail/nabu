@@ -227,6 +227,62 @@ struct ChoreSchedule: Codable, Identifiable, Equatable {
     let assignedUserId: Int?
     let createdAt: Date
     let updatedAt: Date
+
+    init(id: Int, householdId: Int, choreId: Int, frequencyType: String, timePeriod: String, specificTime: String?, timesOfDay: [String], daysOfWeek: [Int], intervalDays: Int, dayOfMonth: Int, monthWeekday: MonthWeekday?, monthOfYear: Int, recurrenceEnd: Date?, startDate: String?, targetCount: Int, isActive: Bool, isFollowUp: Bool, assignedUserId: Int?, createdAt: Date, updatedAt: Date) {
+        self.id = id
+        self.householdId = householdId
+        self.choreId = choreId
+        self.frequencyType = frequencyType
+        self.timePeriod = timePeriod
+        self.specificTime = specificTime
+        self.timesOfDay = timesOfDay
+        self.daysOfWeek = daysOfWeek
+        self.intervalDays = intervalDays
+        self.dayOfMonth = dayOfMonth
+        self.monthWeekday = monthWeekday
+        self.monthOfYear = monthOfYear
+        self.recurrenceEnd = recurrenceEnd
+        self.startDate = startDate
+        self.targetCount = targetCount
+        self.isActive = isActive
+        self.isFollowUp = isFollowUp
+        self.assignedUserId = assignedUserId
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(Int.self, forKey: .id)
+        householdId = try container.decode(Int.self, forKey: .householdId)
+        choreId = try container.decode(Int.self, forKey: .choreId)
+        frequencyType = try container.decode(String.self, forKey: .frequencyType)
+        timePeriod = try container.decode(String.self, forKey: .timePeriod)
+        specificTime = try container.decodeIfPresent(String.self, forKey: .specificTime)
+        timesOfDay = try container.decodeIfPresent([String].self, forKey: .timesOfDay) ?? []
+        daysOfWeek = try container.decodeIfPresent([Int].self, forKey: .daysOfWeek) ?? []
+        intervalDays = try container.decode(Int.self, forKey: .intervalDays)
+        dayOfMonth = try container.decodeIfPresent(Int.self, forKey: .dayOfMonth) ?? 0
+        monthWeekday = try container.decodeIfPresent(MonthWeekday.self, forKey: .monthWeekday)
+        monthOfYear = try container.decodeIfPresent(Int.self, forKey: .monthOfYear) ?? 0
+        recurrenceEnd = try container.decodeIfPresent(Date.self, forKey: .recurrenceEnd)
+        startDate = try container.decodeIfPresent(String.self, forKey: .startDate)
+        targetCount = try container.decode(Int.self, forKey: .targetCount)
+        isActive = try container.decode(Bool.self, forKey: .isActive)
+        isFollowUp = try container.decode(Bool.self, forKey: .isFollowUp)
+        assignedUserId = try container.decodeIfPresent(Int.self, forKey: .assignedUserId)
+        createdAt = try container.decode(Date.self, forKey: .createdAt)
+        updatedAt = try container.decode(Date.self, forKey: .updatedAt)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, householdId, choreId, frequencyType, timePeriod
+        case specificTime, timesOfDay, daysOfWeek, intervalDays
+        case dayOfMonth, monthWeekday, monthOfYear
+        case recurrenceEnd, startDate, targetCount
+        case isActive, isFollowUp, assignedUserId
+        case createdAt, updatedAt
+    }
 }
 
 struct MonthWeekday: Codable, Equatable {

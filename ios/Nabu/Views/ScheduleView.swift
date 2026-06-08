@@ -185,7 +185,7 @@ struct ScheduleView: View {
             let body = CreateLogRequest(choreId: item.chore.id, note: nil, indicators: nil,
                                           date: dateStr, hour: hour, completedAt: completedAt,
                                           volumeML: nil, userId: nil, indicatorVolumes: nil,
-                                          followUpMinutes: nil)
+                                          followUpMinutes: nil, followUpTime: nil)
             let resp: LogResponse = try await environment.apiClient.post("/api/logs", body: body)
             state.todayLogs.insert(resp.log, at: 0)
         } catch {}

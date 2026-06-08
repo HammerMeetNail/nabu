@@ -334,6 +334,45 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertNil(weekly.assignedUserId)
     }
 
+    func testDecodeScheduleWithNullAndOmittedFields() throws {
+        // Reproduces actual Go server JSON: null daysOfWeek for non-weekly,
+        // omitted dayOfMonth/monthOfYear when zero (omitempty).
+        let json = #"""
+        {
+          "schedules": [
+            {
+              "id": 1,
+              "householdId": 1,
+              "choreId": 1,
+              "frequencyType": "daily",
+              "timePeriod": "anytime",
+              "timesOfDay": [],
+              "daysOfWeek": null,
+              "intervalDays": 0,
+              "targetCount": 0,
+              "isActive": true,
+              "isFollowUp": false,
+              "assignedUserId": null,
+              "createdAt": "2024-12-25T14:30:00Z",
+              "updatedAt": "2024-12-25T14:30:00Z"
+            }
+          ]
+        }
+        """#.data(using: .utf8)!
+        let response = try decoder.decode(SchedulesResponse.self, from: json)
+        XCTAssertEqual(response.schedules.count, 1)
+        let sch = response.schedules[0]
+        XCTAssertEqual(sch.frequencyType, "daily")
+        XCTAssertEqual(sch.daysOfWeek, [])
+        XCTAssertEqual(sch.dayOfMonth, 0)
+        XCTAssertEqual(sch.monthOfYear, 0)
+        XCTAssertNil(sch.specificTime)
+        XCTAssertNil(sch.recurrenceEnd)
+        XCTAssertNil(sch.startDate)
+        XCTAssertNil(sch.monthWeekday)
+        XCTAssertNil(sch.assignedUserId)
+    }
+
     // MARK: - Notifications
 
     func testDecodeNotificationsResponse() throws {
