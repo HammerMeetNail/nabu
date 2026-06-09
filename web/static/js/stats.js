@@ -505,13 +505,13 @@ export function renderBabyCareSection(state) {
     <div class="baby-care-columns">
       ${feedBaby ? renderBabyColumn(feedBaby, memberMap, babyPeriod, "feed") : ""}
       ${changeBaby ? renderBabyColumn(changeBaby, memberMap, babyPeriod, "change") : ""}
-      ${feedingGaps.length > 0 ? renderFeedingGapsColumn(feedingGaps, explainerVisible, gapsStart, gapsEnd, stats.feedingGapsCompare, stats.feedingGapsCompareEnabled) : ""}
+      ${feedingGaps.length > 0 ? renderFeedingGapsColumn(feedingGaps, explainerVisible, gapsStart, gapsEnd, stats.feedingGapsCompare, stats.feedingGapsCompareNewer, stats.feedingGapsCompareEnabled) : ""}
     </div>
   </div>`;
 }
 
-function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd, gapsCompare, compareEnabled) {
-  const chartHTML = renderClusterRateChart(gaps, compareEnabled ? gapsCompare : null);
+function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd, gapsOld, gapsNewer, compareEnabled) {
+  const chartHTML = renderClusterRateChart(gaps, compareEnabled ? gapsOld : null, compareEnabled ? gapsNewer : null);
   const explainerClass = explainerVisible ? " feeding-gaps-explainer--visible" : "";
   const compareActive = compareEnabled ? " period-toggle--active" : "";
 
@@ -538,7 +538,7 @@ function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd, gap
         <strong>Purple</strong> = about half full feeds and half small top-offs &mdash; no clear pattern.<br>
         <strong>No bar</strong> = not enough data for that hour yet.
       </p>
-      <p><strong>Compare mode:</strong> Tap the <strong>Compare</strong> button to see change over time. The date range is split in half &mdash; each hour shows two bars side by side: a translucent bar for the <em>older</em> half and a solid bar for the <em>newer</em> half. <strong>A bar that grew</strong> (taller on the right) means cluster feeding is increasing at that hour. <strong>A bar that shrank</strong> (taller on the left) means it&rsquo;s fading. <strong>No older bar but a new one</strong> means cluster feeding just started happening at that hour. <strong>No newer bar</strong> means it stopped.</p>
+      <p><strong>Compare mode:</strong> Tap <strong>Compare</strong> to split your selected date range at its midpoint &mdash; e.g. June&nbsp;1&ndash;8 becomes June&nbsp;1&ndash;4 (older) vs June&nbsp;5&ndash;8 (newer). Each hour shows two bars: translucent left&nbsp;=&nbsp;older half, solid right&nbsp;=&nbsp;newer half. <strong>A taller right bar</strong> means cluster feeding increased at that hour. <strong>A taller left bar</strong> means it decreased. <strong>Only a right bar</strong> means it just started. <strong>Only a left bar</strong> means it stopped.</p>
     </div>
     <div class="baby-chart">${chartHTML}</div>
   </div>`;
@@ -577,11 +577,12 @@ function barColor(topOffRatio) {
   return `rgb(${r},${g},${b_})`;
 }
 
-function renderClusterRateChart(gaps, gapsOld) {
+function renderClusterRateChart(gaps, gapsOld, gapsNewer) {
   if (!gaps || gaps.length === 0) return '<p class="text-secondary text-sm text-center mt-2">No data</p>';
 
   const { byHour, overallRate } = buildHourStats(gaps);
   const old = gapsOld ? buildHourStats(gapsOld) : null;
+  const newer = gapsNewer ? buildHourStats(gapsNewer) : null;
 
   const leftM = 38;
   const rightM = 6;
@@ -617,26 +618,18 @@ function renderClusterRateChart(gaps, gapsOld) {
 
   for (let h = 0; h < 24; h++) {
     const d = byHour[h];
-    if (d.total === 0 && (!old || old.byHour[h].total === 0)) continue;
+    const od = old ? old.byHour[h] : null;
+    const nd = newer ? newer.byHour[h] : null;
+    if (d.total === 0 && (!od || od.total === 0) && (!nd || nd.total === 0)) continue;
 
     const x = leftM + h * colW + 1;
     const topOffRatio = d.within2h > 0 ? d.smallTopOffs / d.within2h : 0;
-    const rate = d.total > 0 ? (d.within2h / d.total) * 100 : 0;
 
-    if (old) {
+    if (old && newer) {
       const barW = Math.floor((colW - 3) / 2);
       const xOld = x;
       const xNew = x + barW + 1;
 
-      if (d.total > 0) {
-        const barH = Math.max(Math.round((rate / 100) * chartH), 1);
-        const y = topM + chartH - barH;
-        svg += `<rect x="${xNew}" y="${y}" width="${barW}" height="${barH}" rx="1.5" fill="${barColor(topOffRatio)}" opacity="0.85">
-          <title>${formatHour(h)} newer: ${Math.round(rate)}% (${d.within2h}/${d.total})</title>
-        </rect>`;
-      }
-
-      const od = old.byHour[h];
       if (od.total > 0) {
         const oRate = (od.within2h / od.total) * 100;
         const oBarH = Math.max(Math.round((oRate / 100) * chartH), 1);
@@ -646,8 +639,19 @@ function renderClusterRateChart(gaps, gapsOld) {
           <title>${formatHour(h)} older: ${Math.round(oRate)}% (${od.within2h}/${od.total})</title>
         </rect>`;
       }
+
+      if (nd.total > 0) {
+        const nRate = (nd.within2h / nd.total) * 100;
+        const nBarH = Math.max(Math.round((nRate / 100) * chartH), 1);
+        const ny = topM + chartH - nBarH;
+        const nTopOffRatio = nd.within2h > 0 ? nd.smallTopOffs / nd.within2h : 0;
+        svg += `<rect x="${xNew}" y="${ny}" width="${barW}" height="${nBarH}" rx="1.5" fill="${barColor(nTopOffRatio)}" opacity="0.85">
+          <title>${formatHour(h)} newer: ${Math.round(nRate)}% (${nd.within2h}/${nd.total})</title>
+        </rect>`;
+      }
     } else {
       if (d.total === 0) continue;
+      const rate = d.total > 0 ? (d.within2h / d.total) * 100 : 0;
       const barH = Math.max(Math.round((rate / 100) * chartH), 1);
       const y = topM + chartH - barH;
       svg += `<rect x="${x}" y="${y}" width="${colW - 2}" height="${barH}" rx="1.5" fill="${barColor(topOffRatio)}" opacity="0.85">

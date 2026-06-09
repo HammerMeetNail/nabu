@@ -722,13 +722,22 @@ async function loadCompareGaps() {
   if (!s || !e) return;
   const start = new Date(s + "T00:00:00");
   const end = new Date(e + "T00:00:00");
-  const mid = new Date(start.getTime() + (end.getTime() - start.getTime()) / 2);
+  const midMs = start.getTime() + (end.getTime() - start.getTime()) / 2;
+  const mid = new Date(midMs);
   const midStr = mid.toISOString().slice(0, 10);
+
   const apiMid = apiExclusiveEnd(midStr);
   const apiEnd = apiExclusiveEnd(e);
-  const gapsData = await loadFeedingGaps(midStr, apiEnd);
-  if (gapsData && gapsData.feedingGaps) {
-    state.stats.feedingGapsCompare = gapsData.feedingGaps;
+
+  const [oldData, newData] = await Promise.all([
+    loadFeedingGaps(s, apiMid),
+    loadFeedingGaps(midStr, apiEnd),
+  ]);
+  if (oldData?.feedingGaps) {
+    state.stats.feedingGapsCompare = oldData.feedingGaps;
+  }
+  if (newData?.feedingGaps) {
+    state.stats.feedingGapsCompareNewer = newData.feedingGaps;
   }
 }
 
@@ -2232,6 +2241,7 @@ export async function init() {
           loadCompareGaps().then(() => render(app));
         } else {
           state.stats.feedingGapsCompare = null;
+          state.stats.feedingGapsCompareNewer = null;
           render(app);
         }
         break;
