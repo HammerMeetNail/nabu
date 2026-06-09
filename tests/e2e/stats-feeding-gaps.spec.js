@@ -91,12 +91,13 @@ test.describe("Feeding gaps chart", () => {
     await page.click("a[data-nav=\"stats\"]");
     await page.waitForSelector(".stats-page", { timeout: 10000 });
 
-    // The cluster feeding section should appear in the feed baby column
-    await expect(page.locator(".feeding-gaps-section")).toBeVisible({ timeout: 5000 });
-    await expect(page.locator(".feeding-gaps-title")).toContainText("Cluster Feeding");
+    // The cluster feeding column should appear as its own box
+    const gapsColumn = page.locator(".baby-care-column").filter({ hasText: "Cluster Feeding" });
+    await expect(gapsColumn).toBeVisible({ timeout: 5000 });
+    await expect(gapsColumn.locator("h4")).toContainText("Cluster Feeding");
 
     // Default view is strip - should have an SVG
-    const stripSvg = page.locator(".feeding-gaps-section svg");
+    const stripSvg = gapsColumn.locator("svg");
     await expect(stripSvg).toBeVisible({ timeout: 3000 });
 
     // Strip chart should have circles (data points)
@@ -107,7 +108,7 @@ test.describe("Feeding gaps chart", () => {
     await page.waitForTimeout(200);
 
     // Heatmap should have rect elements (grid cells)
-    const heatmapSvg = page.locator(".feeding-gaps-section svg");
+    const heatmapSvg = gapsColumn.locator("svg");
     await expect(heatmapSvg.locator("rect")).not.toHaveCount(0);
 
     // Toggle back to strip view
@@ -115,7 +116,7 @@ test.describe("Feeding gaps chart", () => {
     await page.waitForTimeout(200);
 
     // Strip chart circles should be back
-    await expect(page.locator(".feeding-gaps-section svg circle")).not.toHaveCount(0);
+    await expect(gapsColumn.locator("svg circle")).not.toHaveCount(0);
   });
 
   test("no cluster feeding section when there are no feeding logs", async ({
@@ -128,9 +129,9 @@ test.describe("Feeding gaps chart", () => {
     await page.click("a[data-nav=\"stats\"]");
     await page.waitForSelector(".stats-page", { timeout: 10000 });
 
-    // The feeding gaps section should not appear since there are no feeding logs
-    // (the chart only renders when there are gaps data)
-    // Baby section may still appear but without the cluster feeding section
-    await expect(page.locator(".feeding-gaps-section")).toHaveCount(0);
+    // The cluster feeding column should not appear since there are no gaps
+    await expect(
+      page.locator(".baby-care-column").filter({ hasText: "Cluster Feeding" })
+    ).toHaveCount(0);
   });
 });

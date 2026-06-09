@@ -2192,6 +2192,14 @@ export async function init() {
         break;
       }
 
+      case "toggle-feeding-gaps-info": {
+        e.preventDefault();
+        state.stats = state.stats || {};
+        state.stats.feedingGapsExplainerVisible = !state.stats.feedingGapsExplainerVisible;
+        render(app);
+        break;
+      }
+
       case "chart-tap": {
         e.preventDefault();
         const g = e.target.closest("[data-action=\"chart-tap\"]");

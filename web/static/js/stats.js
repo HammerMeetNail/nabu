@@ -479,6 +479,7 @@ export function renderBabyCareSection(state) {
   const changeBaby = babyTimeSeries.changeBaby;
   const feedingGaps = stats.feedingGaps || [];
   const gapsView = stats.feedingGapsView || "strip";
+  const explainerVisible = stats.feedingGapsExplainerVisible || false;
 
   if (!feedBaby && !changeBaby) return "";
 
@@ -496,29 +497,52 @@ export function renderBabyCareSection(state) {
       </div>
     </div>
     <div class="baby-care-columns">
-      ${feedBaby ? renderBabyColumn(feedBaby, memberMap, babyPeriod, "feed", feedingGaps, gapsView) : ""}
+      ${feedBaby ? renderBabyColumn(feedBaby, memberMap, babyPeriod, "feed") : ""}
       ${changeBaby ? renderBabyColumn(changeBaby, memberMap, babyPeriod, "change") : ""}
+      ${feedingGaps.length > 0 ? renderFeedingGapsColumn(feedingGaps, gapsView, explainerVisible) : ""}
     </div>
   </div>`;
 }
 
-function renderBabyColumn(ts, memberMap, period, type, feedingGaps, gapsView) {
+function renderFeedingGapsColumn(gaps, view, explainerVisible) {
+  const chartHTML = view === "heatmap"
+    ? renderFeedingGapsHeatmap(gaps)
+    : renderFeedingGapsStrip(gaps);
+
+  const stripActive = view === "strip" ? " period-toggle--active" : "";
+  const heatmapActive = view === "heatmap" ? " period-toggle--active" : "";
+  const explainerClass = explainerVisible ? " feeding-gaps-explainer--visible" : "";
+
+  return `<div class="baby-care-column">
+    <div class="feeding-gaps-header">
+      <h4 class="baby-col-title" style="margin-bottom:0">🕐 Cluster Feeding
+        <button class="feeding-gaps-info-btn" data-action="toggle-feeding-gaps-info" aria-label="How to read this chart" aria-expanded="${explainerVisible}">&#9432;</button>
+      </h4>
+      <div class="period-toggle" role="group" aria-label="Chart view">
+        <button class="period-toggle-btn${stripActive}" data-action="stats-feeding-gaps-view" data-view="strip" aria-pressed="${view === "strip"}">Strip</button>
+        <button class="period-toggle-btn${heatmapActive}" data-action="stats-feeding-gaps-view" data-view="heatmap" aria-pressed="${view === "heatmap"}">Heatmap</button>
+      </div>
+    </div>
+    <div class="feeding-gaps-explainer${explainerClass}">
+      <p><strong>Strip chart:</strong> Each dot is a pair of consecutive feedings. X&nbsp;=&nbsp;hour of the first feed, Y&nbsp;=&nbsp;minutes until the next feed. Darker dots mean the follow-up had more volume. A cluster of dots near the bottom at a given hour means short gaps are common at that time.</p>
+      <p><strong>Heatmap:</strong> Same data, binned into gap buckets (rows) by hour (columns). Darker cells mean that gap duration at that hour happens more often.</p>
+      <p class="feeding-gaps-example"><em>Example: if the 30–60m row is dark at 10am, feeding at 10am is often followed by a small top-off within an hour.</em></p>
+    </div>
+    <div class="baby-chart">${chartHTML}</div>
+  </div>`;
+}
+
+function renderBabyColumn(ts, memberMap, period, type) {
   const isVolume = type === "feed";
   const membersHTML = renderMemberList(ts.byMember, memberMap);
   const chartHTML = isVolume
     ? renderVolumeChart(ts.periods, period)
     : renderIndicatorChart(ts.periods, period);
 
-  let gapsHTML = "";
-  if (isVolume && feedingGaps && feedingGaps.length > 0) {
-    gapsHTML = renderFeedingGapsSection(feedingGaps, gapsView);
-  }
-
   return `<div class="baby-care-column">
     <h4 class="baby-col-title">${ts.choreIcon} ${escapeHTML(ts.choreName)}</h4>
     ${membersHTML}
     <div class="baby-chart">${chartHTML}</div>
-    ${gapsHTML}
   </div>`;
 }
 
@@ -542,26 +566,6 @@ function renderMemberList(byMember, memberMap) {
         <span class="baby-member-count">${entry.count}</span>
       </div>`;
     }).join("")}
-  </div>`;
-}
-
-function renderFeedingGapsSection(gaps, view) {
-  const chartHTML = view === "heatmap"
-    ? renderFeedingGapsHeatmap(gaps)
-    : renderFeedingGapsStrip(gaps);
-
-  const stripActive = view === "strip" ? " period-toggle--active" : "";
-  const heatmapActive = view === "heatmap" ? " period-toggle--active" : "";
-
-  return `<div class="feeding-gaps-section">
-    <div class="feeding-gaps-header">
-      <span class="feeding-gaps-title">Cluster Feeding</span>
-      <div class="period-toggle" role="group" aria-label="Chart view">
-        <button class="period-toggle-btn${stripActive}" data-action="stats-feeding-gaps-view" data-view="strip" aria-pressed="${view === "strip"}">Strip</button>
-        <button class="period-toggle-btn${heatmapActive}" data-action="stats-feeding-gaps-view" data-view="heatmap" aria-pressed="${view === "heatmap"}">Heatmap</button>
-      </div>
-    </div>
-    <div class="baby-chart">${chartHTML}</div>
   </div>`;
 }
 
