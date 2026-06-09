@@ -179,7 +179,7 @@ func (s *MemoryStore) LatestPerChore(_ context.Context, householdID int64) (map[
 		if l.HouseholdID != householdID {
 			continue
 		}
-		if existing, ok := result[l.ChoreID]; !ok || l.CompletedAt.After(existing.CompletedAt) {
+		if existing, ok := result[l.ChoreID]; !ok || l.CompletedAt.After(existing.CompletedAt) || (l.CompletedAt.Equal(existing.CompletedAt) && l.ID > existing.ID) {
 			if l.Indicators == nil {
 				l.Indicators = []string{}
 			}

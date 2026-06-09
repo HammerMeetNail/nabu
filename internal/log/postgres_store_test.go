@@ -113,6 +113,32 @@ func TestPostgresLogStore_ListLogs(t *testing.T) {
 	}
 }
 
+func TestPostgresLogStore_LatestPerChore_TiebreakerInOrderBy(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+	store := NewPostgresStore(db)
+
+	now := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
+	// The ORDER BY must include id DESC as a tiebreaker so that when two
+	// logs share the same completed_at, the higher-id (newer) row wins
+	// after DISTINCT ON picks the first row in each group.
+	mock.ExpectQuery("(?s).*ORDER BY chore_id, completed_at DESC, id DESC.*").
+		WithArgs(int64(1)).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "user_id", "chore_id", "completed_at", "coalesce_note", "coalesce_indicators", "slot_hour", "created_at", "log_date", "volume_ml", "indicator_volumes"}).
+			AddRow(2, 1, 1, 5, now, "", "[]", nil, now, nil, nil, nil))
+
+	result, err := store.LatestPerChore(context.Background(), 1)
+	if err != nil {
+		t.Fatalf("LatestPerChore: %v", err)
+	}
+	if result[5].ID != 2 {
+		t.Errorf("LatestPerChore ID = %d, want 2", result[5].ID)
+	}
+}
+
 func TestPostgresLogStore_ListLogsRange(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	if err != nil {

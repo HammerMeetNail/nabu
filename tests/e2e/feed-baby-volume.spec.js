@@ -446,6 +446,44 @@ test.describe('Feed Baby food type indicators', () => {
     expect(log.indicatorVolumes['🍼 formula']).toBe(120);
   });
 
+  test('hidden indicator volumes from previous log are not saved', async ({ page }) => {
+    const { feedBaby } = await setupWithChores(page);
+
+    // First log: formula + breast, both with volumes
+    await tapFeedBaby(page);
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+    await page.selectOption(formulaVol, '100');
+    await page.locator('.log-chip').nth(1).click(); // toggle breast on
+    await expect(page.locator(breastVol)).toBeVisible();
+    await page.selectOption(breastVol, '50');
+    await page.click('[data-action="save-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    // Reload so latestLogs cache includes breast volume from previous log
+    await page.reload();
+    await page.waitForSelector('.home-grid', { timeout: 15000 });
+
+    // Second log: only formula (default-on), breast is off and hidden
+    await tapFeedBaby(page);
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator(formulaVol)).toBeVisible();
+    await expect(page.locator(breastVol)).toBeHidden();
+    // Only set formula volume; do not touch breast at all
+    await page.selectOption(formulaVol, '75');
+    await page.click('[data-action="save-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    // Verify breast did not leak into the saved log
+    const resp = await page.request.get('/api/logs/latest-per-chore');
+    const body = await resp.json();
+    const log = body.latestLogs[feedBaby.id];
+    expect(log).toBeDefined();
+    expect(log.indicators).toContain('🍼 formula');
+    expect(log.indicators).not.toContain('🤱 breast');
+    expect(log.indicatorVolumes['🍼 formula']).toBe(75);
+    expect(log.indicatorVolumes).not.toHaveProperty('🤱 breast');
+  });
+
   test('non-Feed Baby chores do not show food type chips', async ({ page }) => {
     const { chores } = await setupWithChores(page);
     const nonFeedChore = chores.find(c => c.name !== 'Feed Baby');

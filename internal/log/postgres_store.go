@@ -155,7 +155,7 @@ func (s *PostgresStore) LatestPerChore(ctx context.Context, householdID int64) (
 			log_date, volume_ml, indicator_volumes::text
 		FROM chore_logs
 		WHERE household_id = $1
-		ORDER BY chore_id, completed_at DESC
+		ORDER BY chore_id, completed_at DESC, id DESC
 	`, householdID)
 	if err != nil {
 		return nil, err

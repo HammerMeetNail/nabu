@@ -194,6 +194,52 @@ func TestMemoryStore_LatestPerChore_NilIndicators(t *testing.T) {
 	}
 }
 
+// TestMemoryStore_LatestPerChore_TiedTimestamps verifies that when two logs
+// for the same chore share the same completed_at, the higher-ID log wins.
+func TestMemoryStore_LatestPerChore_TiedTimestamps(t *testing.T) {
+	store := chorelog.NewMemoryStore()
+	ctx := context.Background()
+
+	ts := time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC)
+
+	// Insert lower ID first so iteration order would prefer it if we
+	// relied on that alone. The fix should use ID as tiebreaker.
+	_, _ = store.CreateLog(ctx, chorelog.ChoreLog{
+		HouseholdID:       1,
+		ChoreID:           5,
+		CompletedAt:       ts,
+		Note:              "first",
+		Indicators:        []string{"a", "b"},
+		IndicatorVolumes:  map[string]int{"a": 10, "b": 20},
+	})
+	_, _ = store.CreateLog(ctx, chorelog.ChoreLog{
+		HouseholdID:       1,
+		ChoreID:           5,
+		CompletedAt:       ts,
+		Note:              "second",
+		Indicators:        []string{"a"},
+		IndicatorVolumes:  map[string]int{"a": 30},
+	})
+
+	result, err := store.LatestPerChore(ctx, 1)
+	if err != nil {
+		t.Fatalf("LatestPerChore: %v", err)
+	}
+	got, ok := result[5]
+	if !ok {
+		t.Fatal("expected entry for ChoreID=5")
+	}
+	if got.Note != "second" {
+		t.Errorf("LatestPerChore with tied timestamps returned note %q, want %q (higher ID should win)", got.Note, "second")
+	}
+	if len(got.Indicators) != 1 || got.Indicators[0] != "a" {
+		t.Errorf("LatestPerChore with tied timestamps returned indicators %v, want [a]", got.Indicators)
+	}
+	if got.IndicatorVolumes["a"] != 30 || got.IndicatorVolumes["b"] != 0 {
+		t.Errorf("LatestPerChore with tied timestamps returned indicatorVolumes %v, want {a:30}", got.IndicatorVolumes)
+	}
+}
+
 // TestMemoryStore_LatestPerChore_DifferentHousehold covers the
 // `if l.HouseholdID != householdID { continue }` branch.
 func TestMemoryStore_LatestPerChore_DifferentHousehold(t *testing.T) {

@@ -18,14 +18,14 @@ import (
 const tickInterval = 30 * time.Second
 
 type Scheduler struct {
-	store        Store
-	schedStore   schedule.Store
-	schedSvc     *schedule.Service
-	notifStore   notification.Store
-	choreStore   chore.Store
-	hhStore      household.Store
-	userPrefs    userprefs.Store
-	pushSender   notification.PushSender
+	store      Store
+	schedStore schedule.Store
+	schedSvc   *schedule.Service
+	notifStore notification.Store
+	choreStore chore.Store
+	hhStore    household.Store
+	userPrefs  userprefs.Store
+	pushSender notification.PushSender
 }
 
 func NewScheduler(

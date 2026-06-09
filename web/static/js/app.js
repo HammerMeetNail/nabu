@@ -1567,7 +1567,7 @@ export async function init() {
         document.querySelectorAll('.indicator-volume-select').forEach(select => {
           const indicator = select.dataset.indicator;
           const val = select.value;
-          if (indicator && val !== "") {
+          if (indicator && val !== "" && indicators.includes(indicator)) {
             indicatorVolumes[indicator] = parseInt(val, 10);
           }
         });

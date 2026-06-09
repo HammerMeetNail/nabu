@@ -345,6 +345,30 @@ func TestLogService_LatestPerChore(t *testing.T) {
 	}
 }
 
+func TestLogService_LatestPerChore_TiedTimestamps(t *testing.T) {
+	svc := chorelog.NewService(chorelog.NewMemoryStore())
+	ctx := context.Background()
+
+	ts := time.Date(2026, 6, 8, 11, 30, 0, 0, time.UTC)
+
+	// Two logs for the same chore at the exact same timestamp.
+	// The second one (higher ID) should be returned by LatestPerChore.
+	_, _ = svc.LogChore(ctx, 1, 10, 100, "first", []string{"a", "b"}, map[string]int{"a": 10, "b": 20}, &ts, nil, &ts, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, "second", []string{"a"}, map[string]int{"a": 30}, &ts, nil, &ts, nil)
+
+	result, err := svc.LatestPerChore(ctx, 1)
+	if err != nil {
+		t.Fatalf("LatestPerChore: %v", err)
+	}
+	got := result[100]
+	if got.Note != "second" {
+		t.Errorf("LatestPerChore with tied timestamps: note = %q, want 'second'", got.Note)
+	}
+	if len(got.Indicators) != 1 || got.Indicators[0] != "a" {
+		t.Errorf("LatestPerChore with tied timestamps: indicators = %v, want [a]", got.Indicators)
+	}
+}
+
 func TestLogService_GetHistoryLogs(t *testing.T) {
 	svc := chorelog.NewService(chorelog.NewMemoryStore())
 	ctx := context.Background()
