@@ -96,27 +96,17 @@ test.describe("Feeding gaps chart", () => {
     await expect(gapsColumn).toBeVisible({ timeout: 5000 });
     await expect(gapsColumn.locator("h4")).toContainText("Cluster Feeding");
 
-    // Default view is strip - should have an SVG
-    const stripSvg = gapsColumn.locator("svg");
-    await expect(stripSvg).toBeVisible({ timeout: 3000 });
+    // The cluster rate chart should have an SVG with bars (rect elements)
+    const svg = gapsColumn.locator("svg");
+    await expect(svg).toBeVisible({ timeout: 3000 });
+    await expect(svg.locator("rect")).not.toHaveCount(0);
 
-    // Strip chart should have circles (data points)
-    await expect(stripSvg.locator("circle")).not.toHaveCount(0);
+    // Info icon should be present
+    await expect(gapsColumn.locator(".feeding-gaps-info-btn")).toBeVisible();
 
-    // Toggle to heatmap view
-    await page.click('[data-action="stats-feeding-gaps-view"][data-view="heatmap"]');
-    await page.waitForTimeout(200);
-
-    // Heatmap should have rect elements (grid cells)
-    const heatmapSvg = gapsColumn.locator("svg");
-    await expect(heatmapSvg.locator("rect")).not.toHaveCount(0);
-
-    // Toggle back to strip view
-    await page.click('[data-action="stats-feeding-gaps-view"][data-view="strip"]');
-    await page.waitForTimeout(200);
-
-    // Strip chart circles should be back
-    await expect(gapsColumn.locator("svg circle")).not.toHaveCount(0);
+    // Click info icon to expand explainer
+    await gapsColumn.locator(".feeding-gaps-info-btn").click();
+    await expect(gapsColumn.locator(".feeding-gaps-explainer--visible")).toBeVisible();
   });
 
   test("no cluster feeding section when there are no feeding logs", async ({

@@ -2197,16 +2197,6 @@ export async function init() {
         break;
       }
 
-      case "stats-feeding-gaps-view": {
-        e.preventDefault();
-        const view = actionEl.dataset.view;
-        if (!view) break;
-        state.stats = state.stats || {};
-        state.stats.feedingGapsView = view;
-        render(app);
-        break;
-      }
-
       case "toggle-feeding-gaps-info": {
         e.preventDefault();
         state.stats = state.stats || {};
