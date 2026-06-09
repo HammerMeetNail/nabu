@@ -511,7 +511,7 @@ export function renderBabyCareSection(state) {
 }
 
 function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd, gapsOld, gapsNewer, compareEnabled) {
-  const chartHTML = renderClusterRateChart(gaps, compareEnabled ? gapsOld : null, compareEnabled ? gapsNewer : null);
+  const chartHTML = renderClusterGapScatter(gaps, compareEnabled ? gapsOld : null, compareEnabled ? gapsNewer : null);
   const explainerClass = explainerVisible ? " feeding-gaps-explainer--visible" : "";
   const compareActive = compareEnabled ? " period-toggle--active" : "";
 
@@ -528,151 +528,103 @@ function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd, gap
       <input type="date" class="feeding-gaps-date" data-action="stats-feeding-gaps-date" data-field="end" value="${dateEnd || ""}" aria-label="End date">
     </div>
     <div class="feeding-gaps-explainer${explainerClass}">
-      <p><strong>How to read:</strong> Each bar shows how often feeding at that hour is followed by another feed within 2&nbsp;hours. The dashed line is your overall average. Bar color tells you whether those quick follow-ups tend to be <em>small top-offs</em> (&le;&nbsp;50% of the preceding feed) or <em>full feeds</em>.</p>
-      <p class="feeding-gaps-example">
-        <strong>Examples by color &amp; height:</strong><br>
-        <strong>Tall blue</strong> = cluster feeding is common here, and the follow-ups are full meals.<br>
-        <strong>Tall pink</strong> = cluster feeding is common here, but the follow-ups are small top-offs.<br>
-        <strong>Short blue</strong> = quick follow-ups are rare, but when they happen they&rsquo;re full feeds.<br>
-        <strong>Short pink</strong> = quick follow-ups are rare, and even those tend to be tiny top-offs.<br>
-        <strong>Purple</strong> = about half full feeds and half small top-offs &mdash; no clear pattern.<br>
-        <strong>No bar</strong> = not enough data for that hour yet.
-      </p>
-      <p><strong>Compare mode:</strong> Tap <strong>Compare</strong> to split your selected date range at its midpoint &mdash; e.g. June&nbsp;1&ndash;8 becomes June&nbsp;1&ndash;4 (older) vs June&nbsp;5&ndash;8 (newer). Each hour shows two bars: translucent left&nbsp;=&nbsp;older half, solid right&nbsp;=&nbsp;newer half. <strong>A taller right bar</strong> means cluster feeding increased at that hour. <strong>A taller left bar</strong> means it decreased. <strong>Only a right bar</strong> means it just started. <strong>Only a left bar</strong> means it stopped.</p>
+      <p><strong>How to read:</strong> Each dot is one feed. Its vertical position shows how long until the next&nbsp;feed&nbsp;&mdash;&nbsp;lower&nbsp;dots&nbsp;=&nbsp;shorter&nbsp;gaps&nbsp;=&nbsp;cluster feeding. The dashed line marks 2&nbsp;hours: dots <em>below</em> it are cluster feeding, dots <em>above</em> it are typical spacing. Blue dots are full feeds; pink dots are <em>small top-offs</em> (&le;&nbsp;50% of the preceding feed).</p>
+      <p><strong>Compare mode:</strong> Tap <strong>Compare</strong> to split your selected date range at its midpoint &mdash; e.g. June&nbsp;1&ndash;8 becomes June&nbsp;1&ndash;4 (older) vs June&nbsp;5&ndash;8 (newer). Each hour shows two groups of dots: translucent left&nbsp;=&nbsp;older half, solid right&nbsp;=&nbsp;newer half. <strong>More dots below the 2h line on the right</strong> means cluster feeding increased. <strong>More dots below the line on the left</strong> means it decreased.</p>
     </div>
     <div class="baby-chart">${chartHTML}</div>
   </div>`;
 }
 
-function buildHourStats(gaps) {
-  const within2h = (g) => g.gapMinutes <= 120;
-  const isSmallTopOff = (g) => g.precedingVolume > 0 && g.followUpVolume <= g.precedingVolume * 0.5;
-
-  const byHour = {};
-  for (let h = 0; h < 24; h++) byHour[h] = { total: 0, within2h: 0, smallTopOffs: 0 };
-
-  gaps.forEach(g => {
-    byHour[g.hour].total++;
-    if (within2h(g)) {
-      byHour[g.hour].within2h++;
-      if (isSmallTopOff(g)) byHour[g.hour].smallTopOffs++;
-    }
-  });
-
-  let overallTotal = 0;
-  let overallWithin2h = 0;
-  Object.values(byHour).forEach(d => {
-    overallTotal += d.total;
-    overallWithin2h += d.within2h;
-  });
-  const overallRate = overallTotal > 0 ? (overallWithin2h / overallTotal) * 100 : 0;
-
-  return { byHour, overallRate };
-}
-
-function barColor(topOffRatio) {
-  const r = Math.round(46 * (1 - topOffRatio) + 236 * topOffRatio);
-  const g = Math.round(134 * (1 - topOffRatio) + 72 * topOffRatio);
-  const b_ = Math.round(171 * (1 - topOffRatio) + 153 * topOffRatio);
-  return `rgb(${r},${g},${b_})`;
-}
-
-function renderClusterRateChart(gaps, gapsOld, gapsNewer) {
+function renderClusterGapScatter(gaps, gapsOld, gapsNewer) {
   if (!gaps || gaps.length === 0) return '<p class="text-secondary text-sm text-center mt-2">No data</p>';
 
-  const { byHour, overallRate } = buildHourStats(gaps);
-  const old = gapsOld ? buildHourStats(gapsOld) : null;
-  const newer = gapsNewer ? buildHourStats(gapsNewer) : null;
+  const smallTopOff = (g) => g.precedingVolume > 0 && g.followUpVolume <= g.precedingVolume * 0.5;
 
   const leftM = 38;
-  const rightM = 6;
+  const rightM = 12;
   const topM = 8;
-  const bottomM = 28;
-  const chartH = 120;
-  const colW = (() => {
-    const avail = 320 - leftM - rightM;
-    return Math.floor(avail / 24);
-  })();
-  const totalW = leftM + 24 * colW + rightM;
+  const bottomM = 24;
+  const chartW = 510;
+  const chartH = 144;
+  const hourW = chartW / 24;
+  const totalW = leftM + chartW + rightM;
   const totalH = topM + chartH + bottomM;
 
-  let svg = `<svg viewBox="0 0 ${totalW} ${totalH}" class="baby-svg-chart" role="img" aria-label="Cluster feeding rate chart">`;
+  const maxY = 360;
+  const yPos = (mins) => topM + chartH - Math.round((Math.min(mins, maxY) / maxY) * chartH);
+  const xCenter = (h) => leftM + h * hourW + hourW / 2;
+  const jitter = (seed) => ((seed * 137.508) % 1 - 0.5) * hourW * 0.7;
 
-  const pctTicks = [0, 25, 50, 75, 100];
-  pctTicks.forEach(t => {
-    const y = topM + chartH - Math.round((t / 100) * chartH);
+  let svg = `<svg viewBox="0 0 ${totalW} ${totalH}" class="feeding-gaps-chart" role="img" aria-label="Cluster feeding gap scatter">`;
+
+  for (let m = 0; m <= maxY; m += 60) {
+    const y = yPos(m);
     svg += `<line x1="${leftM}" y1="${y}" x2="${totalW - rightM}" y2="${y}" stroke="#e5e7eb" stroke-width="0.5"/>`;
-    svg += `<text x="${leftM - 4}" y="${y + 4}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="system-ui, sans-serif">${t}%</text>`;
-  });
-
-  const avgY = topM + chartH - Math.round((overallRate / 100) * chartH);
-  svg += `<line x1="${leftM}" y1="${avgY}" x2="${totalW - rightM}" y2="${avgY}" stroke="#6B7280" stroke-width="1" stroke-dasharray="3,3"/>`;
-
-  for (let h = 0; h < 24; h++) {
-    const x = leftM + h * colW;
-    if (h % 3 === 0) {
-      const label = h === 0 ? "12a" : h < 12 ? h + "a" : h === 12 ? "12p" : (h - 12) + "p";
-      svg += `<text x="${x + colW / 2}" y="${topM + chartH + 14}" text-anchor="middle" font-size="8" fill="#9ca3af" font-family="system-ui, sans-serif">${label}</text>`;
-    }
+    const label = m === 0 ? "0" : `${m / 60}h`;
+    svg += `<text x="${leftM - 4}" y="${y + 3}" text-anchor="end" font-size="8" fill="#9ca3af" font-family="system-ui, sans-serif">${label}</text>`;
   }
 
-  for (let h = 0; h < 24; h++) {
-    const d = byHour[h];
-    const od = old ? old.byHour[h] : null;
-    const nd = newer ? newer.byHour[h] : null;
-    if (d.total === 0 && (!od || od.total === 0) && (!nd || nd.total === 0)) continue;
+  const twoHY = yPos(120);
+  svg += `<line x1="${leftM}" y1="${twoHY}" x2="${totalW - rightM}" y2="${twoHY}" stroke="#9ca3af" stroke-width="1" stroke-dasharray="3,3"/>`;
+  svg += `<text x="${leftM + 4}" y="${twoHY - 3}" font-size="8" fill="#9ca3af" font-family="system-ui, sans-serif">2h</text>`;
 
-    const x = leftM + h * colW + 1;
-    const topOffRatio = d.within2h > 0 ? d.smallTopOffs / d.within2h : 0;
-
-    if (old && newer) {
-      const barW = Math.floor((colW - 3) / 2);
-      const xOld = x;
-      const xNew = x + barW + 1;
-
-      if (od.total > 0) {
-        const oRate = (od.within2h / od.total) * 100;
-        const oBarH = Math.max(Math.round((oRate / 100) * chartH), 1);
-        const oy = topM + chartH - oBarH;
-        const oTopOffRatio = od.within2h > 0 ? od.smallTopOffs / od.within2h : 0;
-        svg += `<rect x="${xOld}" y="${oy}" width="${barW}" height="${oBarH}" rx="1.5" fill="${barColor(oTopOffRatio)}" opacity="0.4">
-          <title>${formatHour(h)} older: ${Math.round(oRate)}% (${od.within2h}/${od.total})</title>
-        </rect>`;
-      }
-
-      if (nd.total > 0) {
-        const nRate = (nd.within2h / nd.total) * 100;
-        const nBarH = Math.max(Math.round((nRate / 100) * chartH), 1);
-        const ny = topM + chartH - nBarH;
-        const nTopOffRatio = nd.within2h > 0 ? nd.smallTopOffs / nd.within2h : 0;
-        svg += `<rect x="${xNew}" y="${ny}" width="${barW}" height="${nBarH}" rx="1.5" fill="${barColor(nTopOffRatio)}" opacity="0.85">
-          <title>${formatHour(h)} newer: ${Math.round(nRate)}% (${nd.within2h}/${nd.total})</title>
-        </rect>`;
-      }
-    } else {
-      if (d.total === 0) continue;
-      const rate = d.total > 0 ? (d.within2h / d.total) * 100 : 0;
-      const barH = Math.max(Math.round((rate / 100) * chartH), 1);
-      const y = topM + chartH - barH;
-      svg += `<rect x="${x}" y="${y}" width="${colW - 2}" height="${barH}" rx="1.5" fill="${barColor(topOffRatio)}" opacity="0.85">
-        <title>${formatHour(h)}: ${Math.round(rate)}% (${d.within2h}/${d.total} feeds)</title>
-      </rect>`;
-    }
+  for (let h = 0; h < 24; h += 3) {
+    const x = xCenter(h);
+    svg += `<text x="${x}" y="${topM + chartH + 14}" text-anchor="middle" font-size="8" fill="#9ca3af" font-family="system-ui, sans-serif">${formatHour(h)}</text>`;
   }
 
   svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="#d1d5db" stroke-width="1"/>`;
 
-  const legendY = topM + chartH + 22;
-  if (old) {
-    svg += `<rect x="${leftM}" y="${legendY - 7}" width="8" height="8" rx="2" fill="#2E86AB" opacity="0.4"/>`;
-    svg += `<text x="${leftM + 11}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">older</text>`;
-    svg += `<rect x="${leftM + 48}" y="${legendY - 7}" width="8" height="8" rx="2" fill="#2E86AB" opacity="0.85"/>`;
-    svg += `<text x="${leftM + 59}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">newer</text>`;
+  const hasCompare = gapsOld && gapsNewer && gapsOld.length > 0 && gapsNewer.length > 0;
+
+  if (hasCompare) {
+    const dotR = 2.5;
+    const colOffset = hourW * 0.22;
+
+    gapsOld.forEach((g) => {
+      const seed = g.hour * 1000 + g.gapMinutes;
+      const jx = ((seed * 137.508) % 1 - 0.5) * hourW * 0.38;
+      const x = xCenter(g.hour) - colOffset + jx;
+      const y = yPos(g.gapMinutes);
+      const color = smallTopOff(g) ? "#EC4899" : "#2E86AB";
+      svg += `<circle cx="${x}" cy="${y}" r="${dotR}" fill="${color}" opacity="0.4">
+        <title>${formatHour(g.hour)} older: ${g.gapMinutes}m, ${g.followUpVolume}mL</title>
+      </circle>`;
+    });
+
+    gapsNewer.forEach((g) => {
+      const seed = g.hour * 1000 + g.gapMinutes;
+      const jx = ((seed * 137.508) % 1 - 0.5) * hourW * 0.38;
+      const x = xCenter(g.hour) + colOffset + jx;
+      const y = yPos(g.gapMinutes);
+      const color = smallTopOff(g) ? "#EC4899" : "#2E86AB";
+      svg += `<circle cx="${x}" cy="${y}" r="${dotR}" fill="${color}" opacity="0.85">
+        <title>${formatHour(g.hour)} newer: ${g.gapMinutes}m, ${g.followUpVolume}mL</title>
+      </circle>`;
+    });
   } else {
-    svg += `<rect x="${leftM}" y="${legendY - 7}" width="8" height="8" rx="2" fill="#EC4899" opacity="0.85"/>`;
-    svg += `<text x="${leftM + 11}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">small top-offs</text>`;
-    svg += `<rect x="${leftM + 80}" y="${legendY - 7}" width="8" height="8" rx="2" fill="#2E86AB" opacity="0.85"/>`;
-    svg += `<text x="${leftM + 91}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">full feeds</text>`;
+    gaps.forEach((g) => {
+      const seed = g.hour * 1000 + g.gapMinutes;
+      const x = xCenter(g.hour) + jitter(seed);
+      const y = yPos(g.gapMinutes);
+      const color = smallTopOff(g) ? "#EC4899" : "#2E86AB";
+      svg += `<circle cx="${x}" cy="${y}" r="3" fill="${color}" opacity="0.6">
+        <title>${formatHour(g.hour)}: ${g.gapMinutes}m → ${g.followUpVolume}mL</title>
+      </circle>`;
+    });
+  }
+
+  const legendY = topM + chartH + 28;
+  if (hasCompare) {
+    svg += `<circle cx="${leftM + 4}" cy="${legendY - 2}" r="2.5" fill="#2E86AB" opacity="0.4"/>`;
+    svg += `<text x="${leftM + 10}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">older</text>`;
+    svg += `<circle cx="${leftM + 56}" cy="${legendY - 2}" r="2.5" fill="#2E86AB" opacity="0.85"/>`;
+    svg += `<text x="${leftM + 62}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">newer</text>`;
+  } else {
+    svg += `<circle cx="${leftM + 4}" cy="${legendY - 2}" r="3" fill="#2E86AB" opacity="0.6"/>`;
+    svg += `<text x="${leftM + 10}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">full feed</text>`;
+    svg += `<circle cx="${leftM + 64}" cy="${legendY - 2}" r="3" fill="#EC4899" opacity="0.6"/>`;
+    svg += `<text x="${leftM + 70}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">small top-off</text>`;
   }
 
   svg += `</svg>`;

@@ -56,7 +56,7 @@ async function postFeedLog(page, csrf, choreId, completedAt, volumeML, indicator
 }
 
 test.describe("Feeding gaps chart", () => {
-  test("cluster feeding chart renders with strip view and heatmap toggle", async ({
+  test("cluster feeding chart renders scatter plot of gap durations", async ({
     page,
   }) => {
     const { csrf, feedBaby } = await setupWithChores(page);
@@ -72,16 +72,16 @@ test.describe("Feeding gaps chart", () => {
     // 9:40am 40mL  -> 12:30pm 110mL (170 min gap)
     // 12:30pm 110mL -> 1:15pm 30mL (45 min gap, small top-off)
     // 1:15pm 30mL   -> 4:00pm 100mL (165 min gap)
-    // Add another at 7pm: 7:00pm 130mL -> 7:35pm 50mL (35 min gap)
+    // 7:00pm 130mL -> 7:35pm 50mL (35 min gap, small top-off)
 
     const logs = [
-      { completedAt: new Date(y, m, d, 9, 0, 0), volumeML: 120, indicatorVolumes: { "🍼 formula": 120 } },
-      { completedAt: new Date(y, m, d, 9, 40, 0), volumeML: 40, indicatorVolumes: { "🍼 formula": 40 } },
-      { completedAt: new Date(y, m, d, 12, 30, 0), volumeML: 110, indicatorVolumes: { "🍼 formula": 110 } },
-      { completedAt: new Date(y, m, d, 13, 15, 0), volumeML: 30, indicatorVolumes: { "🍼 formula": 30 } },
-      { completedAt: new Date(y, m, d, 16, 0, 0), volumeML: 100, indicatorVolumes: { "🍼 formula": 100 } },
-      { completedAt: new Date(y, m, d, 19, 0, 0), volumeML: 130, indicatorVolumes: { "🍼 formula": 130 } },
-      { completedAt: new Date(y, m, d, 19, 35, 0), volumeML: 50, indicatorVolumes: { "🍼 formula": 50 } },
+      { completedAt: new Date(y, m, d, 9, 0, 0), volumeML: 120, indicatorVolumes: { "\u{1F37C} formula": 120 } },
+      { completedAt: new Date(y, m, d, 9, 40, 0), volumeML: 40, indicatorVolumes: { "\u{1F37C} formula": 40 } },
+      { completedAt: new Date(y, m, d, 12, 30, 0), volumeML: 110, indicatorVolumes: { "\u{1F37C} formula": 110 } },
+      { completedAt: new Date(y, m, d, 13, 15, 0), volumeML: 30, indicatorVolumes: { "\u{1F37C} formula": 30 } },
+      { completedAt: new Date(y, m, d, 16, 0, 0), volumeML: 100, indicatorVolumes: { "\u{1F37C} formula": 100 } },
+      { completedAt: new Date(y, m, d, 19, 0, 0), volumeML: 130, indicatorVolumes: { "\u{1F37C} formula": 130 } },
+      { completedAt: new Date(y, m, d, 19, 35, 0), volumeML: 50, indicatorVolumes: { "\u{1F37C} formula": 50 } },
     ];
 
     for (const log of logs) {
@@ -91,22 +91,21 @@ test.describe("Feeding gaps chart", () => {
     await page.click("a[data-nav=\"stats\"]");
     await page.waitForSelector(".stats-page", { timeout: 10000 });
 
-    // The cluster feeding column should appear as its own box
     const gapsColumn = page.locator(".baby-care-column").filter({ hasText: "Cluster Feeding" });
     await expect(gapsColumn).toBeVisible({ timeout: 5000 });
-    await expect(gapsColumn.locator("h4")).toContainText("Cluster Feeding");
 
-    // The cluster rate chart should have an SVG with bars (rect elements)
-    const svg = gapsColumn.locator("svg");
+    // Scatter plot should have circles (not bars)
+    const svg = gapsColumn.locator("svg.feeding-gaps-chart");
     await expect(svg).toBeVisible({ timeout: 3000 });
-    await expect(svg.locator("rect")).not.toHaveCount(0);
+    const dots = svg.locator("circle");
+    // Data dots + 2 legend circles
+    await expect(dots).toHaveCount(8);
 
-    // Info icon should be present
-    await expect(gapsColumn.locator(".feeding-gaps-info-btn")).toBeVisible();
-
-    // Click info icon to expand explainer
+    // Info icon expand/collapse
     await gapsColumn.locator(".feeding-gaps-info-btn").click();
     await expect(gapsColumn.locator(".feeding-gaps-explainer--visible")).toBeVisible();
+    await gapsColumn.locator(".feeding-gaps-info-btn").click();
+    await expect(gapsColumn.locator(".feeding-gaps-explainer--visible")).not.toBeVisible();
   });
 
   test("no cluster feeding section when there are no feeding logs", async ({
