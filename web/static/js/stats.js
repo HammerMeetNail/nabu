@@ -526,8 +526,16 @@ function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd) {
       <input type="date" class="feeding-gaps-date" data-action="stats-feeding-gaps-date" data-field="end" value="${dateEnd || ""}" aria-label="End date">
     </div>
     <div class="feeding-gaps-explainer${explainerClass}">
-      <p><strong>How to read:</strong> Each bar shows how often feeding at that hour is followed by another feed within 2&nbsp;hours. Bar color tells you whether those quick follow-ups tend to be <em>small top-offs</em> (&lt;&nbsp;70% of the preceding feed) or <em>full feeds</em>. The dashed line is your overall average.</p>
-      <p class="feeding-gaps-example"><em>Example: a tall pink bar at 10am means feeding at 10am is often followed quickly, and those follow-ups are usually small top-offs. A short blue bar at 7pm means evening feeds rarely trigger a quick follow-up.</em></p>
+      <p><strong>How to read:</strong> Each bar shows how often feeding at that hour is followed by another feed within 2&nbsp;hours. The dashed line is your overall average. Bar color tells you whether those quick follow-ups tend to be <em>small top-offs</em> (&lt;&nbsp;70% of the preceding feed) or <em>full feeds</em>.</p>
+      <p class="feeding-gaps-example">
+        <strong>Examples by color &amp; height:</strong><br>
+        <strong>Tall blue</strong> = cluster feeding is common here, and the follow-ups are full meals.<br>
+        <strong>Tall pink</strong> = cluster feeding is common here, but the follow-ups are small top-offs.<br>
+        <strong>Short blue</strong> = quick follow-ups are rare, but when they happen they&rsquo;re full feeds.<br>
+        <strong>Short pink</strong> = quick follow-ups are rare, and even those tend to be tiny top-offs.<br>
+        <strong>Purple</strong> = about half full feeds and half small top-offs &mdash; no clear pattern.<br>
+        <strong>No bar</strong> = not enough data for that hour yet.
+      </p>
     </div>
     <div class="baby-chart">${chartHTML}</div>
   </div>`;
