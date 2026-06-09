@@ -538,6 +538,7 @@ function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd, gap
         <strong>Purple</strong> = about half full feeds and half small top-offs &mdash; no clear pattern.<br>
         <strong>No bar</strong> = not enough data for that hour yet.
       </p>
+      <p><strong>Compare mode:</strong> Tap the <strong>Compare</strong> button to see change over time. The date range is split in half &mdash; each hour shows two bars side by side: a translucent bar for the <em>older</em> half and a solid bar for the <em>newer</em> half. <strong>A bar that grew</strong> (taller on the right) means cluster feeding is increasing at that hour. <strong>A bar that shrank</strong> (taller on the left) means it&rsquo;s fading. <strong>No older bar but a new one</strong> means cluster feeding just started happening at that hour. <strong>No newer bar</strong> means it stopped.</p>
     </div>
     <div class="baby-chart">${chartHTML}</div>
   </div>`;
