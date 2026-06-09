@@ -51,8 +51,13 @@ export async function loadChoreTimeSeries(choreId, period) {
   return data;
 }
 
-export async function loadFeedingGaps(days = 30) {
-  const { data } = await apiFetch(`/api/stats/feeding-gaps?days=${days}`);
+export async function loadFeedingGaps(start, end) {
+  const params = new URLSearchParams();
+  if (start) params.set("start", start);
+  if (end) params.set("end", end);
+  const qs = params.toString();
+  const url = `/api/stats/feeding-gaps${qs ? "?" + qs : ""}`;
+  const { data } = await apiFetch(url);
   return data;
 }
 
@@ -480,6 +485,8 @@ export function renderBabyCareSection(state) {
   const feedingGaps = stats.feedingGaps || [];
   const gapsView = stats.feedingGapsView || "strip";
   const explainerVisible = stats.feedingGapsExplainerVisible || false;
+  const gapsStart = stats.feedingGapsStart || "";
+  const gapsEnd = stats.feedingGapsEnd || "";
 
   if (!feedBaby && !changeBaby) return "";
 
@@ -499,12 +506,12 @@ export function renderBabyCareSection(state) {
     <div class="baby-care-columns">
       ${feedBaby ? renderBabyColumn(feedBaby, memberMap, babyPeriod, "feed") : ""}
       ${changeBaby ? renderBabyColumn(changeBaby, memberMap, babyPeriod, "change") : ""}
-      ${feedingGaps.length > 0 ? renderFeedingGapsColumn(feedingGaps, gapsView, explainerVisible) : ""}
+      ${feedingGaps.length > 0 ? renderFeedingGapsColumn(feedingGaps, gapsView, explainerVisible, gapsStart, gapsEnd) : ""}
     </div>
   </div>`;
 }
 
-function renderFeedingGapsColumn(gaps, view, explainerVisible) {
+function renderFeedingGapsColumn(gaps, view, explainerVisible, dateStart, dateEnd) {
   const chartHTML = view === "heatmap"
     ? renderFeedingGapsHeatmap(gaps)
     : renderFeedingGapsStrip(gaps);
@@ -523,10 +530,15 @@ function renderFeedingGapsColumn(gaps, view, explainerVisible) {
         <button class="period-toggle-btn${heatmapActive}" data-action="stats-feeding-gaps-view" data-view="heatmap" aria-pressed="${view === "heatmap"}">Heatmap</button>
       </div>
     </div>
+    <div class="feeding-gaps-dates">
+      <input type="date" class="feeding-gaps-date" data-action="stats-feeding-gaps-date" data-field="start" value="${dateStart || ""}" aria-label="Start date">
+      <span class="feeding-gaps-date-sep">&ndash;</span>
+      <input type="date" class="feeding-gaps-date" data-action="stats-feeding-gaps-date" data-field="end" value="${dateEnd || ""}" aria-label="End date">
+    </div>
     <div class="feeding-gaps-explainer${explainerClass}">
-      <p><strong>Strip chart:</strong> Each dot is a pair of consecutive feedings. X&nbsp;=&nbsp;hour of the first feed, Y&nbsp;=&nbsp;minutes until the next feed. Darker dots mean the follow-up had more volume. A cluster of dots near the bottom at a given hour means short gaps are common at that time.</p>
+      <p><strong>Strip chart:</strong> Each dot is a pair of consecutive feedings. X&nbsp;=&nbsp;hour of the first feed, Y&nbsp;=&nbsp;minutes until the next feed. Hollow dots are small top-offs (&lt;&nbsp;70% of the preceding feed). Darker dots mean the follow-up had more volume. A cluster of dots near the bottom at a given hour means short gaps are common at that time.</p>
       <p><strong>Heatmap:</strong> Same data, binned into gap buckets (rows) by hour (columns). Darker cells mean that gap duration at that hour happens more often.</p>
-      <p class="feeding-gaps-example"><em>Example: if the 30–60m row is dark at 10am, feeding at 10am is often followed by a small top-off within an hour.</em></p>
+      <p class="feeding-gaps-example"><em>Example (strip): a hollow dot at (10am, 40m) means the 10am feed of 120mL was followed 40min later by only 30mL — a small top-off. A solid dark dot at (7pm, 35m) means a 130mL feed was followed 35min later by another 110mL — not a top-off, just short spacing.</em></p>
     </div>
     <div class="baby-chart">${chartHTML}</div>
   </div>`;
@@ -612,10 +624,15 @@ function renderFeedingGapsStrip(gaps) {
   gaps.forEach(g => {
     const cx = leftM + g.hour * colW + colW / 2;
     const cy = topM + chartH - Math.round((Math.min(g.gapMinutes, maxGap) / maxGap) * chartH);
-    const alpha = 0.2 + 0.6 * (g.followUpVolume / maxVol);
     const r = 2.5;
-    const color = `rgba(236, 72, 153, ${alpha.toFixed(2)})`;
-    svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}"/>`;
+    const isSmallTopOff = g.precedingVolume > 0 && g.followUpVolume < g.precedingVolume * 0.7;
+    if (isSmallTopOff) {
+      const strokeAlpha = 0.3 + 0.5 * (g.followUpVolume / maxVol);
+      svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="rgba(236, 72, 153, ${strokeAlpha.toFixed(2)})" stroke-width="1.2"/>`;
+    } else {
+      const alpha = 0.2 + 0.6 * (g.followUpVolume / maxVol);
+      svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="rgba(236, 72, 153, ${alpha.toFixed(2)})"/>`;
+    }
   });
 
   svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="#d1d5db" stroke-width="1"/>`;

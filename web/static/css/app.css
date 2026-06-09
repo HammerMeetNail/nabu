@@ -1348,7 +1348,30 @@ details[open] .member-chevron {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.feeding-gaps-dates {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   margin-bottom: 8px;
+}
+
+.feeding-gaps-date {
+  flex: 1;
+  padding: 3px 6px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+}
+
+.feeding-gaps-date-sep {
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
 .feeding-gaps-info-btn {

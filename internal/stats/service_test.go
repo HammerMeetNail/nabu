@@ -579,21 +579,24 @@ func TestGetFeedingGaps_Basic(t *testing.T) {
 	}
 	svc, _ := seedFeedingService(t, logs)
 
-	gaps, err := svc.GetFeedingGaps(context.Background(), 1, 30, utc)
+	start := time.Date(2026, 6, 9, 0, 0, 0, 0, utc)
+	end := time.Date(2026, 6, 10, 0, 0, 0, 0, utc)
+
+	gaps, err := svc.GetFeedingGaps(context.Background(), 1, start, end, utc)
 	if err != nil {
 		t.Fatalf("GetFeedingGaps: %v", err)
 	}
 	if len(gaps) != 3 {
 		t.Fatalf("expected 3 gaps, got %d", len(gaps))
 	}
-	if gaps[0].Hour != 10 || gaps[0].GapMinutes != 45 || gaps[0].FollowUpVolume != 60 {
-		t.Errorf("gap[0] = {hour:%d, gap:%d, vol:%d}, want {10, 45, 60}", gaps[0].Hour, gaps[0].GapMinutes, gaps[0].FollowUpVolume)
+	if gaps[0].Hour != 10 || gaps[0].GapMinutes != 45 || gaps[0].PrecedingVolume != 120 || gaps[0].FollowUpVolume != 60 {
+		t.Errorf("gap[0] = {hour:%d, gap:%d, prev:%d, vol:%d}, want {10, 45, 120, 60}", gaps[0].Hour, gaps[0].GapMinutes, gaps[0].PrecedingVolume, gaps[0].FollowUpVolume)
 	}
-	if gaps[1].Hour != 10 || gaps[1].GapMinutes != 135 || gaps[1].FollowUpVolume != 120 {
-		t.Errorf("gap[1] = {hour:%d, gap:%d, vol:%d}, want {10, 135, 120}", gaps[1].Hour, gaps[1].GapMinutes, gaps[1].FollowUpVolume)
+	if gaps[1].Hour != 10 || gaps[1].GapMinutes != 135 || gaps[1].PrecedingVolume != 60 || gaps[1].FollowUpVolume != 120 {
+		t.Errorf("gap[1] = {hour:%d, gap:%d, prev:%d, vol:%d}, want {10, 135, 60, 120}", gaps[1].Hour, gaps[1].GapMinutes, gaps[1].PrecedingVolume, gaps[1].FollowUpVolume)
 	}
-	if gaps[2].Hour != 13 || gaps[2].GapMinutes != 50 || gaps[2].FollowUpVolume != 30 {
-		t.Errorf("gap[2] = {hour:%d, gap:%d, vol:%d}, want {13, 50, 30}", gaps[2].Hour, gaps[2].GapMinutes, gaps[2].FollowUpVolume)
+	if gaps[2].Hour != 13 || gaps[2].GapMinutes != 50 || gaps[2].PrecedingVolume != 120 || gaps[2].FollowUpVolume != 30 {
+		t.Errorf("gap[2] = {hour:%d, gap:%d, prev:%d, vol:%d}, want {13, 50, 120, 30}", gaps[2].Hour, gaps[2].GapMinutes, gaps[2].PrecedingVolume, gaps[2].FollowUpVolume)
 	}
 }
 
@@ -604,7 +607,7 @@ func TestGetFeedingGaps_EmptyWhenNoFeedChore(t *testing.T) {
 	}}
 	svc := stats.NewService(logStore, cs)
 
-	gaps, err := svc.GetFeedingGaps(context.Background(), 1, 30, utc)
+	gaps, err := svc.GetFeedingGaps(context.Background(), 1, time.Date(2026, 6, 1, 0, 0, 0, 0, utc), time.Date(2026, 7, 1, 0, 0, 0, 0, utc), utc)
 	if err != nil {
 		t.Fatalf("GetFeedingGaps: %v", err)
 	}
@@ -619,7 +622,7 @@ func TestGetFeedingGaps_SingleLog(t *testing.T) {
 	}
 	svc, _ := seedFeedingService(t, logs)
 
-	gaps, err := svc.GetFeedingGaps(context.Background(), 1, 30, utc)
+	gaps, err := svc.GetFeedingGaps(context.Background(), 1, time.Date(2026, 6, 9, 0, 0, 0, 0, utc), time.Date(2026, 6, 10, 0, 0, 0, 0, utc), utc)
 	if err != nil {
 		t.Fatalf("GetFeedingGaps: %v", err)
 	}

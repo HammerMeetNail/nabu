@@ -682,7 +682,16 @@ async function loadBabyTimeSeries() {
       }
     } catch {}
     try {
-      const gapsData = await loadFeedingGaps(30);
+      state.stats = state.stats || {};
+      const now = new Date();
+      const endStr = now.toISOString().slice(0, 10);
+      const startDate = new Date(now);
+      startDate.setDate(startDate.getDate() - 14);
+      const startStr = startDate.toISOString().slice(0, 10);
+      state.stats.feedingGapsStart = state.stats.feedingGapsStart || startStr;
+      state.stats.feedingGapsEnd = state.stats.feedingGapsEnd || endStr;
+      const apiEnd = apiExclusiveEnd(state.stats.feedingGapsEnd);
+      const gapsData = await loadFeedingGaps(state.stats.feedingGapsStart, apiEnd);
       if (gapsData && gapsData.feedingGaps) {
         state.stats.feedingGaps = gapsData.feedingGaps;
       }
@@ -696,6 +705,12 @@ async function loadBabyTimeSeries() {
       }
     } catch {}
   }
+}
+
+function apiExclusiveEnd(inclusiveEnd) {
+  const d = new Date(inclusiveEnd + "T00:00:00");
+  d.setDate(d.getDate() + 1);
+  return d.toISOString().slice(0, 10);
 }
 
 function countTodayLogs() {
@@ -2263,24 +2278,39 @@ export async function init() {
       if (intvRow) intvRow.hidden = (freqVal !== "every_n_days");
       if (endRow)  endRow.hidden  = (freqVal === "once");
     }
-    if (actionEl?.dataset?.action === "busy-hours-filter") {
-      const filter = actionEl.dataset.filter;
-      state.stats = state.stats || {};
-      state.stats.busyHoursFilter = state.stats.busyHoursFilter || {};
-      const raw = actionEl.value;
-      if (filter === "start" || filter === "end") {
-        state.stats.busyHoursFilter[filter] = raw || null;
-      } else {
-        state.stats.busyHoursFilter[filter] = raw ? parseInt(raw, 10) : null;
-      }
-      loadBusyHours(state.stats.busyHoursFilter).then(data => {
-        if (data && data.busyHours) {
-          state.stats.busyHours = data.busyHours;
-          state.stats.busyHoursStart = data.start;
-          state.stats.busyHoursEnd = data.end;
+      if (actionEl?.dataset?.action === "busy-hours-filter") {
+        const filter = actionEl.dataset.filter;
+        state.stats = state.stats || {};
+        state.stats.busyHoursFilter = state.stats.busyHoursFilter || {};
+        const raw = actionEl.value;
+        if (filter === "start" || filter === "end") {
+          state.stats.busyHoursFilter[filter] = raw || null;
+        } else {
+          state.stats.busyHoursFilter[filter] = raw ? parseInt(raw, 10) : null;
         }
-      }).catch(() => {}).then(() => render(app));
-    }
+        loadBusyHours(state.stats.busyHoursFilter).then(data => {
+          if (data && data.busyHours) {
+            state.stats.busyHours = data.busyHours;
+            state.stats.busyHoursStart = data.start;
+            state.stats.busyHoursEnd = data.end;
+          }
+        }).catch(() => {}).then(() => render(app));
+      }
+      if (actionEl?.dataset?.action === "stats-feeding-gaps-date") {
+        const field = actionEl.dataset.field;
+        state.stats = state.stats || {};
+        if (field === "start") state.stats.feedingGapsStart = actionEl.value || "";
+        if (field === "end") state.stats.feedingGapsEnd = actionEl.value || "";
+        const s = state.stats.feedingGapsStart;
+        const e = state.stats.feedingGapsEnd;
+        if (s && e) {
+          loadFeedingGaps(s, apiExclusiveEnd(e)).then(data => {
+            if (data && data.feedingGaps) {
+              state.stats.feedingGaps = data.feedingGaps;
+            }
+          }).catch(() => {}).then(() => render(app));
+        }
+      }
     if (actionEl?.dataset?.action === "chore-stats-filter") {
       const filter = actionEl.dataset.filter;
       state.stats = state.stats || {};

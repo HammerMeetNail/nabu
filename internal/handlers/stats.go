@@ -406,14 +406,31 @@ func (h *StatsHandler) FeedingGaps(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	days := 30
-	if ds := r.URL.Query().Get("days"); ds != "" {
-		if d, err := strconv.Atoi(ds); err == nil && d > 0 && d <= 365 {
-			days = d
+	loc := h.userLocation(r)
+
+	startStr := r.URL.Query().Get("start")
+	endStr := r.URL.Query().Get("end")
+
+	var start, end time.Time
+	if startStr != "" && endStr != "" {
+		var err error
+		start, err = time.ParseInLocation("2006-01-02", startStr, loc)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid start date")
+			return
 		}
+		end, err = time.ParseInLocation("2006-01-02", endStr, loc)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid end date")
+			return
+		}
+	} else {
+		now := nowInLoc(loc)
+		start = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, -14)
+		end = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, 1)
 	}
 
-	gaps, err := h.service.GetFeedingGaps(r.Context(), *user.HouseholdID, days, h.userLocation(r))
+	gaps, err := h.service.GetFeedingGaps(r.Context(), *user.HouseholdID, start, end, loc)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

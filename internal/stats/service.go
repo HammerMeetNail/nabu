@@ -121,9 +121,10 @@ type TimeSeriesPeriod struct {
 }
 
 type FeedingGap struct {
-	Hour           int `json:"hour"`
-	GapMinutes     int `json:"gapMinutes"`
-	FollowUpVolume int `json:"followUpVolume"`
+	Hour            int `json:"hour"`
+	GapMinutes      int `json:"gapMinutes"`
+	PrecedingVolume int `json:"precedingVolume"`
+	FollowUpVolume  int `json:"followUpVolume"`
 }
 
 func NewService(logStore log.Store, choreStore choreStore) *Service {
@@ -780,7 +781,7 @@ func buildMonthBuckets(start, end time.Time, loc *time.Location) []timeBucket {
 	return buckets
 }
 
-func (s *Service) GetFeedingGaps(ctx context.Context, householdID int64, days int, loc *time.Location) ([]FeedingGap, error) {
+func (s *Service) GetFeedingGaps(ctx context.Context, householdID int64, start, end time.Time, loc *time.Location) ([]FeedingGap, error) {
 	chores, err := s.choreStore.ListChores(ctx, householdID)
 	if err != nil {
 		return nil, err
@@ -796,10 +797,6 @@ func (s *Service) GetFeedingGaps(ctx context.Context, householdID int64, days in
 	if feedBabyID == 0 {
 		return nil, nil
 	}
-
-	now := nowIn(loc)
-	start := now.AddDate(0, 0, -days)
-	end := now.AddDate(0, 0, 1)
 
 	logs, err := s.fetchLogsInRange(ctx, householdID, start, end, loc)
 	if err != nil {
@@ -824,6 +821,16 @@ func (s *Service) GetFeedingGaps(ctx context.Context, householdID int64, days in
 		gapMinutes := int(curr.Sub(prev).Minutes())
 
 		hour := prev.Hour()
+
+		precedingVolume := 0
+		if len(feedLogs[i-1].IndicatorVolumes) > 0 {
+			for _, vol := range feedLogs[i-1].IndicatorVolumes {
+				precedingVolume += vol
+			}
+		} else if feedLogs[i-1].VolumeML != nil {
+			precedingVolume = *feedLogs[i-1].VolumeML
+		}
+
 		followUpVolume := 0
 		if len(feedLogs[i].IndicatorVolumes) > 0 {
 			for _, vol := range feedLogs[i].IndicatorVolumes {
@@ -834,9 +841,10 @@ func (s *Service) GetFeedingGaps(ctx context.Context, householdID int64, days in
 		}
 
 		gaps = append(gaps, FeedingGap{
-			Hour:           hour,
-			GapMinutes:     gapMinutes,
-			FollowUpVolume: followUpVolume,
+			Hour:            hour,
+			GapMinutes:      gapMinutes,
+			PrecedingVolume: precedingVolume,
+			FollowUpVolume:  followUpVolume,
 		})
 	}
 
