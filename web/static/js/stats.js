@@ -599,10 +599,10 @@ function renderClusterRateChart(gaps) {
     const y = topM + chartH - barH;
 
     const topOffRatio = d.within2h > 0 ? d.smallTopOffs / d.within2h : 0;
-    const r = Math.round(236 * (1 - topOffRatio) + 236 * topOffRatio);
-    const g = Math.round(72 * (1 - topOffRatio) + 72 * topOffRatio);
-    const b = Math.round(153 * (1 - topOffRatio) + 50 * topOffRatio);
-    const color = `rgb(${r},${g},${b})`;
+    const r = Math.round(46 * (1 - topOffRatio) + 236 * topOffRatio);
+    const g = Math.round(134 * (1 - topOffRatio) + 72 * topOffRatio);
+    const b_ = Math.round(171 * (1 - topOffRatio) + 153 * topOffRatio);
+    const color = `rgb(${r},${g},${b_})`;
 
     svg += `<rect x="${x}" y="${y}" width="${colW - 2}" height="${barH}" rx="1.5" fill="${color}" opacity="0.85">
       <title>${formatHour(h)}: ${Math.round(rate)}% (${d.within2h}/${d.total} feeds)</title>
@@ -612,9 +612,9 @@ function renderClusterRateChart(gaps) {
   svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="#d1d5db" stroke-width="1"/>`;
 
   const legendY = topM + chartH + 22;
-  svg += `<rect x="${leftM}" y="${legendY - 7}" width="8" height="8" rx="2" fill="rgb(236,72,50)" opacity="0.85"/>`;
+  svg += `<rect x="${leftM}" y="${legendY - 7}" width="8" height="8" rx="2" fill="#EC4899" opacity="0.85"/>`;
   svg += `<text x="${leftM + 11}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">small top-offs</text>`;
-  svg += `<rect x="${leftM + 80}" y="${legendY - 7}" width="8" height="8" rx="2" fill="rgb(236,72,153)" opacity="0.85"/>`;
+  svg += `<rect x="${leftM + 80}" y="${legendY - 7}" width="8" height="8" rx="2" fill="#2E86AB" opacity="0.85"/>`;
   svg += `<text x="${leftM + 91}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">full feeds</text>`;
 
   svg += `</svg>`;
