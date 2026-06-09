@@ -505,20 +505,22 @@ export function renderBabyCareSection(state) {
     <div class="baby-care-columns">
       ${feedBaby ? renderBabyColumn(feedBaby, memberMap, babyPeriod, "feed") : ""}
       ${changeBaby ? renderBabyColumn(changeBaby, memberMap, babyPeriod, "change") : ""}
-      ${feedingGaps.length > 0 ? renderFeedingGapsColumn(feedingGaps, explainerVisible, gapsStart, gapsEnd) : ""}
+      ${feedingGaps.length > 0 ? renderFeedingGapsColumn(feedingGaps, explainerVisible, gapsStart, gapsEnd, stats.feedingGapsCompare, stats.feedingGapsCompareEnabled) : ""}
     </div>
   </div>`;
 }
 
-function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd) {
-  const chartHTML = renderClusterRateChart(gaps);
+function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd, gapsCompare, compareEnabled) {
+  const chartHTML = renderClusterRateChart(gaps, compareEnabled ? gapsCompare : null);
   const explainerClass = explainerVisible ? " feeding-gaps-explainer--visible" : "";
+  const compareActive = compareEnabled ? " period-toggle--active" : "";
 
   return `<div class="baby-care-column">
     <div class="feeding-gaps-header">
       <h4 class="baby-col-title" style="margin-bottom:0">🕐 Cluster Feeding
         <button class="feeding-gaps-info-btn" data-action="toggle-feeding-gaps-info" aria-label="How to read this chart" aria-expanded="${explainerVisible}">&#9432;</button>
       </h4>
+      <button class="period-toggle-btn${compareActive}" data-action="stats-feeding-gaps-compare" aria-pressed="${compareEnabled}">Compare</button>
     </div>
     <div class="feeding-gaps-dates">
       <input type="date" class="feeding-gaps-date" data-action="stats-feeding-gaps-date" data-field="start" value="${dateStart || ""}" aria-label="Start date">
@@ -541,9 +543,7 @@ function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd) {
   </div>`;
 }
 
-function renderClusterRateChart(gaps) {
-  if (!gaps || gaps.length === 0) return '<p class="text-secondary text-sm text-center mt-2">No data</p>';
-
+function buildHourStats(gaps) {
   const within2h = (g) => g.gapMinutes <= 120;
   const isSmallTopOff = (g) => g.precedingVolume > 0 && g.followUpVolume < g.precedingVolume * 0.7;
 
@@ -565,6 +565,22 @@ function renderClusterRateChart(gaps) {
     overallWithin2h += d.within2h;
   });
   const overallRate = overallTotal > 0 ? (overallWithin2h / overallTotal) * 100 : 0;
+
+  return { byHour, overallRate };
+}
+
+function barColor(topOffRatio) {
+  const r = Math.round(46 * (1 - topOffRatio) + 236 * topOffRatio);
+  const g = Math.round(134 * (1 - topOffRatio) + 72 * topOffRatio);
+  const b_ = Math.round(171 * (1 - topOffRatio) + 153 * topOffRatio);
+  return `rgb(${r},${g},${b_})`;
+}
+
+function renderClusterRateChart(gaps, gapsOld) {
+  if (!gaps || gaps.length === 0) return '<p class="text-secondary text-sm text-center mt-2">No data</p>';
+
+  const { byHour, overallRate } = buildHourStats(gaps);
+  const old = gapsOld ? buildHourStats(gapsOld) : null;
 
   const leftM = 38;
   const rightM = 6;
@@ -600,30 +616,59 @@ function renderClusterRateChart(gaps) {
 
   for (let h = 0; h < 24; h++) {
     const d = byHour[h];
-    if (d.total === 0) continue;
-    const rate = (d.within2h / d.total) * 100;
-    const barH = Math.max(Math.round((rate / 100) * chartH), 1);
+    if (d.total === 0 && (!old || old.byHour[h].total === 0)) continue;
+
     const x = leftM + h * colW + 1;
-    const y = topM + chartH - barH;
-
     const topOffRatio = d.within2h > 0 ? d.smallTopOffs / d.within2h : 0;
-    const r = Math.round(46 * (1 - topOffRatio) + 236 * topOffRatio);
-    const g = Math.round(134 * (1 - topOffRatio) + 72 * topOffRatio);
-    const b_ = Math.round(171 * (1 - topOffRatio) + 153 * topOffRatio);
-    const color = `rgb(${r},${g},${b_})`;
+    const rate = d.total > 0 ? (d.within2h / d.total) * 100 : 0;
 
-    svg += `<rect x="${x}" y="${y}" width="${colW - 2}" height="${barH}" rx="1.5" fill="${color}" opacity="0.85">
-      <title>${formatHour(h)}: ${Math.round(rate)}% (${d.within2h}/${d.total} feeds)</title>
-    </rect>`;
+    if (old) {
+      const barW = Math.floor((colW - 3) / 2);
+      const xOld = x;
+      const xNew = x + barW + 1;
+
+      if (d.total > 0) {
+        const barH = Math.max(Math.round((rate / 100) * chartH), 1);
+        const y = topM + chartH - barH;
+        svg += `<rect x="${xNew}" y="${y}" width="${barW}" height="${barH}" rx="1.5" fill="${barColor(topOffRatio)}" opacity="0.85">
+          <title>${formatHour(h)} newer: ${Math.round(rate)}% (${d.within2h}/${d.total})</title>
+        </rect>`;
+      }
+
+      const od = old.byHour[h];
+      if (od.total > 0) {
+        const oRate = (od.within2h / od.total) * 100;
+        const oBarH = Math.max(Math.round((oRate / 100) * chartH), 1);
+        const oy = topM + chartH - oBarH;
+        const oTopOffRatio = od.within2h > 0 ? od.smallTopOffs / od.within2h : 0;
+        svg += `<rect x="${xOld}" y="${oy}" width="${barW}" height="${oBarH}" rx="1.5" fill="${barColor(oTopOffRatio)}" opacity="0.4">
+          <title>${formatHour(h)} older: ${Math.round(oRate)}% (${od.within2h}/${od.total})</title>
+        </rect>`;
+      }
+    } else {
+      if (d.total === 0) continue;
+      const barH = Math.max(Math.round((rate / 100) * chartH), 1);
+      const y = topM + chartH - barH;
+      svg += `<rect x="${x}" y="${y}" width="${colW - 2}" height="${barH}" rx="1.5" fill="${barColor(topOffRatio)}" opacity="0.85">
+        <title>${formatHour(h)}: ${Math.round(rate)}% (${d.within2h}/${d.total} feeds)</title>
+      </rect>`;
+    }
   }
 
   svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="#d1d5db" stroke-width="1"/>`;
 
   const legendY = topM + chartH + 22;
-  svg += `<rect x="${leftM}" y="${legendY - 7}" width="8" height="8" rx="2" fill="#EC4899" opacity="0.85"/>`;
-  svg += `<text x="${leftM + 11}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">small top-offs</text>`;
-  svg += `<rect x="${leftM + 80}" y="${legendY - 7}" width="8" height="8" rx="2" fill="#2E86AB" opacity="0.85"/>`;
-  svg += `<text x="${leftM + 91}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">full feeds</text>`;
+  if (old) {
+    svg += `<rect x="${leftM}" y="${legendY - 7}" width="8" height="8" rx="2" fill="#2E86AB" opacity="0.4"/>`;
+    svg += `<text x="${leftM + 11}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">older</text>`;
+    svg += `<rect x="${leftM + 48}" y="${legendY - 7}" width="8" height="8" rx="2" fill="#2E86AB" opacity="0.85"/>`;
+    svg += `<text x="${leftM + 59}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">newer</text>`;
+  } else {
+    svg += `<rect x="${leftM}" y="${legendY - 7}" width="8" height="8" rx="2" fill="#EC4899" opacity="0.85"/>`;
+    svg += `<text x="${leftM + 11}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">small top-offs</text>`;
+    svg += `<rect x="${leftM + 80}" y="${legendY - 7}" width="8" height="8" rx="2" fill="#2E86AB" opacity="0.85"/>`;
+    svg += `<text x="${leftM + 91}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">full feeds</text>`;
+  }
 
   svg += `</svg>`;
   return svg;

@@ -686,7 +686,7 @@ async function loadBabyTimeSeries() {
       const now = new Date();
       const endStr = now.toISOString().slice(0, 10);
       const startDate = new Date(now);
-      startDate.setDate(startDate.getDate() - 14);
+      startDate.setDate(startDate.getDate() - 7);
       const startStr = startDate.toISOString().slice(0, 10);
       state.stats.feedingGapsStart = state.stats.feedingGapsStart || startStr;
       state.stats.feedingGapsEnd = state.stats.feedingGapsEnd || endStr;
@@ -694,6 +694,9 @@ async function loadBabyTimeSeries() {
       const gapsData = await loadFeedingGaps(state.stats.feedingGapsStart, apiEnd);
       if (gapsData && gapsData.feedingGaps) {
         state.stats.feedingGaps = gapsData.feedingGaps;
+      }
+      if (state.stats.feedingGapsCompareEnabled) {
+        await loadCompareGaps();
       }
     } catch {}
   }
@@ -711,6 +714,22 @@ function apiExclusiveEnd(inclusiveEnd) {
   const d = new Date(inclusiveEnd + "T00:00:00");
   d.setDate(d.getDate() + 1);
   return d.toISOString().slice(0, 10);
+}
+
+async function loadCompareGaps() {
+  const s = state.stats.feedingGapsStart;
+  const e = state.stats.feedingGapsEnd;
+  if (!s || !e) return;
+  const start = new Date(s + "T00:00:00");
+  const end = new Date(e + "T00:00:00");
+  const mid = new Date(start.getTime() + (end.getTime() - start.getTime()) / 2);
+  const midStr = mid.toISOString().slice(0, 10);
+  const apiMid = apiExclusiveEnd(midStr);
+  const apiEnd = apiExclusiveEnd(e);
+  const gapsData = await loadFeedingGaps(midStr, apiEnd);
+  if (gapsData && gapsData.feedingGaps) {
+    state.stats.feedingGapsCompare = gapsData.feedingGaps;
+  }
 }
 
 function countTodayLogs() {
@@ -2205,6 +2224,19 @@ export async function init() {
         break;
       }
 
+      case "stats-feeding-gaps-compare": {
+        e.preventDefault();
+        state.stats = state.stats || {};
+        state.stats.feedingGapsCompareEnabled = !state.stats.feedingGapsCompareEnabled;
+        if (state.stats.feedingGapsCompareEnabled) {
+          loadCompareGaps().then(() => render(app));
+        } else {
+          state.stats.feedingGapsCompare = null;
+          render(app);
+        }
+        break;
+      }
+
       case "chart-tap": {
         e.preventDefault();
         const g = e.target.closest("[data-action=\"chart-tap\"]");
@@ -2294,11 +2326,16 @@ export async function init() {
         const s = state.stats.feedingGapsStart;
         const e = state.stats.feedingGapsEnd;
         if (s && e) {
-          loadFeedingGaps(s, apiExclusiveEnd(e)).then(data => {
+          const p = loadFeedingGaps(s, apiExclusiveEnd(e)).then(data => {
             if (data && data.feedingGaps) {
               state.stats.feedingGaps = data.feedingGaps;
             }
-          }).catch(() => {}).then(() => render(app));
+          });
+          const tasks = [p];
+          if (state.stats.feedingGapsCompareEnabled) {
+            tasks.push(loadCompareGaps());
+          }
+          Promise.all(tasks).catch(() => {}).then(() => render(app));
         }
       }
     if (actionEl?.dataset?.action === "chore-stats-filter") {
