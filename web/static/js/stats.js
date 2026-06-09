@@ -528,7 +528,7 @@ function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd, gap
       <input type="date" class="feeding-gaps-date" data-action="stats-feeding-gaps-date" data-field="end" value="${dateEnd || ""}" aria-label="End date">
     </div>
     <div class="feeding-gaps-explainer${explainerClass}">
-      <p><strong>How to read:</strong> Each bar shows how often feeding at that hour is followed by another feed within 2&nbsp;hours. The dashed line is your overall average. Bar color tells you whether those quick follow-ups tend to be <em>small top-offs</em> (&lt;&nbsp;70% of the preceding feed) or <em>full feeds</em>.</p>
+      <p><strong>How to read:</strong> Each bar shows how often feeding at that hour is followed by another feed within 2&nbsp;hours. The dashed line is your overall average. Bar color tells you whether those quick follow-ups tend to be <em>small top-offs</em> (&le;&nbsp;50% of the preceding feed) or <em>full feeds</em>.</p>
       <p class="feeding-gaps-example">
         <strong>Examples by color &amp; height:</strong><br>
         <strong>Tall blue</strong> = cluster feeding is common here, and the follow-ups are full meals.<br>
@@ -546,7 +546,7 @@ function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd, gap
 
 function buildHourStats(gaps) {
   const within2h = (g) => g.gapMinutes <= 120;
-  const isSmallTopOff = (g) => g.precedingVolume > 0 && g.followUpVolume < g.precedingVolume * 0.7;
+  const isSmallTopOff = (g) => g.precedingVolume > 0 && g.followUpVolume <= g.precedingVolume * 0.5;
 
   const byHour = {};
   for (let h = 0; h < 24; h++) byHour[h] = { total: 0, within2h: 0, smallTopOffs: 0 };
