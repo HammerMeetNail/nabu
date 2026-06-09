@@ -399,6 +399,32 @@ func (h *StatsHandler) ChoreTimeSeries(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"timeSeries": ts})
 }
 
+func (h *StatsHandler) FeedingGaps(w http.ResponseWriter, r *http.Request) {
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
+		return
+	}
+
+	days := 30
+	if ds := r.URL.Query().Get("days"); ds != "" {
+		if d, err := strconv.Atoi(ds); err == nil && d > 0 && d <= 365 {
+			days = d
+		}
+	}
+
+	gaps, err := h.service.GetFeedingGaps(r.Context(), *user.HouseholdID, days, h.userLocation(r))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if gaps == nil {
+		gaps = []stats.FeedingGap{}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"feedingGaps": gaps})
+}
+
 func nowInLoc(loc *time.Location) time.Time {
 	if loc == nil {
 		loc = time.UTC

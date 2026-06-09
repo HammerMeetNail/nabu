@@ -546,3 +546,84 @@ func TestGetTopChores_WeekAndDayCounts(t *testing.T) {
 		t.Errorf("Vacuum ThisMonth = %d, want 1", entries[1].ThisMonth)
 	}
 }
+
+// ─── Feeding Gaps ────────────────────────────────────────────────────────────
+
+func seedFeedingService(t *testing.T, logs []chorelog.ChoreLog) (*stats.Service, *stubChoreStore) {
+	t.Helper()
+	logStore := chorelog.NewMemoryStore()
+	logSvc := chorelog.NewService(logStore)
+	ctx := context.Background()
+	for _, l := range logs {
+		d := l.CompletedAt
+		_, err := logSvc.LogChore(ctx, l.HouseholdID, l.UserID, l.ChoreID, l.Note, l.Indicators, l.IndicatorVolumes, &d, l.SlotHour, &d, l.VolumeML)
+		if err != nil {
+			t.Fatalf("seed feeding log: %v", err)
+		}
+	}
+	cs := &stubChoreStore{chores: []stats.ChoreInfo{
+		{ID: 200, HouseholdID: 1, Name: "Feed Baby", Category: "feeding", HasVolumeML: true},
+		{ID: 201, HouseholdID: 1, Name: "Dishes", Category: "kitchen"},
+	}}
+	svc := stats.NewService(logStore, cs)
+	return svc, cs
+}
+
+func TestGetFeedingGaps_Basic(t *testing.T) {
+	base := time.Date(2026, 6, 9, 10, 0, 0, 0, utc)
+	logs := []chorelog.ChoreLog{
+		{HouseholdID: 1, UserID: 10, ChoreID: 200, CompletedAt: base, IndicatorVolumes: map[string]int{"🍼 formula": 120}},
+		{HouseholdID: 1, UserID: 10, ChoreID: 200, CompletedAt: base.Add(45 * time.Minute), IndicatorVolumes: map[string]int{"🤱 breast": 60}},
+		{HouseholdID: 1, UserID: 10, ChoreID: 200, CompletedAt: base.Add(3 * time.Hour), IndicatorVolumes: map[string]int{"🍼 formula": 120}},
+		{HouseholdID: 1, UserID: 10, ChoreID: 200, CompletedAt: base.Add(3*time.Hour + 50*time.Minute), IndicatorVolumes: map[string]int{"🍼 formula": 30}},
+	}
+	svc, _ := seedFeedingService(t, logs)
+
+	gaps, err := svc.GetFeedingGaps(context.Background(), 1, 30, utc)
+	if err != nil {
+		t.Fatalf("GetFeedingGaps: %v", err)
+	}
+	if len(gaps) != 3 {
+		t.Fatalf("expected 3 gaps, got %d", len(gaps))
+	}
+	if gaps[0].Hour != 10 || gaps[0].GapMinutes != 45 || gaps[0].FollowUpVolume != 60 {
+		t.Errorf("gap[0] = {hour:%d, gap:%d, vol:%d}, want {10, 45, 60}", gaps[0].Hour, gaps[0].GapMinutes, gaps[0].FollowUpVolume)
+	}
+	if gaps[1].Hour != 10 || gaps[1].GapMinutes != 135 || gaps[1].FollowUpVolume != 120 {
+		t.Errorf("gap[1] = {hour:%d, gap:%d, vol:%d}, want {10, 135, 120}", gaps[1].Hour, gaps[1].GapMinutes, gaps[1].FollowUpVolume)
+	}
+	if gaps[2].Hour != 13 || gaps[2].GapMinutes != 50 || gaps[2].FollowUpVolume != 30 {
+		t.Errorf("gap[2] = {hour:%d, gap:%d, vol:%d}, want {13, 50, 30}", gaps[2].Hour, gaps[2].GapMinutes, gaps[2].FollowUpVolume)
+	}
+}
+
+func TestGetFeedingGaps_EmptyWhenNoFeedChore(t *testing.T) {
+	logStore := chorelog.NewMemoryStore()
+	cs := &stubChoreStore{chores: []stats.ChoreInfo{
+		{ID: 201, HouseholdID: 1, Name: "Dishes", Category: "kitchen"},
+	}}
+	svc := stats.NewService(logStore, cs)
+
+	gaps, err := svc.GetFeedingGaps(context.Background(), 1, 30, utc)
+	if err != nil {
+		t.Fatalf("GetFeedingGaps: %v", err)
+	}
+	if gaps != nil {
+		t.Errorf("expected nil gaps when no Feed Baby chore, got %v", gaps)
+	}
+}
+
+func TestGetFeedingGaps_SingleLog(t *testing.T) {
+	logs := []chorelog.ChoreLog{
+		{HouseholdID: 1, UserID: 10, ChoreID: 200, CompletedAt: time.Date(2026, 6, 9, 10, 0, 0, 0, utc), IndicatorVolumes: map[string]int{"🍼 formula": 120}},
+	}
+	svc, _ := seedFeedingService(t, logs)
+
+	gaps, err := svc.GetFeedingGaps(context.Background(), 1, 30, utc)
+	if err != nil {
+		t.Fatalf("GetFeedingGaps: %v", err)
+	}
+	if len(gaps) != 0 {
+		t.Errorf("expected 0 gaps for single log, got %d", len(gaps))
+	}
+}

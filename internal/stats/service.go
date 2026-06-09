@@ -120,6 +120,12 @@ type TimeSeriesPeriod struct {
 	VolumeByIndicator map[string]int `json:"volumeByIndicator,omitempty"`
 }
 
+type FeedingGap struct {
+	Hour           int `json:"hour"`
+	GapMinutes     int `json:"gapMinutes"`
+	FollowUpVolume int `json:"followUpVolume"`
+}
+
 func NewService(logStore log.Store, choreStore choreStore) *Service {
 	return &Service{logStore: logStore, choreStore: choreStore}
 }
@@ -772,6 +778,69 @@ func buildMonthBuckets(start, end time.Time, loc *time.Location) []timeBucket {
 		buckets = append(buckets, timeBucket{start: d, end: d.AddDate(0, 1, 0)})
 	}
 	return buckets
+}
+
+func (s *Service) GetFeedingGaps(ctx context.Context, householdID int64, days int, loc *time.Location) ([]FeedingGap, error) {
+	chores, err := s.choreStore.ListChores(ctx, householdID)
+	if err != nil {
+		return nil, err
+	}
+
+	var feedBabyID int64
+	for _, ch := range chores {
+		if ch.HouseholdID == householdID && ch.Name == "Feed Baby" {
+			feedBabyID = ch.ID
+			break
+		}
+	}
+	if feedBabyID == 0 {
+		return nil, nil
+	}
+
+	now := nowIn(loc)
+	start := now.AddDate(0, 0, -days)
+	end := now.AddDate(0, 0, 1)
+
+	logs, err := s.fetchLogsInRange(ctx, householdID, start, end, loc)
+	if err != nil {
+		return nil, err
+	}
+
+	var feedLogs []log.ChoreLog
+	for _, l := range logs {
+		if l.ChoreID == feedBabyID && logInRange(l, start, end, loc) {
+			feedLogs = append(feedLogs, l)
+		}
+	}
+
+	sort.Slice(feedLogs, func(i, j int) bool {
+		return feedLogs[i].CompletedAt.Before(feedLogs[j].CompletedAt)
+	})
+
+	var gaps []FeedingGap
+	for i := 1; i < len(feedLogs); i++ {
+		prev := feedLogs[i-1].CompletedAt.In(loc)
+		curr := feedLogs[i].CompletedAt.In(loc)
+		gapMinutes := int(curr.Sub(prev).Minutes())
+
+		hour := prev.Hour()
+		followUpVolume := 0
+		if len(feedLogs[i].IndicatorVolumes) > 0 {
+			for _, vol := range feedLogs[i].IndicatorVolumes {
+				followUpVolume += vol
+			}
+		} else if feedLogs[i].VolumeML != nil {
+			followUpVolume = *feedLogs[i].VolumeML
+		}
+
+		gaps = append(gaps, FeedingGap{
+			Hour:           hour,
+			GapMinutes:     gapMinutes,
+			FollowUpVolume: followUpVolume,
+		})
+	}
+
+	return gaps, nil
 }
 
 // fetchLogsInRange fetches logs with widened bounds to account for timezone

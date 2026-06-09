@@ -21,7 +21,7 @@ import {
 } from "./auth.js";
 import { loadHousehold, listHouseholds, activateHousehold, createHousehold, updateHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, transferOwnership, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
 import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, loadMoreHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
-import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores } from "./stats.js";
+import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadFeedingGaps } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, sortChoresByOrder, syncTimezone } from "./preferences.js";
@@ -679,6 +679,12 @@ async function loadBabyTimeSeries() {
       const data = await loadChoreTimeSeries(feedBaby.id, period);
       if (data && data.timeSeries) {
         state.stats.babyTimeSeries.feedBaby = data.timeSeries;
+      }
+    } catch {}
+    try {
+      const gapsData = await loadFeedingGaps(30);
+      if (gapsData && gapsData.feedingGaps) {
+        state.stats.feedingGaps = gapsData.feedingGaps;
       }
     } catch {}
   }
@@ -2173,6 +2179,16 @@ export async function init() {
         state.stats = state.stats || {};
         state.stats.babyPeriod = period;
         loadBabyTimeSeries().then(() => render(app));
+        break;
+      }
+
+      case "stats-feeding-gaps-view": {
+        e.preventDefault();
+        const view = actionEl.dataset.view;
+        if (!view) break;
+        state.stats = state.stats || {};
+        state.stats.feedingGapsView = view;
+        render(app);
         break;
       }
 

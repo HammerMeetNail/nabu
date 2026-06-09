@@ -51,6 +51,11 @@ export async function loadChoreTimeSeries(choreId, period) {
   return data;
 }
 
+export async function loadFeedingGaps(days = 30) {
+  const { data } = await apiFetch(`/api/stats/feeding-gaps?days=${days}`);
+  return data;
+}
+
 function formatRangeLabel(start, end) {
   if (!start || !end) return "";
   const fmt = (s) => {
@@ -472,6 +477,8 @@ export function renderBabyCareSection(state) {
 
   const feedBaby = babyTimeSeries.feedBaby;
   const changeBaby = babyTimeSeries.changeBaby;
+  const feedingGaps = stats.feedingGaps || [];
+  const gapsView = stats.feedingGapsView || "strip";
 
   if (!feedBaby && !changeBaby) return "";
 
@@ -489,24 +496,29 @@ export function renderBabyCareSection(state) {
       </div>
     </div>
     <div class="baby-care-columns">
-      ${feedBaby ? renderBabyColumn(feedBaby, memberMap, babyPeriod, "feed") : ""}
+      ${feedBaby ? renderBabyColumn(feedBaby, memberMap, babyPeriod, "feed", feedingGaps, gapsView) : ""}
       ${changeBaby ? renderBabyColumn(changeBaby, memberMap, babyPeriod, "change") : ""}
     </div>
   </div>`;
 }
 
-function renderBabyColumn(ts, memberMap, period, type) {
+function renderBabyColumn(ts, memberMap, period, type, feedingGaps, gapsView) {
   const isVolume = type === "feed";
-  const label = isVolume ? "Feed" : "Change";
   const membersHTML = renderMemberList(ts.byMember, memberMap);
   const chartHTML = isVolume
     ? renderVolumeChart(ts.periods, period)
     : renderIndicatorChart(ts.periods, period);
 
+  let gapsHTML = "";
+  if (isVolume && feedingGaps && feedingGaps.length > 0) {
+    gapsHTML = renderFeedingGapsSection(feedingGaps, gapsView);
+  }
+
   return `<div class="baby-care-column">
     <h4 class="baby-col-title">${ts.choreIcon} ${escapeHTML(ts.choreName)}</h4>
     ${membersHTML}
     <div class="baby-chart">${chartHTML}</div>
+    ${gapsHTML}
   </div>`;
 }
 
@@ -531,6 +543,148 @@ function renderMemberList(byMember, memberMap) {
       </div>`;
     }).join("")}
   </div>`;
+}
+
+function renderFeedingGapsSection(gaps, view) {
+  const chartHTML = view === "heatmap"
+    ? renderFeedingGapsHeatmap(gaps)
+    : renderFeedingGapsStrip(gaps);
+
+  const stripActive = view === "strip" ? " period-toggle--active" : "";
+  const heatmapActive = view === "heatmap" ? " period-toggle--active" : "";
+
+  return `<div class="feeding-gaps-section">
+    <div class="feeding-gaps-header">
+      <span class="feeding-gaps-title">Cluster Feeding</span>
+      <div class="period-toggle" role="group" aria-label="Chart view">
+        <button class="period-toggle-btn${stripActive}" data-action="stats-feeding-gaps-view" data-view="strip" aria-pressed="${view === "strip"}">Strip</button>
+        <button class="period-toggle-btn${heatmapActive}" data-action="stats-feeding-gaps-view" data-view="heatmap" aria-pressed="${view === "heatmap"}">Heatmap</button>
+      </div>
+    </div>
+    <div class="baby-chart">${chartHTML}</div>
+  </div>`;
+}
+
+function renderFeedingGapsStrip(gaps) {
+  if (!gaps || gaps.length === 0) return '<p class="text-secondary text-sm text-center mt-2">No data</p>';
+
+  const maxGap = Math.max(...gaps.map(g => g.gapMinutes), 240);
+  const maxVol = Math.max(...gaps.map(g => g.followUpVolume), 1);
+
+  const leftM = 38;
+  const rightM = 8;
+  const topM = 8;
+  const bottomM = 28;
+  const chartH = 140;
+  const colW = (() => {
+    const avail = 320 - leftM - rightM;
+    return Math.floor(avail / 24);
+  })();
+  const totalW = leftM + 24 * colW + rightM;
+  const totalH = topM + chartH + bottomM;
+
+  const gapStep = niceAxisStep(maxGap);
+  const ticks = [];
+  for (let v = 0; v <= maxGap + gapStep / 2; v += gapStep) ticks.push(v);
+
+  let svg = `<svg viewBox="0 0 ${totalW} ${totalH}" class="baby-svg-chart" role="img" aria-label="Cluster feeding strip chart">`;
+
+  ticks.forEach(t => {
+    const y = topM + chartH - Math.round((t / maxGap) * chartH);
+    svg += `<line x1="${leftM}" y1="${y}" x2="${totalW - rightM}" y2="${y}" stroke="#e5e7eb" stroke-width="0.5"/>`;
+    svg += `<text x="${leftM - 4}" y="${y + 4}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="system-ui, sans-serif">${t}m</text>`;
+  });
+
+  svg += `<text x="12" y="${topM + chartH / 2}" text-anchor="middle" font-size="9" fill="#9ca3af" font-family="system-ui, sans-serif" transform="rotate(-90, 12, ${topM + chartH / 2})">gap</text>`;
+
+  for (let h = 0; h < 24; h++) {
+    const x = leftM + h * colW;
+    if (h % 3 === 0) {
+      const label = h === 0 ? "12a" : h < 12 ? h + "a" : h === 12 ? "12p" : (h - 12) + "p";
+      svg += `<text x="${x + colW / 2}" y="${topM + chartH + 14}" text-anchor="middle" font-size="8" fill="#9ca3af" font-family="system-ui, sans-serif">${label}</text>`;
+    }
+  }
+
+  gaps.forEach(g => {
+    const cx = leftM + g.hour * colW + colW / 2;
+    const cy = topM + chartH - Math.round((Math.min(g.gapMinutes, maxGap) / maxGap) * chartH);
+    const alpha = 0.2 + 0.6 * (g.followUpVolume / maxVol);
+    const r = 2.5;
+    const color = `rgba(236, 72, 153, ${alpha.toFixed(2)})`;
+    svg += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${color}"/>`;
+  });
+
+  svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="#d1d5db" stroke-width="1"/>`;
+
+  svg += `</svg>`;
+  return svg;
+}
+
+function renderFeedingGapsHeatmap(gaps) {
+  if (!gaps || gaps.length === 0) return '<p class="text-secondary text-sm text-center mt-2">No data</p>';
+
+  const gapBuckets = [
+    { label: "0–30m", max: 30 },
+    { label: "30–60m", max: 60 },
+    { label: "60–90m", max: 90 },
+    { label: "90–120m", max: 120 },
+    { label: "2h+", max: Infinity },
+  ];
+
+  const counts = {};
+  for (let h = 0; h < 24; h++) {
+    counts[h] = {};
+    gapBuckets.forEach((_, i) => { counts[h][i] = 0; });
+  }
+
+  gaps.forEach(g => {
+    let bi = gapBuckets.findIndex(b => g.gapMinutes < b.max);
+    if (bi < 0) bi = gapBuckets.length - 1;
+    counts[g.hour][bi]++;
+  });
+
+  let maxCount = 1;
+  for (let h = 0; h < 24; h++) {
+    gapBuckets.forEach((_, i) => { maxCount = Math.max(maxCount, counts[h][i]); });
+  }
+
+  const leftM = 38;
+  const rightM = 6;
+  const topM = 8;
+  const bottomM = 30;
+  const chartH = 80;
+  const colW = (() => {
+    const avail = 320 - leftM - rightM;
+    return Math.floor(avail / 24);
+  })();
+  const rowH = Math.floor(chartH / gapBuckets.length);
+  const totalW = leftM + 24 * colW + rightM;
+  const totalH = topM + rowH * gapBuckets.length + bottomM;
+
+  let svg = `<svg viewBox="0 0 ${totalW} ${totalH}" class="baby-svg-chart" role="img" aria-label="Cluster feeding heatmap">`;
+
+  for (let h = 0; h < 24; h++) {
+    const x = leftM + h * colW;
+    if (h % 3 === 0) {
+      const label = h === 0 ? "12a" : h < 12 ? h + "a" : h === 12 ? "12p" : (h - 12) + "p";
+      svg += `<text x="${x + colW / 2}" y="${topM + rowH * gapBuckets.length + 14}" text-anchor="middle" font-size="8" fill="#9ca3af" font-family="system-ui, sans-serif">${label}</text>`;
+    }
+    gapBuckets.forEach((_, bi) => {
+      const y = topM + bi * rowH;
+      const count = counts[h][bi];
+      const intensity = count > 0 ? 0.15 + 0.85 * (count / maxCount) : 0;
+      const color = count > 0 ? `rgba(236, 72, 153, ${intensity.toFixed(2)})` : "#f3f4f6";
+      svg += `<rect x="${x + 1}" y="${y + 1}" width="${colW - 2}" height="${rowH - 2}" rx="1" fill="${color}"/>`;
+    });
+  }
+
+  gapBuckets.forEach((b, bi) => {
+    const y = topM + bi * rowH + rowH / 2 + 4;
+    svg += `<text x="${leftM - 4}" y="${y}" text-anchor="end" font-size="7" fill="#9ca3af" font-family="system-ui, sans-serif">${b.label}</text>`;
+  });
+
+  svg += `</svg>`;
+  return svg;
 }
 
 function renderVolumeChart(periods, period) {

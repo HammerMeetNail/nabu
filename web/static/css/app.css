@@ -1344,6 +1344,27 @@ details[open] .member-chevron {
   display: inline;
 }
 
+.feeding-gaps-section {
+  margin-top: 12px;
+  border-top: 1px solid var(--border, #e5e7eb);
+  padding-top: 8px;
+}
+
+.feeding-gaps-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.feeding-gaps-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 /* Heatmap */
 .heatmap-grid {
   display: flex;
