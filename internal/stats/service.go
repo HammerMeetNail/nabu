@@ -121,10 +121,11 @@ type TimeSeriesPeriod struct {
 }
 
 type FeedingGap struct {
-	Hour            int `json:"hour"`
-	GapMinutes      int `json:"gapMinutes"`
-	PrecedingVolume int `json:"precedingVolume"`
-	FollowUpVolume  int `json:"followUpVolume"`
+	Hour            int    `json:"hour"`
+	GapMinutes      int    `json:"gapMinutes"`
+	PrecedingVolume int    `json:"precedingVolume"`
+	FollowUpVolume  int    `json:"followUpVolume"`
+	Date            string `json:"date"`
 }
 
 func NewService(logStore log.Store, choreStore choreStore) *Service {
@@ -845,6 +846,7 @@ func (s *Service) GetFeedingGaps(ctx context.Context, householdID int64, start, 
 			GapMinutes:      gapMinutes,
 			PrecedingVolume: precedingVolume,
 			FollowUpVolume:  followUpVolume,
+			Date:            prev.Format(time.DateOnly),
 		})
 	}
 

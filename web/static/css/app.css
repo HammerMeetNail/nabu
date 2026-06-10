@@ -1352,6 +1352,19 @@ details[open] .member-chevron {
   max-height: 240px;
 }
 
+.feeding-gaps-chart [data-action="scatter-tap"] {
+  cursor: pointer;
+}
+
+.feeding-gaps-chart .scatter-tooltip {
+  display: none;
+  pointer-events: none;
+}
+
+.feeding-gaps-chart .scatter-tooltip--visible {
+  display: inline;
+}
+
 .feeding-gaps-header {
   display: flex;
   align-items: center;
