@@ -526,7 +526,11 @@ function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd) {
       <input type="date" class="feeding-gaps-date" data-action="stats-feeding-gaps-date" data-field="end" value="${dateEnd || ""}" aria-label="End date">
     </div>
     <div class="feeding-gaps-explainer${explainerClass}">
-      <p><strong>Cluster feeding = 2+ feeds within 2 hours.</strong> Each dot is one inter-feed gap. The dashed&nbsp;line marks 2&nbsp;hours: dots <em>below</em> it are short gaps (potential cluster feeding), dots <em>above</em> it are typical spacing. Blue dots are full feeds. Pink dots are <em>small top-offs</em> (&le;&nbsp;50% of the preceding feed). Orange dots are <em>close feeds</em> &mdash; feeds within 2&ndash;3&nbsp;hours that are not larger than the one before them (&le;&nbsp;100% of preceding).</p>
+      <p><strong>Cluster feeding = 2+ feeds within 2 hours.</strong> Each dot is one inter-feed gap. The dashed&nbsp;line marks 2&nbsp;hours: dots <em>below</em> it are short gaps, dots <em>above</em> it are typical spacing.</p>
+      <p><strong>Dot colors:</strong><br>
+        <strong>Pink</strong> = small top-off (&le;&nbsp;50% of the preceding feed).<br>
+        <strong>Orange</strong> = close feed &mdash; within 2&ndash;3&nbsp;hours and not larger than the preceding feed (&le;&nbsp;100%).<br>
+        <strong>Blue</strong> = full feed &mdash; further apart or larger than the preceding feed.</p>
     </div>
     <div class="baby-chart">${chartHTML}</div>
   </div>`;
@@ -595,9 +599,19 @@ function renderClusterGapScatter(gaps) {
       </text>`;
       svg += `</g>`;
     } else if (isOrange) {
-      svg += `<circle cx="${x}" cy="${y}" r="3.5" fill="#F97316" opacity="0.6">
-        <title>${formatHour(g.hour)}: ${g.gapMinutes}m \u2192 ${g.precedingVolume}mL \u2192 ${g.followUpVolume}mL</title>
-      </circle>`;
+      const idx = g.hour * 1000 + g.gapMinutes;
+      const dateStr = formatScatterDate(g.date);
+      const volLabel = `${g.precedingVolume}\u202fmL \u2192 ${g.followUpVolume}\u202fmL`;
+      const clampTipX = Math.min(Math.max(x, leftM + 24), totalW - rightM - 24);
+      const tipY = Math.max(y - 14, topM + 10);
+      svg += `<g data-action="scatter-tap" data-gap="${idx}" role="button" aria-label="${dateStr}: ${volLabel}">`;
+      svg += `<circle cx="${x}" cy="${y}" r="6" fill="transparent" stroke="none"/>`;
+      svg += `<circle cx="${x}" cy="${y}" r="3.5" fill="#F97316" opacity="0.6"/>`;
+      svg += `<text class="scatter-tooltip" data-gap="${idx}" x="${clampTipX}" y="${tipY}" text-anchor="middle" fill="var(--text)" font-family="system-ui, sans-serif" font-size="9" display="none">
+        <tspan x="${clampTipX}" dy="0">${dateStr}</tspan>
+        <tspan x="${clampTipX}" dy="10">${volLabel}</tspan>
+      </text>`;
+      svg += `</g>`;
     } else {
       svg += `<circle cx="${x}" cy="${y}" r="3.5" fill="#2E86AB" opacity="0.6">
         <title>${formatHour(g.hour)}: ${g.gapMinutes}m \u2192 ${g.followUpVolume}mL</title>
