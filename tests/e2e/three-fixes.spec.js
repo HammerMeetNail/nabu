@@ -143,33 +143,54 @@ test.describe('Fix 1: multiple logs per chore per day', () => {
   });
 });
 
-// ─── Fix 2: Content area does not overlap with bottom tabs ───────────────────
+// ─── Fix 2: Content area clearance above fixed bottom tabs ───────────────────
 
-test.describe('Fix 2: content area does not overlap with bottom tabs', () => {
-  test('.app-shell ends where #bottom-tabs begins (no overlap)', async ({ page }) => {
+test.describe('Fix 2: content area stays clear of the fixed bottom tab bar', () => {
+  test('#bottom-tabs is position:fixed at viewport bottom', async ({ page }) => {
+    await setupWithChores(page);
+
+    const result = await page.evaluate(() => {
+      const tabs  = document.querySelector('#bottom-tabs');
+      if (!tabs) return null;
+      const style = window.getComputedStyle(tabs);
+      const rect  = tabs.getBoundingClientRect();
+      return {
+        position: style.position,
+        bottom:   parseInt(style.bottom, 10),
+        height:   Math.round(rect.height),
+        rectBottom: Math.round(rect.bottom),
+        viewportH:  window.innerHeight,
+      };
+    });
+
+    expect(result).not.toBeNull();
+    // Tab bar must be fixed at the viewport bottom.
+    expect(result.position).toBe('fixed');
+    expect(result.bottom).toBe(0);
+    expect(result.rectBottom).toBe(result.viewportH);
+  });
+
+  test('.app-shell has padding-bottom matching tab bar height', async ({ page }) => {
     await setupWithChores(page);
 
     const result = await page.evaluate(() => {
       const shell = document.querySelector('.app-shell');
       const tabs  = document.querySelector('#bottom-tabs');
       if (!shell || !tabs) return null;
-      const shellRect = shell.getBoundingClientRect();
-      const tabsRect  = tabs.getBoundingClientRect();
-      return {
-        shellBottom: Math.round(shellRect.bottom),
-        tabsTop:     Math.round(tabsRect.top),
-        overlap:     shellRect.bottom - tabsRect.top,
-      };
+      const shellPad = parseInt(window.getComputedStyle(shell).paddingBottom, 10);
+      const tabsH    = Math.round(tabs.getBoundingClientRect().height);
+      return { shellPad, tabsH };
     });
 
     expect(result).not.toBeNull();
-    expect(result.overlap).toBeLessThanOrEqual(1);
+    // Padding should at least cover the tab bar so content isn't hidden.
+    expect(result.shellPad).toBeGreaterThanOrEqual(result.tabsH);
   });
 });
 
 // ─── Fix 3: Nav tabs at bottom ───────────────────────────────────────────────
 
-test.describe('Fix 3: nav tabs are a static flex item at the page bottom', () => {
+test.describe('Fix 3: nav tabs are a fixed bar at the page bottom', () => {
   test('#bottom-tabs is NOT a descendant of #top-bar', async ({ page }) => {
     await setupWithChores(page);
 
@@ -196,14 +217,14 @@ test.describe('Fix 3: nav tabs are a static flex item at the page bottom', () =>
     expect(result.bodyH).toBe(result.innerH);
   });
 
-  test('#bottom-tabs is NOT positioned (static in normal flow)', async ({ page }) => {
+  test('#bottom-tabs is position:fixed (pinned to visual viewport)', async ({ page }) => {
     await setupWithChores(page);
 
     const position = await page.evaluate(() => {
       return window.getComputedStyle(document.querySelector('#bottom-tabs')).position;
     });
 
-    expect(position).toBe('static');
+    expect(position).toBe('fixed');
   });
 
   test('tab text labels are visible', async ({ page }) => {
