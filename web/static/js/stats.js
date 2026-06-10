@@ -540,20 +540,20 @@ function renderClusterGapScatter(gaps, gapsOld, gapsNewer) {
 
   const smallTopOff = (g) => g.precedingVolume > 0 && g.followUpVolume <= g.precedingVolume * 0.5;
 
-  const leftM = 38;
-  const rightM = 12;
+  const leftM = 28;
+  const rightM = 6;
   const topM = 8;
-  const bottomM = 24;
-  const chartW = 510;
-  const chartH = 144;
+  const bottomM = 28;
+  const chartW = 306;
+  const chartH = 120;
   const hourW = chartW / 24;
   const totalW = leftM + chartW + rightM;
   const totalH = topM + chartH + bottomM;
 
-  const maxY = 360;
+  const maxY = 300;
   const yPos = (mins) => topM + chartH - Math.round((Math.min(mins, maxY) / maxY) * chartH);
   const xCenter = (h) => leftM + h * hourW + hourW / 2;
-  const jitter = (seed) => ((seed * 137.508) % 1 - 0.5) * hourW * 0.7;
+  const jitter = (seed) => ((seed * 137.508) % 1 - 0.5) * hourW * 0.65;
 
   let svg = `<svg viewBox="0 0 ${totalW} ${totalH}" class="feeding-gaps-chart" role="img" aria-label="Cluster feeding gap scatter">`;
 
@@ -561,16 +561,16 @@ function renderClusterGapScatter(gaps, gapsOld, gapsNewer) {
     const y = yPos(m);
     svg += `<line x1="${leftM}" y1="${y}" x2="${totalW - rightM}" y2="${y}" stroke="#e5e7eb" stroke-width="0.5"/>`;
     const label = m === 0 ? "0" : `${m / 60}h`;
-    svg += `<text x="${leftM - 4}" y="${y + 3}" text-anchor="end" font-size="8" fill="#9ca3af" font-family="system-ui, sans-serif">${label}</text>`;
+    svg += `<text x="${leftM - 4}" y="${y + 3}" text-anchor="end" font-size="9" fill="#9ca3af" font-family="system-ui, sans-serif">${label}</text>`;
   }
 
   const twoHY = yPos(120);
   svg += `<line x1="${leftM}" y1="${twoHY}" x2="${totalW - rightM}" y2="${twoHY}" stroke="#9ca3af" stroke-width="1" stroke-dasharray="3,3"/>`;
-  svg += `<text x="${leftM + 4}" y="${twoHY - 3}" font-size="8" fill="#9ca3af" font-family="system-ui, sans-serif">2h</text>`;
+  svg += `<text x="${leftM + 4}" y="${twoHY - 3}" font-size="9" fill="#9ca3af" font-family="system-ui, sans-serif">2h</text>`;
 
   for (let h = 0; h < 24; h += 3) {
     const x = xCenter(h);
-    svg += `<text x="${x}" y="${topM + chartH + 14}" text-anchor="middle" font-size="8" fill="#9ca3af" font-family="system-ui, sans-serif">${formatHour(h)}</text>`;
+    svg += `<text x="${x}" y="${topM + chartH + 12}" text-anchor="middle" font-size="8" fill="#9ca3af" font-family="system-ui, sans-serif">${formatHour(h)}</text>`;
   }
 
   svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="#d1d5db" stroke-width="1"/>`;
@@ -578,7 +578,7 @@ function renderClusterGapScatter(gaps, gapsOld, gapsNewer) {
   const hasCompare = gapsOld && gapsNewer && gapsOld.length > 0 && gapsNewer.length > 0;
 
   if (hasCompare) {
-    const dotR = 2.5;
+    const dotR = 3;
     const colOffset = hourW * 0.22;
 
     gapsOld.forEach((g) => {
@@ -608,23 +608,23 @@ function renderClusterGapScatter(gaps, gapsOld, gapsNewer) {
       const x = xCenter(g.hour) + jitter(seed);
       const y = yPos(g.gapMinutes);
       const color = smallTopOff(g) ? "#EC4899" : "#2E86AB";
-      svg += `<circle cx="${x}" cy="${y}" r="3" fill="${color}" opacity="0.6">
-        <title>${formatHour(g.hour)}: ${g.gapMinutes}m → ${g.followUpVolume}mL</title>
+      svg += `<circle cx="${x}" cy="${y}" r="3.5" fill="${color}" opacity="0.6">
+        <title>${formatHour(g.hour)}: ${g.gapMinutes}m \u2192 ${g.followUpVolume}mL</title>
       </circle>`;
     });
   }
 
-  const legendY = topM + chartH + 28;
+  const legendY = topM + chartH + 24;
   if (hasCompare) {
-    svg += `<circle cx="${leftM + 4}" cy="${legendY - 2}" r="2.5" fill="#2E86AB" opacity="0.4"/>`;
+    svg += `<circle cx="${leftM + 4}" cy="${legendY - 2}" r="3" fill="#2E86AB" opacity="0.4"/>`;
     svg += `<text x="${leftM + 10}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">older</text>`;
-    svg += `<circle cx="${leftM + 56}" cy="${legendY - 2}" r="2.5" fill="#2E86AB" opacity="0.85"/>`;
+    svg += `<circle cx="${leftM + 56}" cy="${legendY - 2}" r="3" fill="#2E86AB" opacity="0.85"/>`;
     svg += `<text x="${leftM + 62}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">newer</text>`;
   } else {
-    svg += `<circle cx="${leftM + 4}" cy="${legendY - 2}" r="3" fill="#2E86AB" opacity="0.6"/>`;
-    svg += `<text x="${leftM + 10}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">full feed</text>`;
-    svg += `<circle cx="${leftM + 64}" cy="${legendY - 2}" r="3" fill="#EC4899" opacity="0.6"/>`;
-    svg += `<text x="${leftM + 70}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">small top-off</text>`;
+    svg += `<circle cx="${leftM + 4}" cy="${legendY - 2}" r="3.5" fill="#2E86AB" opacity="0.6"/>`;
+    svg += `<text x="${leftM + 11}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">full feed</text>`;
+    svg += `<circle cx="${leftM + 68}" cy="${legendY - 2}" r="3.5" fill="#EC4899" opacity="0.6"/>`;
+    svg += `<text x="${leftM + 75}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">small top-off</text>`;
   }
 
   svg += `</svg>`;
