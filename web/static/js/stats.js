@@ -529,7 +529,7 @@ function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd) {
       <p><strong>Cluster feeding = 2+ feeds within 2 hours.</strong> Each dot is one inter-feed gap. The dashed&nbsp;line marks 2&nbsp;hours: dots <em>below</em> it are short gaps, dots <em>above</em> it are typical spacing.</p>
       <p><strong>Dot colors:</strong><br>
         <strong>Pink</strong> = small top-off (&le;&nbsp;50% of the preceding feed).<br>
-        <strong>Orange</strong> = close feed &mdash; within 2&ndash;3&nbsp;hours and not larger than the preceding feed (&le;&nbsp;100%).<br>
+        <strong>Orange</strong> = close feed &mdash; within 3&nbsp;hours and not larger than the preceding feed (&le;&nbsp;100%).<br>
         <strong>Blue</strong> = full feed &mdash; further apart or larger than the preceding feed.</p>
     </div>
     <div class="baby-chart">${chartHTML}</div>
@@ -540,7 +540,7 @@ function renderClusterGapScatter(gaps) {
   if (!gaps || gaps.length === 0) return '<p class="text-secondary text-sm text-center mt-2">No data</p>';
 
   const smallTopOff = (g) => g.precedingVolume > 0 && g.followUpVolume <= g.precedingVolume * 0.5;
-  const closeFeed = (g) => !smallTopOff(g) && g.precedingVolume > 0 && g.followUpVolume <= g.precedingVolume && g.gapMinutes > 120 && g.gapMinutes <= 180;
+  const closeFeed = (g) => !smallTopOff(g) && g.precedingVolume > 0 && g.followUpVolume <= g.precedingVolume && g.gapMinutes <= 180;
 
   const leftM = 28;
   const rightM = 6;
