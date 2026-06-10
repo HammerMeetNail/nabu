@@ -580,17 +580,16 @@ function renderClusterGapScatter(gaps) {
 
     if (isPink) {
       const idx = g.hour * 1000 + g.gapMinutes;
-      const combined = g.precedingVolume + g.followUpVolume;
       const dateStr = formatScatterDate(g.date);
-      // Clamp tooltip X within chart area so it stays visible.
-      const tipX = Math.min(Math.max(x, leftM + 24), totalW - rightM - 24);
+      const volLabel = `${g.precedingVolume}\u202fmL \u2192 ${g.followUpVolume}\u202fmL`;
+      const clampTipX = Math.min(Math.max(x, leftM + 24), totalW - rightM - 24);
       const tipY = Math.max(y - 14, topM + 10);
-      svg += `<g data-action="scatter-tap" data-gap="${idx}" role="button" aria-label="${dateStr}: ${combined}mL">`;
+      svg += `<g data-action="scatter-tap" data-gap="${idx}" role="button" aria-label="${dateStr}: ${volLabel}">`;
       svg += `<circle cx="${x}" cy="${y}" r="6" fill="transparent" stroke="none"/>`;
       svg += `<circle cx="${x}" cy="${y}" r="3.5" fill="#EC4899" opacity="0.6"/>`;
-      svg += `<text class="scatter-tooltip" data-gap="${idx}" x="${tipX}" y="${tipY}" text-anchor="middle" fill="var(--text)" font-family="system-ui, sans-serif" font-size="9" display="none">
-        <tspan x="${tipX}" dy="0">${dateStr}</tspan>
-        <tspan x="${tipX}" dy="10">${combined} mL total</tspan>
+      svg += `<text class="scatter-tooltip" data-gap="${idx}" x="${clampTipX}" y="${tipY}" text-anchor="middle" fill="var(--text)" font-family="system-ui, sans-serif" font-size="9" display="none">
+        <tspan x="${clampTipX}" dy="0">${dateStr}</tspan>
+        <tspan x="${clampTipX}" dy="10">${volLabel}</tspan>
       </text>`;
       svg += `</g>`;
     } else {
