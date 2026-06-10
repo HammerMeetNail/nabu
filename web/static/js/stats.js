@@ -529,8 +529,8 @@ function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd) {
       <p><strong>Cluster feeding = 2+ feeds within 2 hours.</strong> Each dot is one inter-feed gap. The dashed&nbsp;line marks 2&nbsp;hours: dots <em>below</em> it are short gaps, dots <em>above</em> it are typical spacing.</p>
       <p><strong>Dot colors:</strong><br>
         <strong>Pink</strong> = small top-off &mdash; the follow-up was &le;&nbsp;50% of the preceding feed (tiny snack).<br>
-        <strong>Orange</strong> = close feed &mdash; within 3&nbsp;hours and not larger than the preceding feed (&le;&nbsp;100%). The baby came back for more soon, but didn&rsquo;t out-eat the last feed.<br>
-        <strong>Blue</strong> = growing feed &mdash; either spaced &gt;&nbsp;3&nbsp;hours apart, or the follow-up was bigger than the preceding feed (&gt;&nbsp;100%).</p>
+        <strong>Orange</strong> = close feed &mdash; within 3&nbsp;hours and not a clear growth spike. This includes feeds &le;&nbsp;100% of the preceding feed, or any follow-up to a pink top-off (since the chain started from an unsatisfying snack).<br>
+        <strong>Blue</strong> = growing or spaced feed &mdash; either &gt;&nbsp;3&nbsp;hours apart, or closer together but the baby took more than last time and the preceding feed wasn&rsquo;t itself a top-off.</p>
     </div>
     <div class="baby-chart">${chartHTML}</div>
   </div>`;
@@ -540,7 +540,6 @@ function renderClusterGapScatter(gaps) {
   if (!gaps || gaps.length === 0) return '<p class="text-secondary text-sm text-center mt-2">No data</p>';
 
   const smallTopOff = (g) => g.precedingVolume > 0 && g.followUpVolume <= g.precedingVolume * 0.5;
-  const closeFeed = (g) => !smallTopOff(g) && g.precedingVolume > 0 && g.followUpVolume <= g.precedingVolume && g.gapMinutes <= 180;
 
   const leftM = 28;
   const rightM = 6;
@@ -577,12 +576,14 @@ function renderClusterGapScatter(gaps) {
 
   svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="#d1d5db" stroke-width="1"/>`;
 
-  gaps.forEach((g) => {
+  gaps.forEach((g, i) => {
+    const isPrecedingTopOff = i > 0 && smallTopOff(gaps[i - 1]);
     const seed = g.hour * 1000 + g.gapMinutes;
     const x = xCenter(g.hour) + jitter(seed);
     const y = yPos(g.gapMinutes);
     const isPink = smallTopOff(g);
-    const isOrange = closeFeed(g);
+    const isOrange = !isPink && g.precedingVolume > 0 && g.gapMinutes <= 180
+      && (g.followUpVolume <= g.precedingVolume || isPrecedingTopOff);
 
     if (isPink) {
       const idx = g.hour * 1000 + g.gapMinutes;

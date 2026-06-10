@@ -94,18 +94,16 @@ test.describe("Feeding gaps chart", () => {
     const gapsColumn = page.locator(".baby-care-column").filter({ hasText: "Cluster Feeding" });
     await expect(gapsColumn).toBeVisible({ timeout: 5000 });
 
-    // Scatter plot should have circles (data dots + pink hit areas + legend)
+    // Scatter plot should have circles (3 pink + 3 orange data dots + hit areas + 3 legend = 15)
     const svg = gapsColumn.locator("svg.feeding-gaps-chart");
     await expect(svg).toBeVisible({ timeout: 3000 });
     const dots = svg.locator("circle");
-    // 3 blue dots + 3 pink dots + 3 pink hit areas + 3 legend = 12
-    await expect(dots).toHaveCount(12);
+    await expect(dots).toHaveCount(15);
 
-    // Pink dots should be tappable and reveal tooltips
-    const pinkGroups = svg.locator("[data-action=\"scatter-tap\"]");
-    await expect(pinkGroups).toHaveCount(3);
-    const firstPink = pinkGroups.first();
-    await firstPink.click();
+    // Pink and orange dots should both be tappable and reveal tooltips
+    const tappable = svg.locator("[data-action=\"scatter-tap\"]");
+    await expect(tappable).toHaveCount(6);
+    await tappable.first().click();
     const tooltip = svg.locator(".scatter-tooltip--visible");
     await expect(tooltip).toHaveCount(1);
 
