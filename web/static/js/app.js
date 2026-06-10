@@ -2317,7 +2317,6 @@ export async function init() {
       }
       if (actionEl?.dataset?.action === "stats-feeding-gaps-quick") {
         const days = parseInt(actionEl.dataset.days, 10);
-        if (!days) break;
         state.stats = state.stats || {};
         const endDate = new Date();
         const startDate = new Date(endDate);
