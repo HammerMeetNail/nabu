@@ -2315,6 +2315,21 @@ export async function init() {
           }).catch(() => {}).then(() => render(app));
         }
       }
+      if (actionEl?.dataset?.action === "stats-feeding-gaps-quick") {
+        const days = parseInt(actionEl.dataset.days, 10);
+        if (!days) break;
+        state.stats = state.stats || {};
+        const endDate = new Date();
+        const startDate = new Date(endDate);
+        startDate.setDate(startDate.getDate() - (days - 1));
+        state.stats.feedingGapsEnd = endDate.toISOString().slice(0, 10);
+        state.stats.feedingGapsStart = startDate.toISOString().slice(0, 10);
+        loadFeedingGaps(state.stats.feedingGapsStart, apiExclusiveEnd(state.stats.feedingGapsEnd)).then(data => {
+          if (data && data.feedingGaps) {
+            state.stats.feedingGaps = data.feedingGaps;
+          }
+        }).catch(() => {}).then(() => render(app));
+      }
     if (actionEl?.dataset?.action === "chore-stats-filter") {
       const filter = actionEl.dataset.filter;
       state.stats = state.stats || {};

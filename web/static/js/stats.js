@@ -520,6 +520,11 @@ function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd) {
         <button class="feeding-gaps-info-btn" data-action="toggle-feeding-gaps-info" aria-label="How to read this chart" aria-expanded="${explainerVisible}">&#9432;</button>
       </h4>
     </div>
+    <div class="feeding-gaps-quick">
+      <button class="period-toggle-btn${isQuickActive(dateStart, dateEnd, 1) ? " period-toggle--active" : ""}" data-action="stats-feeding-gaps-quick" data-days="1">Day</button>
+      <button class="period-toggle-btn${isQuickActive(dateStart, dateEnd, 7) ? " period-toggle--active" : ""}" data-action="stats-feeding-gaps-quick" data-days="7">Week</button>
+      <button class="period-toggle-btn${isQuickActive(dateStart, dateEnd, 14) ? " period-toggle--active" : ""}" data-action="stats-feeding-gaps-quick" data-days="14">2 Weeks</button>
+    </div>
     <div class="feeding-gaps-dates">
       <input type="date" class="feeding-gaps-date" data-action="stats-feeding-gaps-date" data-field="start" value="${dateStart || ""}" aria-label="Start date">
       <span class="feeding-gaps-date-sep">&ndash;</span>
@@ -534,6 +539,14 @@ function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd) {
     </div>
     <div class="baby-chart">${chartHTML}</div>
   </div>`;
+}
+
+function isQuickActive(dateStart, dateEnd, days) {
+  if (!dateStart || !dateEnd) return days === 7;
+  const endDate = new Date(dateEnd + "T00:00:00");
+  const expectedStart = new Date(endDate);
+  expectedStart.setDate(expectedStart.getDate() - (days - 1));
+  return dateStart === expectedStart.toISOString().slice(0, 10);
 }
 
 function renderClusterGapScatter(gaps) {

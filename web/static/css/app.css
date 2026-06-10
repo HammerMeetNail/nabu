@@ -1372,6 +1372,12 @@ details[open] .member-chevron {
   margin-bottom: 4px;
 }
 
+.feeding-gaps-quick {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
 .feeding-gaps-dates {
   display: flex;
   align-items: center;
