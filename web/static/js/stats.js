@@ -614,9 +614,19 @@ function renderClusterGapScatter(gaps) {
       </text>`;
       svg += `</g>`;
     } else {
-      svg += `<circle cx="${x}" cy="${y}" r="3.5" fill="#2E86AB" opacity="0.6">
-        <title>${formatHour(g.hour)}: ${g.gapMinutes}m \u2192 ${g.followUpVolume}mL</title>
-      </circle>`;
+      const idx = g.hour * 1000 + g.gapMinutes;
+      const dateStr = formatScatterDate(g.date);
+      const volLabel = `${g.precedingVolume}\u202fmL \u2192 ${g.followUpVolume}\u202fmL`;
+      const clampTipX = Math.min(Math.max(x, leftM + 24), totalW - rightM - 24);
+      const tipY = Math.max(y - 14, topM + 10);
+      svg += `<g data-action="scatter-tap" data-gap="${idx}" role="button" aria-label="${dateStr}: ${volLabel}">`;
+      svg += `<circle cx="${x}" cy="${y}" r="6" fill="transparent" stroke="none"/>`;
+      svg += `<circle cx="${x}" cy="${y}" r="3.5" fill="#2E86AB" opacity="0.6"/>`;
+      svg += `<text class="scatter-tooltip" data-gap="${idx}" x="${clampTipX}" y="${tipY}" text-anchor="middle" fill="var(--text)" font-family="system-ui, sans-serif" font-size="9" display="none">
+        <tspan x="${clampTipX}" dy="0">${dateStr}</tspan>
+        <tspan x="${clampTipX}" dy="10">${volLabel}</tspan>
+      </text>`;
+      svg += `</g>`;
     }
   });
 
