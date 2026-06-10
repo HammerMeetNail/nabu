@@ -3,10 +3,11 @@
 //   1. Dedup bug: logging "Change Baby" (or any chore with indicators) twice in
 //      the same day silently returned the existing log — both logs must now be
 //      created and appear in /api/logs/today.
-//   2. Layout: .app-shell (scroll container) ends where #bottom-tabs begins;
-//      no content is hidden under an overlapping tab bar.
-//   3. Nav tabs: #bottom-tabs is a static flex item at the page bottom —
-//      no position:sticky/fixed so there is no iOS PWA cold-open gap.
+//   2. Layout: #bottom-tabs is position:fixed at the viewport bottom;
+//      .app-shell has padding-bottom to prevent content from being hidden
+//      behind the fixed tab bar during pinch-zoom.
+//   3. Nav tabs: #bottom-tabs is position:fixed (pinned to viewport bottom
+//      for pinch-zoom stability — no jumping into content on zoom).
 //      The body height is driven by --app-h (set from window.innerHeight in
 //      an inline <head> script) rather than 100dvh, so the body always covers
 //      the full visual viewport including the iOS safe-area-inset-bottom.
@@ -146,30 +147,46 @@ test.describe('Fix 1: multiple logs per chore per day', () => {
 // ─── Fix 2: Content area does not overlap with bottom tabs ───────────────────
 
 test.describe('Fix 2: content area does not overlap with bottom tabs', () => {
-  test('.app-shell ends where #bottom-tabs begins (no overlap)', async ({ page }) => {
+  test('#bottom-tabs is fixed at the viewport bottom', async ({ page }) => {
     await setupWithChores(page);
 
     const result = await page.evaluate(() => {
-      const shell = document.querySelector('.app-shell');
-      const tabs  = document.querySelector('#bottom-tabs');
-      if (!shell || !tabs) return null;
-      const shellRect = shell.getBoundingClientRect();
-      const tabsRect  = tabs.getBoundingClientRect();
+      const tabs = document.querySelector('#bottom-tabs');
+      if (!tabs) return null;
+      const style = window.getComputedStyle(tabs);
       return {
-        shellBottom: Math.round(shellRect.bottom),
-        tabsTop:     Math.round(tabsRect.top),
-        overlap:     shellRect.bottom - tabsRect.top,
+        position: style.position,
+        bottom:   style.bottom,
+        left:     style.left,
+        right:    style.right,
       };
     });
 
     expect(result).not.toBeNull();
-    expect(result.overlap).toBeLessThanOrEqual(1);
+    expect(result.position).toBe('fixed');
+    expect(result.bottom).toBe('0px');
+    expect(result.left).toBe('0px');
+    expect(result.right).toBe('0px');
+  });
+
+  test('.app-shell has padding-bottom to clear the fixed tab bar', async ({ page }) => {
+    await setupWithChores(page);
+
+    const paddingBottom = await page.evaluate(() => {
+      const shell = document.querySelector('.app-shell');
+      if (!shell) return null;
+      return window.getComputedStyle(shell).paddingBottom;
+    });
+
+    expect(paddingBottom).not.toBeNull();
+    const padVal = parseFloat(paddingBottom);
+    expect(padVal).toBeGreaterThan(40);
   });
 });
 
 // ─── Fix 3: Nav tabs at bottom ───────────────────────────────────────────────
 
-test.describe('Fix 3: nav tabs are a static flex item at the page bottom', () => {
+test.describe('Fix 3: nav tabs are position:fixed at the viewport bottom', () => {
   test('#bottom-tabs is NOT a descendant of #top-bar', async ({ page }) => {
     await setupWithChores(page);
 
@@ -196,14 +213,22 @@ test.describe('Fix 3: nav tabs are a static flex item at the page bottom', () =>
     expect(result.bodyH).toBe(result.innerH);
   });
 
-  test('#bottom-tabs is NOT positioned (static in normal flow)', async ({ page }) => {
+  test('#bottom-tabs is position:fixed at the viewport bottom', async ({ page }) => {
     await setupWithChores(page);
 
-    const position = await page.evaluate(() => {
-      return window.getComputedStyle(document.querySelector('#bottom-tabs')).position;
+    const result = await page.evaluate(() => {
+      const tabs = document.querySelector('#bottom-tabs');
+      if (!tabs) return null;
+      const style = window.getComputedStyle(tabs);
+      return {
+        position: style.position,
+        bottom:   style.bottom,
+      };
     });
 
-    expect(position).toBe('static');
+    expect(result).not.toBeNull();
+    expect(result.position).toBe('fixed');
+    expect(result.bottom).toBe('0px');
   });
 
   test('tab text labels are visible', async ({ page }) => {
