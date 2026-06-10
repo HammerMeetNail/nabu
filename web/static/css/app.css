@@ -87,14 +87,13 @@ input:focus, select:focus, textarea:focus {
   width: 100%;
   max-width: 480px;
   margin: 0 auto;
-  /* flex: 1 1 0 + min-height: 0 lets the shell fill the remaining viewport height
-     (body height minus tab bar) and scroll its own content internally.
-     No min-height calc needed; the tab bar sits below as a plain flex sibling. */
   flex: 1 1 0;
   min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  /* Keep content clear of the fixed bottom tab bar */
+  padding-bottom: calc(64px + var(--safe-bottom) + 6px);
 }
 
 [hidden] {
@@ -177,9 +176,14 @@ input:focus, select:focus, textarea:focus {
 
 /* Bottom Tabs */
 #bottom-tabs {
-  /* Static flex item — no position:sticky/fixed means no WebKit layout-vs-visual-
-     viewport reconciliation bug on iOS PWA cold open.  The flex body (height:100dvh)
-     guarantees the tabs land exactly at the screen bottom at first paint. */
+  /* position:fixed keeps the tab bar pinned to the visual viewport during
+     pinch-zoom, preventing it from jumping into the content area.  The
+     body's flex column + --app-h still guarantees it lands at the screen
+     bottom on cold open. */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
   margin: 0 auto;
   width: 100%;
   max-width: 480px;
@@ -189,7 +193,6 @@ input:focus, select:focus, textarea:focus {
   background: var(--surface);
   border-top: 1px solid var(--border);
   z-index: 100;
-  flex-shrink: 0;
 }
 
 .tab-item {
@@ -3761,6 +3764,10 @@ details[open] .chore-stat-chevron {
     max-width: 100%;
   }
 
+  .app-shell {
+    padding-bottom: calc(44px + var(--safe-bottom) + 4px);
+  }
+
   #bottom-tabs {
     height: calc(44px + var(--safe-bottom) + 4px);
     padding-bottom: calc(var(--safe-bottom) + 4px);
@@ -3787,6 +3794,10 @@ details[open] .chore-stat-chevron {
 
   .app-title {
     font-size: 16px;
+  }
+
+  .baby-care-columns {
+    grid-template-columns: 1fr;
   }
 }
 
