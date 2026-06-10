@@ -528,9 +528,9 @@ function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd) {
     <div class="feeding-gaps-explainer${explainerClass}">
       <p><strong>Cluster feeding = 2+ feeds within 2 hours.</strong> Each dot is one inter-feed gap. The dashed&nbsp;line marks 2&nbsp;hours: dots <em>below</em> it are short gaps, dots <em>above</em> it are typical spacing.</p>
       <p><strong>Dot colors:</strong><br>
-        <strong>Pink</strong> = small top-off (&le;&nbsp;50% of the preceding feed).<br>
-        <strong>Orange</strong> = close feed &mdash; within 3&nbsp;hours and not larger than the preceding feed (&le;&nbsp;100%).<br>
-        <strong>Blue</strong> = full feed &mdash; further apart or larger than the preceding feed.</p>
+        <strong>Pink</strong> = small top-off &mdash; the follow-up was &le;&nbsp;50% of the preceding feed (tiny snack).<br>
+        <strong>Orange</strong> = close feed &mdash; within 3&nbsp;hours and not larger than the preceding feed (&le;&nbsp;100%). The baby came back for more soon, but didn&rsquo;t out-eat the last feed.<br>
+        <strong>Blue</strong> = growing feed &mdash; either spaced &gt;&nbsp;3&nbsp;hours apart, or the follow-up was bigger than the preceding feed (&gt;&nbsp;100%).</p>
     </div>
     <div class="baby-chart">${chartHTML}</div>
   </div>`;
