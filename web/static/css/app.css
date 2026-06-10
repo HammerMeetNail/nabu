@@ -3746,3 +3746,47 @@ details[open] .chore-stat-chevron {
   padding-top: 1.25rem;
 }
 
+/* Landscape — use full viewport width and compact chrome */
+@media (orientation: landscape) {
+  .app-shell,
+  #bottom-tabs,
+  #toast-container,
+  .notif-panel,
+  .notif-backdrop,
+  .profile-panel,
+  .profile-backdrop,
+  .bottom-sheet,
+  .sheet-header,
+  .sheet-body {
+    max-width: 100%;
+  }
+
+  #bottom-tabs {
+    height: calc(44px + var(--safe-bottom) + 4px);
+    padding-bottom: calc(var(--safe-bottom) + 4px);
+  }
+
+  .tab-item {
+    font-size: 10px;
+    gap: 1px;
+  }
+
+  .tab-item svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  #app {
+    padding: 8px 12px;
+  }
+
+  .top-bar {
+    padding: 6px 12px;
+    padding-top: max(6px, env(safe-area-inset-top, 0px));
+  }
+
+  .app-title {
+    font-size: 16px;
+  }
+}
+
