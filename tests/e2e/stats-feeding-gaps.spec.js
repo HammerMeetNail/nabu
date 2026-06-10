@@ -94,18 +94,21 @@ test.describe("Feeding gaps chart", () => {
     const gapsColumn = page.locator(".baby-care-column").filter({ hasText: "Cluster Feeding" });
     await expect(gapsColumn).toBeVisible({ timeout: 5000 });
 
-    // Scatter plot should have circles (not bars)
+    // Scatter plot should have circles (dots for each gap + legend)
     const svg = gapsColumn.locator("svg.feeding-gaps-chart");
     await expect(svg).toBeVisible({ timeout: 3000 });
     const dots = svg.locator("circle");
-    // Data dots + 2 legend circles
     await expect(dots).toHaveCount(8);
 
     // Info icon expand/collapse
+    await expect(gapsColumn.locator(".feeding-gaps-info-btn")).toBeVisible();
     await gapsColumn.locator(".feeding-gaps-info-btn").click();
     await expect(gapsColumn.locator(".feeding-gaps-explainer--visible")).toBeVisible();
     await gapsColumn.locator(".feeding-gaps-info-btn").click();
     await expect(gapsColumn.locator(".feeding-gaps-explainer--visible")).not.toBeVisible();
+
+    // Compare button should no longer exist
+    await expect(gapsColumn.locator("[data-action=\"stats-feeding-gaps-compare\"]")).toHaveCount(0);
   });
 
   test("no cluster feeding section when there are no feeding logs", async ({

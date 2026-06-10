@@ -505,22 +505,20 @@ export function renderBabyCareSection(state) {
     <div class="baby-care-columns">
       ${feedBaby ? renderBabyColumn(feedBaby, memberMap, babyPeriod, "feed") : ""}
       ${changeBaby ? renderBabyColumn(changeBaby, memberMap, babyPeriod, "change") : ""}
-      ${feedingGaps.length > 0 ? renderFeedingGapsColumn(feedingGaps, explainerVisible, gapsStart, gapsEnd, stats.feedingGapsCompare, stats.feedingGapsCompareNewer, stats.feedingGapsCompareEnabled) : ""}
+      ${feedingGaps.length > 0 ? renderFeedingGapsColumn(feedingGaps, explainerVisible, gapsStart, gapsEnd) : ""}
     </div>
   </div>`;
 }
 
-function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd, gapsOld, gapsNewer, compareEnabled) {
-  const chartHTML = renderClusterGapScatter(gaps, compareEnabled ? gapsOld : null, compareEnabled ? gapsNewer : null);
+function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd) {
+  const chartHTML = renderClusterGapScatter(gaps);
   const explainerClass = explainerVisible ? " feeding-gaps-explainer--visible" : "";
-  const compareActive = compareEnabled ? " period-toggle--active" : "";
 
   return `<div class="baby-care-column">
     <div class="feeding-gaps-header">
       <h4 class="baby-col-title" style="margin-bottom:0">🕐 Cluster Feeding
         <button class="feeding-gaps-info-btn" data-action="toggle-feeding-gaps-info" aria-label="How to read this chart" aria-expanded="${explainerVisible}">&#9432;</button>
       </h4>
-      <button class="period-toggle-btn${compareActive}" data-action="stats-feeding-gaps-compare" aria-pressed="${compareEnabled}">Compare</button>
     </div>
     <div class="feeding-gaps-dates">
       <input type="date" class="feeding-gaps-date" data-action="stats-feeding-gaps-date" data-field="start" value="${dateStart || ""}" aria-label="Start date">
@@ -529,13 +527,12 @@ function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd, gap
     </div>
     <div class="feeding-gaps-explainer${explainerClass}">
       <p><strong>Cluster feeding = 2+ feeds within 2 hours.</strong> Each dot is one inter-feed gap. The dashed&nbsp;line marks 2&nbsp;hours: dots <em>below</em> it are short gaps (potential cluster feeding), dots <em>above</em> it are typical spacing. Blue dots are full feeds; pink dots are <em>small top-offs</em> (&le;&nbsp;50% of the preceding feed). <strong>A cluster of dots below the line at the same hour</strong> means the pattern repeats — that&rsquo;s your cluster feeding window.</p>
-      <p><strong>Compare mode:</strong> Tap <strong>Compare</strong> to split your selected date range at its midpoint &mdash; e.g. June&nbsp;1&ndash;8 becomes June&nbsp;1&ndash;4 (older) vs June&nbsp;5&ndash;8 (newer). Each hour shows two groups of dots: translucent left&nbsp;=&nbsp;older half, solid right&nbsp;=&nbsp;newer half. <strong>More dots below the 2h line on the right</strong> means cluster feeding increased. <strong>More dots below the line on the left</strong> means it decreased.</p>
     </div>
     <div class="baby-chart">${chartHTML}</div>
   </div>`;
 }
 
-function renderClusterGapScatter(gaps, gapsOld, gapsNewer) {
+function renderClusterGapScatter(gaps) {
   if (!gaps || gaps.length === 0) return '<p class="text-secondary text-sm text-center mt-2">No data</p>';
 
   const smallTopOff = (g) => g.precedingVolume > 0 && g.followUpVolume <= g.precedingVolume * 0.5;
@@ -575,57 +572,21 @@ function renderClusterGapScatter(gaps, gapsOld, gapsNewer) {
 
   svg += `<line x1="${leftM}" y1="${topM + chartH}" x2="${totalW - rightM}" y2="${topM + chartH}" stroke="#d1d5db" stroke-width="1"/>`;
 
-  const hasCompare = gapsOld && gapsNewer && gapsOld.length > 0 && gapsNewer.length > 0;
-
-  if (hasCompare) {
-    const dotR = 3;
-    const colOffset = hourW * 0.22;
-
-    gapsOld.forEach((g) => {
-      const seed = g.hour * 1000 + g.gapMinutes;
-      const jx = ((seed * 137.508) % 1 - 0.5) * hourW * 0.38;
-      const x = xCenter(g.hour) - colOffset + jx;
-      const y = yPos(g.gapMinutes);
-      const color = smallTopOff(g) ? "#EC4899" : "#2E86AB";
-      svg += `<circle cx="${x}" cy="${y}" r="${dotR}" fill="${color}" opacity="0.4">
-        <title>${formatHour(g.hour)} older: ${g.gapMinutes}m, ${g.followUpVolume}mL</title>
-      </circle>`;
-    });
-
-    gapsNewer.forEach((g) => {
-      const seed = g.hour * 1000 + g.gapMinutes;
-      const jx = ((seed * 137.508) % 1 - 0.5) * hourW * 0.38;
-      const x = xCenter(g.hour) + colOffset + jx;
-      const y = yPos(g.gapMinutes);
-      const color = smallTopOff(g) ? "#EC4899" : "#2E86AB";
-      svg += `<circle cx="${x}" cy="${y}" r="${dotR}" fill="${color}" opacity="0.85">
-        <title>${formatHour(g.hour)} newer: ${g.gapMinutes}m, ${g.followUpVolume}mL</title>
-      </circle>`;
-    });
-  } else {
-    gaps.forEach((g) => {
-      const seed = g.hour * 1000 + g.gapMinutes;
-      const x = xCenter(g.hour) + jitter(seed);
-      const y = yPos(g.gapMinutes);
-      const color = smallTopOff(g) ? "#EC4899" : "#2E86AB";
-      svg += `<circle cx="${x}" cy="${y}" r="3.5" fill="${color}" opacity="0.6">
-        <title>${formatHour(g.hour)}: ${g.gapMinutes}m \u2192 ${g.followUpVolume}mL</title>
-      </circle>`;
-    });
-  }
+  gaps.forEach((g) => {
+    const seed = g.hour * 1000 + g.gapMinutes;
+    const x = xCenter(g.hour) + jitter(seed);
+    const y = yPos(g.gapMinutes);
+    const color = smallTopOff(g) ? "#EC4899" : "#2E86AB";
+    svg += `<circle cx="${x}" cy="${y}" r="3.5" fill="${color}" opacity="0.6">
+      <title>${formatHour(g.hour)}: ${g.gapMinutes}m \u2192 ${g.followUpVolume}mL</title>
+    </circle>`;
+  });
 
   const legendY = topM + chartH + 24;
-  if (hasCompare) {
-    svg += `<circle cx="${leftM + 4}" cy="${legendY - 2}" r="3" fill="#2E86AB" opacity="0.4"/>`;
-    svg += `<text x="${leftM + 10}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">older</text>`;
-    svg += `<circle cx="${leftM + 56}" cy="${legendY - 2}" r="3" fill="#2E86AB" opacity="0.85"/>`;
-    svg += `<text x="${leftM + 62}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">newer</text>`;
-  } else {
-    svg += `<circle cx="${leftM + 4}" cy="${legendY - 2}" r="3.5" fill="#2E86AB" opacity="0.6"/>`;
-    svg += `<text x="${leftM + 11}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">full feed</text>`;
-    svg += `<circle cx="${leftM + 68}" cy="${legendY - 2}" r="3.5" fill="#EC4899" opacity="0.6"/>`;
-    svg += `<text x="${leftM + 75}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">small top-off</text>`;
-  }
+  svg += `<circle cx="${leftM + 4}" cy="${legendY - 2}" r="3.5" fill="#2E86AB" opacity="0.6"/>`;
+  svg += `<text x="${leftM + 11}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">full feed</text>`;
+  svg += `<circle cx="${leftM + 68}" cy="${legendY - 2}" r="3.5" fill="#EC4899" opacity="0.6"/>`;
+  svg += `<text x="${leftM + 75}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">small top-off</text>`;
 
   svg += `</svg>`;
   return svg;
