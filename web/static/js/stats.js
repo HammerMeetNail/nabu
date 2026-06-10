@@ -580,7 +580,6 @@ function renderClusterGapScatter(gaps) {
 
   const twoHY = yPos(120);
   svg += `<line x1="${leftM}" y1="${twoHY}" x2="${totalW - rightM}" y2="${twoHY}" stroke="#9ca3af" stroke-width="1" stroke-dasharray="3,3"/>`;
-  svg += `<text x="${leftM + 4}" y="${twoHY - 3}" font-size="9" fill="#9ca3af" font-family="system-ui, sans-serif">2h</text>`;
 
   for (let h = 0; h < 24; h += 3) {
     const x = xCenter(h);
