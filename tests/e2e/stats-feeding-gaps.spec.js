@@ -98,8 +98,8 @@ test.describe("Feeding gaps chart", () => {
     const svg = gapsColumn.locator("svg.feeding-gaps-chart");
     await expect(svg).toBeVisible({ timeout: 3000 });
     const dots = svg.locator("circle");
-    // 3 blue dots + 3 pink dots + 3 pink hit areas + 2 legend = 11
-    await expect(dots).toHaveCount(11);
+    // 3 blue dots + 3 pink dots + 3 pink hit areas + 3 legend = 12
+    await expect(dots).toHaveCount(12);
 
     // Pink dots should be tappable and reveal tooltips
     const pinkGroups = svg.locator("[data-action=\"scatter-tap\"]");

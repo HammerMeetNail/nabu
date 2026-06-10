@@ -526,7 +526,7 @@ function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd) {
       <input type="date" class="feeding-gaps-date" data-action="stats-feeding-gaps-date" data-field="end" value="${dateEnd || ""}" aria-label="End date">
     </div>
     <div class="feeding-gaps-explainer${explainerClass}">
-      <p><strong>Cluster feeding = 2+ feeds within 2 hours.</strong> Each dot is one inter-feed gap. The dashed&nbsp;line marks 2&nbsp;hours: dots <em>below</em> it are short gaps (potential cluster feeding), dots <em>above</em> it are typical spacing. Blue dots are full feeds; pink dots are <em>small top-offs</em> (&le;&nbsp;50% of the preceding feed). <strong>A cluster of dots below the line at the same hour</strong> means the pattern repeats — that&rsquo;s your cluster feeding window.</p>
+      <p><strong>Cluster feeding = 2+ feeds within 2 hours.</strong> Each dot is one inter-feed gap. The dashed&nbsp;line marks 2&nbsp;hours: dots <em>below</em> it are short gaps (potential cluster feeding), dots <em>above</em> it are typical spacing. Blue dots are full feeds. Pink dots are <em>small top-offs</em> (&le;&nbsp;50% of the preceding feed). Orange dots are <em>close feeds</em> &mdash; feeds within 2&ndash;3&nbsp;hours that are not larger than the one before them (&le;&nbsp;100% of preceding).</p>
     </div>
     <div class="baby-chart">${chartHTML}</div>
   </div>`;
@@ -536,6 +536,7 @@ function renderClusterGapScatter(gaps) {
   if (!gaps || gaps.length === 0) return '<p class="text-secondary text-sm text-center mt-2">No data</p>';
 
   const smallTopOff = (g) => g.precedingVolume > 0 && g.followUpVolume <= g.precedingVolume * 0.5;
+  const closeFeed = (g) => !smallTopOff(g) && g.precedingVolume > 0 && g.followUpVolume <= g.precedingVolume && g.gapMinutes > 120 && g.gapMinutes <= 180;
 
   const leftM = 28;
   const rightM = 6;
@@ -577,6 +578,7 @@ function renderClusterGapScatter(gaps) {
     const x = xCenter(g.hour) + jitter(seed);
     const y = yPos(g.gapMinutes);
     const isPink = smallTopOff(g);
+    const isOrange = closeFeed(g);
 
     if (isPink) {
       const idx = g.hour * 1000 + g.gapMinutes;
@@ -592,6 +594,10 @@ function renderClusterGapScatter(gaps) {
         <tspan x="${clampTipX}" dy="10">${volLabel}</tspan>
       </text>`;
       svg += `</g>`;
+    } else if (isOrange) {
+      svg += `<circle cx="${x}" cy="${y}" r="3.5" fill="#F97316" opacity="0.6">
+        <title>${formatHour(g.hour)}: ${g.gapMinutes}m \u2192 ${g.precedingVolume}mL \u2192 ${g.followUpVolume}mL</title>
+      </circle>`;
     } else {
       svg += `<circle cx="${x}" cy="${y}" r="3.5" fill="#2E86AB" opacity="0.6">
         <title>${formatHour(g.hour)}: ${g.gapMinutes}m \u2192 ${g.followUpVolume}mL</title>
@@ -602,8 +608,10 @@ function renderClusterGapScatter(gaps) {
   const legendY = topM + chartH + 24;
   svg += `<circle cx="${leftM + 4}" cy="${legendY - 2}" r="3.5" fill="#2E86AB" opacity="0.6"/>`;
   svg += `<text x="${leftM + 11}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">full feed</text>`;
-  svg += `<circle cx="${leftM + 68}" cy="${legendY - 2}" r="3.5" fill="#EC4899" opacity="0.6"/>`;
-  svg += `<text x="${leftM + 75}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">small top-off</text>`;
+  svg += `<circle cx="${leftM + 80}" cy="${legendY - 2}" r="3.5" fill="#F97316" opacity="0.6"/>`;
+  svg += `<text x="${leftM + 87}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">close feed</text>`;
+  svg += `<circle cx="${leftM + 160}" cy="${legendY - 2}" r="3.5" fill="#EC4899" opacity="0.6"/>`;
+  svg += `<text x="${leftM + 167}" y="${legendY}" font-size="8" fill="#6b7280" font-family="system-ui, sans-serif">small top-off</text>`;
 
   svg += `</svg>`;
   return svg;
