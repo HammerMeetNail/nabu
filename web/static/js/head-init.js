@@ -10,6 +10,7 @@
 // uses the correct value from frame 0, eliminating the gap.
 (function () {
   var lastH = 0;
+  var lastScale = 1;
   var rafPending = false;
 
   function applyAppH(h) {
@@ -20,9 +21,6 @@
     var h = window.innerHeight;
     if (h === lastH) return;
     lastH = h;
-    // Debounce visual-viewport resize (fires rapidly during pinch-zoom and
-    // keyboard transitions).  Skipping redundant frames prevents forced layout
-    // recalcs that fight the compositor and cause the bottom tab bar to jump.
     if (rafPending) return;
     rafPending = true;
     requestAnimationFrame(function () {
@@ -34,6 +32,9 @@
   // Run synchronously before first paint to avoid the cold-open gap.
   applyAppH(window.innerHeight);
   lastH = window.innerHeight;
+  if (window.visualViewport) {
+    lastScale = window.visualViewport.scale || 1;
+  }
   requestAnimationFrame(function () {
     applyAppH(window.innerHeight);
   });
@@ -42,6 +43,15 @@
   }, 150);
   window.addEventListener('resize', setAppH);
   if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', setAppH);
+    window.visualViewport.addEventListener('resize', function () {
+      var s = window.visualViewport.scale || 1;
+      // Ignore resize events triggered by pinch-zoom scale changes;
+      // these fire rapidly during zoom and are not genuine layout resizes.
+      if (s !== lastScale) {
+        lastScale = s;
+        return;
+      }
+      setAppH();
+    });
   }
 }());
