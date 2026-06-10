@@ -2219,6 +2219,20 @@ export async function init() {
         break;
       }
 
+      case "scatter-tap": {
+        e.preventDefault();
+        const g = e.target.closest("[data-action=\"scatter-tap\"]");
+        if (!g) break;
+        const gapIdx = g.dataset.gap;
+        const svg = g.closest("svg");
+        const tip = svg?.querySelector(`.scatter-tooltip[data-gap="${gapIdx}"]`);
+        if (!tip) break;
+        const visible = tip.classList.contains("scatter-tooltip--visible");
+        document.querySelectorAll(".scatter-tooltip--visible").forEach(el => el.classList.remove("scatter-tooltip--visible"));
+        if (!visible) tip.classList.add("scatter-tooltip--visible");
+        break;
+      }
+
       case "top-chores-user": {
         e.preventDefault();
         const uid = parseInt(actionEl.dataset.userId, 10);

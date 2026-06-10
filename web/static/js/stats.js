@@ -576,10 +576,28 @@ function renderClusterGapScatter(gaps) {
     const seed = g.hour * 1000 + g.gapMinutes;
     const x = xCenter(g.hour) + jitter(seed);
     const y = yPos(g.gapMinutes);
-    const color = smallTopOff(g) ? "#EC4899" : "#2E86AB";
-    svg += `<circle cx="${x}" cy="${y}" r="3.5" fill="${color}" opacity="0.6">
-      <title>${formatHour(g.hour)}: ${g.gapMinutes}m \u2192 ${g.followUpVolume}mL</title>
-    </circle>`;
+    const isPink = smallTopOff(g);
+
+    if (isPink) {
+      const idx = g.hour * 1000 + g.gapMinutes;
+      const combined = g.precedingVolume + g.followUpVolume;
+      const dateStr = formatScatterDate(g.date);
+      // Clamp tooltip X within chart area so it stays visible.
+      const tipX = Math.min(Math.max(x, leftM + 24), totalW - rightM - 24);
+      const tipY = Math.max(y - 14, topM + 10);
+      svg += `<g data-action="scatter-tap" data-gap="${idx}" role="button" aria-label="${dateStr}: ${combined}mL">`;
+      svg += `<circle cx="${x}" cy="${y}" r="6" fill="transparent" stroke="none"/>`;
+      svg += `<circle cx="${x}" cy="${y}" r="3.5" fill="#EC4899" opacity="0.6"/>`;
+      svg += `<text class="scatter-tooltip" data-gap="${idx}" x="${tipX}" y="${tipY}" text-anchor="middle" fill="var(--text)" font-family="system-ui, sans-serif" font-size="9" display="none">
+        <tspan x="${tipX}" dy="0">${dateStr}</tspan>
+        <tspan x="${tipX}" dy="10">${combined} mL total</tspan>
+      </text>`;
+      svg += `</g>`;
+    } else {
+      svg += `<circle cx="${x}" cy="${y}" r="3.5" fill="#2E86AB" opacity="0.6">
+        <title>${formatHour(g.hour)}: ${g.gapMinutes}m \u2192 ${g.followUpVolume}mL</title>
+      </circle>`;
+    }
   });
 
   const legendY = topM + chartH + 24;
@@ -590,6 +608,15 @@ function renderClusterGapScatter(gaps) {
 
   svg += `</svg>`;
   return svg;
+}
+
+function formatScatterDate(d) {
+  if (!d) return "";
+  const m = d.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return d;
+  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const mo = months[parseInt(m[2], 10) - 1];
+  return `${mo} ${parseInt(m[3], 10)}`;
 }
 
 function renderBabyColumn(ts, memberMap, period, type) {
