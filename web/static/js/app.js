@@ -2256,11 +2256,12 @@ export async function init() {
         e.preventDefault();
         const days = parseInt(actionEl.dataset.days, 10);
         state.stats = state.stats || {};
+        const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
         const endDate = new Date();
         const startDate = new Date(endDate);
         startDate.setDate(startDate.getDate() - (days - 1));
-        state.stats.feedingGapsEnd = endDate.toISOString().slice(0, 10);
-        state.stats.feedingGapsStart = startDate.toISOString().slice(0, 10);
+        state.stats.feedingGapsEnd = fmt(endDate);
+        state.stats.feedingGapsStart = fmt(startDate);
         loadFeedingGaps(state.stats.feedingGapsStart, apiExclusiveEnd(state.stats.feedingGapsEnd)).then(data => {
           if (data && data.feedingGaps) {
             state.stats.feedingGaps = data.feedingGaps;
