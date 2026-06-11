@@ -116,7 +116,7 @@ func (s *PostgresStore) FindLog(ctx context.Context, householdID, choreID int64,
 	var logDate sql.NullString
 	var volumeML sql.NullInt64
 	dateStr := date.Format("2006-01-02")
-	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date, volume_ml, indicator_volumes::text FROM chore_logs WHERE household_id = $1 AND chore_id = $2 AND COALESCE(log_date, completed_at::date) = $3::date LIMIT 1`, householdID, choreID, dateStr).Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML, &indVolJSON)
+	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date, volume_ml, indicator_volumes::text FROM chore_logs WHERE household_id = $1 AND chore_id = $2 AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) = $3::date LIMIT 1`, householdID, choreID, dateStr).Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML, &indVolJSON)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
 	}
@@ -196,8 +196,8 @@ func (s *PostgresStore) queryLogs(ctx context.Context, householdID int64, dateSt
 		       log_date, volume_ml, indicator_volumes::text
 		FROM chore_logs
 		WHERE household_id = $1
-		  AND COALESCE(log_date, completed_at::date) >= $2::date
-		  AND COALESCE(log_date, completed_at::date) < $3::date
+		  AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) >= $2::date
+		  AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) < $3::date
 		ORDER BY completed_at
 	`, householdID, dateStart, dateEnd)
 	if err != nil {
@@ -244,7 +244,7 @@ func (s *PostgresStore) HistoryLogs(ctx context.Context, householdID int64, star
 	}
 
 	var hasMore bool
-	err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM chore_logs WHERE household_id = $1 AND COALESCE(log_date, completed_at::date) < $2::date)`, householdID, dateStart).Scan(&hasMore)
+	err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM chore_logs WHERE household_id = $1 AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) < $2::date)`, householdID, dateStart).Scan(&hasMore)
 	if err != nil {
 		hasMore = false
 	}

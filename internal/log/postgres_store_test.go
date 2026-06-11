@@ -99,7 +99,7 @@ func TestPostgresLogStore_ListLogs(t *testing.T) {
 	store := NewPostgresStore(db)
 
 	now := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date, volume_ml, indicator_volumes::text FROM chore_logs WHERE household_id = $1 AND COALESCE(log_date, completed_at::date) >= $2::date AND COALESCE(log_date, completed_at::date) < $3::date ORDER BY completed_at`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date, volume_ml, indicator_volumes::text FROM chore_logs WHERE household_id = $1 AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) >= $2::date AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) < $3::date ORDER BY completed_at`)).
 		WithArgs(int64(1), "2024-01-15", "2024-01-16").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "user_id", "chore_id", "completed_at", "note", "indicators", "slot_hour", "created_at", "log_date", "volume_ml", "indicator_volumes"}).
 			AddRow(1, 1, 1, 1, now, "", "[]", nil, now, nil, nil, nil))
@@ -149,7 +149,7 @@ func TestPostgresLogStore_ListLogsRange(t *testing.T) {
 
 	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2024, 1, 8, 0, 0, 0, 0, time.UTC)
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date, volume_ml, indicator_volumes::text FROM chore_logs WHERE household_id = $1 AND COALESCE(log_date, completed_at::date) >= $2::date AND COALESCE(log_date, completed_at::date) < $3::date ORDER BY completed_at`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date, volume_ml, indicator_volumes::text FROM chore_logs WHERE household_id = $1 AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) >= $2::date AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) < $3::date ORDER BY completed_at`)).
 		WithArgs(int64(1), "2024-01-01", "2024-01-08").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "user_id", "chore_id", "completed_at", "note", "indicators", "slot_hour", "created_at", "log_date", "volume_ml", "indicator_volumes"}))
 
