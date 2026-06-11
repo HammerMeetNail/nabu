@@ -610,56 +610,55 @@ async function loadStatsData() {
 }
 
 async function loadAllStatsData() {
-  try {
-    const overviewData = await loadOverview();
-    if (overviewData && overviewData.overview) {
-      state.stats = state.stats || {};
-      state.stats.overview = {
-        leaderboard: overviewData.overview.leaderboard || [],
-        streaks: overviewData.overview.streaks || {},
-        breakdown: overviewData.overview.breakdown || [],
-        recap: overviewData.overview.recap || {},
-      };
-    }
-  } catch {}
-  try {
-    const heatmapData = await loadHeatmap();
-    if (heatmapData && heatmapData.heatmap) {
-      state.stats = state.stats || {};
-      state.stats.heatmap = heatmapData.heatmap;
-    }
-  } catch {}
-  try {
-    const busyFilter = state.stats?.busyHoursFilter || {};
-    const busyData = await loadBusyHours(busyFilter);
-    if (busyData && busyData.busyHours) {
-      state.stats = state.stats || {};
-      state.stats.busyHours = busyData.busyHours;
-      state.stats.busyHoursStart = busyData.start;
-      state.stats.busyHoursEnd = busyData.end;
-    }
-  } catch {}
-  try {
-    const csFilter = state.stats?.choreStatsFilter || {};
-    const csData = await loadChoreStats(csFilter);
-    if (csData && csData.choreStats) {
-      state.stats = state.stats || {};
-      state.stats.choreStats = csData.choreStats;
-      state.stats.choreStatsStart = csData.start;
-      state.stats.choreStatsEnd = csData.end;
-    }
-  } catch {}
-  try {
-    state.stats = state.stats || {};
-    const uid = state.stats.topChoresUserId = state.stats.topChoresUserId || (state.user && state.user.id) || 0;
-    const tcData = await loadTopChores(uid);
-    if (tcData && tcData.topChores) {
-      state.stats = state.stats || {};
-      state.stats.topChoresByUser = state.stats.topChoresByUser || {};
-      state.stats.topChoresByUser[uid] = tcData.topChores;
-    }
-  } catch {}
-  await loadBabyTimeSeries();
+  state.stats = state.stats || {};
+
+  const uid = state.stats.topChoresUserId = state.stats.topChoresUserId || (state.user && state.user.id) || 0;
+  const busyFilter = state.stats.busyHoursFilter || {};
+  const csFilter = state.stats.choreStatsFilter || {};
+
+  await Promise.allSettled([
+    (async () => {
+      const overviewData = await loadOverview();
+      if (overviewData && overviewData.overview) {
+        state.stats.overview = {
+          leaderboard: overviewData.overview.leaderboard || [],
+          streaks: overviewData.overview.streaks || {},
+          breakdown: overviewData.overview.breakdown || [],
+          recap: overviewData.overview.recap || {},
+        };
+      }
+    })(),
+    (async () => {
+      const heatmapData = await loadHeatmap();
+      if (heatmapData && heatmapData.heatmap) {
+        state.stats.heatmap = heatmapData.heatmap;
+      }
+    })(),
+    (async () => {
+      const busyData = await loadBusyHours(busyFilter);
+      if (busyData && busyData.busyHours) {
+        state.stats.busyHours = busyData.busyHours;
+        state.stats.busyHoursStart = busyData.start;
+        state.stats.busyHoursEnd = busyData.end;
+      }
+    })(),
+    (async () => {
+      const csData = await loadChoreStats(csFilter);
+      if (csData && csData.choreStats) {
+        state.stats.choreStats = csData.choreStats;
+        state.stats.choreStatsStart = csData.start;
+        state.stats.choreStatsEnd = csData.end;
+      }
+    })(),
+    (async () => {
+      const tcData = await loadTopChores(uid);
+      if (tcData && tcData.topChores) {
+        state.stats.topChoresByUser = state.stats.topChoresByUser || {};
+        state.stats.topChoresByUser[uid] = tcData.topChores;
+      }
+    })(),
+    loadBabyTimeSeries(),
+  ]);
 }
 
 async function loadBabyTimeSeries() {
@@ -674,37 +673,46 @@ async function loadBabyTimeSeries() {
   const period = state.stats.babyPeriod;
   state.stats.babyTimeSeries = state.stats.babyTimeSeries || {};
 
+  const tasks = [];
+
   if (feedBaby) {
-    try {
-      const data = await loadChoreTimeSeries(feedBaby.id, period);
-      if (data && data.timeSeries) {
-        state.stats.babyTimeSeries.feedBaby = data.timeSeries;
-      }
-    } catch {}
-    try {
-      state.stats = state.stats || {};
-      const now = new Date();
-      const endStr = now.toISOString().slice(0, 10);
-      const startDate = new Date(now);
-      startDate.setDate(startDate.getDate() - 7);
-      const startStr = startDate.toISOString().slice(0, 10);
-      state.stats.feedingGapsStart = state.stats.feedingGapsStart || startStr;
-      state.stats.feedingGapsEnd = state.stats.feedingGapsEnd || endStr;
-      const apiEnd = apiExclusiveEnd(state.stats.feedingGapsEnd);
-      const gapsData = await loadFeedingGaps(state.stats.feedingGapsStart, apiEnd);
-      if (gapsData && gapsData.feedingGaps) {
-        state.stats.feedingGaps = gapsData.feedingGaps;
-      }
-    } catch {}
+    tasks.push((async () => {
+      try {
+        const data = await loadChoreTimeSeries(feedBaby.id, period);
+        if (data && data.timeSeries) {
+          state.stats.babyTimeSeries.feedBaby = data.timeSeries;
+        }
+      } catch {}
+    })());
+    tasks.push((async () => {
+      try {
+        const now = new Date();
+        const endStr = now.toISOString().slice(0, 10);
+        const startDate = new Date(now);
+        startDate.setDate(startDate.getDate() - 7);
+        const startStr = startDate.toISOString().slice(0, 10);
+        state.stats.feedingGapsStart = state.stats.feedingGapsStart || startStr;
+        state.stats.feedingGapsEnd = state.stats.feedingGapsEnd || endStr;
+        const apiEnd = apiExclusiveEnd(state.stats.feedingGapsEnd);
+        const gapsData = await loadFeedingGaps(state.stats.feedingGapsStart, apiEnd);
+        if (gapsData && gapsData.feedingGaps) {
+          state.stats.feedingGaps = gapsData.feedingGaps;
+        }
+      } catch {}
+    })());
   }
   if (changeBaby) {
-    try {
-      const data = await loadChoreTimeSeries(changeBaby.id, period);
-      if (data && data.timeSeries) {
-        state.stats.babyTimeSeries.changeBaby = data.timeSeries;
-      }
-    } catch {}
+    tasks.push((async () => {
+      try {
+        const data = await loadChoreTimeSeries(changeBaby.id, period);
+        if (data && data.timeSeries) {
+          state.stats.babyTimeSeries.changeBaby = data.timeSeries;
+        }
+      } catch {}
+    })());
   }
+
+  await Promise.allSettled(tasks);
 }
 
 function apiExclusiveEnd(inclusiveEnd) {

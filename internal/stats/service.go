@@ -172,7 +172,11 @@ func (s *Service) GetUserStreaks(ctx context.Context, householdID, userID int64,
 	if err != nil {
 		return StreakInfo{}, err
 	}
+	return computeStreaks(logs, userID, start, end, loc), nil
+}
 
+func computeStreaks(logs []log.ChoreLog, userID int64, start, end time.Time, loc *time.Location) StreakInfo {
+	now := nowIn(loc)
 	daySet := map[string]bool{}
 	for _, l := range logs {
 		if l.UserID == userID && logInRange(l, start, end, loc) {
@@ -180,10 +184,9 @@ func (s *Service) GetUserStreaks(ctx context.Context, householdID, userID int64,
 		}
 	}
 
-	checkNow := nowIn(loc)
 	current := 0
 	for i := 0; i < 365; i++ {
-		d := checkNow.AddDate(0, 0, -i).Format("2006-01-02")
+		d := now.AddDate(0, 0, -i).Format("2006-01-02")
 		if daySet[d] {
 			current++
 		} else {
@@ -193,8 +196,7 @@ func (s *Service) GetUserStreaks(ctx context.Context, householdID, userID int64,
 
 	longest := 0
 	streak := 0
-	streakStart := start
-	for d := streakStart; !d.After(checkNow); d = d.AddDate(0, 0, 1) {
+	for d := start; !d.After(now); d = d.AddDate(0, 0, 1) {
 		if daySet[d.Format("2006-01-02")] {
 			streak++
 			if streak > longest {
@@ -208,7 +210,7 @@ func (s *Service) GetUserStreaks(ctx context.Context, householdID, userID int64,
 		longest = streak
 	}
 
-	return StreakInfo{Current: current, Longest: longest}, nil
+	return StreakInfo{Current: current, Longest: longest}
 }
 
 func (s *Service) GetHeatmap(ctx context.Context, householdID int64, start, end time.Time, loc *time.Location) ([]HeatmapCell, error) {
@@ -390,6 +392,12 @@ func (s *Service) GetChoreStats(ctx context.Context, householdID int64, loc *tim
 		return nil, err
 	}
 
+	// Build a chore→logs index to avoid O(chores × logs) nested iteration.
+	logsByChore := map[int64][]log.ChoreLog{}
+	for _, l := range logs {
+		logsByChore[l.ChoreID] = append(logsByChore[l.ChoreID], l)
+	}
+
 	var result []ChoreStats
 	for _, ch := range chores {
 		var weekCount, monthCount int
@@ -397,10 +405,7 @@ func (s *Service) GetChoreStats(ctx context.Context, householdID int64, loc *tim
 		volumeByDay := map[string]int{}
 		var totalVolume, volumeLogs int
 
-		for _, l := range logs {
-			if l.ChoreID != ch.ID {
-				continue
-			}
+		for _, l := range logsByChore[ch.ID] {
 			if !l.CompletedAt.In(loc).Before(weekStart) {
 				weekCount++
 			}
@@ -466,7 +471,10 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 	weekStart := wkStart(now, loc)
 	weekEnd := weekStart.AddDate(0, 0, 7)
 
-	logs, err := s.fetchLogsInRange(ctx, householdID, weekStart, weekEnd, loc)
+	// Fetch a full year of logs once to serve both the week overview and streaks.
+	yearStart := now.AddDate(-1, 0, 0)
+	yearEnd := now.AddDate(0, 0, 1)
+	logs, err := s.fetchLogsInRange(ctx, householdID, yearStart, yearEnd, loc)
 	if err != nil {
 		return WeeklyOverview{}, err
 	}
@@ -478,7 +486,7 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 
 	overview := WeeklyOverview{}
 
-	// Leaderboard
+	// Leaderboard (week only)
 	counts := map[int64]int{}
 	for _, l := range logs {
 		if logInRange(l, weekStart, weekEnd, loc) {
@@ -493,10 +501,10 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 		return overview.Leaderboard[i].Count > overview.Leaderboard[j].Count
 	})
 
-	// Streaks (for the requesting user)
-	overview.Streaks, _ = s.GetUserStreaks(ctx, householdID, userID, loc)
+	// Streaks (for the requesting user) — computed from the same year fetch.
+	overview.Streaks = computeStreaks(logs, userID, yearStart, yearEnd, loc)
 
-	// Breakdown
+	// Breakdown (week only)
 	choreCat := map[int64]string{}
 	for _, c := range chores {
 		choreCat[c.ID] = c.Category
@@ -664,19 +672,17 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 		buckets = buildDayBuckets(start, today, loc)
 	}
 
-	end := today.AddDate(0, 0, 1)
+	yearStart := today.AddDate(-1, 0, 0)
+	yearEnd := today.AddDate(0, 0, 1)
 
-	logs, err := s.fetchLogsInRange(ctx, householdID, start, end, loc)
+	// The year range always encompasses the period range, so fetch once.
+	logs, err := s.fetchLogsInRange(ctx, householdID, yearStart, yearEnd, loc)
 	if err != nil {
 		return nil, err
 	}
 
-	yearStart := today.AddDate(-1, 0, 0)
-	yearEnd := today.AddDate(0, 0, 1)
-	allLogs, _ := s.fetchLogsInRange(ctx, householdID, yearStart, yearEnd, loc)
-
 	byMember := map[int64]int{}
-	for _, l := range allLogs {
+	for _, l := range logs {
 		if l.ChoreID == choreID && logInRange(l, yearStart, yearEnd, loc) {
 			byMember[l.UserID]++
 		}
