@@ -69,7 +69,7 @@ test.describe('Home Grid: Rendering', () => {
     await setupWithChores(page);
 
     await expect(page.locator('.home-grid')).toBeVisible();
-    // 13 default seeded chores
+    // 15 default seeded chores
     await expect(page.locator('.home-chore-card')).toHaveCount(15);
 
     // Each card has icon, name, and a time label
@@ -94,7 +94,7 @@ test.describe('Home Grid: Rendering', () => {
 
     // Every card should start as "never" before any logging
     const neverCount = await page.locator('.home-card-time--never').count();
-    expect(neverCount).toBe(13);
+    expect(neverCount).toBe(15);
     await expect(page.locator('.home-card-time--never').first()).toContainText('never');
   });
 });

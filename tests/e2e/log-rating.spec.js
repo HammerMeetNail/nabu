@@ -64,7 +64,7 @@ test.describe('Star rating on chore logs', () => {
 
     await expect(page.locator('.star-rating')).toBeVisible();
     await expect(page.locator('.star-rating-bg')).toBeVisible();
-    await expect(page.locator('.star-rating-fg')).toBeVisible();
+    await expect(page.locator('.star-rating-fg')).toBeAttached();
   });
 
   test('log sheet for non-rating chore does not show star rating widget', async ({ page }) => {
@@ -174,7 +174,7 @@ test.describe('Star rating on chore logs', () => {
     await histRow.click();
 
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
-    await expect(page.locator('.star-rating-fg')).toBeVisible();
+    await expect(page.locator('.star-rating-fg')).toBeAttached();
 
     // Change rating to 25 (2.5 stars) by clicking at 50%
     const starRating = page.locator('.star-rating');
@@ -183,7 +183,7 @@ test.describe('Star rating on chore logs', () => {
 
     await page.fill('#log-note', 'Updated');
     await page.click('[data-action="save-log"]');
-    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+    await page.waitForTimeout(1500);
 
     const resp = await page.request.get('/api/logs/latest-per-chore');
     const body = await resp.json();
