@@ -447,10 +447,12 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
       </div>`;
     })() : "";
 
+    const noteLabel = chore.hasRating ? "Title" : "Note (optional)";
+    const notePlaceholder = chore.hasRating ? "Add a title…" : "Add a note…";
     const noteSection = `
     <div class="sheet-note-row">
-      <label for="log-note" class="field-label">Note (optional)</label>
-      <textarea id="log-note" class="text-input" rows="2" placeholder="Add a note…">${noteVal}</textarea>
+      <label for="log-note" class="field-label">${noteLabel}</label>
+      <textarea id="log-note" class="text-input" rows="2" placeholder="${notePlaceholder}">${noteVal}</textarea>
     </div>`;
 
   const showWhen = opts.showWhen === true;
