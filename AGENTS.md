@@ -114,6 +114,13 @@ Session cookie name: `nabu_session`. CSRF cookie name: `nabu_csrf`.
 - **`schedule.js`** — Schedule CRUD, pick-chore sheet, quick-log sheet, drag-and-drop rescheduling.
 - **`preferences.js`** — Chore ordering preferences.
 
+### When adding or changing predefined chores
+
+**Adding a new predefined chore or changing an existing one's fields (icon, color, indicatorLabels, hasVolumeML, hasRating, etc.) requires two changes — never skip either one:**
+
+1. **Update `PredefinedChores`** in `internal/chore/service.go` — this defines what new households get.
+2. **Add a migration** that upserts the change for every existing household. The migration must use `WHERE NOT EXISTS` (for new chores) or `UPDATE` (for field changes) keyed on `predefined_key`, so it is idempotent on re-run. Without this step, existing users never see the new or updated defaults.
+
 ### Key patterns
 
 - **Service/Store separation**: Services hold business logic, stores hold persistence. Both have memory and Postgres implementations. When `DATABASE_URL` is empty, everything uses in-memory stores.
