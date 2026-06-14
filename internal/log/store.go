@@ -11,6 +11,7 @@ type ChoreLog struct {
 	UserID           int64          `json:"userId"`
 	ChoreID          int64          `json:"choreId"`
 	CompletedAt      time.Time      `json:"completedAt"`
+	Title            *string        `json:"title,omitempty"`
 	Note             string         `json:"note"`
 	Indicators       []string       `json:"indicators"`
 	IndicatorVolumes map[string]int `json:"indicatorVolumes,omitempty"`

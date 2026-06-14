@@ -51,10 +51,14 @@ func (s *PostgresStore) CreateLog(ctx context.Context, log ChoreLog) (ChoreLog, 
 	if log.LogDate != nil {
 		logDate = sql.NullString{String: *log.LogDate, Valid: true}
 	}
+	var title sql.NullString
+	if log.Title != nil {
+		title = sql.NullString{String: *log.Title, Valid: true}
+	}
 	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO chore_logs (household_id, user_id, chore_id, completed_at, note, indicators, slot_hour, log_date, volume_ml, indicator_volumes, rating)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id, created_at
-	`, log.HouseholdID, log.UserID, log.ChoreID, log.CompletedAt, log.Note, string(indJSON), ptrToNullInt64(log.SlotHour), logDate, ptrToNullInt64(log.VolumeML), nullStr(indVolJSON), ptrToNullInt64(log.Rating)).Scan(&log.ID, &log.CreatedAt)
+		INSERT INTO chore_logs (household_id, user_id, chore_id, completed_at, note, indicators, slot_hour, log_date, volume_ml, indicator_volumes, rating, title)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id, created_at
+	`, log.HouseholdID, log.UserID, log.ChoreID, log.CompletedAt, log.Note, string(indJSON), ptrToNullInt64(log.SlotHour), logDate, ptrToNullInt64(log.VolumeML), nullStr(indVolJSON), ptrToNullInt64(log.Rating), title).Scan(&log.ID, &log.CreatedAt)
 	return log, err
 }
 
@@ -66,7 +70,8 @@ func (s *PostgresStore) GetLog(ctx context.Context, id int64) (ChoreLog, error) 
 	var logDate sql.NullString
 	var volumeML sql.NullInt64
 	var rating sql.NullInt64
-	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date, volume_ml, indicator_volumes::text, rating FROM chore_logs WHERE id = $1`, id).Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML, &indVolJSON, &rating)
+	var title sql.NullString
+	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date, volume_ml, indicator_volumes::text, rating, COALESCE(title,'') FROM chore_logs WHERE id = $1`, id).Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML, &indVolJSON, &rating, &title)
 	if err == sql.ErrNoRows {
 		return ChoreLog{}, ErrNotFound
 	}
@@ -81,6 +86,9 @@ func (s *PostgresStore) GetLog(ctx context.Context, id int64) (ChoreLog, error) 
 		}
 		l.VolumeML = nullIntToPtr(volumeML)
 		l.Rating = nullIntToPtr(rating)
+		if title.Valid {
+			l.Title = &title.String
+		}
 		if indVolJSON.Valid && indVolJSON.String != "" {
 			_ = json.Unmarshal([]byte(indVolJSON.String), &l.IndicatorVolumes)
 		}
@@ -99,9 +107,13 @@ func (s *PostgresStore) UpdateLog(ctx context.Context, log ChoreLog) error {
 	if log.LogDate != nil {
 		logDate = log.LogDate
 	}
+	var titleSQL *string
+	if log.Title != nil {
+		titleSQL = log.Title
+	}
 	_, err := s.db.ExecContext(ctx,
-		`UPDATE chore_logs SET note=$1, indicators=$2, volume_ml=$3, user_id=$4, completed_at=$5, slot_hour=$6, log_date=$7, indicator_volumes=$8, rating=$9 WHERE id=$10`,
-		log.Note, string(indJSON), ptrToNullInt64(log.VolumeML), log.UserID, log.CompletedAt.UTC(), log.SlotHour, logDate, nullStr(indVolJSON), ptrToNullInt64(log.Rating), log.ID)
+		`UPDATE chore_logs SET note=$1, indicators=$2, volume_ml=$3, user_id=$4, completed_at=$5, slot_hour=$6, log_date=$7, indicator_volumes=$8, rating=$9, title=$10 WHERE id=$11`,
+		log.Note, string(indJSON), ptrToNullInt64(log.VolumeML), log.UserID, log.CompletedAt.UTC(), log.SlotHour, logDate, nullStr(indVolJSON), ptrToNullInt64(log.Rating), titleSQL, log.ID)
 	return err
 }
 
@@ -118,8 +130,9 @@ func (s *PostgresStore) FindLog(ctx context.Context, householdID, choreID int64,
 	var logDate sql.NullString
 	var volumeML sql.NullInt64
 	var rating sql.NullInt64
+	var title sql.NullString
 	dateStr := date.Format("2006-01-02")
-	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date, volume_ml, indicator_volumes::text, rating FROM chore_logs WHERE household_id = $1 AND chore_id = $2 AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) = $3::date LIMIT 1`, householdID, choreID, dateStr).Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML, &indVolJSON, &rating)
+	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date, volume_ml, indicator_volumes::text, rating, COALESCE(title,'') FROM chore_logs WHERE household_id = $1 AND chore_id = $2 AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) = $3::date LIMIT 1`, householdID, choreID, dateStr).Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML, &indVolJSON, &rating, &title)
 	if err == sql.ErrNoRows {
 		return nil, ErrNotFound
 	}
@@ -134,6 +147,9 @@ func (s *PostgresStore) FindLog(ctx context.Context, householdID, choreID int64,
 		}
 		l.VolumeML = nullIntToPtr(volumeML)
 		l.Rating = nullIntToPtr(rating)
+		if title.Valid {
+			l.Title = &title.String
+		}
 		if indVolJSON.Valid && indVolJSON.String != "" {
 			_ = json.Unmarshal([]byte(indVolJSON.String), &l.IndicatorVolumes)
 		}
@@ -156,7 +172,7 @@ func (s *PostgresStore) LatestPerChore(ctx context.Context, householdID int64) (
 		SELECT DISTINCT ON (chore_id)
 			id, household_id, user_id, chore_id, completed_at,
 			COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at,
-			log_date, volume_ml, indicator_volumes::text, rating
+			log_date, volume_ml, indicator_volumes::text, rating, COALESCE(title,'')
 		FROM chore_logs
 		WHERE household_id = $1
 		ORDER BY chore_id, completed_at DESC, id DESC
@@ -174,7 +190,8 @@ func (s *PostgresStore) LatestPerChore(ctx context.Context, householdID int64) (
 		var logDate sql.NullString
 		var volumeML sql.NullInt64
 		var rating sql.NullInt64
-		if err := rows.Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML, &indVolJSON, &rating); err != nil {
+		var title sql.NullString
+		if err := rows.Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML, &indVolJSON, &rating, &title); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(indJSON), &l.Indicators)
@@ -187,6 +204,9 @@ func (s *PostgresStore) LatestPerChore(ctx context.Context, householdID int64) (
 		}
 		l.VolumeML = nullIntToPtr(volumeML)
 		l.Rating = nullIntToPtr(rating)
+		if title.Valid {
+			l.Title = &title.String
+		}
 		if indVolJSON.Valid && indVolJSON.String != "" {
 			_ = json.Unmarshal([]byte(indVolJSON.String), &l.IndicatorVolumes)
 		}
@@ -199,7 +219,7 @@ func (s *PostgresStore) queryLogs(ctx context.Context, householdID int64, dateSt
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, household_id, user_id, chore_id, completed_at,
 		       COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at,
-		       log_date, volume_ml, indicator_volumes::text, rating
+		       log_date, volume_ml, indicator_volumes::text, rating, COALESCE(title,'')
 		FROM chore_logs
 		WHERE household_id = $1
 		  AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) >= $2::date
@@ -219,7 +239,8 @@ func (s *PostgresStore) queryLogs(ctx context.Context, householdID int64, dateSt
 		var logDate sql.NullString
 		var volumeML sql.NullInt64
 		var rating sql.NullInt64
-		if err := rows.Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML, &indVolJSON, &rating); err != nil {
+		var title sql.NullString
+		if err := rows.Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML, &indVolJSON, &rating, &title); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(indJSON), &l.Indicators)
@@ -232,6 +253,9 @@ func (s *PostgresStore) queryLogs(ctx context.Context, householdID int64, dateSt
 		}
 		l.VolumeML = nullIntToPtr(volumeML)
 		l.Rating = nullIntToPtr(rating)
+		if title.Valid {
+			l.Title = &title.String
+		}
 		if indVolJSON.Valid && indVolJSON.String != "" {
 			_ = json.Unmarshal([]byte(indVolJSON.String), &l.IndicatorVolumes)
 		}

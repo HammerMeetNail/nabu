@@ -371,6 +371,7 @@ function renderIndicatorVolumeRow(label, on, selectedML = null) {
 export function renderLogSheet(chore, log, date, members, currentUserId, cachedVolumeML = null, opts = {}) {
   const title = `${escapeHTML(chore.icon)} ${escapeHTML(chore.name)}`;
   const noteVal = log ? escapeHTML(log.note || "") : "";
+  const titleVal = log?.title ? escapeHTML(log.title) : "";
   const activeIndicators = new Set(log?.indicators || (chore.indicatorDefaults || []));
   const logIndicatorVolumes = log?.indicatorVolumes || {};
   const cachedIndicatorVolumes = (log ? null : (opts.cachedIndicatorVolumes || null));
@@ -434,6 +435,12 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     </div>`;
   })() : "";
 
+    const titleSection = chore.hasRating ? `
+    <div class="sheet-note-row">
+      <label for="log-title" class="field-label">Title</label>
+      <input id="log-title" class="text-input" placeholder="Enter a title…" value="${titleVal}" maxlength="200">
+    </div>` : "";
+
     const ratingSection = chore.hasRating ? (() => {
       const rating = log?.rating || 0;
       const pct = (rating / 50) * 100;
@@ -447,12 +454,10 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
       </div>`;
     })() : "";
 
-    const noteLabel = chore.hasRating ? "Title" : "Note (optional)";
-    const notePlaceholder = chore.hasRating ? "Add a title…" : "Add a note…";
     const noteSection = `
     <div class="sheet-note-row">
-      <label for="log-note" class="field-label">${noteLabel}</label>
-      <textarea id="log-note" class="text-input" rows="2" placeholder="${notePlaceholder}">${noteVal}</textarea>
+      <label for="log-note" class="field-label">Note (optional)</label>
+      <textarea id="log-note" class="text-input" rows="2" placeholder="Add a note…">${noteVal}</textarea>
     </div>`;
 
   const showWhen = opts.showWhen === true;
@@ -512,6 +517,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
       ${whenSection}
       ${indicatorSection}
       ${followUpSection}
+      ${titleSection}
       ${ratingSection}
       ${memberSection}
       ${noteSection}

@@ -77,6 +77,7 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		ChoreID          int64          `json:"choreId"`
+		Title            *string        `json:"title,omitempty"`
 		Note             string         `json:"note"`
 		Indicators       []string       `json:"indicators"`
 		IndicatorVolumes map[string]int `json:"indicatorVolumes"`
@@ -151,7 +152,7 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		logCompletedAt = &t
 	}
 
-	entry, err := h.service.LogChore(r.Context(), *user.HouseholdID, logUserID, req.ChoreID, req.Note, req.Indicators, req.IndicatorVolumes, logDate, req.Hour, logCompletedAt, req.VolumeML, req.Rating)
+	entry, err := h.service.LogChore(r.Context(), *user.HouseholdID, logUserID, req.ChoreID, req.Title, req.Note, req.Indicators, req.IndicatorVolumes, logDate, req.Hour, logCompletedAt, req.VolumeML, req.Rating)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
@@ -220,6 +221,7 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
+		Title            *string        `json:"title,omitempty"`
 		Note             string         `json:"note"`
 		Indicators       []string       `json:"indicators"`
 		IndicatorVolumes map[string]int `json:"indicatorVolumes"`
@@ -279,7 +281,7 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 		logCompletedAt = &t
 	}
 
-	if err := h.service.UpdateLog(r.Context(), id, *user.HouseholdID, req.Note, req.Indicators, req.IndicatorVolumes, req.VolumeML, userID, logCompletedAt, req.Hour, logDate, req.Rating); err != nil {
+	if err := h.service.UpdateLog(r.Context(), id, *user.HouseholdID, req.Title, req.Note, req.Indicators, req.IndicatorVolumes, req.VolumeML, userID, logCompletedAt, req.Hour, logDate, req.Rating); err != nil {
 		if errors.Is(err, log.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "log not found")
 			return

@@ -1621,6 +1621,7 @@ export async function init() {
         const logId   = actionEl.dataset.logId;
         const choreId = parseInt(actionEl.dataset.choreId, 10);
         const note    = (document.querySelector('#log-note')?.value || "").trim();
+        const titleVal = (document.querySelector('#log-title')?.value || "").trim();
         const indicators = [...document.querySelectorAll('.log-chip--on')]
           .map(el => el.dataset.label);
         const indicatorVolumes = {};
@@ -1681,7 +1682,7 @@ export async function init() {
         }
 
         const doLog = logId
-          ? updateLog(parseInt(logId, 10), note, indicators, volumeML, userId, date, slotHour, completedAt, indicatorVolumes, rating)
+          ? updateLog(parseInt(logId, 10), note, indicators, volumeML, userId, date, slotHour, completedAt, indicatorVolumes, rating, titleVal || null)
           : (() => {
             const followUpDays = parseInt(document.querySelector('#followup-days')?.value || '0', 10) || 0;
             const followUpHours = parseInt(document.querySelector('#followup-hours')?.value || '0', 10) || 0;
@@ -1694,7 +1695,7 @@ export async function init() {
               const pad = n => String(n).padStart(2, "0");
               followUpTime = `${fu.getFullYear()}-${pad(fu.getMonth() + 1)}-${pad(fu.getDate())}T${pad(fu.getHours())}:${pad(fu.getMinutes())}`;
             }
-            return logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId, indicatorVolumes, followUpMinutes, followUpTime, rating);
+            return logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId, indicatorVolumes, followUpMinutes, followUpTime, rating, titleVal || null);
           })();
         doLog.then(async (data) => {
           const newLogId = data?.log?.id;
@@ -1710,6 +1711,7 @@ export async function init() {
               if (date) updated.logDate = date;
               if (slotHour !== null) updated.slotHour = slotHour;
               if (rating !== null) updated.rating = rating;
+              if (titleVal) updated.title = titleVal;
               state.historyLogs[histIdx] = updated;
             }
           }

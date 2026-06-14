@@ -14,7 +14,7 @@ func TestLogService_LogChore_Basic(t *testing.T) {
 	svc := chorelog.NewService(chorelog.NewMemoryStore())
 	ctx := context.Background()
 
-	l, err := svc.LogChore(ctx, 1, 10, 100, "done", nil, nil, nil, nil, nil, nil, nil)
+	l, err := svc.LogChore(ctx, 1, 10, 100, nil, "done", nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("LogChore: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestLogService_LogChore_WithCompletedAt(t *testing.T) {
 	ctx := context.Background()
 
 	ts := time.Date(2026, 3, 15, 14, 30, 0, 0, time.UTC)
-	l, err := svc.LogChore(ctx, 1, 10, 100, "", nil, nil, nil, nil, &ts, nil, nil)
+	l, err := svc.LogChore(ctx, 1, 10, 100, nil, "", nil, nil, nil, nil, &ts, nil, nil)
 	if err != nil {
 		t.Fatalf("LogChore: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestLogService_LogChore_WithDate_NoCompletedAt(t *testing.T) {
 	ctx := context.Background()
 
 	d := time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC)
-	l, err := svc.LogChore(ctx, 1, 10, 100, "", nil, nil, &d, nil, nil, nil, nil)
+	l, err := svc.LogChore(ctx, 1, 10, 100, nil, "", nil, nil, &d, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("LogChore: %v", err)
 	}
@@ -72,7 +72,7 @@ func TestLogService_LogChore_WithSlotHour(t *testing.T) {
 	ctx := context.Background()
 
 	hour := 8
-	l, err := svc.LogChore(ctx, 1, 10, 100, "", nil, nil, nil, &hour, nil, nil, nil)
+	l, err := svc.LogChore(ctx, 1, 10, 100, nil, "", nil, nil, nil, &hour, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("LogChore: %v", err)
 	}
@@ -86,7 +86,7 @@ func TestLogService_LogChore_WithVolumeML(t *testing.T) {
 	ctx := context.Background()
 
 	vol := 150
-	l, err := svc.LogChore(ctx, 1, 10, 100, "", nil, nil, nil, nil, nil, &vol, nil)
+	l, err := svc.LogChore(ctx, 1, 10, 100, nil, "", nil, nil, nil, nil, nil, &vol, nil)
 	if err != nil {
 		t.Fatalf("LogChore: %v", err)
 	}
@@ -100,7 +100,7 @@ func TestLogService_LogChore_WithIndicatorVolumes(t *testing.T) {
 	ctx := context.Background()
 
 	iv := map[string]int{"🍼 formula": 120, "🤱 breast": 60}
-	l, err := svc.LogChore(ctx, 1, 10, 100, "", []string{"🍼 formula", "🤱 breast"}, iv, nil, nil, nil, nil, nil)
+	l, err := svc.LogChore(ctx, 1, 10, 100, nil, "", []string{"🍼 formula", "🤱 breast"}, iv, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("LogChore: %v", err)
 	}
@@ -119,7 +119,7 @@ func TestLogService_UpdateLog(t *testing.T) {
 	svc := chorelog.NewService(chorelog.NewMemoryStore())
 	ctx := context.Background()
 
-	l, _ := svc.LogChore(ctx, 1, 10, 100, "original", []string{"a"}, nil, nil, nil, nil, nil, nil)
+	l, _ := svc.LogChore(ctx, 1, 10, 100, nil, "original", []string{"a"}, nil, nil, nil, nil, nil, nil)
 
 	newTime := time.Date(2026, 5, 1, 10, 0, 0, 0, time.UTC)
 	newUID := int64(20)
@@ -127,7 +127,7 @@ func TestLogService_UpdateLog(t *testing.T) {
 	vol := 200
 	logDate := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 	iv := map[string]int{"🍼 formula": 100}
-	err := svc.UpdateLog(ctx, l.ID, 1, "updated", []string{"b", "c"}, iv, &vol, &newUID, &newTime, &hour, &logDate, nil)
+	err := svc.UpdateLog(ctx, l.ID, 1, nil, "updated", []string{"b", "c"}, iv, &vol, &newUID, &newTime, &hour, &logDate, nil)
 	if err != nil {
 		t.Fatalf("UpdateLog: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestLogService_UpdateLog(t *testing.T) {
 
 func TestLogService_UpdateLog_NotFound(t *testing.T) {
 	svc := chorelog.NewService(chorelog.NewMemoryStore())
-	err := svc.UpdateLog(context.Background(), 9999, 1, "", nil, nil, nil, nil, nil, nil, nil, nil)
+	err := svc.UpdateLog(context.Background(), 9999, 1, nil, "", nil, nil, nil, nil, nil, nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected error for missing log")
 	}
@@ -170,7 +170,7 @@ func TestLogService_UndoLog(t *testing.T) {
 	svc := chorelog.NewService(chorelog.NewMemoryStore())
 	ctx := context.Background()
 
-	l, _ := svc.LogChore(ctx, 1, 10, 100, "", nil, nil, nil, nil, nil, nil, nil)
+	l, _ := svc.LogChore(ctx, 1, 10, 100, nil, "", nil, nil, nil, nil, nil, nil, nil)
 	err := svc.UndoLog(ctx, 1, l.ID)
 	if err != nil {
 		t.Fatalf("UndoLog: %v", err)
@@ -189,7 +189,7 @@ func TestLogService_UndoLog_WrongHousehold(t *testing.T) {
 	svc := chorelog.NewService(chorelog.NewMemoryStore())
 	ctx := context.Background()
 
-	l, _ := svc.LogChore(ctx, 1, 10, 100, "", nil, nil, nil, nil, nil, nil, nil)
+	l, _ := svc.LogChore(ctx, 1, 10, 100, nil, "", nil, nil, nil, nil, nil, nil, nil)
 	err := svc.UndoLog(ctx, 2, l.ID) // wrong household
 	if err == nil {
 		t.Fatal("expected error undoing log from another household")
@@ -208,8 +208,8 @@ func TestLogService_GetTodayLogs(t *testing.T) {
 	svc := chorelog.NewService(chorelog.NewMemoryStore())
 	ctx := context.Background()
 
-	_, _ = svc.LogChore(ctx, 1, 10, 100, "", nil, nil, nil, nil, nil, nil, nil)
-	_, _ = svc.LogChore(ctx, 1, 10, 101, "", nil, nil, nil, nil, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, nil, "", nil, nil, nil, nil, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 101, nil, "", nil, nil, nil, nil, nil, nil, nil)
 
 	logs, err := svc.GetTodayLogs(ctx, 1)
 	if err != nil {
@@ -227,8 +227,8 @@ func TestLogService_GetDayLogs(t *testing.T) {
 	day1 := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 	day2 := time.Date(2026, 4, 2, 0, 0, 0, 0, time.UTC)
 
-	_, _ = svc.LogChore(ctx, 1, 10, 100, "", nil, nil, &day1, nil, nil, nil, nil)
-	_, _ = svc.LogChore(ctx, 1, 10, 101, "", nil, nil, &day2, nil, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, nil, "", nil, nil, &day1, nil, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 101, nil, "", nil, nil, &day2, nil, nil, nil, nil)
 
 	logs, err := svc.GetDayLogs(ctx, 1, day1)
 	if err != nil {
@@ -250,8 +250,8 @@ func TestLogService_GetWeekLogs(t *testing.T) {
 	inRange := time.Date(2026, 4, 9, 0, 0, 0, 0, time.UTC)
 	outRange := time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC)
 
-	_, _ = svc.LogChore(ctx, 1, 10, 100, "", nil, nil, &inRange, nil, nil, nil, nil)
-	_, _ = svc.LogChore(ctx, 1, 10, 101, "", nil, nil, &outRange, nil, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, nil, "", nil, nil, &inRange, nil, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 101, nil, "", nil, nil, &outRange, nil, nil, nil, nil)
 
 	logs, err := svc.GetWeekLogs(ctx, 1, start)
 	if err != nil {
@@ -269,8 +269,8 @@ func TestLogService_GetMonthLogs(t *testing.T) {
 	apr := time.Date(2026, 4, 15, 0, 0, 0, 0, time.UTC)
 	may := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
 
-	_, _ = svc.LogChore(ctx, 1, 10, 100, "", nil, nil, &apr, nil, nil, nil, nil)
-	_, _ = svc.LogChore(ctx, 1, 10, 101, "", nil, nil, &may, nil, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, nil, "", nil, nil, &apr, nil, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 101, nil, "", nil, nil, &may, nil, nil, nil, nil)
 
 	logs, err := svc.GetMonthLogs(ctx, 1, 2026, time.April)
 	if err != nil {
@@ -286,8 +286,8 @@ func TestLogService_GetDailySummary(t *testing.T) {
 	ctx := context.Background()
 
 	day := time.Date(2026, 4, 10, 0, 0, 0, 0, time.UTC)
-	_, _ = svc.LogChore(ctx, 1, 10, 100, "", nil, nil, &day, nil, nil, nil, nil)
-	_, _ = svc.LogChore(ctx, 1, 11, 101, "", nil, nil, &day, nil, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, nil, "", nil, nil, &day, nil, nil, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 11, 101, nil, "", nil, nil, &day, nil, nil, nil, nil)
 
 	summary, err := svc.GetDailySummary(ctx, 1, day)
 	if err != nil {
@@ -329,9 +329,9 @@ func TestLogService_LatestPerChore(t *testing.T) {
 	earlier := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 	later := time.Date(2026, 4, 5, 0, 0, 0, 0, time.UTC)
 
-	_, _ = svc.LogChore(ctx, 1, 10, 100, "old", nil, nil, &earlier, nil, &earlier, nil, nil)
-	_, _ = svc.LogChore(ctx, 1, 10, 100, "new", nil, nil, &later, nil, &later, nil, nil)
-	_, _ = svc.LogChore(ctx, 1, 10, 200, "only", nil, nil, &later, nil, &later, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, nil, "old", nil, nil, &earlier, nil, &earlier, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, nil, "new", nil, nil, &later, nil, &later, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 200, nil, "only", nil, nil, &later, nil, &later, nil, nil)
 
 	result, err := svc.LatestPerChore(ctx, 1)
 	if err != nil {
@@ -353,8 +353,8 @@ func TestLogService_LatestPerChore_TiedTimestamps(t *testing.T) {
 
 	// Two logs for the same chore at the exact same timestamp.
 	// The second one (higher ID) should be returned by LatestPerChore.
-	_, _ = svc.LogChore(ctx, 1, 10, 100, "first", []string{"a", "b"}, map[string]int{"a": 10, "b": 20}, &ts, nil, &ts, nil, nil)
-	_, _ = svc.LogChore(ctx, 1, 10, 100, "second", []string{"a"}, map[string]int{"a": 30}, &ts, nil, &ts, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, nil, "first", []string{"a", "b"}, map[string]int{"a": 10, "b": 20}, &ts, nil, &ts, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, nil, "second", []string{"a"}, map[string]int{"a": 30}, &ts, nil, &ts, nil, nil)
 
 	result, err := svc.LatestPerChore(ctx, 1)
 	if err != nil {
@@ -377,9 +377,9 @@ func TestLogService_GetHistoryLogs(t *testing.T) {
 	mid := time.Date(2026, 3, 15, 0, 0, 0, 0, time.UTC)
 	recent := time.Date(2026, 4, 10, 0, 0, 0, 0, time.UTC)
 
-	_, _ = svc.LogChore(ctx, 1, 10, 100, "old", nil, nil, &old, nil, &old, nil, nil)
-	_, _ = svc.LogChore(ctx, 1, 10, 101, "mid", nil, nil, &mid, nil, &mid, nil, nil)
-	_, _ = svc.LogChore(ctx, 1, 10, 102, "recent", nil, nil, &recent, nil, &recent, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, nil, "old", nil, nil, &old, nil, &old, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 101, nil, "mid", nil, nil, &mid, nil, &mid, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 102, nil, "recent", nil, nil, &recent, nil, &recent, nil, nil)
 
 	start := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
@@ -400,8 +400,8 @@ func TestLogService_UpdateLog_NilIndicators(t *testing.T) {
 	svc := chorelog.NewService(chorelog.NewMemoryStore())
 	ctx := context.Background()
 
-	l, _ := svc.LogChore(ctx, 1, 10, 100, "original", []string{"a"}, nil, nil, nil, nil, nil, nil)
-	err := svc.UpdateLog(ctx, l.ID, 1, "updated", nil, nil, nil, nil, nil, nil, nil, nil)
+	l, _ := svc.LogChore(ctx, 1, 10, 100, nil, "original", []string{"a"}, nil, nil, nil, nil, nil, nil)
+	err := svc.UpdateLog(ctx, l.ID, 1, nil, "updated", nil, nil, nil, nil, nil, nil, nil, nil)
 	if err != nil {
 		t.Fatalf("UpdateLog with nil indicators: %v", err)
 	}
@@ -418,7 +418,7 @@ func TestLogService_GetHistoryLogs_NoMore(t *testing.T) {
 	ctx := context.Background()
 
 	d := time.Date(2026, 4, 10, 0, 0, 0, 0, time.UTC)
-	_, _ = svc.LogChore(ctx, 1, 10, 100, "", nil, nil, &d, nil, &d, nil, nil)
+	_, _ = svc.LogChore(ctx, 1, 10, 100, nil, "", nil, nil, &d, nil, &d, nil, nil)
 
 	start := time.Date(2026, 4, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
