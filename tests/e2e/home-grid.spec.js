@@ -70,7 +70,7 @@ test.describe('Home Grid: Rendering', () => {
 
     await expect(page.locator('.home-grid')).toBeVisible();
     // 13 default seeded chores
-    await expect(page.locator('.home-chore-card')).toHaveCount(13);
+    await expect(page.locator('.home-chore-card')).toHaveCount(15);
 
     // Each card has icon, name, and a time label
     const first = page.locator('.home-chore-card').first();
@@ -336,7 +336,7 @@ test.describe('Home Grid: Jiggle Mode', () => {
 
     // Cards in jiggle mode get data-home-reorder-chore-id
     const reorderCards = page.locator('[data-home-reorder-chore-id]');
-    await expect(reorderCards).toHaveCount(13);
+    await expect(reorderCards).toHaveCount(15);
   });
 });
 

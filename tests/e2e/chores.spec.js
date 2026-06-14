@@ -101,11 +101,11 @@ test.describe('Default chores: action-specific names', () => {
     expect(names).not.toContain('Cat Pumpkin');
   });
 
-  test('seeded default chores list has 13 items', async ({ page }) => {
+  test('seeded default chores list has 15 items', async ({ page }) => {
     await setupWithChores(page);
 
     const { chores } = await (await page.request.get('/api/chores')).json();
-    expect(chores).toHaveLength(13);
+    expect(chores).toHaveLength(15);
   });
 
   test('Feed Mongo, Feed Roger, Cat Wipe, and Cat Pumpkin can be added as custom chores', async ({ page }) => {

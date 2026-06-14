@@ -61,8 +61,8 @@ test.describe('Manage Chores: display', () => {
   test('shows all seeded chores in the list', async ({ page }) => {
     await setupManageChores(page);
     const rows = page.locator('.chore-row');
-    // Default seed = 13 chores
-    await expect(rows).toHaveCount(13);
+    // Default seed = 15 chores
+    await expect(rows).toHaveCount(15);
   });
 
   test('shows drag handle, eye toggle, and edit button on each row', async ({ page }) => {
