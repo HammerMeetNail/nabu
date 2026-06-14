@@ -1257,6 +1257,37 @@ export async function init() {
       return;
     }
 
+    // ── Star rating: set the rating based on tap position ────────────────────
+    if (action === "set-rating") {
+      const container = actionEl.closest(".star-rating");
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const pct = x / rect.width;
+      const starTenths = Math.round(pct * 50 / 5) * 5;
+      container.querySelector(".star-rating-fg").style.width = (starTenths * 2) + "%";
+      container.dataset.rating = starTenths;
+      const stars = starTenths / 10;
+      container.setAttribute("aria-valuenow", starTenths);
+      container.setAttribute("aria-valuetext", stars + " stars");
+      const clearBtn = container.parentElement?.querySelector(".star-clear-btn");
+      if (clearBtn) clearBtn.style.display = starTenths > 0 ? "" : "none";
+      return;
+    }
+
+    // ── Clear star rating ────────────────────────────────────────────────────
+    if (action === "clear-rating") {
+      const row = actionEl.closest(".star-rating-row");
+      const container = row?.querySelector(".star-rating");
+      if (!container) return;
+      container.querySelector(".star-rating-fg").style.width = "0%";
+      container.dataset.rating = "0";
+      container.setAttribute("aria-valuenow", "0");
+      container.setAttribute("aria-valuetext", "0 stars");
+      actionEl.style.display = "none";
+      return;
+    }
+
     switch (action) {
       case "google-signin":
         if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
@@ -1605,6 +1636,10 @@ export async function init() {
         const memberVal = document.querySelector('#log-member')?.value;
         const userId = memberVal && memberVal !== "" ? parseInt(memberVal, 10) : null;
 
+        const ratingEl = document.querySelector('.star-rating');
+        const ratingVal = ratingEl?.dataset?.rating;
+        const rating = ratingVal && ratingVal !== "0" ? parseInt(ratingVal, 10) : null;
+
         // Require volume AND indicator for chores that have both features.
         const chore = (state.chores || []).find(c => c.id === choreId);
         if (chore && chore.hasVolumeML && (chore.indicatorLabels || []).length > 0) {
@@ -1646,7 +1681,7 @@ export async function init() {
         }
 
         const doLog = logId
-          ? updateLog(parseInt(logId, 10), note, indicators, volumeML, userId, date, slotHour, completedAt, indicatorVolumes)
+          ? updateLog(parseInt(logId, 10), note, indicators, volumeML, userId, date, slotHour, completedAt, indicatorVolumes, rating)
           : (() => {
             const followUpDays = parseInt(document.querySelector('#followup-days')?.value || '0', 10) || 0;
             const followUpHours = parseInt(document.querySelector('#followup-hours')?.value || '0', 10) || 0;
@@ -1659,7 +1694,7 @@ export async function init() {
               const pad = n => String(n).padStart(2, "0");
               followUpTime = `${fu.getFullYear()}-${pad(fu.getMonth() + 1)}-${pad(fu.getDate())}T${pad(fu.getHours())}:${pad(fu.getMinutes())}`;
             }
-            return logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId, indicatorVolumes, followUpMinutes, followUpTime);
+            return logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId, indicatorVolumes, followUpMinutes, followUpTime, rating);
           })();
         doLog.then(async (data) => {
           const newLogId = data?.log?.id;
@@ -1674,6 +1709,7 @@ export async function init() {
               if (completedAt) updated.completedAt = completedAt;
               if (date) updated.logDate = date;
               if (slotHour !== null) updated.slotHour = slotHour;
+              if (rating !== null) updated.rating = rating;
               state.historyLogs[histIdx] = updated;
             }
           }

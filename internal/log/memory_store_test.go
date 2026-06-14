@@ -205,20 +205,20 @@ func TestMemoryStore_LatestPerChore_TiedTimestamps(t *testing.T) {
 	// Insert lower ID first so iteration order would prefer it if we
 	// relied on that alone. The fix should use ID as tiebreaker.
 	_, _ = store.CreateLog(ctx, chorelog.ChoreLog{
-		HouseholdID:       1,
-		ChoreID:           5,
-		CompletedAt:       ts,
-		Note:              "first",
-		Indicators:        []string{"a", "b"},
-		IndicatorVolumes:  map[string]int{"a": 10, "b": 20},
+		HouseholdID:      1,
+		ChoreID:          5,
+		CompletedAt:      ts,
+		Note:             "first",
+		Indicators:       []string{"a", "b"},
+		IndicatorVolumes: map[string]int{"a": 10, "b": 20},
 	})
 	_, _ = store.CreateLog(ctx, chorelog.ChoreLog{
-		HouseholdID:       1,
-		ChoreID:           5,
-		CompletedAt:       ts,
-		Note:              "second",
-		Indicators:        []string{"a"},
-		IndicatorVolumes:  map[string]int{"a": 30},
+		HouseholdID:      1,
+		ChoreID:          5,
+		CompletedAt:      ts,
+		Note:             "second",
+		Indicators:       []string{"a"},
+		IndicatorVolumes: map[string]int{"a": 30},
 	})
 
 	result, err := store.LatestPerChore(ctx, 1)
