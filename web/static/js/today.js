@@ -48,7 +48,7 @@ export async function loadMoreHistory(before) {
   return data;
 }
 
-export async function logChore(choreId, note, date = "", indicators = [], slotHour = null, completedAt = null, volumeML = null, userId = null, indicatorVolumes = {}, followUpMinutes = 0, followUpTime = null) {
+export async function logChore(choreId, note, date = "", indicators = [], slotHour = null, completedAt = null, volumeML = null, userId = null, indicatorVolumes = {}, followUpMinutes = 0, followUpTime = null, rating = null) {
   const body = { choreId, note, indicators };
   if (Object.keys(indicatorVolumes).length > 0) body.indicatorVolumes = indicatorVolumes;
   if (date) body.date = date;
@@ -58,6 +58,7 @@ export async function logChore(choreId, note, date = "", indicators = [], slotHo
   if (userId !== null) body.userId = userId;
   if (followUpMinutes > 0) body.followUpMinutes = followUpMinutes;
   if (followUpTime) body.followUpTime = followUpTime;
+  if (rating !== null) body.rating = rating;
   const { data } = await apiFetch("/api/logs", {
     method: "POST",
     body: JSON.stringify(body),
@@ -71,7 +72,7 @@ export async function undoLog(logId) {
   return data;
 }
 
-export async function updateLog(logId, note, indicators = [], volumeML = null, userId = null, date = "", slotHour = null, completedAt = null, indicatorVolumes = {}) {
+export async function updateLog(logId, note, indicators = [], volumeML = null, userId = null, date = "", slotHour = null, completedAt = null, indicatorVolumes = {}, rating = null) {
   const body = { note, indicators };
   if (Object.keys(indicatorVolumes).length > 0) body.indicatorVolumes = indicatorVolumes;
   if (volumeML !== null) body.volumeML = volumeML;
@@ -79,6 +80,7 @@ export async function updateLog(logId, note, indicators = [], volumeML = null, u
   if (date) body.date = date;
   if (slotHour !== null) body.hour = slotHour;
   if (completedAt) body.completedAt = completedAt;
+  if (rating !== null) body.rating = rating;
   const { response, data } = await apiFetch(`/api/logs/${logId}`, {
     method: "PATCH",
     body: JSON.stringify(body),
@@ -118,11 +120,12 @@ export function renderTodayView(state) {
     const style = `border-left: 4px solid ${chore.color}`;
     const check = log ? '<span class="check-overlay">✓</span>' : '';
     const note = log && log.note ? `<span class="chore-note">${escapeHTML(log.note)}</span>` : '';
+    const rating = log && log.rating != null ? `<span class="chore-note">${renderStarRatingDisplay(log.rating)}</span>` : '';
     return `<button type="button" class="chore-card ${doneClass}" data-action="${log ? 'undo-chore' : 'log-chore'}" data-chore-id="${chore.id}" data-log-id="${log ? log.id : ''}" style="${style}">
       <span class="chore-icon">${escapeHTML(chore.icon)}</span>
       <span class="chore-name">${escapeHTML(chore.name)}</span>
       <span class="chore-category">${escapeHTML(chore.category)}</span>
-      ${check}${note}
+      ${check}${note}${rating}
     </button>`;
   }).join("");
 
@@ -222,6 +225,7 @@ export function renderHistoryView(state) {
       volumeML: l.volumeML,
       indicatorVolumes,
       indicatorIcons,
+      rating: l.rating,
       logId: l.id,
       choreId: l.choreId,
       date: dateKey,
@@ -306,6 +310,7 @@ export function renderHistoryView(state) {
         const indicatorVolStr = indicatorVolParts.length > 0 ? ` · ${indicatorVolParts.join(' ')}` : '';
         const legacyVolumeStr = !indicatorVolParts.length && r.volumeML != null ? ` · ${r.volumeML}mL` : '';
         const indicatorIconsStr = r.indicatorIcons.length ? ` · ${r.indicatorIcons.join(' ')}` : '';
+        const ratingStr = r.rating != null ? ` · ${renderStarRatingDisplay(r.rating)}` : '';
         return `
         <button type="button" class="hist-row" style="--chore-color:${r.color}"
           data-action="view-log"
@@ -315,7 +320,7 @@ export function renderHistoryView(state) {
           <span class="hist-icon">${r.icon}</span>
           <div class="hist-body">
             <span class="hist-name">${escapeHTML(r.name)}</span>
-            <span class="hist-meta">${r.time} · ${escapeHTML(r.who)}${r.note ? ` · ${escapeHTML(r.note)}` : ''}${indicatorVolStr}${legacyVolumeStr}${indicatorIconsStr}</span>
+            <span class="hist-meta">${r.time} · ${escapeHTML(r.who)}${r.note ? ` · ${escapeHTML(r.note)}` : ''}${indicatorVolStr}${legacyVolumeStr}${indicatorIconsStr}${ratingStr}</span>
           </div>
         </button>`;
       }).join('');
@@ -341,6 +346,11 @@ export function renderHistoryView(state) {
     ${loadMore}
     ${filterFab}
   </div>`;
+}
+
+function renderStarRatingDisplay(rating) {
+  const stars = rating / 10;
+  return `${stars} ⭐`;
 }
 
 function fmtChunkRange(start, end) {

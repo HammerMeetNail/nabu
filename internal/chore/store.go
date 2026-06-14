@@ -22,6 +22,7 @@ type Chore struct {
 	HasVolumeML         bool      `json:"hasVolumeML"`
 	FollowUpEnabled     bool      `json:"followUpEnabled"`
 	LastFollowUpMinutes int       `json:"lastFollowUpMinutes"`
+	HasRating           bool      `json:"hasRating"`
 }
 
 type Store interface {

@@ -2304,6 +2304,66 @@ details[open] .chore-stat-chevron {
   color: #fff;
 }
 
+/* ─── Star rating (log sheet) ──────────────────────────────────────────────── */
+
+.star-rating-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.star-rating-row .field-label {
+  margin: 0;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.star-rating {
+  position: relative;
+  display: inline-block;
+  cursor: pointer;
+  font-size: 28px;
+  line-height: 1;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+  min-height: 44px;
+  padding: 4px 0;
+}
+
+.star-rating-bg {
+  color: var(--border);
+  letter-spacing: 2px;
+}
+
+.star-rating-fg {
+  position: absolute;
+  top: 4px;
+  left: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  color: #F59E0B;
+  letter-spacing: 2px;
+  pointer-events: none;
+  transition: width 0.15s ease;
+}
+
+.star-clear-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 4px 8px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.star-clear-btn:hover {
+  color: var(--text);
+}
+
 /* ─── Log sheet: note row ───────────────────────────────────────────────────── */
 
 .sheet-note-row {

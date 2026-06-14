@@ -123,6 +123,7 @@ func (s *Service) RestoreDefaultChore(ctx context.Context, choreID int64, househ
 			existing.IndicatorLabels = pc.IndicatorLabels
 			existing.IndicatorDefaults = pc.IndicatorDefaults
 			existing.HasVolumeML = pc.HasVolumeML
+			existing.HasRating = pc.HasRating
 			if existing.IndicatorLabels == nil {
 				existing.IndicatorLabels = []string{}
 			}
@@ -148,6 +149,7 @@ func (s *Service) GetSystemDefaults() []Chore {
 			IndicatorLabels:   pc.IndicatorLabels,
 			IndicatorDefaults: pc.IndicatorDefaults,
 			HasVolumeML:       pc.HasVolumeML,
+			HasRating:         pc.HasRating,
 		})
 	}
 	return result
@@ -171,4 +173,6 @@ var PredefinedChores = []Chore{
 	{Name: "Make Bed", Icon: "🛏️", Color: "#14B8A6", Category: "cleaning", SortOrder: 10},
 	{Name: "Baby Bath", Icon: "🛀", Color: "#60A5FA", Category: "care", SortOrder: 11},
 	{Name: "Cat Meds", Icon: "💊", Color: "#A78BFA", Category: "care", SortOrder: 12},
+	{Name: "Read Book", Icon: "📖", Color: "#8B5CF6", Category: "personal", SortOrder: 13, HasRating: true},
+	{Name: "Watch Movie", Icon: "🎬", Color: "#EF4444", Category: "personal", SortOrder: 14, HasRating: true},
 }

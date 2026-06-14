@@ -20,7 +20,7 @@ func NewService(store Store) *Service {
 	}
 }
 
-func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int64, note string, indicators []string, indicatorVolumes map[string]int, date *time.Time, slotHour *int, completedAt *time.Time, volumeML *int) (ChoreLog, error) {
+func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int64, note string, indicators []string, indicatorVolumes map[string]int, date *time.Time, slotHour *int, completedAt *time.Time, volumeML *int, rating *int) (ChoreLog, error) {
 	var logCompletedAt time.Time
 	if completedAt != nil {
 		logCompletedAt = completedAt.UTC()
@@ -49,10 +49,11 @@ func (s *Service) LogChore(ctx context.Context, householdID, userID, choreID int
 		SlotHour:         slotHour,
 		LogDate:          logDate,
 		VolumeML:         volumeML,
+		Rating:           rating,
 	})
 }
 
-func (s *Service) UpdateLog(ctx context.Context, logID int64, householdID int64, note string, indicators []string, indicatorVolumes map[string]int, volumeML *int, userID *int64, completedAt *time.Time, slotHour *int, logDate *time.Time) error {
+func (s *Service) UpdateLog(ctx context.Context, logID int64, householdID int64, note string, indicators []string, indicatorVolumes map[string]int, volumeML *int, userID *int64, completedAt *time.Time, slotHour *int, logDate *time.Time, rating *int) error {
 	log, err := s.store.GetLog(ctx, logID)
 	if err != nil {
 		return err
@@ -67,6 +68,7 @@ func (s *Service) UpdateLog(ctx context.Context, logID int64, householdID int64,
 	log.Indicators = indicators
 	log.IndicatorVolumes = indicatorVolumes
 	log.VolumeML = volumeML
+	log.Rating = rating
 	if userID != nil {
 		log.UserID = *userID
 	}

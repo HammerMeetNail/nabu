@@ -434,7 +434,20 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     </div>`;
   })() : "";
 
-  const noteSection = `
+    const ratingSection = chore.hasRating ? (() => {
+      const rating = log?.rating || 0;
+      const pct = (rating / 50) * 100;
+      return `<div class="star-rating-row">
+        <label class="field-label">Rating</label>
+        <div class="star-rating" data-action="set-rating" data-rating="${rating}" role="slider" aria-valuemin="0" aria-valuemax="50" aria-valuenow="${rating}" aria-valuetext="${rating / 10} stars">
+          <span class="star-rating-bg">☆☆☆☆☆</span>
+          <span class="star-rating-fg" style="width:${pct}%">★★★★★</span>
+        </div>
+        ${rating > 0 ? `<button type="button" class="star-clear-btn" data-action="clear-rating">clear</button>` : `<button type="button" class="star-clear-btn" data-action="clear-rating" style="display:none">clear</button>`}
+      </div>`;
+    })() : "";
+
+    const noteSection = `
     <div class="sheet-note-row">
       <label for="log-note" class="field-label">Note (optional)</label>
       <textarea id="log-note" class="text-input" rows="2" placeholder="Add a note…">${noteVal}</textarea>
@@ -497,6 +510,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
       ${whenSection}
       ${indicatorSection}
       ${followUpSection}
+      ${ratingSection}
       ${memberSection}
       ${noteSection}
       ${actions}

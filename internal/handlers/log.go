@@ -84,6 +84,7 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Hour             *int           `json:"hour"`        // optional calendar slot hour (0-23)
 		CompletedAt      string         `json:"completedAt"` // optional RFC3339 timestamp for backdating
 		VolumeML         *int           `json:"volumeML"`    // optional volume in mL
+		Rating           *int           `json:"rating"`      // optional rating 0-50 (tenths of a star)
 		UserID           *int64         `json:"userId"`      // optional: log on behalf of another household member
 		FollowUpMinutes  int            `json:"followUpMinutes"`
 		FollowUpTime     string         `json:"followUpTime"` // local ISO datetime for schedule placement
@@ -150,7 +151,7 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		logCompletedAt = &t
 	}
 
-	entry, err := h.service.LogChore(r.Context(), *user.HouseholdID, logUserID, req.ChoreID, req.Note, req.Indicators, req.IndicatorVolumes, logDate, req.Hour, logCompletedAt, req.VolumeML)
+	entry, err := h.service.LogChore(r.Context(), *user.HouseholdID, logUserID, req.ChoreID, req.Note, req.Indicators, req.IndicatorVolumes, logDate, req.Hour, logCompletedAt, req.VolumeML, req.Rating)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return
@@ -223,6 +224,7 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Indicators       []string       `json:"indicators"`
 		IndicatorVolumes map[string]int `json:"indicatorVolumes"`
 		VolumeML         *int           `json:"volumeML"`
+		Rating           *int           `json:"rating"`      // optional rating 0-50 (tenths of a star)
 		UserID           *int64         `json:"userId"`      // optional: change who the log is attributed to
 		CompletedAt      string         `json:"completedAt"` // optional: new completion timestamp
 		Hour             *int           `json:"hour"`        // optional: new slot hour
@@ -277,7 +279,7 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 		logCompletedAt = &t
 	}
 
-	if err := h.service.UpdateLog(r.Context(), id, *user.HouseholdID, req.Note, req.Indicators, req.IndicatorVolumes, req.VolumeML, userID, logCompletedAt, req.Hour, logDate); err != nil {
+	if err := h.service.UpdateLog(r.Context(), id, *user.HouseholdID, req.Note, req.Indicators, req.IndicatorVolumes, req.VolumeML, userID, logCompletedAt, req.Hour, logDate, req.Rating); err != nil {
 		if errors.Is(err, log.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "log not found")
 			return

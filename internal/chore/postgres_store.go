@@ -18,9 +18,9 @@ func (s *PostgresStore) CreateChore(ctx context.Context, chore Chore) (Chore, er
 	labels, _ := json.Marshal(nilToEmpty(chore.IndicatorLabels))
 	defaults, _ := json.Marshal(nilToEmpty(chore.IndicatorDefaults))
 	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO chores (household_id, name, icon, color, sort_order, category, is_predefined, predefined_key, created_by, indicator_labels, has_volume_ml, indicator_defaults, follow_up_enabled, last_follow_up_minutes)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id, created_at
-	`, chore.HouseholdID, chore.Name, chore.Icon, chore.Color, chore.SortOrder, chore.Category, chore.IsPredefined, nullableString(chore.PredefinedKey), chore.CreatedBy, string(labels), chore.HasVolumeML, string(defaults), chore.FollowUpEnabled, chore.LastFollowUpMinutes).Scan(&chore.ID, &chore.CreatedAt)
+		INSERT INTO chores (household_id, name, icon, color, sort_order, category, is_predefined, predefined_key, created_by, indicator_labels, has_volume_ml, indicator_defaults, follow_up_enabled, last_follow_up_minutes, has_rating)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id, created_at
+	`, chore.HouseholdID, chore.Name, chore.Icon, chore.Color, chore.SortOrder, chore.Category, chore.IsPredefined, nullableString(chore.PredefinedKey), chore.CreatedBy, string(labels), chore.HasVolumeML, string(defaults), chore.FollowUpEnabled, chore.LastFollowUpMinutes, chore.HasRating).Scan(&chore.ID, &chore.CreatedAt)
 	return chore, err
 }
 
@@ -28,7 +28,7 @@ func (s *PostgresStore) GetChore(ctx context.Context, id int64) (Chore, error) {
 	var c Chore
 	var labelsJSON string
 	var defaultsJSON string
-	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, COALESCE(predefined_key,''), created_by, created_at, indicator_labels, has_volume_ml, COALESCE(indicator_defaults,'[]'), follow_up_enabled, last_follow_up_minutes FROM chores WHERE id = $1`, id).Scan(&c.ID, &c.HouseholdID, &c.Name, &c.Icon, &c.Color, &c.SortOrder, &c.Category, &c.IsPredefined, &c.PredefinedKey, &c.CreatedBy, &c.CreatedAt, &labelsJSON, &c.HasVolumeML, &defaultsJSON, &c.FollowUpEnabled, &c.LastFollowUpMinutes)
+	err := s.db.QueryRowContext(ctx, `SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, COALESCE(predefined_key,''), created_by, created_at, indicator_labels, has_volume_ml, COALESCE(indicator_defaults,'[]'), follow_up_enabled, last_follow_up_minutes, has_rating FROM chores WHERE id = $1`, id).Scan(&c.ID, &c.HouseholdID, &c.Name, &c.Icon, &c.Color, &c.SortOrder, &c.Category, &c.IsPredefined, &c.PredefinedKey, &c.CreatedBy, &c.CreatedAt, &labelsJSON, &c.HasVolumeML, &defaultsJSON, &c.FollowUpEnabled, &c.LastFollowUpMinutes, &c.HasRating)
 	if err == sql.ErrNoRows {
 		return Chore{}, ErrNotFound
 	}
@@ -46,7 +46,7 @@ func (s *PostgresStore) GetChore(ctx context.Context, id int64) (Chore, error) {
 }
 
 func (s *PostgresStore) ListChores(ctx context.Context, householdID int64) ([]Chore, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, COALESCE(predefined_key,''), created_by, created_at, indicator_labels, has_volume_ml, COALESCE(indicator_defaults,'[]'), follow_up_enabled, last_follow_up_minutes FROM chores WHERE household_id = $1 ORDER BY sort_order`, householdID)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, COALESCE(predefined_key,''), created_by, created_at, indicator_labels, has_volume_ml, COALESCE(indicator_defaults,'[]'), follow_up_enabled, last_follow_up_minutes, has_rating FROM chores WHERE household_id = $1 ORDER BY sort_order`, householdID)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (s *PostgresStore) ListChores(ctx context.Context, householdID int64) ([]Ch
 		var c Chore
 		var labelsJSON string
 		var defaultsJSON string
-		if err := rows.Scan(&c.ID, &c.HouseholdID, &c.Name, &c.Icon, &c.Color, &c.SortOrder, &c.Category, &c.IsPredefined, &c.PredefinedKey, &c.CreatedBy, &c.CreatedAt, &labelsJSON, &c.HasVolumeML, &defaultsJSON, &c.FollowUpEnabled, &c.LastFollowUpMinutes); err != nil {
+		if err := rows.Scan(&c.ID, &c.HouseholdID, &c.Name, &c.Icon, &c.Color, &c.SortOrder, &c.Category, &c.IsPredefined, &c.PredefinedKey, &c.CreatedBy, &c.CreatedAt, &labelsJSON, &c.HasVolumeML, &defaultsJSON, &c.FollowUpEnabled, &c.LastFollowUpMinutes, &c.HasRating); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(labelsJSON), &c.IndicatorLabels)
@@ -97,8 +97,8 @@ func (s *PostgresStore) SeedPredefinedChores(ctx context.Context, householdID in
 	for _, pc := range PredefinedChores {
 		labels, _ := json.Marshal(nilToEmpty(pc.IndicatorLabels))
 		defaults, _ := json.Marshal(nilToEmpty(pc.IndicatorDefaults))
-		if _, err := s.db.ExecContext(ctx, `INSERT INTO chores (household_id, name, icon, color, sort_order, category, is_predefined, predefined_key, indicator_labels, has_volume_ml, indicator_defaults) VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7,$8,$9,$10) ON CONFLICT (household_id, name) DO UPDATE SET predefined_key = EXCLUDED.predefined_key, indicator_defaults = EXCLUDED.indicator_defaults`,
-			householdID, pc.Name, pc.Icon, pc.Color, pc.SortOrder, pc.Category, pc.Name, string(labels), pc.HasVolumeML, string(defaults)); err != nil {
+		if _, err := s.db.ExecContext(ctx, `INSERT INTO chores (household_id, name, icon, color, sort_order, category, is_predefined, predefined_key, indicator_labels, has_volume_ml, indicator_defaults, has_rating) VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7,$8,$9,$10,$11) ON CONFLICT (household_id, name) DO UPDATE SET predefined_key = EXCLUDED.predefined_key, indicator_defaults = EXCLUDED.indicator_defaults`,
+			householdID, pc.Name, pc.Icon, pc.Color, pc.SortOrder, pc.Category, pc.Name, string(labels), pc.HasVolumeML, string(defaults), pc.HasRating); err != nil {
 			return err
 		}
 	}

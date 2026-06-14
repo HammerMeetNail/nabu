@@ -18,6 +18,7 @@ type ChoreLog struct {
 	CreatedAt        time.Time      `json:"createdAt"`
 	LogDate          *string        `json:"-"`
 	VolumeML         *int           `json:"volumeML,omitempty"`
+	Rating           *int           `json:"rating,omitempty"`
 }
 
 type DailySummary struct {
