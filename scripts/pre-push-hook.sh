@@ -1,13 +1,54 @@
 #!/usr/bin/env bash
-# Pre-push hook: checks client parity before pushing.
+# Pre-push hook: runs fast local checks before pushing.
 #
-# If the push touches PWA and/or iOS files, it checks that both clients
-# were updated (or warns if only one was touched). The CI parity job
-# enforces the PR description requirement as a backstop.
+# 1. Build check — catches compile errors immediately
+# 2. Go vet — catches suspicious code
+# 3. Go tests — catches broken unit tests
+# 4. Client parity — warns if only one client was touched
 #
 # Skip with:  SKIP_PARITY=1 git push
 
 set -euo pipefail
+
+# ── 1. Build & vet ──────────────────────────────────────────────────────────
+
+echo "→ go build ./..."
+if ! go build ./... 2>&1; then
+  echo ""
+  echo "❌ Build failed. Fix compile errors before pushing."
+  exit 1
+fi
+
+echo "→ go vet ./..."
+if ! go vet ./... 2>&1; then
+  echo ""
+  echo "❌ go vet failed. Fix issues before pushing."
+  exit 1
+fi
+
+# ── 2. Go tests ─────────────────────────────────────────────────────────────
+
+echo "→ make test-go"
+if ! make test-go 2>&1; then
+  echo ""
+  echo "❌ Go tests failed. Fix tests before pushing."
+  exit 1
+fi
+
+# ── 3. JS tests ─────────────────────────────────────────────────────────────
+
+if command -v node &>/dev/null && [ -d node_modules ]; then
+  echo "→ make test-js"
+  if ! make test-js 2>&1; then
+    echo ""
+    echo "❌ JS tests failed. Fix tests before pushing."
+    exit 1
+  fi
+else
+  echo "→ make test-js (skipped: node or node_modules not found)"
+fi
+
+# ── 4. Parity check ─────────────────────────────────────────────────────────
 
 if [ "${SKIP_PARITY:-}" = "1" ]; then
   exit 0

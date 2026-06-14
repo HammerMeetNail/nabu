@@ -334,6 +334,26 @@ Name spec files after the feature/area: `<area>-<feature>.spec.js` (e.g. `home-r
 - Frontend: clear DOM-oriented functions over framework abstractions. Render functions return HTML strings.
 - 80% minimum Go statement coverage target.
 
+## Pre-push checklist — never skip these
+
+**Before pushing a branch for review or tagging for deploy, run all of these locally in the worktree.** CI runs the same checks; failures here mean failures there.
+
+| Step | Command | Catches |
+|------|---------|---------|
+| Build | `go build ./...` | Compile errors from signature changes |
+| Vet | `go vet ./...` | Suspicious code |
+| Go tests | `make test-go` | Broken unit tests, missing DB column references |
+| JS tests | `make test-js` | Broken frontend tests |
+
+**Additionally, when your change affects counts, constants, schemas, or function signatures, grep the codebase for all references that may need updating.** Examples:
+
+- Adding a new default chore → grep `tests/e2e/` for the old count (e.g. `13`, `toHaveCount(13)`)
+- Adding a DB column → grep `test.go` files for SQL regex patterns and Scan column lists that need the new column
+- Changing a function signature → grep for all callers of that function
+- Adding a new JSON field → ensure both `json` tags and JS code handle it
+
+**The pre-push hook** (`scripts/pre-push-hook.sh`, installed via `make hooks`) enforces `go build`, `go vet`, and `make test-go` automatically. It does not run JS or E2E tests (those need Node/Playwright), so you must run `make test-js` manually.
+
 ## Key invariants — do not break
 
 These caused hard-to-diagnose production bugs and are covered by E2E tests:
