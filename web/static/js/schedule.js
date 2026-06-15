@@ -145,10 +145,14 @@ export function renderFreqSelect(date, sch, prefix) {
 
   // For each frequency type, prefer existing sch values when editing, otherwise
   // fall back to smart defaults from the slot date.
-  const wkDay   = (ft === "weekly"             && sch?.daysOfWeek?.length) ? sch.daysOfWeek[0] : slotWeekday;
   const dom     = (["monthly_by_date","yearly"].includes(ft) && sch?.dayOfMonth) ? sch.dayOfMonth : slotDom;
   const moy     = (ft === "yearly"             && sch?.monthOfYear) ? sch.monthOfYear : slotMoy;
   const interval = (ft === "every_n_days" && sch?.intervalDays > 1) ? sch.intervalDays : 2;
+
+  // For weekly schedules: when editing, show all selected days; for new
+  // schedules, default to the slot's weekday.
+  const wkDays = (ft === "weekly" && sch?.daysOfWeek?.length) ? sch.daysOfWeek : [slotWeekday];
+  const wkLabel = wkDays.map(d => DAY_NAMES[d]).join(", ");
 
   const options = [
     {
@@ -168,8 +172,8 @@ export function renderFreqSelect(date, sch, prefix) {
     },
     {
       value: "weekly",
-      label: `Every week on ${DAY_NAMES[wkDay]}`,
-      extra: `data-days-of-week="[${wkDay}]"`,
+      label: `Every week on ${wkLabel}`,
+      extra: `data-days-of-week="${escapeHTML(JSON.stringify(wkDays))}"`,
     },
     {
       value: "monthly_by_date",
@@ -188,10 +192,10 @@ export function renderFreqSelect(date, sch, prefix) {
   // Day-of-week pills (shown only when "weekly" is selected).
   const dayPills = DAY_NAMES.map((name, i) => `
     <button type="button"
-      class="day-pill ${i === wkDay ? "day-pill--on" : ""}"
+      class="day-pill ${wkDays.includes(i) ? "day-pill--on" : ""}"
       data-action="toggle-day"
       data-day="${i}"
-      aria-pressed="${i === wkDay}"
+      aria-pressed="${wkDays.includes(i)}"
       aria-label="${name}">${name}</button>`).join("");
 
   return `
