@@ -335,6 +335,41 @@ export function renderEditScheduleSheet(chore, sch, date) {
     </div>`;
 }
 
+// ─── Render: configure-schedule bottom sheet ─────────────────────────────────
+
+export function renderConfigureScheduleSheet(chore, date, hour, presetTime, presetFreq) {
+  const defaultTime = presetTime != null
+    ? presetTime
+    : (hour != null ? `${String(hour).padStart(2, "0")}:00` : "");
+  const sch = {
+    specificTime: defaultTime,
+    ...(presetFreq || {}),
+  };
+  const freqHTML = renderFreqSelect(date, sch, "config-sheet");
+
+  return `
+    <div class="bottom-sheet" role="dialog" aria-modal="true" aria-label="Schedule ${escapeHTML(chore.name)}">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <h2 class="sheet-title">${escapeHTML(chore.icon)} ${escapeHTML(chore.name)}</h2>
+      <p class="sheet-hint">Set time and repeat before scheduling</p>
+      <div class="sheet-time-row">
+        <label for="config-sheet-time" class="field-label">Time</label>
+        <input type="time" id="config-sheet-time" class="text-input sheet-time-input"
+          step="300" value="${escapeHTML(defaultTime)}" />
+      </div>
+      ${freqHTML}
+      <button type="button" class="btn btn-primary btn-full"
+        data-action="save-configure-schedule"
+        data-chore-id="${chore.id}"
+        data-date="${escapeHTML(date || "")}">
+        Schedule
+      </button>
+      <button type="button" class="btn btn-ghost btn-full sheet-cancel-btn" data-action="close-sheet">
+        Cancel
+      </button>
+    </div>`;
+}
+
 // ─── Render: log-with-indicators bottom sheet ────────────────────────────────
 
 function renderIndicatorVolumeRow(label, on, selectedML = null) {
