@@ -23,7 +23,7 @@ import { loadHousehold, listHouseholds, activateHousehold, createHousehold, upda
 import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, loadMoreHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
 import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadFeedingGaps } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
-import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
+import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, sortChoresByOrder, syncTimezone } from "./preferences.js";
 import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeManageView, renderConfirmRemoveFromHomeSheet } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
@@ -359,6 +359,19 @@ function renderCalendarView() {
       ${sheetHTML}
     </div>`;
   }
+  if (state.activeSheet === "configure-schedule") {
+    const { choreId, date, hour, presetTime, presetFreq } = state.activeSheetData || {};
+    const chore = (state.chores || []).find(c => c.id === choreId);
+    if (chore) {
+      const sheetHTML = renderConfigureScheduleSheet(chore, date, hour, presetTime, presetFreq);
+      return `<div class="sheet-overlay-wrapper">
+        ${mainView}
+        ${fab}
+        <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+        ${sheetHTML}
+      </div>`;
+    }
+  }
   if (state.activeSheet === "edit-schedule") {
     const { choreId, scheduleId } = state.activeSheetData || {};
     const chore = (state.chores || []).find(c => c.id === choreId);
@@ -432,6 +445,19 @@ function renderScheduleView() {
       <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
       ${sheetHTML}
     </div>`;
+  }
+  if (state.activeSheet === "configure-schedule") {
+    const { choreId, date, hour, presetTime, presetFreq } = state.activeSheetData || {};
+    const chore = (state.chores || []).find(c => c.id === choreId);
+    if (chore) {
+      const sheetHTML = renderConfigureScheduleSheet(chore, date, hour, presetTime, presetFreq);
+      return `<div class="sheet-overlay-wrapper">
+        ${mainView}
+        ${fab}
+        <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+        ${sheetHTML}
+      </div>`;
+    }
   }
   if (state.activeSheet === "edit-schedule") {
     const { choreId, scheduleId } = state.activeSheetData || {};
@@ -1797,8 +1823,25 @@ export async function init() {
 
       case "schedule-chore-here": {
         e.preventDefault();
-        const choreId      = parseInt(actionEl.dataset.choreId, 10);
-        const slotDate     = actionEl.dataset.date || state.activeSheetData?.date || null;
+        const choreId  = parseInt(actionEl.dataset.choreId, 10);
+        const slotDate = actionEl.dataset.date || state.activeSheetData?.date || null;
+        const hour     = state.activeSheetData?.hour ?? null;
+
+        // From the Schedule tab (no hour preset), open a configure sheet so the
+        // user can set time and recurrence before submitting.
+        if (hour == null) {
+          const chore = (state.chores || []).find(c => c.id === choreId);
+          if (!chore) break;
+          const timeInput = document.querySelector("#sheet-time");
+          const presetTime = timeInput?.value || null;
+          const presetFreq = readSheetFreq("sheet", slotDate);
+          state.activeSheet = "configure-schedule";
+          state.activeSheetData = { choreId, date: slotDate, hour: null, presetTime, presetFreq };
+          render(app);
+          break;
+        }
+
+        // From the calendar day view (hour preset), schedule immediately.
         const timeInput    = document.querySelector("#sheet-time");
         const specificTime = timeInput?.value || null;
         const freqPayload  = readSheetFreq("sheet", slotDate);
@@ -1824,6 +1867,29 @@ export async function init() {
         state.activeSheetData = {};
         render(app);
         break;
+
+      case "save-configure-schedule": {
+        e.preventDefault();
+        const choreId      = parseInt(actionEl.dataset.choreId, 10);
+        const slotDate     = actionEl.dataset.date || null;
+        const timeInput    = document.querySelector("#config-sheet-time");
+        const specificTime = timeInput?.value || null;
+        const freqPayload  = readSheetFreq("config-sheet", slotDate);
+        createSchedule({
+          choreId,
+          timePeriod:    "anytime",
+          specificTime,
+          isActive:      true,
+          ...freqPayload,
+        }).then(async () => {
+          state.activeSheet = null;
+          state.activeSheetData = {};
+          state.schedules = await loadSchedules();
+          await reloadViewData();
+          render(app);
+        }).catch(() => showToast("Failed to schedule chore", "error"));
+        break;
+      }
 
       case "save-schedule-edit": {
         e.preventDefault();

@@ -1702,7 +1702,7 @@ test.describe('Frequency selector: every_n_days', () => {
     await expect(page.locator('#sheet-interval')).toBeVisible();
     await page.locator('#sheet-interval').fill('3');
 
-    // Pick the first chore.
+    // Pick the first chore (day view with hour preset — schedules immediately).
     await page.locator(`[data-action="schedule-chore-here"][data-chore-id="${chore.id}"]`).click();
     await page.waitForTimeout(1500);
 

@@ -221,6 +221,10 @@ test.describe('Schedule Tab', () => {
 
     const choreItem = page.locator('.sheet-chore-item').first();
     await choreItem.click();
+
+    // From the Schedule tab (no hour preset), opens configure-schedule sheet.
+    await expect(page.locator('[data-action="save-configure-schedule"]')).toBeVisible();
+    await page.locator('[data-action="save-configure-schedule"]').click();
     await page.waitForTimeout(1000);
 
     await expect(page.locator('.bottom-sheet')).not.toBeVisible();
