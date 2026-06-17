@@ -18,6 +18,15 @@ type Preferences struct {
 	// Timezone is the IANA timezone name (e.g. "America/New_York") used for
 	// stats aggregation.  Empty means UTC.
 	Timezone string `json:"timezone"`
+
+	// StatsSectionOrder is the user's preferred ordering of stats page
+	// sections, expressed as an ordered list of canonical section keys.
+	// Missing or empty means "use the canonical default order".
+	StatsSectionOrder []string `json:"statsSectionOrder"`
+
+	// StatsSectionHidden is the set of section keys the user has removed
+	// from the stats page. Hidden sections are not rendered.
+	StatsSectionHidden []string `json:"statsSectionHidden"`
 }
 
 // Store is the persistence interface for user preferences.

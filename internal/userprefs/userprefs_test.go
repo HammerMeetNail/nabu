@@ -159,7 +159,10 @@ func TestPostgresStore_GetMissing(t *testing.T) {
 	defer db.Close()
 
 	store := userprefs.NewPostgresStore(db)
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT chore_order, hidden_home_chore_ids, COALESCE(timezone, '') FROM user_preferences WHERE user_id = $1`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT chore_order, hidden_home_chore_ids, COALESCE(timezone, ''),
+		        COALESCE(stats_section_order, '[]'::jsonb),
+		        COALESCE(stats_section_hidden, '[]'::jsonb)
+		 FROM user_preferences WHERE user_id = $1`)).
 		WithArgs(int64(1)).
 		WillReturnError(sql.ErrNoRows)
 
@@ -188,9 +191,14 @@ func TestPostgresStore_GetExisting(t *testing.T) {
 	store := userprefs.NewPostgresStore(db)
 	rawOrder, _ := json.Marshal([]int64{3, 1, 2})
 	rawHidden, _ := json.Marshal([]int64{7})
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT chore_order, hidden_home_chore_ids, COALESCE(timezone, '') FROM user_preferences WHERE user_id = $1`)).
+	rawSecOrder, _ := json.Marshal([]string{})
+	rawSecHidden, _ := json.Marshal([]string{})
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT chore_order, hidden_home_chore_ids, COALESCE(timezone, ''),
+		        COALESCE(stats_section_order, '[]'::jsonb),
+		        COALESCE(stats_section_hidden, '[]'::jsonb)
+		 FROM user_preferences WHERE user_id = $1`)).
 		WithArgs(int64(5)).
-		WillReturnRows(sqlmock.NewRows([]string{"chore_order", "hidden_home_chore_ids", "coalesce"}).AddRow(rawOrder, rawHidden, "America/New_York"))
+		WillReturnRows(sqlmock.NewRows([]string{"chore_order", "hidden_home_chore_ids", "coalesce", "coalesce", "coalesce"}).AddRow(rawOrder, rawHidden, "America/New_York", rawSecOrder, rawSecHidden))
 
 	p, err := store.Get(context.Background(), 5)
 	if err != nil {
@@ -217,8 +225,10 @@ func TestPostgresStore_Upsert(t *testing.T) {
 	store := userprefs.NewPostgresStore(db)
 	rawOrder, _ := json.Marshal([]int64{10, 20})
 	rawHidden, _ := json.Marshal([]int64{})
+	rawSecOrder, _ := json.Marshal([]string{})
+	rawSecHidden, _ := json.Marshal([]string{})
 	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO user_preferences`)).
-		WithArgs(int64(9), rawOrder, rawHidden, "UTC").
+		WithArgs(int64(9), rawOrder, rawHidden, "UTC", rawSecOrder, rawSecHidden).
 		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	if err := store.Upsert(context.Background(), 9, userprefs.Preferences{ChoreOrder: []int64{10, 20}, HiddenHomeChoreIDs: []int64{}, Timezone: "UTC"}); err != nil {
@@ -260,5 +270,164 @@ func TestService_UpdateTimezoneEmpty(t *testing.T) {
 	prefs, _ := svc.GetPreferences(ctx, 1)
 	if prefs.Timezone != "" {
 		t.Errorf("Timezone = %q, want empty", prefs.Timezone)
+	}
+}
+
+// ─── Stats sections tests ─────────────────────────────────────────────────────
+
+func TestPreferencesStatsSectionRoundTrip(t *testing.T) {
+	s := userprefs.NewMemoryStore()
+	want := userprefs.Preferences{
+		ChoreOrder:         []int64{3, 1},
+		HiddenHomeChoreIDs: []int64{5},
+		StatsSectionOrder:  []string{"baby", "overview", "leaderboard"},
+		StatsSectionHidden: []string{"recap"},
+		Timezone:           "UTC",
+	}
+	if err := s.Upsert(context.Background(), 42, want); err != nil {
+		t.Fatalf("Upsert: %v", err)
+	}
+	got, err := s.Get(context.Background(), 42)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if len(got.StatsSectionOrder) != 3 || got.StatsSectionOrder[0] != "baby" {
+		t.Fatalf("StatsSectionOrder = %v, want [baby overview leaderboard]", got.StatsSectionOrder)
+	}
+	if len(got.StatsSectionHidden) != 1 || got.StatsSectionHidden[0] != "recap" {
+		t.Fatalf("StatsSectionHidden = %v, want [recap]", got.StatsSectionHidden)
+	}
+}
+
+func TestPreferencesDefaultsEmptyStatsSections(t *testing.T) {
+	s := userprefs.NewMemoryStore()
+	p, err := s.Get(context.Background(), 99)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if p.StatsSectionOrder == nil {
+		t.Fatal("StatsSectionOrder must not be nil")
+	}
+	if len(p.StatsSectionOrder) != 0 {
+		t.Fatalf("StatsSectionOrder = %v, want []", p.StatsSectionOrder)
+	}
+	if p.StatsSectionHidden == nil {
+		t.Fatal("StatsSectionHidden must not be nil")
+	}
+	if len(p.StatsSectionHidden) != 0 {
+		t.Fatalf("StatsSectionHidden = %v, want []", p.StatsSectionHidden)
+	}
+}
+
+func TestIsKnownStatsSection(t *testing.T) {
+	for _, key := range userprefs.StatsSections {
+		if !userprefs.IsKnownStatsSection(key) {
+			t.Errorf("IsKnownStatsSection(%q) should be true", key)
+		}
+	}
+	if userprefs.IsKnownStatsSection("nonexistent") {
+		t.Error("IsKnownStatsSection(\"nonexistent\") should be false")
+	}
+	if userprefs.IsKnownStatsSection("") {
+		t.Error("IsKnownStatsSection(\"\") should be false")
+	}
+	if userprefs.IsKnownStatsSection("Overview") {
+		t.Error("IsKnownStatsSection(\"Overview\") should be false (case-sensitive)")
+	}
+}
+
+func TestDefaultStatsSectionOrderIsCopy(t *testing.T) {
+	order := userprefs.DefaultStatsSectionOrder()
+	order[0] = "modified"
+	if userprefs.StatsSections[0] == "modified" {
+		t.Fatal("mutating DefaultStatsSectionOrder result should not mutate package-level StatsSections")
+	}
+}
+
+func TestService_UpdateStatsSectionOrder(t *testing.T) {
+	svc := userprefs.NewService(userprefs.NewMemoryStore())
+	ctx := context.Background()
+
+	if err := svc.UpdateStatsSectionOrder(ctx, 1, []string{"baby", "overview", "leaderboard"}); err != nil {
+		t.Fatalf("UpdateStatsSectionOrder: %v", err)
+	}
+	p, _ := svc.GetPreferences(ctx, 1)
+	if len(p.StatsSectionOrder) != 3 || p.StatsSectionOrder[0] != "baby" {
+		t.Fatalf("StatsSectionOrder = %v, want [baby overview leaderboard]", p.StatsSectionOrder)
+	}
+}
+
+func TestService_UpdateStatsSectionOrderRejectsUnknownKey(t *testing.T) {
+	svc := userprefs.NewService(userprefs.NewMemoryStore())
+	ctx := context.Background()
+
+	if err := svc.UpdateStatsSectionOrder(ctx, 1, []string{"baby", "nonexistent"}); err == nil {
+		t.Fatal("expected error for unknown section key")
+	}
+
+	p, _ := svc.GetPreferences(ctx, 1)
+	if len(p.StatsSectionOrder) != 0 {
+		t.Fatalf("StatsSectionOrder should be empty after rejected update, got %v", p.StatsSectionOrder)
+	}
+}
+
+func TestService_UpdateStatsSectionHiddenRejectsUnknownKey(t *testing.T) {
+	svc := userprefs.NewService(userprefs.NewMemoryStore())
+	ctx := context.Background()
+
+	if err := svc.UpdateStatsSectionHidden(ctx, 1, []string{"recap", "bogus"}); err == nil {
+		t.Fatal("expected error for unknown section key")
+	}
+
+	p, _ := svc.GetPreferences(ctx, 1)
+	if len(p.StatsSectionHidden) != 0 {
+		t.Fatalf("StatsSectionHidden should be empty after rejected update, got %v", p.StatsSectionHidden)
+	}
+}
+
+func TestService_UpdateStatsSectionOrderPreservesOtherFields(t *testing.T) {
+	svc := userprefs.NewService(userprefs.NewMemoryStore())
+	ctx := context.Background()
+
+	if err := svc.UpdateChoreOrder(ctx, 1, []int64{10, 20}); err != nil {
+		t.Fatalf("UpdateChoreOrder: %v", err)
+	}
+	if err := svc.UpdateHiddenHomeChores(ctx, 1, []int64{5}); err != nil {
+		t.Fatalf("UpdateHiddenHomeChores: %v", err)
+	}
+	if err := svc.UpdateTimezone(ctx, 1, "UTC"); err != nil {
+		t.Fatalf("UpdateTimezone: %v", err)
+	}
+	if err := svc.UpdateStatsSectionHidden(ctx, 1, []string{"recap"}); err != nil {
+		t.Fatalf("UpdateStatsSectionHidden: %v", err)
+	}
+
+	if err := svc.UpdateStatsSectionOrder(ctx, 1, []string{"baby", "overview"}); err != nil {
+		t.Fatalf("UpdateStatsSectionOrder: %v", err)
+	}
+
+	p, _ := svc.GetPreferences(ctx, 1)
+	if len(p.ChoreOrder) != 2 || p.ChoreOrder[0] != 10 {
+		t.Fatalf("ChoreOrder = %v, want [10 20]", p.ChoreOrder)
+	}
+	if len(p.HiddenHomeChoreIDs) != 1 || p.HiddenHomeChoreIDs[0] != 5 {
+		t.Fatalf("HiddenHomeChoreIDs = %v, want [5]", p.HiddenHomeChoreIDs)
+	}
+	if p.Timezone != "UTC" {
+		t.Fatalf("Timezone = %q, want UTC", p.Timezone)
+	}
+	if len(p.StatsSectionHidden) != 1 || p.StatsSectionHidden[0] != "recap" {
+		t.Fatalf("StatsSectionHidden = %v, want [recap]", p.StatsSectionHidden)
+	}
+}
+
+func TestService_UpdateStatsSectionHiddenNilBecomesEmpty(t *testing.T) {
+	svc := userprefs.NewService(userprefs.NewMemoryStore())
+	if err := svc.UpdateStatsSectionHidden(context.Background(), 1, nil); err != nil {
+		t.Fatalf("UpdateStatsSectionHidden(nil): %v", err)
+	}
+	p, _ := svc.GetPreferences(context.Background(), 1)
+	if p.StatsSectionHidden == nil {
+		t.Fatal("StatsSectionHidden must not be nil after UpdateStatsSectionHidden(nil)")
 	}
 }

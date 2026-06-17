@@ -1171,6 +1171,64 @@ details[open] .member-chevron {
   padding-bottom: 16px;
 }
 
+.stats-header-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--link, #2563eb);
+  font-size: 0.875rem;
+  cursor: pointer;
+  padding: 0.25rem 0.5rem;
+}
+
+.customize-panel .customize-hint {
+  color: #6b7280;
+  font-size: 0.8rem;
+  margin: 0 0 0.75rem;
+}
+
+.customize-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: grab;
+  transition: background 0.1s;
+}
+
+.customize-row--dragging {
+  opacity: 0.5;
+}
+
+.customize-row.drag-over {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+
+.customize-row .drag-handle {
+  color: #9ca3af;
+  cursor: grab;
+  user-select: none;
+}
+
+.customize-check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.customize-check input:disabled + span {
+  color: #9ca3af;
+}
+
 .overview-cards {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

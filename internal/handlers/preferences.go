@@ -45,9 +45,11 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		ChoreOrder         *[]int64 `json:"choreOrder"`
-		HiddenHomeChoreIDs *[]int64 `json:"hiddenHomeChoreIds"`
-		Timezone           *string  `json:"timezone"`
+		ChoreOrder          *[]int64  `json:"choreOrder"`
+		HiddenHomeChoreIDs  *[]int64  `json:"hiddenHomeChoreIds"`
+		Timezone            *string   `json:"timezone"`
+		StatsSectionOrder   *[]string `json:"statsSectionOrder"`
+		StatsSectionHidden  *[]string `json:"statsSectionHidden"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
@@ -71,6 +73,20 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if req.Timezone != nil {
 		if err := h.service.UpdateTimezone(r.Context(), user.ID, *req.Timezone); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
+	if req.StatsSectionOrder != nil {
+		if err := h.service.UpdateStatsSectionOrder(r.Context(), user.ID, *req.StatsSectionOrder); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
+	if req.StatsSectionHidden != nil {
+		if err := h.service.UpdateStatsSectionHidden(r.Context(), user.ID, *req.StatsSectionHidden); err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
 	}

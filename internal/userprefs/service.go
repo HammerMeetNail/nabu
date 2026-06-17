@@ -1,6 +1,9 @@
 package userprefs
 
-import "context"
+import (
+	"context"
+	"fmt"
+)
 
 // Service contains business logic for user preferences.
 type Service struct {
@@ -55,5 +58,45 @@ func (s *Service) UpdateTimezone(ctx context.Context, userID int64, tz string) e
 		return err
 	}
 	prefs.Timezone = tz
+	return s.store.Upsert(ctx, userID, prefs)
+}
+
+// UpdateStatsSectionOrder persists the user's preferred ordering of stats
+// page sections. Keys must be drawn from the canonical StatsSections list;
+// unknown keys are rejected.
+func (s *Service) UpdateStatsSectionOrder(ctx context.Context, userID int64, order []string) error {
+	if order == nil {
+		order = []string{}
+	}
+	for _, k := range order {
+		if !IsKnownStatsSection(k) {
+			return fmt.Errorf("unknown stats section: %q", k)
+		}
+	}
+	prefs, err := s.store.Get(ctx, userID)
+	if err != nil {
+		return err
+	}
+	prefs.StatsSectionOrder = order
+	return s.store.Upsert(ctx, userID, prefs)
+}
+
+// UpdateStatsSectionHidden persists the set of stats sections the user has
+// hidden from the stats page. Keys must be drawn from the canonical
+// StatsSections list.
+func (s *Service) UpdateStatsSectionHidden(ctx context.Context, userID int64, hidden []string) error {
+	if hidden == nil {
+		hidden = []string{}
+	}
+	for _, k := range hidden {
+		if !IsKnownStatsSection(k) {
+			return fmt.Errorf("unknown stats section: %q", k)
+		}
+	}
+	prefs, err := s.store.Get(ctx, userID)
+	if err != nil {
+		return err
+	}
+	prefs.StatsSectionHidden = hidden
 	return s.store.Upsert(ctx, userID, prefs)
 }

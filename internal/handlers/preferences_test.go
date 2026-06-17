@@ -141,3 +141,72 @@ func TestPreferences_UpdateBadBody(t *testing.T) {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
 }
+
+func TestPreferences_PatchStatsSectionOrder(t *testing.T) {
+	handler, sessionID, authService := setupPrefsTest(t)
+	req := withUser(httptest.NewRequest(http.MethodPatch, "/api/preferences",
+		strings.NewReader(`{"statsSectionOrder":["baby","overview"]}`),
+	), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.Update(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"statsSectionOrder"`) {
+		t.Fatalf("body missing statsSectionOrder, body=%s", rec.Body.String())
+	}
+}
+
+func TestPreferences_PatchStatsSectionUnknownKey(t *testing.T) {
+	handler, sessionID, authService := setupPrefsTest(t)
+	req := withUser(httptest.NewRequest(http.MethodPatch, "/api/preferences",
+		strings.NewReader(`{"statsSectionOrder":["baby","bogus"]}`),
+	), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.Update(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400, body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPreferences_PatchStatsSectionHidden(t *testing.T) {
+	handler, sessionID, authService := setupPrefsTest(t)
+	req := withUser(httptest.NewRequest(http.MethodPatch, "/api/preferences",
+		strings.NewReader(`{"statsSectionHidden":["recap"]}`),
+	), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	handler.Update(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"statsSectionHidden"`) {
+		t.Fatalf("body missing statsSectionHidden, body=%s", rec.Body.String())
+	}
+}
+
+func TestPreferences_GetIncludesNewFields(t *testing.T) {
+	handler, sessionID, authService := setupPrefsTest(t)
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/preferences", nil), authService, sessionID)
+	rec := httptest.NewRecorder()
+
+	handler.Get(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"statsSectionOrder"`) {
+		t.Fatalf("body missing statsSectionOrder, body=%s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"statsSectionHidden"`) {
+		t.Fatalf("body missing statsSectionHidden, body=%s", rec.Body.String())
+	}
+}
