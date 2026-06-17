@@ -1,6 +1,54 @@
 import { apiFetch } from "./api.js";
 import { escapeHTML, localDateStr } from "./utils.js";
 
+// Canonical section list and default order. Must match
+// internal/userprefs/sections.go exactly. When you add a new section,
+// append it to the END of this list.
+export const STATS_SECTIONS = [
+  "overview",
+  "baby",
+  "activity",
+  "busy-hours",
+  "leaderboard",
+  "top-chores",
+  "categories",
+  "chores",
+  "recap",
+];
+
+const SECTION_LABELS = {
+  overview: "Overview cards",
+  baby: "Baby care",
+  activity: "Activity (heatmap)",
+  "busy-hours": "Busy hours",
+  leaderboard: "Leaderboard",
+  "top-chores": "Top chores",
+  categories: "Categories",
+  chores: "Chores",
+  recap: "Weekly recap",
+};
+
+// resolveStatsLayout merges the user's stored order with the canonical
+// registry. Unknown keys are dropped. Canonical keys missing from the
+// user's order (e.g. newly-shipped sections) are appended at the end.
+// Hidden sections are excluded.
+export function resolveStatsLayout(userOrder, userHidden) {
+  const hidden = new Set(userHidden || []);
+  const seen = new Set();
+  const out = [];
+  for (const k of userOrder || []) {
+    if (STATS_SECTIONS.includes(k) && !hidden.has(k) && !seen.has(k)) {
+      out.push(k); seen.add(k);
+    }
+  }
+  for (const k of STATS_SECTIONS) {
+    if (!seen.has(k) && !hidden.has(k)) {
+      out.push(k); seen.add(k);
+    }
+  }
+  return out;
+}
+
 export async function loadOverview() {
   const { data } = await apiFetch("/api/stats/overview");
   return data;
@@ -117,21 +165,16 @@ export function renderStatsPage(state) {
     return "-";
   })();
 
-  return `<div class="stats-page">
-    <h2>Stats</h2>
+  const order = resolveStatsLayout(
+    state.stats?.sectionOrder,
+    state.stats?.sectionHidden,
+  );
 
-    <div class="chart-period-toggle mt-2 mb-3">
-      ${renderOverviewCards(todayCount, totalThisWeek, streaks, topChoreName, stats.leaderboardPeriod, state.user?.id)}
-    </div>
-
-    ${renderBabyCareSection(state)}
-
-    <div class="card mb-3">
-      <h3>Activity</h3>
-      ${renderHeatmapGrid(heatmap)}
-    </div>
-
-    <div class="card mb-3">
+  const sections = {
+    overview: `<div class="chart-period-toggle mt-2 mb-3">${renderOverviewCards(todayCount, totalThisWeek, streaks, topChoreName, stats.leaderboardPeriod, state.user?.id)}</div>`,
+    baby: renderBabyCareSection(state),
+    activity: `<div class="card mb-3"><h3>Activity</h3>${renderHeatmapGrid(heatmap)}</div>`,
+    "busy-hours": `<div class="card mb-3">
       <h3>Busy Hours</h3>
       ${renderBusyHoursDateRange(stats.busyHoursStart, stats.busyHoursEnd)}
       <div class="busy-hours-filters">
@@ -155,23 +198,19 @@ export function renderStatsPage(state) {
           value="${state.stats?.busyHoursFilter?.end || state.stats?.busyHoursEnd || ""}">
       </div>
       ${renderBusyHoursChart(busyHours)}
-    </div>
-
-    <div class="card mb-3">
+    </div>`,
+    leaderboard: `<div class="card mb-3">
       <h3>Leaderboard</h3>
       ${renderWeekDateRange()}
       ${renderLeaderboardList(leaderboard, memberMap, stats.leaderboardPeriod)}
-    </div>
-
-    ${renderTopChoresSection(state)}
-
-    <div class="card mb-3">
+    </div>`,
+    "top-chores": renderTopChoresSection(state),
+    categories: `<div class="card mb-3">
       <h3>Categories</h3>
       ${renderWeekDateRange()}
       ${renderCategoryBars(breakdown)}
-    </div>
-
-    <div class="card mb-3">
+    </div>`,
+    chores: `<div class="card mb-3">
       <h3>Chores</h3>
       <div class="busy-hours-date-filters">
         <input type="date" class="busy-hours-filter" data-action="chore-stats-filter" data-filter="start"
@@ -180,13 +219,53 @@ export function renderStatsPage(state) {
           value="${state.stats?.choreStatsFilter?.end || state.stats?.choreStatsEnd || ""}">
       </div>
       ${renderChoreStatsList(choreStats, choreMap)}
-    </div>
-
-    ${recap.totalChores > 0 ? `<div class="card mb-3">
+    </div>`,
+    recap: recap.totalChores > 0 ? `<div class="card mb-3">
       <h3>Weekly Recap</h3>
       <p>This week you completed <strong>${recap.totalChores}</strong> chores.</p>
       <p class="mt-1">Most active: <strong>${recap.mostActiveDay || 'N/A'}</strong></p>
-    </div>` : ''}
+    </div>` : "",
+  };
+
+  const body = order
+    .map(k => sections[k])
+    .filter(html => html && html.trim().length > 0)
+    .join("\n");
+
+  return `<div class="stats-page">
+    <h2>Stats</h2>
+    <div class="stats-header-row">
+      <button class="btn-link" data-action="toggle-customize-stats">
+        ${state.stats?.customizeOpen ? "Done" : "Customize"}
+      </button>
+    </div>
+    ${state.stats?.customizeOpen ? renderCustomizePanel(state) : ""}
+    ${body}
+  </div>`;
+}
+
+function renderCustomizePanel(state) {
+  const hidden = new Set(state.stats?.sectionHidden || []);
+  const ordered = resolveStatsLayout(state.stats?.sectionOrder, []);
+  const allKeys = [...ordered, ...STATS_SECTIONS.filter(k => !ordered.includes(k))];
+  const rows = allKeys.map((k) => {
+    const isHidden = hidden.has(k);
+    const isOverview = k === "overview";
+    const label = SECTION_LABELS[k];
+    return `<div class="customize-row" draggable="true" data-section="${k}">
+      <span class="drag-handle" aria-hidden="true">⠿</span>
+      <label class="customize-check">
+        <input type="checkbox" data-action="toggle-stats-section"
+               data-section="${k}" ${(!isHidden || isOverview) ? "checked" : ""}
+               ${isOverview ? "disabled" : ""}>
+        <span>${escapeHTML(label)}</span>
+      </label>
+    </div>`;
+  }).join("");
+  return `<div class="card mb-3 customize-panel">
+    <h3>Customize Stats</h3>
+    <p class="customize-hint">Drag to reorder. Uncheck to hide a section.</p>
+    ${rows}
   </div>`;
 }
 

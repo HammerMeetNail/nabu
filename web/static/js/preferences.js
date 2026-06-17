@@ -12,10 +12,16 @@ export async function loadPreferences(state) {
     state.choreOrder = data?.preferences?.choreOrder ?? [];
     state.hiddenHomeChoreIDs = data?.preferences?.hiddenHomeChoreIds ?? [];
     state.timezone = data?.preferences?.timezone ?? "";
+    state.stats = state.stats || {};
+    state.stats.sectionOrder = data?.preferences?.statsSectionOrder ?? [];
+    state.stats.sectionHidden = data?.preferences?.statsSectionHidden ?? [];
   } catch {
     state.choreOrder = [];
     state.hiddenHomeChoreIDs = [];
     state.timezone = "";
+    state.stats = state.stats || {};
+    state.stats.sectionOrder = [];
+    state.stats.sectionHidden = [];
   }
 }
 
@@ -98,4 +104,42 @@ export function sortChoresByOrder(chores, choreOrder) {
     const pb = pos.has(b.id) ? pos.get(b.id) : Infinity;
     return pa - pb;
   });
+}
+
+/**
+ * Persist an updated stats section order to the server and update state.
+ *
+ * @param {object} state  - The global app state (mutated in place).
+ * @param {string[]} order - Ordered array of section keys.
+ */
+export async function saveStatsSectionOrder(state, order) {
+  state.stats.sectionOrder = order;
+  try {
+    const { data } = await apiFetch("/api/preferences", {
+      method: "PATCH",
+      body: JSON.stringify({ statsSectionOrder: order }),
+    });
+    state.stats.sectionOrder = data?.preferences?.statsSectionOrder ?? order;
+  } catch {
+    // Keep the optimistic in-memory value.
+  }
+}
+
+/**
+ * Persist an updated stats section hidden set to the server and update state.
+ *
+ * @param {object} state   - The global app state (mutated in place).
+ * @param {string[]} hidden - Array of hidden section keys.
+ */
+export async function saveStatsSectionHidden(state, hidden) {
+  state.stats.sectionHidden = hidden;
+  try {
+    const { data } = await apiFetch("/api/preferences", {
+      method: "PATCH",
+      body: JSON.stringify({ statsSectionHidden: hidden }),
+    });
+    state.stats.sectionHidden = data?.preferences?.statsSectionHidden ?? hidden;
+  } catch {
+    // Keep the optimistic in-memory value.
+  }
 }

@@ -21,10 +21,10 @@ import {
 } from "./auth.js";
 import { loadHousehold, listHouseholds, activateHousehold, createHousehold, updateHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, transferOwnership, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
 import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, loadMoreHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
-import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadFeedingGaps } from "./stats.js";
+import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadFeedingGaps, STATS_SECTIONS } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
-import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, sortChoresByOrder, syncTimezone } from "./preferences.js";
+import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone } from "./preferences.js";
 import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeManageView, renderConfirmRemoveFromHomeSheet } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
 import { loadNotifications, markRead, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
@@ -2382,7 +2382,75 @@ export async function init() {
         }).catch(() => {}).then(() => render(app));
         break;
       }
+
+      case "toggle-customize-stats": {
+        e.preventDefault();
+        state.stats = state.stats || {};
+        state.stats.customizeOpen = !state.stats.customizeOpen;
+        render(app);
+        break;
+      }
     }
+  });
+
+  // ── Stats customize drag-and-drop reorder ────────────────────────────────────
+  let dragSection = null;
+  document.addEventListener("dragstart", (e) => {
+    const row = e.target.closest(".customize-row");
+    if (!row) return;
+    dragSection = row.dataset.section;
+    row.classList.add("customize-row--dragging");
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", dragSection);
+  });
+  document.addEventListener("dragend", (e) => {
+    const row = e.target.closest(".customize-row");
+    if (row) row.classList.remove("customize-row--dragging");
+    document.querySelectorAll(".customize-row.drag-over").forEach(el => el.classList.remove("drag-over"));
+    dragSection = null;
+  });
+  document.addEventListener("dragover", (e) => {
+    const row = e.target.closest(".customize-row");
+    if (!row) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    row.classList.add("drag-over");
+  });
+  document.addEventListener("dragleave", (e) => {
+    const row = e.target.closest(".customize-row");
+    if (!row) return;
+    row.classList.remove("drag-over");
+  });
+  document.addEventListener("drop", (e) => {
+    const row = e.target.closest(".customize-row");
+    if (!row || !dragSection) return;
+    e.preventDefault();
+    row.classList.remove("drag-over");
+    const targetSection = row.dataset.section;
+    if (targetSection === dragSection) return;
+    state.stats = state.stats || {};
+    state.stats.sectionOrder = state.stats.sectionOrder || [];
+    const cur = [...state.stats.sectionOrder];
+    const srcIdx = cur.indexOf(dragSection);
+    const dstIdx = cur.indexOf(targetSection);
+    if (srcIdx === -1) {
+      if (dstIdx === -1) {
+        cur.push(dragSection, targetSection);
+      } else {
+        cur.splice(dstIdx, 0, dragSection);
+      }
+    } else {
+      cur.splice(srcIdx, 1);
+      if (dstIdx === -1) {
+        cur.push(dragSection);
+      } else {
+        const newDst = cur.indexOf(targetSection);
+        cur.splice(newDst, 0, dragSection);
+      }
+    }
+    const all = [...new Set([...cur, ...STATS_SECTIONS])];
+    state.stats.sectionOrder = all;
+    saveStatsSectionOrder(state, all).then(() => render(app));
   });
 
   // Prevent taps/clicks on select elements inside member rows from
@@ -2459,6 +2527,21 @@ export async function init() {
           state.stats.choreStatsEnd = data.end;
         }
       }).catch(() => {}).then(() => render(app));
+    }
+    if (actionEl?.dataset?.action === "toggle-stats-section") {
+      const section = actionEl.dataset.section;
+      if (!section || section === "overview") return;
+      state.stats = state.stats || {};
+      state.stats.sectionHidden = state.stats.sectionHidden || [];
+      const hidden = state.stats.sectionHidden;
+      if (actionEl.checked) {
+        state.stats.sectionHidden = hidden.filter(s => s !== section);
+      } else {
+        if (!hidden.includes(section)) {
+          state.stats.sectionHidden = [...hidden, section];
+        }
+      }
+      saveStatsSectionHidden(state, state.stats.sectionHidden).then(() => render(app));
     }
     if (actionEl?.dataset?.action === "update-member-role") {
       const userId = parseInt(actionEl.dataset.userId, 10);

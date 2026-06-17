@@ -28,6 +28,11 @@ export function createAppState() {
     choreReminderPrefs: [],     // array of {userId, choreId, enabled, leadMinutes}
     historyChoreFilter: null,  // null = show all, []string = filtered chore IDs
     historyFilterOpen: false,  // filter dropdown starts closed
+    stats: {
+      sectionOrder: [],       // ordered array of section keys (user pref)
+      sectionHidden: [],      // array of hidden section keys (user pref)
+      customizeOpen: false,   // whether the "Customize Stats" panel is open
+    },
   };
 }
 
@@ -59,4 +64,9 @@ export function resetAuthedState(state) {
 	state.choreReminderPrefs = [];
 	state.historyChoreFilter = null;
 	state.historyFilterOpen = false;
+	state.stats = {
+		sectionOrder: [],
+		sectionHidden: [],
+		customizeOpen: false,
+	};
 }
