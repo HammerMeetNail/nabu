@@ -147,7 +147,7 @@ struct Chore: Codable, Identifiable, Equatable {
         indicatorLabels = try container.decodeIfPresent([String].self, forKey: .indicatorLabels) ?? []
         indicatorDefaults = try container.decodeIfPresent([String].self, forKey: .indicatorDefaults) ?? []
         hasVolumeML = try container.decode(Bool.self, forKey: .hasVolumeML)
-        followUpEnabled = try container.decodeIfPresent(Bool.self, forKey: .followUpEnabled) ?? false
+        followUpEnabled = try container.decodeIfPresent(Bool.self, forKey: .followUpEnabled) ?? true
         lastFollowUpMinutes = try container.decodeIfPresent(Int.self, forKey: .lastFollowUpMinutes) ?? 0
     }
 
@@ -166,7 +166,7 @@ struct Chore: Codable, Identifiable, Equatable {
         self.indicatorLabels = indicatorLabels
         self.indicatorDefaults = indicatorDefaults
         self.hasVolumeML = hasVolumeML
-        self.followUpEnabled = false
+        self.followUpEnabled = true
         self.lastFollowUpMinutes = 0
     }
 

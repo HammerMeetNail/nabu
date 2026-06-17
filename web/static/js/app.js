@@ -2036,9 +2036,10 @@ export async function init() {
         });
 
         if (isNew) {
+          const followUpEnabled = document.querySelector("[data-action='toggle-followup-enabled']")?.checked ?? true;
           apiFetch("/api/chores", {
             method: "POST",
-            body: JSON.stringify({ name, icon, color, category: "custom", indicatorLabels, indicatorDefaults }),
+            body: JSON.stringify({ name, icon, color, category: "custom", indicatorLabels, indicatorDefaults, followUpEnabled }),
           }).then(async ({ data }) => {
             const newChore = data?.chore;
             if (!newChore) { showToast("Failed to create chore", "error"); return; }

@@ -25,7 +25,7 @@ struct ChoreEditView: View {
     @State private var color: String = "#2E86AB"
     @State private var indicatorLabels: [String] = []
     @State private var indicatorDefaults: Set<String> = []
-    @State private var followUpEnabled: Bool = false
+    @State private var followUpEnabled: Bool = true
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var reminderEnabled: Bool = false
@@ -270,7 +270,8 @@ struct ChoreEditView: View {
             if isNew {
                 let response = try await choreStore.createChore(
                     name: trimmedName, icon: icon, color: color,
-                    indicatorLabels: cleanedLabels, indicatorDefaults: cleanedDefaults
+                    indicatorLabels: cleanedLabels, indicatorDefaults: cleanedDefaults,
+                    followUpEnabled: followUpEnabled
                 )
                 state.chores.append(response.chore)
                 var newOrder = state.choreOrder

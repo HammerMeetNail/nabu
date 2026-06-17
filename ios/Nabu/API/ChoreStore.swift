@@ -9,11 +9,13 @@ final class ChoreStore {
     }
 
     func createChore(name: String, icon: String, color: String, category: String = "custom",
-                     indicatorLabels: [String] = [], indicatorDefaults: [String] = []) async throws -> ChoreResponse {
+                     indicatorLabels: [String] = [], indicatorDefaults: [String] = [],
+                     followUpEnabled: Bool? = nil) async throws -> ChoreResponse {
         let body = CreateChoreRequest(
             name: name, icon: icon, color: color, category: category,
             indicatorLabels: indicatorLabels.isEmpty ? nil : indicatorLabels,
-            indicatorDefaults: indicatorDefaults.isEmpty ? nil : indicatorDefaults
+            indicatorDefaults: indicatorDefaults.isEmpty ? nil : indicatorDefaults,
+            followUpEnabled: followUpEnabled
         )
         return try await api.post("/api/chores", body: body)
     }
