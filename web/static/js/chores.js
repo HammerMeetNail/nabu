@@ -203,7 +203,7 @@ export function renderChoreSheet(chore, opts = {}) {
       </label>
       <label class="indicator-default-toggle chore-followup-toggle">
         <input type="checkbox" data-action="toggle-followup-enabled"
-          ${chore?.followUpEnabled ? ' checked' : ''} />
+          ${isNew || chore?.followUpEnabled ? ' checked' : ''} />
         <span class="indicator-default-label">Enable follow-up scheduling</span>
       </label>
     </div>

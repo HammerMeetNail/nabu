@@ -13,7 +13,7 @@ func TestService_CreateChore_Basic(t *testing.T) {
 	svc := chore.NewService(chore.NewMemoryStore())
 	ctx := context.Background()
 
-	c, err := svc.CreateChore(ctx, 1, 10, "Wash Dishes", "🍽️", "#3B82F6", "cleaning", nil, nil)
+	c, err := svc.CreateChore(ctx, 1, 10, "Wash Dishes", "🍽️", "#3B82F6", "cleaning", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestService_CreateChore_Defaults(t *testing.T) {
 	svc := chore.NewService(chore.NewMemoryStore())
 	ctx := context.Background()
 
-	c, err := svc.CreateChore(ctx, 1, 10, "My Chore", "", "", "", nil, nil)
+	c, err := svc.CreateChore(ctx, 1, 10, "My Chore", "", "", "", nil, nil, nil)
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestService_CreateChore_Defaults(t *testing.T) {
 
 func TestService_CreateChore_EmptyNameError(t *testing.T) {
 	svc := chore.NewService(chore.NewMemoryStore())
-	_, err := svc.CreateChore(context.Background(), 1, 10, "", "", "", "", nil, nil)
+	_, err := svc.CreateChore(context.Background(), 1, 10, "", "", "", "", nil, nil, nil)
 	if err == nil {
 		t.Fatal("expected error for empty name")
 	}
@@ -82,8 +82,8 @@ func TestService_ListChores_MultipleHouseholds(t *testing.T) {
 	svc := chore.NewService(chore.NewMemoryStore())
 	ctx := context.Background()
 
-	_, _ = svc.CreateChore(ctx, 1, 10, "HH1 Chore", "", "", "", nil, nil)
-	_, _ = svc.CreateChore(ctx, 2, 20, "HH2 Chore", "", "", "", nil, nil)
+	_, _ = svc.CreateChore(ctx, 1, 10, "HH1 Chore", "", "", "", nil, nil, nil)
+	_, _ = svc.CreateChore(ctx, 2, 20, "HH2 Chore", "", "", "", nil, nil, nil)
 
 	h1, _ := svc.ListChores(ctx, 1)
 	h2, _ := svc.ListChores(ctx, 2)
@@ -100,7 +100,7 @@ func TestService_GetChore(t *testing.T) {
 	svc := chore.NewService(chore.NewMemoryStore())
 	ctx := context.Background()
 
-	created, _ := svc.CreateChore(ctx, 1, 10, "Cat Feeding", "🐱", "", "", nil, nil)
+	created, _ := svc.CreateChore(ctx, 1, 10, "Cat Feeding", "🐱", "", "", nil, nil, nil)
 
 	got, err := svc.GetChore(ctx, created.ID)
 	if err != nil {
@@ -123,7 +123,7 @@ func TestService_UpdateChore_PartialUpdate(t *testing.T) {
 	svc := chore.NewService(chore.NewMemoryStore())
 	ctx := context.Background()
 
-	c, _ := svc.CreateChore(ctx, 1, 10, "Old Name", "🐱", "#000", "cleaning", nil, nil)
+	c, _ := svc.CreateChore(ctx, 1, 10, "Old Name", "🐱", "#000", "cleaning", nil, nil, nil)
 
 	err := svc.UpdateChore(ctx, c.ID, 1, "New Name", "", "", "", nil, nil, nil)
 	if err != nil {
@@ -147,7 +147,7 @@ func TestService_UpdateChore_UpdateIndicators(t *testing.T) {
 	svc := chore.NewService(chore.NewMemoryStore())
 	ctx := context.Background()
 
-	c, _ := svc.CreateChore(ctx, 1, 10, "Task", "", "", "", []string{"label1"}, nil)
+	c, _ := svc.CreateChore(ctx, 1, 10, "Task", "", "", "", []string{"label1"}, nil, nil)
 	err := svc.UpdateChore(ctx, c.ID, 1, "", "", "", "", []string{"new1", "new2"}, nil, nil)
 	if err != nil {
 		t.Fatalf("UpdateChore: %v", err)
@@ -170,7 +170,7 @@ func TestService_DeleteChore(t *testing.T) {
 	svc := chore.NewService(chore.NewMemoryStore())
 	ctx := context.Background()
 
-	c, _ := svc.CreateChore(ctx, 1, 10, "Temp", "", "", "", nil, nil)
+	c, _ := svc.CreateChore(ctx, 1, 10, "Temp", "", "", "", nil, nil, nil)
 	err := svc.DeleteChore(ctx, c.ID, 1)
 	if err != nil {
 		t.Fatalf("DeleteChore: %v", err)
@@ -217,9 +217,9 @@ func TestService_ReorderChores(t *testing.T) {
 	svc := chore.NewService(chore.NewMemoryStore())
 	ctx := context.Background()
 
-	c1, _ := svc.CreateChore(ctx, 1, 10, "A", "", "", "", nil, nil)
-	c2, _ := svc.CreateChore(ctx, 1, 10, "B", "", "", "", nil, nil)
-	c3, _ := svc.CreateChore(ctx, 1, 10, "C", "", "", "", nil, nil)
+	c1, _ := svc.CreateChore(ctx, 1, 10, "A", "", "", "", nil, nil, nil)
+	c2, _ := svc.CreateChore(ctx, 1, 10, "B", "", "", "", nil, nil, nil)
+	c3, _ := svc.CreateChore(ctx, 1, 10, "C", "", "", "", nil, nil, nil)
 
 	err := svc.ReorderChores(ctx, 1, []int64{c3.ID, c1.ID, c2.ID})
 	if err != nil {
@@ -317,7 +317,7 @@ func TestService_RestoreDefaultChore_NotPredefined(t *testing.T) {
 	svc := chore.NewService(chore.NewMemoryStore())
 	ctx := context.Background()
 
-	c, _ := svc.CreateChore(ctx, 1, 10, "Custom", "", "", "", nil, nil)
+	c, _ := svc.CreateChore(ctx, 1, 10, "Custom", "", "", "", nil, nil, nil)
 	err := svc.RestoreDefaultChore(ctx, c.ID, 1)
 	if err == nil {
 		t.Fatal("expected error restoring non-predefined chore")
@@ -336,7 +336,7 @@ func TestService_UpdateChore_WithIconColorCategory(t *testing.T) {
 	svc := chore.NewService(chore.NewMemoryStore())
 	ctx := context.Background()
 
-	c, _ := svc.CreateChore(ctx, 1, 10, "Sweep", "🧹", "#000", "cleaning", nil, nil)
+	c, _ := svc.CreateChore(ctx, 1, 10, "Sweep", "🧹", "#000", "cleaning", nil, nil, nil)
 
 	// Pass non-empty icon, color, and category – covers all three update branches
 	err := svc.UpdateChore(ctx, c.ID, 1, "", "🫧", "#AABBCC", "hygiene", nil, nil, nil)

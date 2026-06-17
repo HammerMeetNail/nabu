@@ -96,6 +96,7 @@ func (h *ChoreHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Category          string   `json:"category"`
 		IndicatorLabels   []string `json:"indicatorLabels"`
 		IndicatorDefaults []string `json:"indicatorDefaults"`
+		FollowUpEnabled   *bool    `json:"followUpEnabled"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -107,7 +108,7 @@ func (h *ChoreHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	created, err := h.service.CreateChore(r.Context(), *user.HouseholdID, user.ID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults)
+	created, err := h.service.CreateChore(r.Context(), *user.HouseholdID, user.ID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults, req.FollowUpEnabled)
 	if err != nil {
 		writeError(w, http.StatusConflict, err.Error())
 		return

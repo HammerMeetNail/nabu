@@ -63,10 +63,12 @@ struct CreateChoreRequest: Codable {
     let category: String?
     let indicatorLabels: [String]?
     let indicatorDefaults: [String]?
+    let followUpEnabled: Bool?
 
     enum CodingKeys: String, CodingKey {
         case name, icon, color, category
         case indicatorLabels, indicatorDefaults
+        case followUpEnabled
     }
 
     func encode(to encoder: Encoder) throws {
@@ -77,6 +79,7 @@ struct CreateChoreRequest: Codable {
         try container.encodeIfPresent(category, forKey: .category)
         try container.encodeIfPresent(indicatorLabels, forKey: .indicatorLabels)
         try container.encodeIfPresent(indicatorDefaults, forKey: .indicatorDefaults)
+        try container.encodeIfPresent(followUpEnabled, forKey: .followUpEnabled)
     }
 }
 

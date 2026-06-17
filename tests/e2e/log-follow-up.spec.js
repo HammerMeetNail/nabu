@@ -53,9 +53,8 @@ test.describe('Log follow-up scheduling', () => {
     // Use Feed Baby (predefined, has indicator labels)
     const feedBaby = chores.find(c => c.name === 'Feed Baby');
     expect(feedBaby).toBeDefined();
-
-    // Enable follow-up for Feed Baby
-    await enableFollowUp(page, feedBaby.id, feedBaby.name, csrf);
+    // Follow-up is now enabled by default for all chores
+    expect(feedBaby.followUpEnabled).toBe(true);
 
     // Reload to get the updated chore
     await page.reload();
@@ -144,12 +143,11 @@ test.describe('Log follow-up scheduling', () => {
   });
 
   test('follow-up schedule appears in schedule tab', async ({ page }) => {
-    const { csrf, chores } = await setupWithChores(page);
+    const { chores } = await setupWithChores(page);
 
     const feedBaby = chores.find(c => c.name === 'Feed Baby');
     expect(feedBaby).toBeDefined();
-
-    await enableFollowUp(page, feedBaby.id, feedBaby.name, csrf);
+    expect(feedBaby.followUpEnabled).toBe(true);
     await page.reload();
     await page.waitForSelector('.home-grid', { timeout: 15000 });
 
@@ -203,22 +201,126 @@ test.describe('Log follow-up scheduling', () => {
     // The follow-up toggle should be present
     await expect(page.locator('[data-action="toggle-followup-enabled"]')).toBeVisible({ timeout: 2000 });
 
-    // Initially unchecked
+    // Follow-up is now enabled by default
     const cb = page.locator('[data-action="toggle-followup-enabled"]');
-    expect(await cb.isChecked()).toBe(false);
+    expect(await cb.isChecked()).toBe(true);
 
-    // Check it and save
-    await cb.check();
+    // Uncheck it and save
+    await cb.uncheck();
     await page.click('[data-action="save-chore"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
-    // Reload and verify it persisted
+    // Reload and verify it persisted as disabled
     await page.reload();
     await page.waitForSelector('.home-grid', { timeout: 15000 });
 
     const choresResp = await page.request.get('/api/chores');
     const { chores: updatedChores } = await choresResp.json();
     const updated = updatedChores.find(c => c.id === feedBaby.id);
-    expect(updated.followUpEnabled).toBe(true);
+    expect(updated.followUpEnabled).toBe(false);
+
+    // Re-enable follow-up via API for other tests
+    await enableFollowUp(page, feedBaby.id, feedBaby.name, csrf);
+  });
+
+  test('all seeded chores have follow-up enabled by default', async ({ page }) => {
+    const { chores } = await setupWithChores(page);
+
+    // After seeding, every chore should have followUpEnabled === true
+    expect(chores.length).toBeGreaterThan(0);
+    for (const c of chores) {
+      expect(c.followUpEnabled, `Chore "${c.name}" should have follow-up enabled by default`).toBe(true);
+    }
+  });
+
+  test('non-Feed-Baby chore can use follow-up', async ({ page }) => {
+    const { chores } = await setupWithChores(page);
+
+    // Use Walk Dog (a predefined chore without indicators/volume)
+    const walkDog = chores.find(c => c.name === 'Walk Dog');
+    expect(walkDog).toBeDefined();
+    expect(walkDog.followUpEnabled).toBe(true);
+
+    // Open the log sheet by tapping Walk Dog
+    const card = page.locator(`.home-chore-card[data-home-chore-id="${walkDog.id}"]`);
+    await card.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+
+    // The follow-up inputs should be visible (since follow-up is enabled)
+    await expect(page.locator('#followup-hours')).toBeVisible({ timeout: 2000 });
+
+    // Set follow-up: 2 hours
+    await page.selectOption('#followup-hours', '2');
+
+    // Save the log
+    await page.click('[data-action="save-log"]');
+    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
+
+    // Verify a follow-up schedule was created for Walk Dog
+    const schedulesResp = await page.request.get('/api/schedules');
+    const { schedules } = await schedulesResp.json();
+    const followUpSch = schedules.find(s => s.choreId === walkDog.id && s.isFollowUp);
+    expect(followUpSch).toBeDefined();
+    expect(followUpSch.isFollowUp).toBe(true);
+  });
+
+  test('disabling follow-up hides inputs in log sheet', async ({ page }) => {
+    const { csrf, chores } = await setupWithChores(page);
+
+    const feedBaby = chores.find(c => c.name === 'Feed Baby');
+    expect(feedBaby).toBeDefined();
+    expect(feedBaby.followUpEnabled).toBe(true);
+
+    // Open the log sheet — follow-up inputs should be visible
+    const card = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
+    await card.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('#followup-hours')).toBeVisible({ timeout: 2000 });
+
+    // Close the sheet via the Cancel button
+    await page.locator('.bottom-sheet button[data-action="close-sheet"]').click();
+    await expect(page.locator('.bottom-sheet')).toHaveCount(0, { timeout: 3000 });
+
+    // Disable follow-up for Feed Baby
+    await page.request.patch(`/api/chores/${feedBaby.id}`, {
+      data: { name: feedBaby.name, followUpEnabled: false },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+
+    // Reload and open the log sheet again
+    await page.reload();
+    await page.waitForSelector('.home-grid', { timeout: 15000 });
+
+    const card2 = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
+    await card2.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+
+    // Follow-up inputs should NOT be visible
+    await expect(page.locator('#followup-hours')).toHaveCount(0);
+
+    // Close the sheet and re-enable follow-up for other tests
+    await page.locator('.bottom-sheet button[data-action="close-sheet"]').click();
+    await page.request.patch(`/api/chores/${feedBaby.id}`, {
+      data: { name: feedBaby.name, followUpEnabled: true },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+  });
+
+  test('new custom chore defaults to follow-up enabled', async ({ page }) => {
+    const { csrf } = await setupWithChores(page);
+
+    // Create a custom chore via API (without specifying followUpEnabled)
+    const resp = await page.request.post('/api/chores', {
+      data: { name: 'Test Custom', icon: '🧪', color: '#10B981', category: 'custom' },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    const { chore } = await resp.json();
+    expect(chore.followUpEnabled).toBe(true);
+
+    // Verify the chore list also shows it enabled
+    const choresResp = await page.request.get('/api/chores');
+    const { chores: updatedChores } = await choresResp.json();
+    const found = updatedChores.find(c => c.id === chore.id);
+    expect(found.followUpEnabled).toBe(true);
   });
 });

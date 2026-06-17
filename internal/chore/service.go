@@ -13,7 +13,7 @@ func NewService(store Store) *Service {
 	return &Service{store: store}
 }
 
-func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string) (Chore, error) {
+func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool) (Chore, error) {
 	if name == "" {
 		return Chore{}, fmt.Errorf("name must not be empty")
 	}
@@ -32,6 +32,10 @@ func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int
 	if indicatorDefaults == nil {
 		indicatorDefaults = []string{}
 	}
+	fu := true
+	if followUpEnabled != nil {
+		fu = *followUpEnabled
+	}
 	return s.store.CreateChore(ctx, Chore{
 		HouseholdID:       householdID,
 		Name:              name,
@@ -42,6 +46,7 @@ func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int
 		CreatedBy:         &userID,
 		IndicatorLabels:   indicatorLabels,
 		IndicatorDefaults: indicatorDefaults,
+		FollowUpEnabled:   fu,
 	})
 }
 
@@ -124,6 +129,7 @@ func (s *Service) RestoreDefaultChore(ctx context.Context, choreID int64, househ
 			existing.IndicatorDefaults = pc.IndicatorDefaults
 			existing.HasVolumeML = pc.HasVolumeML
 			existing.HasRating = pc.HasRating
+			existing.FollowUpEnabled = true
 			if existing.IndicatorLabels == nil {
 				existing.IndicatorLabels = []string{}
 			}
@@ -150,6 +156,7 @@ func (s *Service) GetSystemDefaults() []Chore {
 			IndicatorDefaults: pc.IndicatorDefaults,
 			HasVolumeML:       pc.HasVolumeML,
 			HasRating:         pc.HasRating,
+			FollowUpEnabled:   true,
 		})
 	}
 	return result
