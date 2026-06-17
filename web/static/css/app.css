@@ -2458,8 +2458,34 @@ details[open] .chore-stat-chevron {
   font-size: 18px;
   font-weight: 700;
   color: var(--text);
-  margin-bottom: 16px;
+  margin-bottom: 0;
   text-align: center;
+  flex: 1;
+}
+
+.sheet-title-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.sheet-manage-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+.sheet-manage-btn:hover {
+  color: var(--text);
+  background: var(--bg-subtle);
 }
 
 .sheet-empty {
