@@ -8,6 +8,8 @@ Use the Task tool to launch subagents for codebase exploration, CI babysitting, 
 
 **Subagent scope limits**: Subagents handle well-defined, standalone tasks: monitoring CI, verifying production deploys, searching the codebase for patterns, or reading files in bulk. If a subagent encounters complexity, ambiguity, or a task that requires design decisions, it must stop and report back to the primary agent — never re-implement features, make design choices, or produce code changes. Kick the work back.
 
+**Mandatory delegation to the `git-ops` subagent**: commit, push, and `gh pr create` are mechanical, no-design-decision tasks and MUST be delegated to the `git-ops` subagent (`.opencode/agent/git-ops.md`) once the primary session has staged-ready changes. Do not run `git commit`, `git push`, or `gh pr create` inline in the primary session. The primary session is still responsible for the worktree setup, the pre-push build/test/lint checklist, deciding the commit message intent, and choosing the correct client-parity statement — hand those to the subagent as input. The subagent refuses to edit code or make design decisions; if anything is ambiguous it reports back.
+
 After pushing a `v*` tag, always launch a subagent to watch CI to completion and verify production. Do not wait for the user to ask.
 
 ## Git worktrees
