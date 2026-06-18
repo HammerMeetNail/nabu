@@ -45,25 +45,31 @@ test.describe("Stats customize", () => {
 
     await page.click("button[data-action=\"toggle-customize-stats\"]");
     await expect(page.locator(".customize-panel")).toBeVisible();
-    await expect(page.locator("button[data-action=\"toggle-customize-stats\"]")).toHaveText("Done");
 
-    await page.click("button[data-action=\"toggle-customize-stats\"]");
+    // Close via the checkmark button in the panel header
+    await page.click(".customize-done-btn");
     await expect(page.locator(".customize-panel")).toHaveCount(0);
-    await expect(page.locator("button[data-action=\"toggle-customize-stats\"]")).toHaveText("Customize");
   });
 
-  test("stats overview cannot be hidden", async ({ page }) => {
+  test("stats overview can be hidden", async ({ page }) => {
     await setupWithChores(page);
 
     await page.click("a[data-nav=\"stats\"]");
     await page.waitForSelector(".stats-page");
+    await expect(page.locator(".overview-cards")).toBeVisible();
 
     await page.click("button[data-action=\"toggle-customize-stats\"]");
     await expect(page.locator(".customize-panel")).toBeVisible();
 
     const overviewCheckbox = page.locator(".customize-row[data-section=\"overview\"] input[type=\"checkbox\"]");
     await expect(overviewCheckbox).toBeChecked();
-    await expect(overviewCheckbox).toBeDisabled();
+    await expect(overviewCheckbox).toBeEnabled();
+
+    await overviewCheckbox.uncheck();
+    await expect(page.locator(".overview-cards")).toHaveCount(0);
+
+    await overviewCheckbox.check();
+    await expect(page.locator(".overview-cards")).toBeVisible();
   });
 
   test("stats section can be hidden and persists after reload", async ({ page }) => {
