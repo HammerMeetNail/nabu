@@ -1288,6 +1288,8 @@ details[open] .member-chevron {
 
 .customize-check input {
   flex-shrink: 0;
+  width: auto;
+  height: auto;
 }
 
 .customize-check span {
