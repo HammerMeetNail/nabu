@@ -565,7 +565,8 @@ function renderChoreStatsList(choreStats, choreMap) {
 
 export function renderBabyCareSection(state) {
   const stats = state.stats || {};
-  const babyPeriod = stats.babyPeriod || "daily";
+  const feedBabyPeriod = stats.feedBabyPeriod || "daily";
+  const changeBabyPeriod = stats.changeBabyPeriod || "daily";
   const babyTimeSeries = stats.babyTimeSeries || {};
   const members = state.members || [];
 
@@ -581,24 +582,27 @@ export function renderBabyCareSection(state) {
 
   if (!feedBaby && !changeBaby) return "";
 
-  const periodLabel = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
-
   return `<div class="card mb-3">
     <div class="baby-care-header">
       <h3>Baby</h3>
-      <div class="period-toggle" role="group" aria-label="Time period">
-        ${["daily", "weekly", "monthly"].map(p => {
-          const active = p === babyPeriod ? " period-toggle--active" : "";
-          const label = periodLabel[p];
-          return `<button class="period-toggle-btn${active}" data-action="stats-baby-period" data-period="${p}" aria-pressed="${p === babyPeriod}">${label}</button>`;
-        }).join("")}
-      </div>
     </div>
     <div class="baby-care-columns">
-      ${feedBaby ? renderBabyColumn(feedBaby, memberMap, babyPeriod, "feed") : ""}
-      ${changeBaby ? renderBabyColumn(changeBaby, memberMap, babyPeriod, "change") : ""}
+      ${feedBaby ? renderBabyColumn(feedBaby, memberMap, feedBabyPeriod, "feed") : ""}
+      ${changeBaby ? renderBabyColumn(changeBaby, memberMap, changeBabyPeriod, "change") : ""}
       ${feedingGaps.length > 0 ? renderFeedingGapsColumn(feedingGaps, explainerVisible, gapsStart, gapsEnd) : ""}
     </div>
+  </div>`;
+}
+
+function renderBabyPeriodToggle(activePeriod, type) {
+  const periodLabel = { daily: "Daily", weekly: "Weekly", monthly: "Monthly" };
+  const labelName = type === "feed" ? "Feed Baby" : "Change Baby";
+  return `<div class="period-toggle" role="group" aria-label="Time period for ${labelName}">
+    ${["daily", "weekly", "monthly"].map(p => {
+      const active = p === activePeriod ? " period-toggle--active" : "";
+      const label = periodLabel[p];
+      return `<button class="period-toggle-btn${active}" data-action="stats-baby-period" data-period="${p}" data-type="${type}" aria-pressed="${p === activePeriod}">${label}</button>`;
+    }).join("")}
   </div>`;
 }
 
@@ -608,14 +612,14 @@ function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd) {
 
   return `<div class="baby-care-column">
     <div class="feeding-gaps-header">
-      <h4 class="baby-col-title" style="margin-bottom:0">🕐 Cluster Feeding
+      <h4 class="baby-col-title">🕐 Cluster Feeding
         <button class="feeding-gaps-info-btn" data-action="toggle-feeding-gaps-info" aria-label="How to read this chart" aria-expanded="${explainerVisible}">&#9432;</button>
       </h4>
-    </div>
-    <div class="feeding-gaps-quick">
-      <button class="period-toggle-btn${isQuickActive(dateStart, dateEnd, 1) ? " period-toggle--active" : ""}" data-action="stats-feeding-gaps-quick" data-days="1">Day</button>
-      <button class="period-toggle-btn${isQuickActive(dateStart, dateEnd, 7) ? " period-toggle--active" : ""}" data-action="stats-feeding-gaps-quick" data-days="7">Week</button>
-      <button class="period-toggle-btn${isQuickActive(dateStart, dateEnd, 14) ? " period-toggle--active" : ""}" data-action="stats-feeding-gaps-quick" data-days="14">2 Weeks</button>
+      <div class="feeding-gaps-quick">
+        <button class="period-toggle-btn${isQuickActive(dateStart, dateEnd, 1) ? " period-toggle--active" : ""}" data-action="stats-feeding-gaps-quick" data-days="1">Day</button>
+        <button class="period-toggle-btn${isQuickActive(dateStart, dateEnd, 7) ? " period-toggle--active" : ""}" data-action="stats-feeding-gaps-quick" data-days="7">Week</button>
+        <button class="period-toggle-btn${isQuickActive(dateStart, dateEnd, 14) ? " period-toggle--active" : ""}" data-action="stats-feeding-gaps-quick" data-days="14">2 Weeks</button>
+      </div>
     </div>
     <div class="feeding-gaps-dates">
       <input type="date" class="feeding-gaps-date" data-action="stats-feeding-gaps-date" data-field="start" value="${dateStart || ""}" aria-label="Start date">
@@ -763,7 +767,10 @@ function renderBabyColumn(ts, memberMap, period, type) {
     : renderIndicatorChart(ts.periods, period);
 
   return `<div class="baby-care-column">
-    <h4 class="baby-col-title">${ts.choreIcon} ${escapeHTML(ts.choreName)}</h4>
+    <div class="baby-col-header">
+      <h4 class="baby-col-title">${ts.choreIcon} ${escapeHTML(ts.choreName)}</h4>
+      ${renderBabyPeriodToggle(period, type)}
+    </div>
     ${membersHTML}
     <div class="baby-chart">${chartHTML}</div>
   </div>`;

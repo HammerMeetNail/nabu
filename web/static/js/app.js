@@ -695,16 +695,17 @@ async function loadBabyTimeSeries() {
   if (!feedBaby && !changeBaby) return;
 
   state.stats = state.stats || {};
-  state.stats.babyPeriod = state.stats.babyPeriod || "daily";
-  const period = state.stats.babyPeriod;
+  state.stats.feedBabyPeriod = state.stats.feedBabyPeriod || "daily";
+  state.stats.changeBabyPeriod = state.stats.changeBabyPeriod || "daily";
   state.stats.babyTimeSeries = state.stats.babyTimeSeries || {};
 
   const tasks = [];
 
   if (feedBaby) {
+    const feedPeriod = state.stats.feedBabyPeriod;
     tasks.push((async () => {
       try {
-        const data = await loadChoreTimeSeries(feedBaby.id, period);
+        const data = await loadChoreTimeSeries(feedBaby.id, feedPeriod);
         if (data && data.timeSeries) {
           state.stats.babyTimeSeries.feedBaby = data.timeSeries;
         }
@@ -728,9 +729,10 @@ async function loadBabyTimeSeries() {
     })());
   }
   if (changeBaby) {
+    const changePeriod = state.stats.changeBabyPeriod;
     tasks.push((async () => {
       try {
-        const data = await loadChoreTimeSeries(changeBaby.id, period);
+        const data = await loadChoreTimeSeries(changeBaby.id, changePeriod);
         if (data && data.timeSeries) {
           state.stats.babyTimeSeries.changeBaby = data.timeSeries;
         }
@@ -2303,9 +2305,16 @@ export async function init() {
       case "stats-baby-period": {
         e.preventDefault();
         const period = actionEl.dataset.period;
-        if (!period) break;
+        const type = actionEl.dataset.type;
+        if (!period || !type) break;
         state.stats = state.stats || {};
-        state.stats.babyPeriod = period;
+        if (type === "feed") {
+          state.stats.feedBabyPeriod = period;
+        } else if (type === "change") {
+          state.stats.changeBabyPeriod = period;
+        } else {
+          break;
+        }
         loadBabyTimeSeries().then(() => render(app));
         break;
       }

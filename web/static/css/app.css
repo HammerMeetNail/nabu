@@ -1405,6 +1405,28 @@ details[open] .member-chevron {
   font-weight: 600;
   margin: 0 0 8px;
   color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.baby-col-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.baby-col-header .baby-col-title {
+  margin: 0;
+}
+
+.baby-col-header .period-toggle-btn,
+.feeding-gaps-quick .period-toggle-btn {
+  padding: 3px 7px;
+  font-size: 0.7rem;
 }
 
 .baby-member-list {
@@ -1498,13 +1520,21 @@ details[open] .member-chevron {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 4px;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.feeding-gaps-header .baby-col-title {
+  margin: 0;
 }
 
 .feeding-gaps-quick {
   display: flex;
-  gap: 4px;
-  margin-bottom: 6px;
+  gap: 0;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
 }
 
 .feeding-gaps-dates {

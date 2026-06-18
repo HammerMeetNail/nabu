@@ -28,7 +28,8 @@ struct StatsView: View {
     @State private var csFilterEnd: String = ""
 
     // Baby care
-    @State private var babyPeriod: String = "daily"
+    @State private var feedBabyPeriod: String = "daily"
+    @State private var changeBabyPeriod: String = "daily"
     @State private var feedBabyTS: ChoreTimeSeries?
     @State private var changeBabyTS: ChoreTimeSeries?
     @State private var selectedFeedBar: Int? = nil
@@ -121,35 +122,16 @@ struct StatsView: View {
 
     @ViewBuilder
     private var babyCareSection: some View {
-        let periodLabels = ["daily": "Daily", "weekly": "Weekly", "monthly": "Monthly"]
-
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Baby").font(.headline)
-                Spacer()
-                HStack(spacing: 4) {
-                    ForEach(["daily", "weekly", "monthly"], id: \.self) { p in
-                        Button {
-                            Task { await setBabyPeriod(p) }
-                        } label: {
-                            Text(periodLabels[p] ?? p)
-                                .font(.caption).fontWeight(.medium)
-                                .padding(.horizontal, 10).padding(.vertical, 5)
-                                .background(babyPeriod == p ? DesignColors.primary : DesignColors.surfaceSecondary)
-                                .foregroundColor(babyPeriod == p ? .white : DesignColors.textPrimary)
-                                .clipShape(Capsule())
-                        }
-                    }
-                }
-            }
+            Text("Baby").font(.headline)
 
             VStack(spacing: 12) {
                 if let ts = feedBabyTS {
-                    babyColumn(ts, type: "feed")
+                    babyColumn(ts, type: "feed", period: feedBabyPeriod)
                         .frame(maxWidth: .infinity)
                 }
                 if let ts = changeBabyTS {
-                    babyColumn(ts, type: "change")
+                    babyColumn(ts, type: "change", period: changeBabyPeriod)
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -161,13 +143,29 @@ struct StatsView: View {
     }
 
     @ViewBuilder
-    private func babyColumn(_ ts: ChoreTimeSeries, type: String) -> some View {
+    private func babyColumn(_ ts: ChoreTimeSeries, type: String, period: String) -> some View {
         let isVolume = type == "feed"
+        let periodLabels = ["daily": "Daily", "weekly": "Weekly", "monthly": "Monthly"]
 
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 4) {
                 Text(ts.choreIcon).font(.body)
                 Text(ts.choreName).font(.subheadline).fontWeight(.semibold).lineLimit(1)
+                Spacer(minLength: 4)
+                HStack(spacing: 4) {
+                    ForEach(["daily", "weekly", "monthly"], id: \.self) { p in
+                        Button {
+                            Task { await setBabyPeriod(p, type: type) }
+                        } label: {
+                            Text(periodLabels[p] ?? p)
+                                .font(.system(size: 10, weight: .medium))
+                                .padding(.horizontal, 7).padding(.vertical, 3)
+                                .background(period == p ? DesignColors.primary : DesignColors.surfaceSecondary)
+                                .foregroundColor(period == p ? .white : DesignColors.textPrimary)
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
             }
 
             // By-member breakdown
@@ -211,9 +209,9 @@ struct StatsView: View {
                 Text("No data")
                     .font(.caption2).foregroundColor(DesignColors.textSecondary)
             } else if isVolume {
-                babyVolumeChart(ts.periods, selectedBar: $selectedFeedBar)
+                babyVolumeChart(ts.periods, period: period, selectedBar: $selectedFeedBar)
             } else {
-                babyIndicatorChart(ts.periods, selectedBar: $selectedChangeBar)
+                babyIndicatorChart(ts.periods, period: period, selectedBar: $selectedChangeBar)
             }
         }
     }
@@ -267,7 +265,7 @@ struct StatsView: View {
     // MARK: - Baby Volume Chart
 
     @ViewBuilder
-    private func babyVolumeChart(_ periods: [TimeSeriesPeriod], selectedBar: Binding<Int?>) -> some View {
+    private func babyVolumeChart(_ periods: [TimeSeriesPeriod], period: String, selectedBar: Binding<Int?>) -> some View {
         let stackColors: [String: Color] = [
             "🍼 formula": Color(hexUnsafe: "EC4899"),
             "🤱 breast": Color(hexUnsafe: "F59E0B"),
@@ -323,14 +321,14 @@ struct StatsView: View {
 
                         HStack(alignment: .bottom, spacing: spacing) {
                             ForEach(Array(periods.enumerated()), id: \.offset) { i, p in
-                                let showXLabel = babyPeriod != "daily" || i % 2 == 0
+                                let showXLabel = period != "daily" || i % 2 == 0
                                 let rawLabel = volumeBarLabel(p, stackKeys: stackKeys)
                                 let estW = CGFloat(rawLabel.count) * 7
                                 let colCenter = CGFloat(i) * colW + colW / 2
                                 let labelAlign: Alignment = colCenter + estW / 2 > availableWidth ? .topTrailing
                                     : colCenter - estW / 2 < 0 ? .topLeading
                                     : .top
-                                babyVolumeBarColumn(p, i: i, maxML: maxML, colW: colW, chartH: chartH, stackKeys: stackKeys, stackColors: stackColors, selectedBar: selectedBar, showXLabel: showXLabel, labelAlign: labelAlign)
+                                babyVolumeBarColumn(p, i: i, maxML: maxML, colW: colW, chartH: chartH, stackKeys: stackKeys, stackColors: stackColors, period: period, selectedBar: selectedBar, showXLabel: showXLabel, labelAlign: labelAlign)
                             }
                         }
                     }
@@ -346,7 +344,7 @@ struct StatsView: View {
     }
 
     @ViewBuilder
-    private func babyVolumeBarColumn(_ p: TimeSeriesPeriod, i: Int, maxML: Int, colW: CGFloat, chartH: CGFloat, stackKeys: [String], stackColors: [String: Color], selectedBar: Binding<Int?>, showXLabel: Bool, labelAlign: Alignment = .top) -> some View {
+    private func babyVolumeBarColumn(_ p: TimeSeriesPeriod, i: Int, maxML: Int, colW: CGFloat, chartH: CGFloat, stackKeys: [String], stackColors: [String: Color], period: String, selectedBar: Binding<Int?>, showXLabel: Bool, labelAlign: Alignment = .top) -> some View {
         let totalML = p.totalML ?? 0
         let valText = volumeBarLabel(p, stackKeys: stackKeys)
         VStack(spacing: 2) {
@@ -380,7 +378,7 @@ struct StatsView: View {
             }
 
             if showXLabel {
-                Text(formatBabyXLabel(p, period: babyPeriod))
+                Text(formatBabyXLabel(p, period: period))
                     .font(.system(size: 7))
                     .foregroundColor(Color(hexUnsafe: "9ca3af"))
                     .lineLimit(1)
@@ -474,7 +472,7 @@ struct StatsView: View {
     // MARK: - Baby Indicator Chart
 
     @ViewBuilder
-    private func babyIndicatorChart(_ periods: [TimeSeriesPeriod], selectedBar: Binding<Int?>) -> some View {
+    private func babyIndicatorChart(_ periods: [TimeSeriesPeriod], period: String, selectedBar: Binding<Int?>) -> some View {
         let indicatorColors: [String: Color] = [
             "💩 poo": Color(hexUnsafe: "8B4513"),
             "💛 pee": Color(hexUnsafe: "FACC15"),
@@ -534,14 +532,14 @@ struct StatsView: View {
 
                         HStack(alignment: .bottom, spacing: spacing) {
                             ForEach(Array(periods.enumerated()), id: \.offset) { i, p in
-                                let showXLabel = babyPeriod != "daily" || i % 2 == 0
+                                let showXLabel = period != "daily" || i % 2 == 0
                                 let rawLabel = indicatorBarLabel(p, indicatorKeys: indicatorKeys)
                                 let estW = CGFloat(rawLabel.count) * 7
                                 let colCenter = CGFloat(i) * colW + colW / 2
                                 let labelAlign: Alignment = colCenter + estW / 2 > availableWidth ? .topTrailing
                                     : colCenter - estW / 2 < 0 ? .topLeading
                                     : .top
-                                babyIndicatorBarColumn(p, i: i, maxCount: maxCount, colW: colW, chartH: chartH, indicatorKeys: indicatorKeys, indicatorColors: indicatorColors, selectedBar: selectedBar, showXLabel: showXLabel, labelAlign: labelAlign)
+                                babyIndicatorBarColumn(p, i: i, maxCount: maxCount, colW: colW, chartH: chartH, indicatorKeys: indicatorKeys, indicatorColors: indicatorColors, period: period, selectedBar: selectedBar, showXLabel: showXLabel, labelAlign: labelAlign)
                             }
                         }
                     }
@@ -557,7 +555,7 @@ struct StatsView: View {
     }
 
     @ViewBuilder
-    private func babyIndicatorBarColumn(_ p: TimeSeriesPeriod, i: Int, maxCount: Int, colW: CGFloat, chartH: CGFloat, indicatorKeys: [String], indicatorColors: [String: Color], selectedBar: Binding<Int?>, showXLabel: Bool, labelAlign: Alignment = .top) -> some View {
+    private func babyIndicatorBarColumn(_ p: TimeSeriesPeriod, i: Int, maxCount: Int, colW: CGFloat, chartH: CGFloat, indicatorKeys: [String], indicatorColors: [String: Color], period: String, selectedBar: Binding<Int?>, showXLabel: Bool, labelAlign: Alignment = .top) -> some View {
         let periodTotal = indicatorKeys.reduce(0) { $0 + (p.indicators?[$1] ?? 0) }
         let valText = indicatorBarLabel(p, indicatorKeys: indicatorKeys)
 
@@ -592,7 +590,7 @@ struct StatsView: View {
             }
 
             if showXLabel {
-                Text(formatBabyXLabel(p, period: babyPeriod))
+                Text(formatBabyXLabel(p, period: period))
                     .font(.system(size: 7))
                     .foregroundColor(Color(hexUnsafe: "9ca3af"))
                     .lineLimit(1)
@@ -1280,11 +1278,10 @@ struct StatsView: View {
     }
 
     private func loadBabyTimeSeries() async {
-        let period = babyPeriod
         if let fb = feedBabyChore {
             if let data: TimeSeriesResponse = try? await environment.apiClient.get(
                 "/api/stats/chores/\(fb.id)/time-series",
-                query: [URLQueryItem(name: "period", value: period)]
+                query: [URLQueryItem(name: "period", value: feedBabyPeriod)]
             ) {
                 feedBabyTS = data.timeSeries
             }
@@ -1292,18 +1289,23 @@ struct StatsView: View {
         if let cb = changeBabyChore {
             if let data: TimeSeriesResponse = try? await environment.apiClient.get(
                 "/api/stats/chores/\(cb.id)/time-series",
-                query: [URLQueryItem(name: "period", value: period)]
+                query: [URLQueryItem(name: "period", value: changeBabyPeriod)]
             ) {
                 changeBabyTS = data.timeSeries
             }
         }
     }
 
-    private func setBabyPeriod(_ period: String) async {
-        guard period != babyPeriod else { return }
-        babyPeriod = period
-        selectedFeedBar = nil
-        selectedChangeBar = nil
+    private func setBabyPeriod(_ period: String, type: String) async {
+        if type == "feed" {
+            guard period != feedBabyPeriod else { return }
+            feedBabyPeriod = period
+            selectedFeedBar = nil
+        } else {
+            guard period != changeBabyPeriod else { return }
+            changeBabyPeriod = period
+            selectedChangeBar = nil
+        }
         await loadBabyTimeSeries()
     }
 
