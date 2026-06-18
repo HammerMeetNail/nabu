@@ -69,7 +69,7 @@ jobs:
       - name: Check PR description for parity statement
         if: steps.client.outputs.pwa == 'true' || steps.client.outputs.ios == 'true'
         run: |
-          PR_BODY="${{ github.event.pull_request.body }}"
+          PR_BODY='${{ toJSON(github.event.pull_request.body) }}'
           PR_BODY_LOWER=$(echo "$PR_BODY" | tr '[:upper:]' '[:lower:]')
 
           if echo "$PR_BODY_LOWER" | grep -q "pwa and ios both updated"; then
