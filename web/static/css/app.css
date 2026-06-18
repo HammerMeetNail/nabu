@@ -1284,7 +1284,6 @@ details[open] .member-chevron {
   flex: 1;
   font-size: 0.9rem;
   min-width: 0;
-  overflow: hidden;
 }
 
 .customize-check input {
@@ -1292,6 +1291,8 @@ details[open] .member-chevron {
 }
 
 .customize-check span {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
