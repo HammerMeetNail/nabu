@@ -1173,49 +1173,106 @@ details[open] .member-chevron {
 
 .stats-header-row {
   display: flex;
-  justify-content: flex-end;
-  margin-bottom: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
 }
 
-.btn-link {
-  background: none;
+.stats-header-row h2 {
+  margin: 0;
+}
+
+.stats-customize-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
   border: none;
-  color: var(--link, #2563eb);
-  font-size: 0.875rem;
+  background: transparent;
+  color: var(--text-secondary);
   cursor: pointer;
-  padding: 0.25rem 0.5rem;
+  flex-shrink: 0;
+  transition: background 0.15s, color 0.15s;
 }
 
-.customize-panel .customize-hint {
-  color: #6b7280;
-  font-size: 0.8rem;
-  margin: 0 0 0.75rem;
+.stats-customize-btn:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.customize-panel {
+  padding: 0 0 4px;
+  margin-bottom: 16px;
+}
+
+.customize-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.customize-panel-header h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.customize-done-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: #22c55e;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+
+.customize-done-btn:hover {
+  background: var(--bg);
 }
 
 .customize-row {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.5rem;
-  border: 1px solid transparent;
-  border-radius: 6px;
+  padding: 0.6rem 0.25rem;
+  border-bottom: 1px solid var(--border);
   cursor: grab;
   transition: background 0.1s;
 }
 
+.customize-row:last-child {
+  border-bottom: none;
+}
+
+.customize-row:hover {
+  background: var(--bg);
+}
+
 .customize-row--dragging {
-  opacity: 0.5;
+  opacity: 0.35;
 }
 
 .customize-row.drag-over {
-  border-color: #2563eb;
-  background: #eff6ff;
+  background: rgba(46, 134, 171, 0.08);
+  border-top: 2px solid var(--primary);
 }
 
 .customize-row .drag-handle {
-  color: #9ca3af;
+  color: var(--text-secondary);
+  font-size: 16px;
   cursor: grab;
   user-select: none;
+  flex-shrink: 0;
+  padding: 0 4px;
 }
 
 .customize-check {
@@ -1223,10 +1280,8 @@ details[open] .member-chevron {
   align-items: center;
   gap: 0.5rem;
   cursor: pointer;
-}
-
-.customize-check input:disabled + span {
-  color: #9ca3af;
+  flex: 1;
+  font-size: 0.9rem;
 }
 
 .overview-cards {

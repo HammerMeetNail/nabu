@@ -2530,7 +2530,7 @@ export async function init() {
     }
     if (actionEl?.dataset?.action === "toggle-stats-section") {
       const section = actionEl.dataset.section;
-      if (!section || section === "overview") return;
+      if (!section) return;
       state.stats = state.stats || {};
       state.stats.sectionHidden = state.stats.sectionHidden || [];
       const hidden = state.stats.sectionHidden;
