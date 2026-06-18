@@ -1247,6 +1247,7 @@ details[open] .member-chevron {
   border-bottom: 1px solid var(--border);
   cursor: grab;
   transition: background 0.1s;
+  min-width: 0;
 }
 
 .customize-row:last-child {
@@ -1282,6 +1283,18 @@ details[open] .member-chevron {
   cursor: pointer;
   flex: 1;
   font-size: 0.9rem;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.customize-check input {
+  flex-shrink: 0;
+}
+
+.customize-check span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .overview-cards {
