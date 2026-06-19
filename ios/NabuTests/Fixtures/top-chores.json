@@ -1,6 +1,6 @@
 {
   "topChores": [
-    {"choreId": 1, "choreName": "Feed Cats", "choreIcon": "\ud83d\udc31", "today": 2, "thisWeek": 5, "thisMonth": 12},
-    {"choreId": 3, "choreName": "Walk Dog", "choreIcon": "\ud83d\udc15", "today": 0, "thisWeek": 1, "thisMonth": 4}
+    {"choreId": 1, "choreName": "Feed Cats", "choreIcon": "\ud83d\udc31", "count": 12},
+    {"choreId": 3, "choreName": "Walk Dog", "choreIcon": "\ud83d\udc15", "count": 4}
   ]
 }

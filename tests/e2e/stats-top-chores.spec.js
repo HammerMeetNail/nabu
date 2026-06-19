@@ -97,6 +97,10 @@ test.describe("Stats top chores", () => {
     await expect(rows.nth(1).locator(".top-chore-rank")).toContainText("2");
     await expect(rows.nth(2).locator(".top-chore-name")).toContainText("Wash Dishes");
     await expect(rows.nth(2).locator(".top-chore-rank")).toContainText("3");
+
+    await expect(rows.nth(0).locator(".top-chore-count")).toHaveText("3");
+    await expect(rows.nth(1).locator(".top-chore-count")).toHaveText("2");
+    await expect(rows.nth(2).locator(".top-chore-count")).toHaveText("1");
   });
 
   test("top chores shows user pills and empty state when no chores logged", async ({
@@ -120,7 +124,7 @@ test.describe("Stats top chores", () => {
     await expect(page.locator(".top-chore-list .text-secondary")).toBeVisible();
   });
 
-  test("top chores day/week/month count labels are present", async ({
+  test("top chores period toggle defaults to month and switches between periods", async ({
     page,
   }) => {
     const { chores, csrf } = await setupWithChores(page);
@@ -133,14 +137,37 @@ test.describe("Stats top chores", () => {
     await page.click("a[data-nav=\"stats\"]");
     await page.waitForSelector(".stats-page", { timeout: 10000 });
 
-    await expect(page.locator(".top-chore-header-label:text(\"Day\")")).toBeVisible();
-    await expect(page.locator(".top-chore-header-label:text(\"Week\")")).toBeVisible();
-    await expect(page.locator(".top-chore-header-label:text(\"Month\")")).toBeVisible();
+    const toggle = page.locator(
+      ".stats-section-header:has(h3:text(\"Top Chores\")) .period-toggle"
+    );
+    await expect(toggle).toBeVisible({ timeout: 5000 });
 
-    const row = page.locator(".top-chore-row").first();
-    await expect(row.locator(".top-chore-count--day")).toBeVisible();
-    await expect(row.locator(".top-chore-count--week")).toBeVisible();
-    await expect(row.locator(".top-chore-count--month")).toBeVisible();
+    const buttons = toggle.locator(".period-toggle-btn");
+    await expect(buttons).toHaveCount(4);
+    await expect(buttons.filter({ hasText: "Day" })).toBeVisible();
+    await expect(buttons.filter({ hasText: "Week" })).toBeVisible();
+    await expect(buttons.filter({ hasText: "Month" })).toBeVisible();
+    await expect(buttons.filter({ hasText: "All" })).toBeVisible();
+
+    await expect(
+      buttons.filter({ hasText: "Month" })
+    ).toHaveClass(/\bperiod-toggle--active\b/);
+
+    await buttons.filter({ hasText: "Day" }).click();
+    await expect(
+      buttons.filter({ hasText: "Day" })
+    ).toHaveClass(/\bperiod-toggle--active\b/);
+    await expect(
+      page.locator(".top-chore-list .top-chore-count").first()
+    ).toBeVisible();
+
+    await buttons.filter({ hasText: "All" }).click();
+    await expect(
+      buttons.filter({ hasText: "All" })
+    ).toHaveClass(/\bperiod-toggle--active\b/);
+    await expect(
+      page.locator(".top-chore-list .top-chore-count").first()
+    ).toBeVisible();
   });
 
   test("user pill toggles per-user top chores", async ({ page }) => {

@@ -1679,6 +1679,27 @@ details[open] .member-chevron {
   margin-bottom: 8px;
 }
 
+/* HEADER shared by Leaderboard and Top Chores cards: lays the heading out
+   side-by-side with the period toggle, matching the look of the Feed Baby
+   header. */
+.stats-section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.stats-section-header h3 {
+  margin: 0;
+}
+
+.stats-section-header .period-toggle-btn {
+  padding: 3px 7px;
+  font-size: 0.7rem;
+}
+
 /* Busy Hours */
 .busy-hours-filters {
   display: flex;

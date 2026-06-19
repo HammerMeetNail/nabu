@@ -90,7 +90,7 @@ When implementing an iOS feature or changing PWA behavior, update the correspond
 | Overview | `stats.js`, `stats-tab.spec.js` | `Stats/`, `StatsUITests.swift`, `StatsSnapshotTests.swift` | `/api/stats/overview` | iOS pending | |
 | Heatmap | `stats.js`, `stats-tab.spec.js` | `Stats/`, `StatsSnapshotTests.swift` | `/api/stats/heatmap` | iOS pending | |
 | Busy hours | `stats.js`, `stats-busy-hours-filter.spec.js` | `Stats/`, `BusyHoursUITests.swift` | `/api/stats/busy-hours` | iOS pending | |
-| Leaderboard | `stats.js`, `stats-tab.spec.js` | `Stats/`, `StatsSnapshotTests.swift` | `/api/stats/leaderboard` | iOS pending | |
+| Leaderboard | `stats.js`, `stats-leaderboard.spec.js` | `Stats/`, `StatsSnapshotTests.swift` | `/api/stats/leaderboard` | iOS pending | |
 | Top chores | `stats.js`, `stats-top-chores.spec.js` | `Stats/`, `TopChoresUITests.swift` | `/api/stats/top-chores` | iOS pending | |
 | Breakdown | `stats.js`, `stats-tab.spec.js` | `Stats/`, `StatsSnapshotTests.swift` | `/api/stats/breakdown` | iOS pending | |
 | Streaks | `stats.js`, `stats-tab.spec.js` | `Stats/`, `StatsSnapshotTests.swift` | `/api/stats/streaks` | iOS pending | |

@@ -543,6 +543,23 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(response.leaderboard.count, 2)
         XCTAssertEqual(response.leaderboard[0].userId, 1)
         XCTAssertEqual(response.leaderboard[0].count, 12)
+        XCTAssertEqual(response.start, "2024-12-18")
+        XCTAssertEqual(response.end, "2024-12-25")
+    }
+
+    func testDecodeLeaderboardAllTime() throws {
+        let json = #"""
+        {
+          "leaderboard": [{"userId": 1, "count": 99}],
+          "period": "all"
+        }
+        """#.data(using: .utf8)!
+        let response = try decoder.decode(LeaderboardResponse.self, from: json)
+        XCTAssertEqual(response.leaderboard.count, 1)
+        XCTAssertEqual(response.leaderboard[0].userId, 1)
+        XCTAssertEqual(response.leaderboard[0].count, 99)
+        XCTAssertNil(response.start)
+        XCTAssertNil(response.end)
     }
 
     func testDecodeStreaks() throws {
@@ -594,17 +611,17 @@ final class ModelDecodingTests: XCTestCase {
         let json = #"""
         {
           "topChores": [
-            {"choreId": 1, "choreName": "Feed Cats", "choreIcon": "\ud83d\udc31", "today": 2, "thisWeek": 5, "thisMonth": 12},
-            {"choreId": 3, "choreName": "Walk Dog", "choreIcon": "\ud83d\udc15", "today": 0, "thisWeek": 1, "thisMonth": 4}
+            {"choreId": 1, "choreName": "Feed Cats", "choreIcon": "\ud83d\udc31", "count": 12},
+            {"choreId": 3, "choreName": "Walk Dog", "choreIcon": "\ud83d\udc15", "count": 4}
           ]
         }
         """#.data(using: .utf8)!
         let response = try decoder.decode(TopChoresResponse.self, from: json)
         XCTAssertEqual(response.topChores.count, 2)
         XCTAssertEqual(response.topChores[0].choreId, 1)
-        XCTAssertEqual(response.topChores[0].today, 2)
-        XCTAssertEqual(response.topChores[0].thisWeek, 5)
-        XCTAssertEqual(response.topChores[0].thisMonth, 12)
+        XCTAssertEqual(response.topChores[0].count, 12)
+        XCTAssertEqual(response.topChores[1].choreId, 3)
+        XCTAssertEqual(response.topChores[1].count, 4)
     }
 
     // MARK: - Error

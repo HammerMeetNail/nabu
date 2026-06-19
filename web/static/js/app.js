@@ -21,7 +21,7 @@ import {
 } from "./auth.js";
 import { loadHousehold, listHouseholds, activateHousehold, createHousehold, updateHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, transferOwnership, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
 import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, loadMoreHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
-import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadFeedingGaps, STATS_SECTIONS } from "./stats.js";
+import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, STATS_SECTIONS } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone } from "./preferences.js";
@@ -639,6 +639,11 @@ async function loadAllStatsData() {
   state.stats = state.stats || {};
 
   const uid = state.stats.topChoresUserId = state.stats.topChoresUserId || (state.user && state.user.id) || 0;
+  state.stats.leaderboardPeriod = state.stats.leaderboardPeriod || "week";
+  state.stats.topChoresPeriod = state.stats.topChoresPeriod || "month";
+  state.stats.leaderboardByPeriod = state.stats.leaderboardByPeriod || {};
+  state.stats.leaderboardRangeByPeriod = state.stats.leaderboardRangeByPeriod || {};
+  state.stats.topChoresByUserAndPeriod = state.stats.topChoresByUserAndPeriod || {};
   const busyFilter = state.stats.busyHoursFilter || {};
   const csFilter = state.stats.choreStatsFilter || {};
 
@@ -677,10 +682,22 @@ async function loadAllStatsData() {
       }
     })(),
     (async () => {
-      const tcData = await loadTopChores(uid);
+      const period = state.stats.topChoresPeriod;
+      const cacheKey = `${uid}-${period}`;
+      const tcData = await loadTopChores(uid, period);
       if (tcData && tcData.topChores) {
-        state.stats.topChoresByUser = state.stats.topChoresByUser || {};
-        state.stats.topChoresByUser[uid] = tcData.topChores;
+        state.stats.topChoresByUserAndPeriod[cacheKey] = tcData.topChores;
+      }
+    })(),
+    (async () => {
+      const period = state.stats.leaderboardPeriod;
+      if (state.stats.leaderboardByPeriod[period]) return;
+      const lbData = await loadLeaderboard(period);
+      if (lbData && lbData.leaderboard) {
+        state.stats.leaderboardByPeriod[period] = lbData.leaderboard;
+        if (lbData.start || lbData.end) {
+          state.stats.leaderboardRangeByPeriod[period] = { start: lbData.start || "", end: lbData.end || "" };
+        }
       }
     })(),
     loadBabyTimeSeries(),
@@ -2361,15 +2378,62 @@ export async function init() {
         if (!uid) break;
         state.stats = state.stats || {};
         state.stats.topChoresUserId = uid;
-        state.stats.topChoresByUser = state.stats.topChoresByUser || {};
-        if (state.stats.topChoresByUser[uid]) {
+        state.stats.topChoresPeriod = state.stats.topChoresPeriod || "month";
+        state.stats.topChoresByUserAndPeriod = state.stats.topChoresByUserAndPeriod || {};
+        const period = state.stats.topChoresPeriod;
+        const cacheKey = `${uid}-${period}`;
+        if (state.stats.topChoresByUserAndPeriod[cacheKey]) {
           render(app);
         } else {
-          loadTopChores(uid).then(data => {
+          loadTopChores(uid, period).then(data => {
             if (data && data.topChores) {
-              state.stats.topChoresByUser[uid] = data.topChores;
+              state.stats.topChoresByUserAndPeriod[cacheKey] = data.topChores;
             }
           }).catch(() => {}).then(() => render(app));
+        }
+        break;
+      }
+
+      case "stats-period": {
+        e.preventDefault();
+        const section = actionEl.dataset.section;
+        const period = actionEl.dataset.period;
+        if (!section || !period) break;
+        state.stats = state.stats || {};
+        if (section === "leaderboard") {
+          const prev = state.stats.leaderboardPeriod || "week";
+          if (prev === period) break;
+          state.stats.leaderboardPeriod = period;
+          state.stats.leaderboardByPeriod = state.stats.leaderboardByPeriod || {};
+          state.stats.leaderboardRangeByPeriod = state.stats.leaderboardRangeByPeriod || {};
+          if (state.stats.leaderboardByPeriod[period]) {
+            render(app);
+          } else {
+            loadLeaderboard(period).then(data => {
+              if (data && data.leaderboard) {
+                state.stats.leaderboardByPeriod[period] = data.leaderboard;
+                if (data.start || data.end) {
+                  state.stats.leaderboardRangeByPeriod[period] = { start: data.start || "", end: data.end || "" };
+                }
+              }
+            }).catch(() => {}).then(() => render(app));
+          }
+        } else if (section === "top-chores") {
+          const prev = state.stats.topChoresPeriod || "month";
+          if (prev === period) break;
+          state.stats.topChoresPeriod = period;
+          state.stats.topChoresByUserAndPeriod = state.stats.topChoresByUserAndPeriod || {};
+          const uid = state.stats.topChoresUserId || (state.user && state.user.id) || 0;
+          const cacheKey = `${uid}-${period}`;
+          if (state.stats.topChoresByUserAndPeriod[cacheKey]) {
+            render(app);
+          } else {
+            loadTopChores(uid, period).then(data => {
+              if (data && data.topChores) {
+                state.stats.topChoresByUserAndPeriod[cacheKey] = data.topChores;
+              }
+            }).catch(() => {}).then(() => render(app));
+          }
         }
         break;
       }
@@ -2690,13 +2754,23 @@ export async function init() {
     await Promise.all([loadHouseholdData(), loadPreferences(state)]);
     await syncTimezone(state);
     if (state.household) {
-      await Promise.all([
+      const initTasks = [
         loadChoreData(),
         loadTodayData(),
         loadLatestLogsData(),
         loadStatsData(),
         loadNotifData(),
-      ]);
+      ];
+      // On a direct navigation to /stats (URL load instead of a tab click),
+      // the click handler that normally triggers loadAllStatsData never fires.
+      // Kick it off here so the period-aware Leaderboard and Top Chores caches
+      // are populated before the first render — otherwise the sections render
+      // empty until the user clicks around.
+      const initialRoute = state.currentRoute || window.location.pathname;
+      if (initialRoute === "/stats") {
+        initTasks.push(loadAllStatsData());
+      }
+      await Promise.all(initTasks);
     }
   } catch {}
 
