@@ -54,16 +54,25 @@ func (h *StatsHandler) Leaderboard(w http.ResponseWriter, r *http.Request) {
 	var err error
 	var rangeStart, rangeEnd time.Time
 
+	loc := h.userLocation(r)
+	now := nowInLoc(loc)
+
 	switch period {
+	case "day":
+		y, m, d := now.Date()
+		rangeStart = time.Date(y, m, d, 0, 0, 0, 0, loc)
+		rangeEnd = rangeStart.AddDate(0, 0, 1)
+		board, err = h.service.GetDailyLeaderboard(r.Context(), *user.HouseholdID, loc)
 	case "month":
-		loc := h.userLocation(r)
-		now := nowInLoc(loc)
 		rangeStart = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
 		rangeEnd = rangeStart.AddDate(0, 1, 0)
 		board, err = h.service.GetMonthlyLeaderboard(r.Context(), *user.HouseholdID, now.Year(), now.Month(), loc)
+	case "all":
+		// No time bound: fetch every log ever recorded for this household.
+		rangeStart = time.Time{}
+		rangeEnd = time.Time{}
+		board, err = h.service.GetAllTimeLeaderboard(r.Context(), *user.HouseholdID, loc)
 	default:
-		loc := h.userLocation(r)
-		now := nowInLoc(loc)
 		weekday := int(now.Weekday()) - int(time.Monday)
 		if weekday < 0 {
 			weekday += 7
@@ -79,11 +88,17 @@ func (h *StatsHandler) Leaderboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"leaderboard": board,
-		"start":       rangeStart.Format("2006-01-02"),
-		"end":         rangeEnd.Format("2006-01-02"),
-	})
+		"period":      period,
+	}
+	if !rangeStart.IsZero() {
+		resp["start"] = rangeStart.Format("2006-01-02")
+	}
+	if !rangeEnd.IsZero() {
+		resp["end"] = rangeEnd.Format("2006-01-02")
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *StatsHandler) Streaks(w http.ResponseWriter, r *http.Request) {
@@ -358,13 +373,21 @@ func (h *StatsHandler) TopChores(w http.ResponseWriter, r *http.Request) {
 		userID = uid
 	}
 
-	entries, err := h.service.GetTopChores(r.Context(), *user.HouseholdID, userID, 5, h.userLocation(r))
+	period := r.URL.Query().Get("period")
+	if period == "" {
+		period = "month"
+	}
+
+	entries, err := h.service.GetTopChores(r.Context(), *user.HouseholdID, userID, 5, period, h.userLocation(r))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]any{"topChores": entries})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"topChores": entries,
+		"period":    period,
+	})
 }
 
 func (h *StatsHandler) ChoreTimeSeries(w http.ResponseWriter, r *http.Request) {

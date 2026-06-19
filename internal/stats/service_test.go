@@ -381,7 +381,7 @@ func TestGetTopChores_Basic(t *testing.T) {
 	}
 	svc, _ := seedService(t, logs)
 
-	entries, err := svc.GetTopChores(context.Background(), 1, 0, 5, utc)
+	entries, err := svc.GetTopChores(context.Background(), 1, 0, 5, "month", utc)
 	if err != nil {
 		t.Fatalf("GetTopChores: %v", err)
 	}
@@ -392,21 +392,15 @@ func TestGetTopChores_Basic(t *testing.T) {
 	if entries[0].ChoreName != "Dishes" {
 		t.Errorf("first entry should be Dishes (most monthly logs), got %s", entries[0].ChoreName)
 	}
-	if entries[0].ThisMonth != 3 {
-		t.Errorf("Dishes ThisMonth = %d, want 3", entries[0].ThisMonth)
-	}
-	if entries[0].Today != 3 {
-		t.Errorf("Dishes Today = %d, want 3", entries[0].Today)
+	if entries[0].Count != 3 {
+		t.Errorf("Dishes Count = %d, want 3", entries[0].Count)
 	}
 
 	if entries[1].ChoreName != "Vacuum" {
 		t.Errorf("second entry should be Vacuum, got %s", entries[1].ChoreName)
 	}
-	if entries[1].ThisMonth != 2 {
-		t.Errorf("Vacuum ThisMonth = %d, want 2", entries[1].ThisMonth)
-	}
-	if entries[1].Today != 2 {
-		t.Errorf("Vacuum Today = %d, want 2", entries[1].Today)
+	if entries[1].Count != 2 {
+		t.Errorf("Vacuum Count = %d, want 2", entries[1].Count)
 	}
 }
 
@@ -425,7 +419,7 @@ func TestGetTopChores_PerUser(t *testing.T) {
 	}
 	svc, _ := seedService(t, logs)
 
-	entries, err := svc.GetTopChores(context.Background(), 1, 10, 5, utc)
+	entries, err := svc.GetTopChores(context.Background(), 1, 10, 5, "month", utc)
 	if err != nil {
 		t.Fatalf("GetTopChores(user 10): %v", err)
 	}
@@ -435,11 +429,11 @@ func TestGetTopChores_PerUser(t *testing.T) {
 	if entries[0].ChoreName != "Dishes" {
 		t.Errorf("user 10 top chore should be Dishes, got %s", entries[0].ChoreName)
 	}
-	if entries[0].ThisMonth != 2 {
-		t.Errorf("user 10 Dishes ThisMonth = %d, want 2", entries[0].ThisMonth)
+	if entries[0].Count != 2 {
+		t.Errorf("user 10 Dishes Count = %d, want 2", entries[0].Count)
 	}
 
-	entries2, err := svc.GetTopChores(context.Background(), 1, 20, 5, utc)
+	entries2, err := svc.GetTopChores(context.Background(), 1, 20, 5, "month", utc)
 	if err != nil {
 		t.Fatalf("GetTopChores(user 20): %v", err)
 	}
@@ -453,7 +447,7 @@ func TestGetTopChores_PerUser(t *testing.T) {
 
 func TestGetTopChores_Empty(t *testing.T) {
 	svc, _ := seedService(t, nil)
-	entries, err := svc.GetTopChores(context.Background(), 1, 0, 5, utc)
+	entries, err := svc.GetTopChores(context.Background(), 1, 0, 5, "month", utc)
 	if err != nil {
 		t.Fatalf("GetTopChores: %v", err)
 	}
@@ -493,25 +487,25 @@ func TestGetTopChores_Limit(t *testing.T) {
 
 	svc := stats.NewService(logStore, cs)
 
-	entries, err := svc.GetTopChores(context.Background(), 1, 0, 3, utc)
+	entries, err := svc.GetTopChores(context.Background(), 1, 0, 3, "month", utc)
 	if err != nil {
 		t.Fatalf("GetTopChores: %v", err)
 	}
 	if len(entries) != 3 {
 		t.Fatalf("expected 3 entries (limit), got %d", len(entries))
 	}
-	if entries[0].ThisMonth != 6 {
-		t.Errorf("first entry ThisMonth = %d, want 6", entries[0].ThisMonth)
+	if entries[0].Count != 6 {
+		t.Errorf("first entry Count = %d, want 6", entries[0].Count)
 	}
-	if entries[1].ThisMonth != 5 {
-		t.Errorf("second entry ThisMonth = %d, want 5", entries[1].ThisMonth)
+	if entries[1].Count != 5 {
+		t.Errorf("second entry Count = %d, want 5", entries[1].Count)
 	}
-	if entries[2].ThisMonth != 4 {
-		t.Errorf("third entry ThisMonth = %d, want 4", entries[2].ThisMonth)
+	if entries[2].Count != 4 {
+		t.Errorf("third entry Count = %d, want 4", entries[2].Count)
 	}
 }
 
-func TestGetTopChores_WeekAndDayCounts(t *testing.T) {
+func TestGetTopChores_Periods(t *testing.T) {
 	now := time.Now().UTC()
 	midnight := now.Truncate(24 * time.Hour)
 	if now.Hour() < 4 {
@@ -520,30 +514,70 @@ func TestGetTopChores_WeekAndDayCounts(t *testing.T) {
 	ref := midnight.Add(3 * time.Hour) // 3am today
 
 	logs := []chorelog.ChoreLog{
+		// Two Dishes logs today — today falls inside day/week/month/all.
 		{HouseholdID: 1, UserID: 10, ChoreID: 100, CompletedAt: ref},
 		{HouseholdID: 1, UserID: 10, ChoreID: 100, CompletedAt: ref.Add(-30 * time.Minute)},
+		// One Vacuum log today.
 		{HouseholdID: 1, UserID: 10, ChoreID: 101, CompletedAt: ref.Add(-2 * time.Hour)},
 	}
 	svc, _ := seedService(t, logs)
 
-	entries, err := svc.GetTopChores(context.Background(), 1, 0, 5, utc)
-	if err != nil {
-		t.Fatalf("GetTopChores: %v", err)
+	// All four periods should accept the parameter and return the same ranking
+	// (today's logs are inside every window).
+	for _, period := range []string{"day", "week", "month", "all"} {
+		entries, err := svc.GetTopChores(context.Background(), 1, 0, 5, period, utc)
+		if err != nil {
+			t.Fatalf("GetTopChores(%s): %v", period, err)
+		}
+		if len(entries) != 2 {
+			t.Fatalf("period %s: expected 2 entries, got %d", period, len(entries))
+		}
+		if entries[0].ChoreName != "Dishes" {
+			t.Fatalf("period %s: expected Dishes first, got %s", period, entries[0].ChoreName)
+		}
+		if entries[0].Count != 2 {
+			t.Errorf("period %s: Dishes Count = %d, want 2", period, entries[0].Count)
+		}
+		if entries[1].Count != 1 {
+			t.Errorf("period %s: Vacuum Count = %d, want 1", period, entries[1].Count)
+		}
 	}
-	if len(entries) < 1 {
-		t.Fatal("expected at least 1 entry")
+}
+
+func TestGetTopChores_PeriodBoundary(t *testing.T) {
+	// Separates day vs week vs month vs all using a log that's deliberately
+	// outside day/week but inside month — but only valid mid-month so the
+	// 9-day-old log stays inside the current month.
+	now := time.Now().UTC()
+	midnight := now.Truncate(24 * time.Hour)
+	if now.Hour() < 4 || now.Day() < 10 {
+		t.Skip("skip: boundary test requires UTC hour >= 4 and day-of-month >= 10")
 	}
-	if entries[0].ChoreName != "Dishes" {
-		t.Fatalf("expected Dishes first (2 logs vs 1 for Vacuum), got %s", entries[0].ChoreName)
+	ref := midnight.Add(3 * time.Hour)
+
+	logs := []chorelog.ChoreLog{
+		// One Dishes log today.
+		{HouseholdID: 1, UserID: 10, ChoreID: 100, CompletedAt: ref},
+		// One Dishes log 9 days ago — outside week, inside month (and all).
+		{HouseholdID: 1, UserID: 10, ChoreID: 100, CompletedAt: ref.Add(-9 * 24 * time.Hour)},
 	}
-	if entries[0].ThisMonth != 2 {
-		t.Errorf("Dishes ThisMonth = %d, want 2", entries[0].ThisMonth)
+	svc, _ := seedService(t, logs)
+
+	day, _ := svc.GetTopChores(context.Background(), 1, 0, 5, "day", utc)
+	if day[0].Count != 1 {
+		t.Errorf("day Count = %d, want 1", day[0].Count)
 	}
-	if entries[0].Today != 2 {
-		t.Errorf("Dishes Today = %d, want 2", entries[0].Today)
+	week, _ := svc.GetTopChores(context.Background(), 1, 0, 5, "week", utc)
+	if week[0].Count != 1 {
+		t.Errorf("week Count = %d, want 1 (9-day-old log is outside the week)", week[0].Count)
 	}
-	if entries[1].ThisMonth != 1 {
-		t.Errorf("Vacuum ThisMonth = %d, want 1", entries[1].ThisMonth)
+	month, _ := svc.GetTopChores(context.Background(), 1, 0, 5, "month", utc)
+	if month[0].Count != 2 {
+		t.Errorf("month Count = %d, want 2", month[0].Count)
+	}
+	all, _ := svc.GetTopChores(context.Background(), 1, 0, 5, "all", utc)
+	if all[0].Count != 2 {
+		t.Errorf("all Count = %d, want 2", all[0].Count)
 	}
 }
 

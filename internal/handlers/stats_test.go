@@ -186,6 +186,97 @@ func TestStatsLeaderboardMonthly(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
 	}
+	if !strings.Contains(rec.Body.String(), `"period":"month"`) {
+		t.Fatalf("response should echo period, body=%s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"start"`) {
+		t.Fatalf("response should include start for month, body=%s", rec.Body.String())
+	}
+}
+
+func TestStatsLeaderboardDay(t *testing.T) {
+	handler, sessionID, authService := setupStatsTest(t)
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/stats/leaderboard?period=day", nil), authService, sessionID)
+	rec := httptest.NewRecorder()
+
+	handler.Leaderboard(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"period":"day"`) {
+		t.Fatalf("response should echo period, body=%s", rec.Body.String())
+	}
+}
+
+func TestStatsLeaderboardAll(t *testing.T) {
+	handler, sessionID, authService := setupStatsTest(t)
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/stats/leaderboard?period=all", nil), authService, sessionID)
+	rec := httptest.NewRecorder()
+
+	handler.Leaderboard(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"period":"all"`) {
+		t.Fatalf("response should echo period, body=%s", rec.Body.String())
+	}
+	// "all" has no sensible date range — start/end must be omitted.
+	if strings.Contains(rec.Body.String(), `"start"`) {
+		t.Fatalf("response should omit start for all-time, body=%s", rec.Body.String())
+	}
+	if strings.Contains(rec.Body.String(), `"end"`) {
+		t.Fatalf("response should omit end for all-time, body=%s", rec.Body.String())
+	}
+}
+
+func TestStatsTopChores(t *testing.T) {
+	handler, sessionID, authService := setupStatsTest(t)
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/stats/top-chores", nil), authService, sessionID)
+	rec := httptest.NewRecorder()
+
+	handler.TopChores(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"topChores"`) {
+		t.Fatalf("body = %s", rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"period":"month"`) {
+		t.Fatalf("response should echo default period=month, body=%s", rec.Body.String())
+	}
+}
+
+func TestStatsTopChoresAllPeriods(t *testing.T) {
+	handler, sessionID, authService := setupStatsTest(t)
+	for _, period := range []string{"day", "week", "month", "all"} {
+		req := withUser(
+			httptest.NewRequest(http.MethodGet, "/api/stats/top-chores?period="+period, nil),
+			authService, sessionID,
+		)
+		rec := httptest.NewRecorder()
+		handler.TopChores(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("period=%s: status = %d, want 200, body=%s", period, rec.Code, rec.Body.String())
+		}
+		if !strings.Contains(rec.Body.String(), `"period":"`+period+`"`) {
+			t.Fatalf("period=%s: response should echo period, body=%s", period, rec.Body.String())
+		}
+	}
+}
+
+func TestStatsTopChoresInvalidUserId(t *testing.T) {
+	handler, sessionID, authService := setupStatsTest(t)
+	req := withUser(httptest.NewRequest(http.MethodGet, "/api/stats/top-chores?userId=abc", nil), authService, sessionID)
+	rec := httptest.NewRecorder()
+
+	handler.TopChores(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
+	}
 }
 
 func TestStatsNoHousehold(t *testing.T) {

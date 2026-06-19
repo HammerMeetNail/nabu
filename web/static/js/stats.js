@@ -81,8 +81,12 @@ export async function loadChoreStats({ start, end } = {}) {
   return data;
 }
 
-export async function loadTopChores(userId) {
-  const url = userId ? `/api/stats/top-chores?userId=${userId}` : "/api/stats/top-chores";
+export async function loadTopChores(userId, period) {
+  const params = new URLSearchParams();
+  if (userId) params.set("userId", userId);
+  if (period) params.set("period", period);
+  const qs = params.toString();
+  const url = qs ? `/api/stats/top-chores?${qs}` : "/api/stats/top-chores";
   const { data } = await apiFetch(url);
   return data;
 }
@@ -129,6 +133,30 @@ function currentWeekLabel() {
   return `${fmt(monday)} – ${fmt(sunday)}`;
 }
 
+// Shared Day/Week/Month/All period toggle used by the Leaderboard and Top
+// Chores sections. Mirrors the styling of the baby care Daily/Weekly/Monthly
+// toggle (`renderBabyPeriodToggle`).
+const STATS_PERIODS = ["day", "week", "month", "all"];
+const STATS_PERIOD_LABELS = { day: "Day", week: "Week", month: "Month", all: "All" };
+
+function renderStatsPeriodToggle(activePeriod, section) {
+  const period = STATS_PERIODS.includes(activePeriod) ? activePeriod : "week";
+  return `<div class="period-toggle" role="group" aria-label="Time period for ${escapeHTML(section)}">
+    ${STATS_PERIODS.map(p => {
+      const active = p === period ? " period-toggle--active" : "";
+      const label = STATS_PERIOD_LABELS[p];
+      return `<button class="period-toggle-btn${active}" data-action="stats-period" data-section="${escapeHTML(section)}" data-period="${p}" aria-pressed="${p === period}">${label}</button>`;
+    }).join("")}
+  </div>`;
+}
+
+function renderLeaderboardDateRange(period, start, end) {
+  if (period === "all") return `<div class="stats-date-range">All time</div>`;
+  const label = formatRangeLabel(start, end);
+  if (!label) return "";
+  return `<div class="stats-date-range">${label}</div>`;
+}
+
 function formatHour(h) {
   if (h === 0) return "12a";
   if (h < 12) return h + "a";
@@ -139,18 +167,13 @@ function formatHour(h) {
 export function renderStatsPage(state) {
   const stats = state.stats || {};
   const overview = stats.overview || {};
-  const leaderboard = overview.leaderboard || [];
   const streaks = overview.streaks || {};
-  const breakdown = overview.breakdown || [];
   const recap = overview.recap || {};
   const heatmap = stats.heatmap || [];
   const busyHours = stats.busyHours || [];
   const choreStats = stats.choreStats || [];
   const chores = state.chores || [];
   const members = state.members || [];
-
-  const memberMap = {};
-  members.forEach(m => { memberMap[m.userId] = m; });
 
   const choreMap = {};
   chores.forEach(c => { choreMap[c.id] = c; });
@@ -171,7 +194,7 @@ export function renderStatsPage(state) {
   );
 
   const sections = {
-    overview: `<div class="chart-period-toggle mt-2 mb-3">${renderOverviewCards(todayCount, totalThisWeek, streaks, topChoreName, stats.leaderboardPeriod, state.user?.id)}</div>`,
+    overview: `<div class="chart-period-toggle mt-2 mb-3">${renderOverviewCards(todayCount, totalThisWeek, streaks, topChoreName, state.user?.id)}</div>`,
     baby: renderBabyCareSection(state),
     activity: `<div class="card mb-3"><h3>Activity</h3>${renderHeatmapGrid(heatmap)}</div>`,
     "busy-hours": `<div class="card mb-3">
@@ -199,16 +222,12 @@ export function renderStatsPage(state) {
       </div>
       ${renderBusyHoursChart(busyHours)}
     </div>`,
-    leaderboard: `<div class="card mb-3">
-      <h3>Leaderboard</h3>
-      ${renderWeekDateRange()}
-      ${renderLeaderboardList(leaderboard, memberMap, stats.leaderboardPeriod)}
-    </div>`,
+    leaderboard: renderLeaderboardSection(state),
     "top-chores": renderTopChoresSection(state),
     categories: `<div class="card mb-3">
       <h3>Categories</h3>
       ${renderWeekDateRange()}
-      ${renderCategoryBars(breakdown)}
+      ${renderCategoryBars(overview.breakdown || [])}
     </div>`,
     chores: `<div class="card mb-3">
       <h3>Chores</h3>
@@ -282,8 +301,7 @@ function renderCustomizePanel(state) {
   </div>`;
 }
 
-function renderOverviewCards(todayCount, totalThisWeek, streaks, topChoreName, period, userId) {
-  const periodLabel = period === "month" ? "Month" : "Week";
+function renderOverviewCards(todayCount, totalThisWeek, streaks, topChoreName, userId) {
   return `<div class="overview-cards">
     <div class="overview-card">
       <div class="overview-card-value">${todayCount}</div>
@@ -291,7 +309,7 @@ function renderOverviewCards(todayCount, totalThisWeek, streaks, topChoreName, p
     </div>
     <div class="overview-card">
       <div class="overview-card-value">${totalThisWeek}</div>
-      <div class="overview-card-label">This ${periodLabel}</div>
+      <div class="overview-card-label">This Week</div>
     </div>
     <div class="overview-card">
       <div class="overview-card-value">${streaks.current || 0}</div>
@@ -405,7 +423,14 @@ function renderBusyHoursChart(busyHours) {
 }
 
 function renderLeaderboardList(leaderboard, memberMap, period) {
-  const lbItems = leaderboard.map((entry, i) => {
+  const emptyLabel = period === "all"
+    ? "No chores logged yet"
+    : period === "day"
+      ? "No chores today"
+      : period === "month"
+        ? "No chores this month"
+        : "No chores this week";
+  const lbItems = leaderboard.map((entry) => {
     const member = memberMap[entry.userId];
     const name = member ? (member.displayName || member.email) : `User ${entry.userId}`;
     const initial = name.charAt(0).toUpperCase();
@@ -415,9 +440,31 @@ function renderLeaderboardList(leaderboard, memberMap, period) {
       <span>${escapeHTML(name)}</span>
       <span class="text-secondary">${entry.count} chores</span>
     </li>`;
-  }).join("") || '<p class="text-secondary text-center">No chores this week</p>';
+  }).join("") || `<p class="text-secondary text-center">${emptyLabel}</p>`;
 
   return `<ul class="stat-list">${lbItems}</ul>`;
+}
+
+function renderLeaderboardSection(state) {
+  const stats = state.stats || {};
+  const members = state.members || [];
+  const memberMap = {};
+  members.forEach(m => { memberMap[m.userId] = m; });
+
+  const period = stats.leaderboardPeriod || "week";
+  const cache = stats.leaderboardByPeriod || {};
+  const leaderboard = cache[period] ?? stats.overview?.leaderboard ?? [];
+  const start = stats.leaderboardRangeByPeriod?.[period]?.start || "";
+  const end = stats.leaderboardRangeByPeriod?.[period]?.end || "";
+
+  return `<div class="card mb-3">
+    <div class="stats-section-header">
+      <h3>Leaderboard</h3>
+      ${renderStatsPeriodToggle(period, "leaderboard")}
+    </div>
+    ${renderLeaderboardDateRange(period, start, end)}
+    ${renderLeaderboardList(leaderboard, memberMap, period)}
+  </div>`;
 }
 
 function renderCategoryBars(breakdown) {
@@ -438,15 +485,22 @@ function renderCategoryBars(breakdown) {
   return bars;
 }
 
-function renderTopChoresList(topChores) {
+function renderTopChoresList(topChores, period) {
   if (!topChores || topChores.length === 0) {
-    return '<div class="top-chore-list"><p class="text-secondary text-center">No data yet</p></div>';
+    const empty = period === "all"
+      ? "No chores logged yet"
+      : period === "day"
+        ? "No chores today"
+        : period === "month"
+          ? "No chores this month"
+          : "No chores this week";
+    return `<div class="top-chore-list"><p class="text-secondary text-center">${empty}</p></div>`;
   }
 
-  const maxMonth = Math.max(1, ...topChores.map(c => c.thisMonth));
+  const maxCount = Math.max(1, ...topChores.map(c => c.count));
 
   const rows = topChores.map((c, i) => {
-    const pct = (c.thisMonth / maxMonth) * 100;
+    const pct = (c.count / maxCount) * 100;
     const icon = c.choreIcon || "✓";
     return `<div class="top-chore-row">
       <span class="top-chore-rank">${i + 1}</span>
@@ -455,20 +509,11 @@ function renderTopChoresList(topChores) {
       <div class="top-chore-bar-track">
         <div class="top-chore-bar-fill" style="width:${pct}%"></div>
       </div>
-      <div class="top-chore-counts">
-        <span class="top-chore-count top-chore-count--day" title="Today">${c.today || 0}</span>
-        <span class="top-chore-count top-chore-count--week" title="This Week">${c.thisWeek || 0}</span>
-        <span class="top-chore-count top-chore-count--month" title="This Month">${c.thisMonth || 0}</span>
-      </div>
+      <span class="top-chore-count" title="${escapeHTML(STATS_PERIOD_LABELS[period] || "Count")}">${c.count}</span>
     </div>`;
   }).join("");
 
   return `<div class="top-chore-list">
-    <div class="top-chore-header-row">
-      <span class="top-chore-header-label">Day</span>
-      <span class="top-chore-header-label">Week</span>
-      <span class="top-chore-header-label">Month</span>
-    </div>
     ${rows}
   </div>`;
 }
@@ -476,8 +521,10 @@ function renderTopChoresList(topChores) {
 function renderTopChoresSection(state) {
   const stats = state.stats || {};
   const members = state.members || [];
+  const period = stats.topChoresPeriod || "month";
   const topChoresUserId = stats.topChoresUserId;
-  const topChores = stats.topChoresByUser?.[topChoresUserId] || [];
+  const cacheKey = `${topChoresUserId}-${period}`;
+  const topChores = stats.topChoresByUserAndPeriod?.[cacheKey] || [];
 
   const userPills = members.map(m => {
     const active = m.userId === topChoresUserId ? " top-chore-pill--active" : "";
@@ -489,9 +536,12 @@ function renderTopChoresSection(state) {
   }).join("");
 
   return `<div class="card mb-3">
-    <h3>Top Chores</h3>
+    <div class="stats-section-header">
+      <h3>Top Chores</h3>
+      ${renderStatsPeriodToggle(period, "top-chores")}
+    </div>
     <div class="top-chore-pills" role="group" aria-label="Select user">${userPills}</div>
-    ${renderTopChoresList(topChores)}
+    ${renderTopChoresList(topChores, period)}
   </div>`;
 }
 

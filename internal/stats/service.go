@@ -93,9 +93,7 @@ type TopChoresEntry struct {
 	ChoreID   int64  `json:"choreId"`
 	ChoreName string `json:"choreName"`
 	ChoreIcon string `json:"choreIcon"`
-	Today     int    `json:"today"`
-	ThisWeek  int    `json:"thisWeek"`
-	ThisMonth int    `json:"thisMonth"`
+	Count     int    `json:"count"`
 }
 
 type VolumeDay struct {
@@ -137,6 +135,40 @@ func (s *Service) GetWeeklyLeaderboard(ctx context.Context, householdID int64, l
 	weekStart := wkStart(now, loc)
 	weekEnd := weekStart.AddDate(0, 0, 7)
 	return s.getLeaderboard(ctx, householdID, weekStart, weekEnd, loc)
+}
+
+func (s *Service) GetDailyLeaderboard(ctx context.Context, householdID int64, loc *time.Location) ([]LeaderboardEntry, error) {
+	now := nowIn(loc)
+	y, m, d := now.Date()
+	start := time.Date(y, m, d, 0, 0, 0, 0, loc)
+	end := start.AddDate(0, 0, 1)
+	return s.getLeaderboard(ctx, householdID, start, end, loc)
+}
+
+// GetAllTimeLeaderboard counts every log ever recorded for the household.
+// The returned range bounds are empty (no sensible start/end), so callers
+// should omit start/end from the response.
+func (s *Service) GetAllTimeLeaderboard(ctx context.Context, householdID int64, loc *time.Location) ([]LeaderboardEntry, error) {
+	// Fetch all logs for the household with no time bound. We widen the
+	// window by a generous margin and then filter by local completion time
+	// inside getLeaderboard; since the window spans the entire history,
+	// every local time falls within it.
+	epochStart := time.Unix(0, 0).UTC()
+	farFuture := time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)
+	logs, err := s.logStore.ListLogsRange(ctx, householdID, epochStart, farFuture)
+	if err != nil {
+		return nil, err
+	}
+	counts := map[int64]int{}
+	for _, l := range logs {
+		counts[l.UserID]++
+	}
+	var entries []LeaderboardEntry
+	for uid, c := range counts {
+		entries = append(entries, LeaderboardEntry{UserID: uid, Count: c})
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Count > entries[j].Count })
+	return entries, nil
 }
 
 func (s *Service) GetMonthlyLeaderboard(ctx context.Context, householdID int64, year int, month time.Month, loc *time.Location) ([]LeaderboardEntry, error) {
@@ -564,9 +596,12 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 	return overview, nil
 }
 
-func (s *Service) GetTopChores(ctx context.Context, householdID int64, userID int64, n int, loc *time.Location) ([]TopChoresEntry, error) {
+func (s *Service) GetTopChores(ctx context.Context, householdID int64, userID int64, n int, period string, loc *time.Location) ([]TopChoresEntry, error) {
 	if n <= 0 {
 		n = 5
+	}
+	if period == "" {
+		period = "month"
 	}
 
 	now := nowIn(loc)
@@ -574,60 +609,95 @@ func (s *Service) GetTopChores(ctx context.Context, householdID int64, userID in
 	weekStart := wkStart(now, loc)
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
 
+	var rangeStart, rangeEnd time.Time
+	switch period {
+	case "day":
+		rangeStart = today
+		rangeEnd = today.AddDate(0, 0, 1)
+	case "week":
+		rangeStart = weekStart
+		rangeEnd = weekStart.AddDate(0, 0, 7)
+	case "all":
+		// No time bound — fetch every log ever recorded for the household.
+		// We bypass fetchLogsInRange (which widens by 48h) and read the
+		// raw log store so we don't risk overflow on a far-future end.
+		epochStart := time.Unix(0, 0).UTC()
+		farFuture := time.Date(9999, 1, 1, 0, 0, 0, 0, time.UTC)
+		allLogs, err := s.logStore.ListLogsRange(ctx, householdID, epochStart, farFuture)
+		if err != nil {
+			return nil, err
+		}
+		chores, err := s.choreStore.ListChores(ctx, householdID)
+		if err != nil {
+			return nil, err
+		}
+		counts := map[int64]int{}
+		for _, l := range allLogs {
+			if userID > 0 && l.UserID != userID {
+				continue
+			}
+			counts[l.ChoreID]++
+		}
+		type allEntry struct {
+			info  ChoreInfo
+			count int
+		}
+		var ranked []allEntry
+		for _, ch := range chores {
+			if c, ok := counts[ch.ID]; ok && c > 0 {
+				ranked = append(ranked, allEntry{info: ch, count: c})
+			}
+		}
+		sort.Slice(ranked, func(i, j int) bool { return ranked[i].count > ranked[j].count })
+		out := make([]TopChoresEntry, 0, n)
+		for i := 0; i < n && i < len(ranked); i++ {
+			out = append(out, TopChoresEntry{
+				ChoreID:   ranked[i].info.ID,
+				ChoreName: ranked[i].info.Name,
+				ChoreIcon: ranked[i].info.Icon,
+				Count:     ranked[i].count,
+			})
+		}
+		return out, nil
+	default:
+		// "month" (and any unknown value) — mirror the historical default.
+		rangeStart = monthStart
+		rangeEnd = now
+	}
+
 	chores, err := s.choreStore.ListChores(ctx, householdID)
 	if err != nil {
 		return nil, err
 	}
 
-	logs, err := s.fetchLogsInRange(ctx, householdID, monthStart, now, loc)
+	logs, err := s.fetchLogsInRange(ctx, householdID, rangeStart, rangeEnd, loc)
 	if err != nil {
 		return nil, err
 	}
 
-	type countSet struct {
-		today     int
-		thisWeek  int
-		thisMonth int
-	}
-	counts := map[int64]countSet{}
+	counts := map[int64]int{}
 	for _, l := range logs {
 		if userID > 0 && l.UserID != userID {
 			continue
 		}
 		local := l.CompletedAt.In(loc)
-		if !local.Before(monthStart) && local.Before(now) {
-			cs := counts[l.ChoreID]
-			cs.thisMonth++
-			if !local.Before(today) {
-				cs.today++
-			}
-			if !local.Before(weekStart) {
-				cs.thisWeek++
-			}
-			counts[l.ChoreID] = cs
+		if !local.Before(rangeStart) && local.Before(rangeEnd) {
+			counts[l.ChoreID]++
 		}
 	}
 
 	type entry struct {
 		info  ChoreInfo
-		count countSet
+		count int
 	}
 	var ranked []entry
 	for _, ch := range chores {
-		if c, ok := counts[ch.ID]; ok {
+		if c, ok := counts[ch.ID]; ok && c > 0 {
 			ranked = append(ranked, entry{info: ch, count: c})
 		}
 	}
 
-	sort.Slice(ranked, func(i, j int) bool {
-		if ranked[i].count.thisMonth != ranked[j].count.thisMonth {
-			return ranked[i].count.thisMonth > ranked[j].count.thisMonth
-		}
-		if ranked[i].count.thisWeek != ranked[j].count.thisWeek {
-			return ranked[i].count.thisWeek > ranked[j].count.thisWeek
-		}
-		return ranked[i].count.today > ranked[j].count.today
-	})
+	sort.Slice(ranked, func(i, j int) bool { return ranked[i].count > ranked[j].count })
 
 	out := make([]TopChoresEntry, 0, n)
 	for i := 0; i < n && i < len(ranked); i++ {
@@ -635,9 +705,7 @@ func (s *Service) GetTopChores(ctx context.Context, householdID int64, userID in
 			ChoreID:   ranked[i].info.ID,
 			ChoreName: ranked[i].info.Name,
 			ChoreIcon: ranked[i].info.Icon,
-			Today:     ranked[i].count.today,
-			ThisWeek:  ranked[i].count.thisWeek,
-			ThisMonth: ranked[i].count.thisMonth,
+			Count:     ranked[i].count,
 		})
 	}
 

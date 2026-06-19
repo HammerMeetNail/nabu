@@ -394,9 +394,7 @@ struct TopChore: Codable, Equatable {
     let choreId: Int
     let choreName: String
     let choreIcon: String
-    let today: Int
-    let thisWeek: Int
-    let thisMonth: Int
+    let count: Int
 }
 
 struct ChoreStat: Codable, Equatable {
@@ -537,8 +535,8 @@ struct StatusResponse: Codable {
 
 struct LeaderboardResponse: Codable {
     let leaderboard: [LeaderboardEntry]
-    let start: String
-    let end: String
+    let start: String?
+    let end: String?
 }
 
 struct StreaksResponse: Codable {

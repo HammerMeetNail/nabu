@@ -8,7 +8,10 @@ struct StatsView: View {
     @State private var busyHours: [BusyHour] = []
     @State private var busyHoursStart: String = ""
     @State private var busyHoursEnd: String = ""
-    @State private var topChoresByUser: [Int: [TopChore]] = [:]
+    @State private var leaderboardByPeriod: [String: LeaderboardResponse] = [:]
+    @State private var topChoresByUserAndPeriod: [String: [TopChore]] = [:]
+    @State private var leaderboardPeriod: String = "week"
+    @State private var topChoresPeriod: String = "month"
     @State private var choreStats: [ChoreStat] = []
     @State private var choreStatsStart: String = ""
     @State private var choreStatsEnd: String = ""
@@ -36,7 +39,47 @@ struct StatsView: View {
     @State private var selectedChangeBar: Int? = nil
 
     private var currentTopChores: [TopChore] {
-        topChoresByUser[topChoresUserId ?? 0] ?? []
+        let uid = topChoresUserId ?? 0
+        let key = "\(uid)-\(topChoresPeriod)"
+        return topChoresByUserAndPeriod[key] ?? []
+    }
+
+    private var currentLeaderboard: [LeaderboardEntry] {
+        if let resp = leaderboardByPeriod[leaderboardPeriod] {
+            return resp.leaderboard
+        }
+        if leaderboardPeriod == "week", let ov = overview {
+            return ov.leaderboard
+        }
+        return []
+    }
+
+    private var leaderboardRangeLabel: String {
+        if leaderboardPeriod == "all" { return "All time" }
+        if let resp = leaderboardByPeriod[leaderboardPeriod],
+           let s = resp.start, let e = resp.end,
+           !s.isEmpty, !e.isEmpty {
+            return formatRangeLabel(s, e)
+        }
+        return leaderboardPeriod == "week" ? formatWeekLabel() : ""
+    }
+
+    private var leaderboardEmptyLabel: String {
+        switch leaderboardPeriod {
+        case "all": return "No chores logged yet"
+        case "day": return "No chores today"
+        case "month": return "No chores this month"
+        default: return "No chores this week"
+        }
+    }
+
+    private var topChoresEmptyLabel: String {
+        switch topChoresPeriod {
+        case "all": return "No chores logged yet"
+        case "day": return "No chores today"
+        case "month": return "No chores this month"
+        default: return "No chores this week"
+        }
     }
 
     private var activeChoreStats: [ChoreStat] {
@@ -65,7 +108,7 @@ struct StatsView: View {
                             }
                             if !heatmap.isEmpty { heatmapCard }
                             if !busyHours.isEmpty { busyHoursCard }
-                            if let ov = overview { leaderboardCard(ov.leaderboard) }
+                            leaderboardSection
                             topChoresSection
                             if let ov = overview, !ov.breakdown.isEmpty { categoriesCard(ov.breakdown) }
                             if !activeChoreStats.isEmpty { choreStatsSection }
@@ -910,19 +953,22 @@ struct StatsView: View {
     // MARK: - Leaderboard (avatar circle + name + count)
 
     @ViewBuilder
-    private func leaderboardCard(_ entries: [LeaderboardEntry]) -> some View {
+    private var leaderboardSection: some View {
         VStack(spacing: 8) {
-            Text("Leaderboard").font(.headline)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            Text(formatWeekLabel())
+            HStack {
+                Text("Leaderboard").font(.headline)
+                Spacer()
+                statsPeriodToggle(period: leaderboardPeriod, section: "leaderboard")
+            }
+            Text(leaderboardRangeLabel)
                 .font(.caption).foregroundColor(DesignColors.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .leading)
-            if entries.isEmpty {
-                Text("No chores this week")
+            if currentLeaderboard.isEmpty {
+                Text(leaderboardEmptyLabel)
                     .font(.subheadline).foregroundColor(DesignColors.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .center)
             } else {
-                ForEach(Array(entries.enumerated()), id: \.offset) { _, entry in
+                ForEach(Array(currentLeaderboard.enumerated()), id: \.offset) { _, entry in
                     let member = state.members.first { $0.userId == entry.userId }
                     let name = member.map { $0.displayName.isEmpty ? $0.email : $0.displayName } ?? "User \(entry.userId)"
                     let initial = String(name.prefix(1)).uppercased()
@@ -951,13 +997,36 @@ struct StatsView: View {
         .shadow(color: .black.opacity(0.05), radius: 4, y: 2)
     }
 
+    @ViewBuilder
+    private func statsPeriodToggle(period: String, section: String) -> some View {
+        let labels: [String: String] = ["day": "Day", "week": "Week", "month": "Month", "all": "All"]
+        let periods = ["day", "week", "month", "all"]
+        HStack(spacing: 6) {
+            ForEach(periods, id: \.self) { p in
+                Button {
+                    Task { await setStatsPeriod(section: section, period: p) }
+                } label: {
+                    Text(labels[p] ?? p)
+                        .font(.caption)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(period == p ? DesignColors.primary : DesignColors.surfaceSecondary)
+                        .foregroundColor(period == p ? .white : DesignColors.textPrimary)
+                        .clipShape(Capsule())
+                }
+            }
+        }
+    }
+
     // MARK: - Top Chores (user pills + ranked list)
 
     @ViewBuilder
     private var topChoresSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Top Chores").font(.headline)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack {
+                Text("Top Chores").font(.headline)
+                Spacer()
+                statsPeriodToggle(period: topChoresPeriod, section: "top-chores")
+            }
 
             if state.members.count > 1 {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -994,25 +1063,13 @@ struct StatsView: View {
 
             let chores = currentTopChores
             if chores.isEmpty {
-                Text("No data yet")
+                Text(topChoresEmptyLabel)
                     .font(.subheadline).foregroundColor(DesignColors.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .center)
             } else {
-                HStack(spacing: 0) {
-                    Spacer()
-                    HStack(spacing: 8) {
-                        Text("Day").font(.system(size: 10)).foregroundColor(DesignColors.textSecondary)
-                            .frame(width: 40, alignment: .center)
-                        Text("Wk").font(.system(size: 10)).foregroundColor(DesignColors.textSecondary)
-                            .frame(width: 40, alignment: .center)
-                        Text("Mo").font(.system(size: 10)).foregroundColor(DesignColors.textSecondary)
-                            .frame(width: 40, alignment: .center)
-                    }
-                }
-                .padding(.bottom, 2)
-                let maxMonth = chores.map(\.thisMonth).max() ?? 1
+                let maxCount = chores.map(\.count).max() ?? 1
                 ForEach(Array(chores.enumerated()), id: \.element.choreId) { idx, chore in
-                    topChoreRow(chore, rank: idx + 1, maxMonth: maxMonth)
+                    topChoreRow(chore, rank: idx + 1, maxCount: maxCount)
                 }
             }
         }
@@ -1023,7 +1080,7 @@ struct StatsView: View {
     }
 
     @ViewBuilder
-    private func topChoreRow(_ chore: TopChore, rank: Int, maxMonth: Int) -> some View {
+    private func topChoreRow(_ chore: TopChore, rank: Int, maxCount: Int) -> some View {
         HStack(spacing: 8) {
             Text("\(rank)")
                 .font(.system(size: 12)).fontWeight(.bold)
@@ -1036,7 +1093,7 @@ struct StatsView: View {
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 3)
                         .fill(DesignColors.surfaceSecondary)
-                    let pct = maxMonth > 0 ? CGFloat(chore.thisMonth) / CGFloat(maxMonth) : 0
+                    let pct = maxCount > 0 ? CGFloat(chore.count) / CGFloat(maxCount) : 0
                     RoundedRectangle(cornerRadius: 3)
                         .fill(DesignColors.accent.opacity(0.8))
                         .frame(width: geo.size.width * pct)
@@ -1044,15 +1101,7 @@ struct StatsView: View {
                 .frame(height: 6)
                 .frame(maxHeight: .infinity)
             }
-            Text("\(chore.today)")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(DesignColors.textPrimary)
-                .frame(width: 40, alignment: .center)
-            Text("\(chore.thisWeek)")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(DesignColors.textSecondary)
-                .frame(width: 40, alignment: .center)
-            Text("\(chore.thisMonth)")
+            Text("\(chore.count)")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundColor(DesignColors.accent)
                 .frame(width: 40, alignment: .center)
@@ -1249,7 +1298,16 @@ struct StatsView: View {
             try? await environment.apiClient.get("/api/stats/busy-hours")
         }
         let tcTask: Task<TopChoresResponse?, Never> = Task {
-            try? await environment.apiClient.get("/api/stats/top-chores")
+            try? await environment.apiClient.get(
+                "/api/stats/top-chores",
+                query: [URLQueryItem(name: "period", value: topChoresPeriod)]
+            )
+        }
+        let lbTask: Task<LeaderboardResponse?, Never> = Task {
+            try? await environment.apiClient.get(
+                "/api/stats/leaderboard",
+                query: [URLQueryItem(name: "period", value: leaderboardPeriod)]
+            )
         }
         let csTask: Task<ChoreStatsResponse?, Never> = Task {
             try? await environment.apiClient.get("/api/stats/chores")
@@ -1259,6 +1317,7 @@ struct StatsView: View {
         let hm = await hmTask.value
         let bh = await bhTask.value
         let tc = await tcTask.value
+        let lb = await lbTask.value
         let cs = await csTask.value
 
         overview = ov?.overview
@@ -1266,7 +1325,10 @@ struct StatsView: View {
         busyHours = bh?.busyHours ?? []
         busyHoursStart = bh?.start ?? ""
         busyHoursEnd = bh?.end ?? ""
-        topChoresByUser[0] = tc?.topChores ?? []
+        if let lb = lb {
+            leaderboardByPeriod[leaderboardPeriod] = lb
+        }
+        topChoresByUserAndPeriod["0-\(topChoresPeriod)"] = tc?.topChores ?? []
         choreStats = cs?.choreStats ?? []
         choreStatsStart = cs?.start ?? ""
         choreStatsEnd = cs?.end ?? ""
@@ -1345,12 +1407,48 @@ struct StatsView: View {
             return
         }
         topChoresUserId = userId
-        guard topChoresByUser[userId] == nil else { return }
+        let key = "\(userId)-\(topChoresPeriod)"
+        guard topChoresByUserAndPeriod[key] == nil else { return }
         if let tc: TopChoresResponse = try? await environment.apiClient.get(
             "/api/stats/top-chores",
-            query: [URLQueryItem(name: "userId", value: "\(userId)")]
+            query: [
+                URLQueryItem(name: "userId", value: "\(userId)"),
+                URLQueryItem(name: "period", value: topChoresPeriod),
+            ]
         ) {
-            topChoresByUser[userId] = tc.topChores
+            topChoresByUserAndPeriod[key] = tc.topChores
+        }
+    }
+
+    private func setStatsPeriod(section: String, period: String) async {
+        if section == "leaderboard" {
+            guard period != leaderboardPeriod else { return }
+            leaderboardPeriod = period
+            if leaderboardByPeriod[period] == nil {
+                if let resp: LeaderboardResponse = try? await environment.apiClient.get(
+                    "/api/stats/leaderboard",
+                    query: [URLQueryItem(name: "period", value: period)]
+                ) {
+                    leaderboardByPeriod[period] = resp
+                }
+            }
+        } else if section == "top-chores" {
+            guard period != topChoresPeriod else { return }
+            topChoresPeriod = period
+            let uid = topChoresUserId ?? 0
+            let key = "\(uid)-\(period)"
+            if topChoresByUserAndPeriod[key] == nil {
+                var query = [URLQueryItem(name: "period", value: period)]
+                if let uid = topChoresUserId {
+                    query.append(URLQueryItem(name: "userId", value: "\(uid)"))
+                }
+                if let tc: TopChoresResponse = try? await environment.apiClient.get(
+                    "/api/stats/top-chores",
+                    query: query
+                ) {
+                    topChoresByUserAndPeriod[key] = tc.topChores
+                }
+            }
         }
     }
 }
