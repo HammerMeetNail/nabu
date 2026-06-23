@@ -3,24 +3,39 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/HammerMeetNail/nabu/internal/audit"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
 	"github.com/HammerMeetNail/nabu/internal/schedule"
 )
 
 // ScheduleHandler handles HTTP requests for schedule CRUD and queries.
 type ScheduleHandler struct {
-	store   schedule.Store
-	service *schedule.Service
+	store       schedule.Store
+	service     *schedule.Service
+	auditLogger audit.Logger
 }
 
 // NewScheduleHandler creates a new ScheduleHandler.
 func NewScheduleHandler(store schedule.Store, service *schedule.Service) *ScheduleHandler {
-	return &ScheduleHandler{store: store, service: service}
+	return &ScheduleHandler{store: store, service: service, auditLogger: audit.NopLogger{}}
+}
+
+// SetAuditLogger attaches a sink for schedule mutation events. A nil logger is
+// a no-op (the handler keeps its default NopLogger).
+func (h *ScheduleHandler) SetAuditLogger(logger audit.Logger) {
+	if logger != nil {
+		h.auditLogger = logger
+	}
+}
+
+func (h *ScheduleHandler) logAudit(ctx context.Context, event string, attrs map[string]string) {
+	audit.Emit(ctx, h.auditLogger, event, attrs)
 }
 
 // List returns all schedules for the user's household.
@@ -107,6 +122,10 @@ func (h *ScheduleHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	h.logAudit(r.Context(), "schedule.created", map[string]string{
+		"schedule_id": strconv.FormatInt(created.ID, 10),
+		"chore_id":    strconv.FormatInt(req.ChoreID, 10),
+	})
 	writeJSON(w, http.StatusCreated, map[string]any{"schedule": created})
 }
 
@@ -212,6 +231,9 @@ func (h *ScheduleHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	h.logAudit(r.Context(), "schedule.updated", map[string]string{
+		"schedule_id": strconv.FormatInt(id, 10),
+	})
 	writeJSON(w, http.StatusOK, map[string]any{"schedule": updated})
 }
 
@@ -245,5 +267,8 @@ func (h *ScheduleHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	h.logAudit(r.Context(), "schedule.deleted", map[string]string{
+		"schedule_id": strconv.FormatInt(id, 10),
+	})
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }

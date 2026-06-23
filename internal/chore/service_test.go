@@ -189,14 +189,16 @@ func TestService_DeleteChore_Predefined(t *testing.T) {
 	// Seed predefined chores then try to delete one
 	_ = svc.SeedDefaultChores(ctx, 1)
 	chores, _ := svc.ListChores(ctx, 1)
-	var predefined *chore.Chore
-	for i := range chores {
-		if chores[i].IsPredefined {
-			predefined = &chores[i]
+	var predefined chore.Chore
+	found := false
+	for _, c := range chores {
+		if c.IsPredefined {
+			predefined = c
+			found = true
 			break
 		}
 	}
-	if predefined == nil {
+	if !found {
 		t.Fatal("no predefined chore found after seed")
 	}
 	err := svc.DeleteChore(ctx, predefined.ID, 1)

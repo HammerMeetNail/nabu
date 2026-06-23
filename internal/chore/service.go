@@ -3,15 +3,33 @@ package chore
 import (
 	"context"
 	"fmt"
+	"strconv"
+
+	"github.com/HammerMeetNail/nabu/internal/audit"
 )
 
 type Service struct {
-	store Store
+	store       Store
+	auditLogger audit.Logger
 }
 
 func NewService(store Store) *Service {
-	return &Service{store: store}
+	return &Service{store: store, auditLogger: audit.NopLogger{}}
 }
+
+// SetAuditLogger attaches a sink for chore mutation events. A nil logger is a
+// no-op (the service keeps its default NopLogger).
+func (s *Service) SetAuditLogger(logger audit.Logger) {
+	if logger != nil {
+		s.auditLogger = logger
+	}
+}
+
+func (s *Service) logAudit(ctx context.Context, event string, attrs map[string]string) {
+	audit.Emit(ctx, s.auditLogger, event, attrs)
+}
+
+func idStr(id int64) string { return strconv.FormatInt(id, 10) }
 
 func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool) (Chore, error) {
 	if name == "" {
@@ -36,7 +54,7 @@ func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int
 	if followUpEnabled != nil {
 		fu = *followUpEnabled
 	}
-	return s.store.CreateChore(ctx, Chore{
+	created, err := s.store.CreateChore(ctx, Chore{
 		HouseholdID:       householdID,
 		Name:              name,
 		Icon:              icon,
@@ -48,6 +66,15 @@ func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int
 		IndicatorDefaults: indicatorDefaults,
 		FollowUpEnabled:   fu,
 	})
+	if err != nil {
+		return Chore{}, err
+	}
+	s.logAudit(ctx, "chore.created", map[string]string{
+		"household_id": idStr(householdID),
+		"chore_id":     idStr(created.ID),
+		"name":         name,
+	})
+	return created, nil
 }
 
 func (s *Service) ListChores(ctx context.Context, householdID int64) ([]Chore, error) {
@@ -87,7 +114,14 @@ func (s *Service) UpdateChore(ctx context.Context, choreID int64, householdID in
 	if followUpEnabled != nil {
 		existing.FollowUpEnabled = *followUpEnabled
 	}
-	return s.store.UpdateChore(ctx, existing)
+	if err := s.store.UpdateChore(ctx, existing); err != nil {
+		return err
+	}
+	s.logAudit(ctx, "chore.updated", map[string]string{
+		"household_id": idStr(householdID),
+		"chore_id":     idStr(choreID),
+	})
+	return nil
 }
 
 func (s *Service) DeleteChore(ctx context.Context, choreID int64, householdID int64) error {
@@ -101,11 +135,25 @@ func (s *Service) DeleteChore(ctx context.Context, choreID int64, householdID in
 	if chore.IsPredefined {
 		return fmt.Errorf("cannot delete predefined chores")
 	}
-	return s.store.DeleteChore(ctx, choreID)
+	if err := s.store.DeleteChore(ctx, choreID); err != nil {
+		return err
+	}
+	s.logAudit(ctx, "chore.deleted", map[string]string{
+		"household_id": idStr(householdID),
+		"chore_id":     idStr(choreID),
+	})
+	return nil
 }
 
 func (s *Service) ReorderChores(ctx context.Context, householdID int64, choreIDs []int64) error {
-	return s.store.ReorderChores(ctx, householdID, choreIDs)
+	if err := s.store.ReorderChores(ctx, householdID, choreIDs); err != nil {
+		return err
+	}
+	s.logAudit(ctx, "chore.reordered", map[string]string{
+		"household_id": idStr(householdID),
+		"chore_count":  idStr(int64(len(choreIDs))),
+	})
+	return nil
 }
 
 func (s *Service) RestoreDefaultChore(ctx context.Context, choreID int64, householdID int64) error {
@@ -136,7 +184,14 @@ func (s *Service) RestoreDefaultChore(ctx context.Context, choreID int64, househ
 			if existing.IndicatorDefaults == nil {
 				existing.IndicatorDefaults = []string{}
 			}
-			return s.store.UpdateChore(ctx, existing)
+			if err := s.store.UpdateChore(ctx, existing); err != nil {
+				return err
+			}
+			s.logAudit(ctx, "chore.default_restored", map[string]string{
+				"household_id": idStr(householdID),
+				"chore_id":     idStr(choreID),
+			})
+			return nil
 		}
 	}
 	return fmt.Errorf("original predefined chore definition not found")
@@ -163,7 +218,13 @@ func (s *Service) GetSystemDefaults() []Chore {
 }
 
 func (s *Service) SeedDefaultChores(ctx context.Context, householdID int64) error {
-	return s.store.SeedPredefinedChores(ctx, householdID)
+	if err := s.store.SeedPredefinedChores(ctx, householdID); err != nil {
+		return err
+	}
+	s.logAudit(ctx, "chore.defaults_seeded", map[string]string{
+		"household_id": idStr(householdID),
+	})
+	return nil
 }
 
 var PredefinedChores = []Chore{

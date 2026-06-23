@@ -1,19 +1,34 @@
 package handlers
 
 import (
+	"context"
 	"log"
 	"net/http"
 
+	"github.com/HammerMeetNail/nabu/internal/audit"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
 	"github.com/HammerMeetNail/nabu/internal/push"
 )
 
 type PushHandler struct {
-	store push.Store
+	store       push.Store
+	auditLogger audit.Logger
 }
 
 func NewPushHandler(store push.Store) *PushHandler {
-	return &PushHandler{store: store}
+	return &PushHandler{store: store, auditLogger: audit.NopLogger{}}
+}
+
+// SetAuditLogger attaches a sink for push subscription events. A nil logger is
+// a no-op (the handler keeps its default NopLogger).
+func (h *PushHandler) SetAuditLogger(logger audit.Logger) {
+	if logger != nil {
+		h.auditLogger = logger
+	}
+}
+
+func (h *PushHandler) logAudit(ctx context.Context, event string, attrs map[string]string) {
+	audit.Emit(ctx, h.auditLogger, event, attrs)
 }
 
 // Subscribe saves a Web Push subscription for the current user.
@@ -48,6 +63,7 @@ func (h *PushHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("push: subscribed user %d", user.ID)
+	h.logAudit(r.Context(), "push.subscribed", nil)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "subscribed"})
 }
 
@@ -67,5 +83,6 @@ func (h *PushHandler) Unsubscribe(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	h.logAudit(r.Context(), "push.unsubscribed", nil)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "unsubscribed"})
 }
