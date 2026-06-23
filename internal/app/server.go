@@ -71,15 +71,19 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	}
 
 	authService := auth.NewService(authStore)
-	authService.SetAuditLogger(audit.NewStdLogger(log.Default()))
+	auditLog := audit.NewStdLogger(log.Default())
+	authService.SetAuditLogger(auditLog)
 	authService.SetMailer(newMailer(cfg), cfg.AppBaseURL)
 	authService.SetOIDCProvider(newOIDCProvider(cfg))
 	authHandler := handlers.NewAuthHandler(authService, "nabu_session", cfg.ServerSecure, cfg.AppBaseURL)
 	householdService := household.NewService(householdStore, authService)
+	householdService.SetAuditLogger(auditLog)
 	householdHandler := handlers.NewHouseholdHandler(householdService)
 	choreService := chore.NewService(choreStore)
+	choreService.SetAuditLogger(auditLog)
 	choreHandler := handlers.NewChoreHandler(choreService)
 	logService := logsvc.NewService(logStore)
+	logService.SetAuditLogger(auditLog)
 	logHandler := handlers.NewLogHandler(logService)
 	notifService := notification.NewService(notifStore)
 	notifHandler := handlers.NewNotificationHandler(notifService)
@@ -94,6 +98,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	}
 	scheduleService := schedule.NewService()
 	scheduleHandler := handlers.NewScheduleHandler(scheduleStore, scheduleService)
+	scheduleHandler.SetAuditLogger(auditLog)
 	logHandler.WithScheduleStore(scheduleStore)
 
 	var reminderStore reminder.Store
@@ -117,6 +122,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		notifService.WithPushSender(pushService)
 	}
 	pushHandler := handlers.NewPushHandler(pushStore)
+	pushHandler.SetAuditLogger(auditLog)
 
 	reminderSched := reminder.NewScheduler(
 		reminderStore, scheduleStore, scheduleService,

@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/HammerMeetNail/nabu/internal/audit"
 	"github.com/HammerMeetNail/nabu/internal/auth"
 )
 
@@ -28,13 +29,25 @@ func Session(authService *auth.Service, cookieName string) func(http.Handler) ht
 				next.ServeHTTP(w, r)
 				return
 			}
-			user, err := authService.Authenticate(r.Context(), cookie.Value)
-			if err != nil {
-				next.ServeHTTP(w, r)
-				return
-			}
-			ctx := context.WithValue(r.Context(), userContextKey, user)
-			next.ServeHTTP(w, r.WithContext(ctx))
+		user, err := authService.Authenticate(r.Context(), cookie.Value)
+		if err != nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		ctx := context.WithValue(r.Context(), userContextKey, user)
+		// Stash the authenticated user as an audit.Actor so downstream
+		// service-layer audit calls can attribute events to a principal
+		// without each service depending on the HTTP middleware package.
+		var hhID int64
+		if user.HouseholdID != nil {
+			hhID = *user.HouseholdID
+		}
+		ctx = audit.WithActor(ctx, audit.Actor{
+			UserID:      user.ID,
+			HouseholdID: hhID,
+			Role:        user.Role,
+		})
+		next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

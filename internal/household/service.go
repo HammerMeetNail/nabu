@@ -3,11 +3,15 @@ package household
 import (
 	"context"
 	"fmt"
+	"strconv"
+
+	"github.com/HammerMeetNail/nabu/internal/audit"
 )
 
 type Service struct {
-	store     Store
-	authStore AuthStore
+	store       Store
+	authStore   AuthStore
+	auditLogger audit.Logger
 }
 
 type AuthStore interface {
@@ -15,8 +19,32 @@ type AuthStore interface {
 }
 
 func NewService(store Store, authStore AuthStore) *Service {
-	return &Service{store: store, authStore: authStore}
+	return &Service{
+		store:       store,
+		authStore:   authStore,
+		auditLogger: audit.NopLogger{},
+	}
 }
+
+// SetAuditLogger attaches a sink for household membership and configuration
+// events. If logger is nil the call is a no-op (the service keeps its default
+// NopLogger).
+func (s *Service) SetAuditLogger(logger audit.Logger) {
+	if logger != nil {
+		s.auditLogger = logger
+	}
+}
+
+// logAudit records a household event, merging the actor from ctx when the
+// caller did not supply user_id/household_id explicitly. Household service
+// methods always have the actor's userID as an explicit parameter (they are the
+// authenticated principal), so they pass it directly; this still benefits from
+// role enrichment via context when available.
+func (s *Service) logAudit(ctx context.Context, event string, attrs map[string]string) {
+	audit.Emit(ctx, s.auditLogger, event, attrs)
+}
+
+func formatID(id int64) string { return strconv.FormatInt(id, 10) }
 
 func (s *Service) CreateHousehold(ctx context.Context, name, initials string, ownerID int64) (Household, error) {
 	if name == "" {
@@ -33,6 +61,11 @@ func (s *Service) CreateHousehold(ctx context.Context, name, initials string, ow
 	if s.authStore != nil {
 		_ = s.authStore.SetUserHousehold(ctx, ownerID, hh.ID, RoleOwner)
 	}
+	s.logAudit(ctx, "household.created", map[string]string{
+		"user_id":      formatID(ownerID),
+		"household_id": formatID(hh.ID),
+		"name":         name,
+	})
 	return hh, nil
 }
 
@@ -70,7 +103,15 @@ func (s *Service) UpdateHousehold(ctx context.Context, userID int64, name, initi
 	if err != nil {
 		return err
 	}
-	return s.store.UpdateHousehold(ctx, hh.ID, name, initials)
+	if err := s.store.UpdateHousehold(ctx, hh.ID, name, initials); err != nil {
+		return err
+	}
+	s.logAudit(ctx, "household.updated", map[string]string{
+		"user_id":      formatID(userID),
+		"household_id": formatID(hh.ID),
+		"name":         name,
+	})
+	return nil
 }
 
 func (s *Service) CreateInvite(ctx context.Context, userID int64) (Invite, error) {
@@ -82,7 +123,16 @@ func (s *Service) CreateInvite(ctx context.Context, userID int64) (Invite, error
 		return Invite{}, ErrNotAuthorized
 	}
 	code := GenerateInviteCode()
-	return s.store.CreateInvite(ctx, hhID, userID, code, 0)
+	invite, err := s.store.CreateInvite(ctx, hhID, userID, code, 0)
+	if err != nil {
+		return Invite{}, err
+	}
+	s.logAudit(ctx, "household.invite_created", map[string]string{
+		"user_id":      formatID(userID),
+		"household_id": formatID(hhID),
+		"invite_id":    formatID(invite.ID),
+	})
+	return invite, nil
 }
 
 func (s *Service) GetInvites(ctx context.Context, userID int64) ([]Invite, error) {
@@ -111,7 +161,15 @@ func (s *Service) DeleteInvite(ctx context.Context, userID, inviteID int64) erro
 	if invite.HouseholdID != actorHHID {
 		return ErrNotAuthorized
 	}
-	return s.store.DeleteInvite(ctx, inviteID)
+	if err := s.store.DeleteInvite(ctx, inviteID); err != nil {
+		return err
+	}
+	s.logAudit(ctx, "household.invite_deleted", map[string]string{
+		"user_id":      formatID(userID),
+		"household_id": formatID(actorHHID),
+		"invite_id":    formatID(inviteID),
+	})
+	return nil
 }
 
 func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode string) (Household, error) {
@@ -144,6 +202,11 @@ func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode st
 		if s.authStore != nil {
 			_ = s.authStore.SetUserHousehold(ctx, userID, hh.ID, RoleMember)
 		}
+		s.logAudit(ctx, "household.member_joined", map[string]string{
+			"user_id":       formatID(userID),
+			"household_id":  formatID(hh.ID),
+			"invite_method": "permanent_code",
+		})
 		return hh, nil
 	}
 
@@ -175,6 +238,11 @@ func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode st
 	if s.authStore != nil {
 		_ = s.authStore.SetUserHousehold(ctx, userID, hh.ID, RoleMember)
 	}
+	s.logAudit(ctx, "household.member_joined", map[string]string{
+		"user_id":       formatID(userID),
+		"household_id":  formatID(hh.ID),
+		"invite_method": "invite_code",
+	})
 	return hh, nil
 }
 
@@ -233,7 +301,16 @@ func (s *Service) UpdateMemberRole(ctx context.Context, actorUserID, targetUserI
 			return fmt.Errorf("cannot change the role of the last owner")
 		}
 	}
-	return s.store.UpdateMemberRole(ctx, hhID, targetUserID, newRole)
+	if err := s.store.UpdateMemberRole(ctx, hhID, targetUserID, newRole); err != nil {
+		return err
+	}
+	s.logAudit(ctx, "household.member_role_changed", map[string]string{
+		"user_id":         formatID(actorUserID),
+		"target_user_id":  formatID(targetUserID),
+		"household_id":    formatID(hhID),
+		"new_role":        newRole,
+	})
+	return nil
 }
 
 func (s *Service) RemoveMember(ctx context.Context, actorUserID, targetUserID int64) error {
@@ -270,7 +347,15 @@ func (s *Service) RemoveMember(ctx context.Context, actorUserID, targetUserID in
 			return ErrLastOwner
 		}
 	}
-	return s.store.RemoveMember(ctx, hhID, targetUserID)
+	if err := s.store.RemoveMember(ctx, hhID, targetUserID); err != nil {
+		return err
+	}
+	s.logAudit(ctx, "household.member_removed", map[string]string{
+		"user_id":        formatID(actorUserID),
+		"target_user_id": formatID(targetUserID),
+		"household_id":   formatID(actorHHID),
+	})
+	return nil
 }
 
 func (s *Service) LeaveHousehold(ctx context.Context, userID int64) error {
@@ -285,12 +370,26 @@ func (s *Service) LeaveHousehold(ctx context.Context, userID int64) error {
 		}
 		for _, m := range members {
 			if m.Role == RoleOwner && m.UserID != userID {
-				return s.store.RemoveMember(ctx, hhID, userID)
+				if err := s.store.RemoveMember(ctx, hhID, userID); err != nil {
+					return err
+				}
+				s.logAudit(ctx, "household.member_left", map[string]string{
+					"user_id":      formatID(userID),
+					"household_id": formatID(hhID),
+				})
+				return nil
 			}
 		}
 		return ErrLastOwner
 	}
-	return s.store.RemoveMember(ctx, hhID, userID)
+	if err := s.store.RemoveMember(ctx, hhID, userID); err != nil {
+		return err
+	}
+	s.logAudit(ctx, "household.member_left", map[string]string{
+		"user_id":      formatID(userID),
+		"household_id": formatID(hhID),
+	})
+	return nil
 }
 
 func (s *Service) TransferOwnership(ctx context.Context, currentOwnerID, newOwnerID int64) error {
@@ -308,5 +407,13 @@ func (s *Service) TransferOwnership(ctx context.Context, currentOwnerID, newOwne
 	if err := s.store.UpdateMemberRole(ctx, hhID, currentOwnerID, RoleAdmin); err != nil {
 		return err
 	}
-	return s.store.UpdateMemberRole(ctx, hhID, newOwnerID, RoleOwner)
+	if err := s.store.UpdateMemberRole(ctx, hhID, newOwnerID, RoleOwner); err != nil {
+		return err
+	}
+	s.logAudit(ctx, "household.ownership_transferred", map[string]string{
+		"user_id":        formatID(currentOwnerID),
+		"target_user_id": formatID(newOwnerID),
+		"household_id":   formatID(hhID),
+	})
+	return nil
 }
