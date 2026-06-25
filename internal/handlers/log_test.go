@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/auth"
 	"github.com/HammerMeetNail/nabu/internal/chore"
@@ -12,6 +14,7 @@ import (
 	logsvc "github.com/HammerMeetNail/nabu/internal/log"
 	"github.com/HammerMeetNail/nabu/internal/mail"
 	"github.com/HammerMeetNail/nabu/internal/notification"
+	"github.com/HammerMeetNail/nabu/internal/schedule"
 )
 
 func setupLogTest(t *testing.T) (*LogHandler, string, *auth.Service) {
@@ -501,5 +504,133 @@ func TestLogWeekNoHousehold(t *testing.T) {
 	handler.Week(rec, req)
 	if rec.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rec.Code)
+	}
+}
+
+// setupLogTestWithFollowUp wiring builds a LogHandler with a schedule store
+// (and chore store) attached so that the follow-up logic in Create runs.
+// It returns the handler, a valid session ID + auth service, the schedule
+// store, the chore store, and the household ID used by the seeded user.
+func setupLogTestWithFollowUp(t *testing.T) (*LogHandler, string, *auth.Service, *schedule.MemoryStore, *chore.MemoryStore, int64) {
+	t.Helper()
+	authStore := auth.NewMemoryStore()
+	authService := auth.NewService(authStore)
+	mailer := mail.NewMemorySender()
+	authService.SetMailer(mailer, "http://localhost:8080")
+	authService.SetAuditLogger(nil)
+
+	householdStore := household.NewMemoryStore()
+	householdService := household.NewService(householdStore, authService)
+
+	logStore := logsvc.NewMemoryStore()
+	logService := logsvc.NewService(logStore)
+
+	choreStore := chore.NewMemoryStore()
+	choreService := chore.NewService(choreStore)
+	notifStore := notification.NewMemoryStore()
+	notifService := notification.NewService(notifStore)
+	scheduleStore := schedule.NewMemoryStore()
+
+	handler := NewLogHandler(logService)
+	handler.WithNotification(notifService, choreStore, householdStore)
+	handler.WithScheduleStore(scheduleStore)
+
+	user, session := quickRegister(authService, "alice@example.com")
+	if _, err := householdService.CreateHousehold(
+		httptest.NewRequest(http.MethodGet, "/", nil).Context(),
+		"My Home", "", user.ID,
+	); err != nil {
+		t.Fatalf("CreateHousehold: %v", err)
+	}
+
+	// Seed default chores for household 1 (the household just created).
+	if err := choreService.SeedDefaultChores(
+		withUser(httptest.NewRequest(http.MethodPost, "/", nil), authService, session.ID).Context(), 1,
+	); err != nil {
+		t.Fatalf("SeedDefaultChores: %v", err)
+	}
+
+	return handler, session.ID, authService, scheduleStore, choreStore, 1
+}
+
+// followUpCount returns the number of follow-up schedules for choreID.
+func followUpCount(s *schedule.MemoryStore, householdID, choreID int64) int {
+	schs, _ := s.ListByHousehold(context.TODO(), householdID)
+	n := 0
+	for _, sc := range schs {
+		if sc.ChoreID == choreID && sc.IsFollowUp {
+			n++
+		}
+	}
+	return n
+}
+
+func TestLogCreateFollowUpBackdatePreservesExisting(t *testing.T) {
+	handler, sessionID, authService, scheduleStore, _, householdID := setupLogTestWithFollowUp(t)
+
+	const choreID = 1
+	now := time.Now().UTC()
+	yesterday := now.Add(-24 * time.Hour)
+
+	// followUpTime formats a time as the "2006-01-02T15:04" string expected
+	// by the log handler for followUpTime placement (~3h after the given base).
+	fuTime := func(base time.Time) string {
+		fu := base.Add(3 * time.Hour)
+		return fu.Format("2006-01-02T15:04")
+	}
+
+	// 1) Current log with a 3h follow-up -> creates a follow-up schedule.
+	body := `{"choreId":1,"completedAt":"` + now.Format(time.RFC3339) + `","followUpMinutes":180,"followUpTime":"` + fuTime(now) + `"}`
+	req := withUser(httptest.NewRequest(http.MethodPost, "/api/logs", strings.NewReader(body)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create current log: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := followUpCount(scheduleStore, householdID, choreID); got != 1 {
+		t.Fatalf("after current log: follow-up count=%d, want 1", got)
+	}
+
+	// 2) Backdated log (no follow-up) must NOT delete the existing follow-up.
+	body = `{"choreId":1,"completedAt":"` + yesterday.Format(time.RFC3339) + `","followUpMinutes":0}`
+	req = withUser(httptest.NewRequest(http.MethodPost, "/api/logs", strings.NewReader(body)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	handler.Create(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create backdated log: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := followUpCount(scheduleStore, householdID, choreID); got != 1 {
+		t.Fatalf("after backdated log without follow-up: follow-up count=%d, want 1 (existing must be preserved)", got)
+	}
+
+	// 3) Backdated log WITH a follow-up (anchored to the past) must not
+	//    create a second follow-up nor replace the existing one.
+	body = `{"choreId":1,"completedAt":"` + yesterday.Format(time.RFC3339) + `","followUpMinutes":180,"followUpTime":"` + fuTime(yesterday) + `"}`
+	req = withUser(httptest.NewRequest(http.MethodPost, "/api/logs", strings.NewReader(body)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	handler.Create(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create backdated log with follow-up: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := followUpCount(scheduleStore, householdID, choreID); got != 1 {
+		t.Fatalf("after backdated log with follow-up: follow-up count=%d, want 1 (existing must be preserved, no dupes)", got)
+	}
+
+	// 4) A fresh/current log without a follow-up still clears the existing
+	//    follow-up (preserves the established "re-log clears follow-up"
+	//    behaviour for current logs).
+	body = `{"choreId":1,"completedAt":"` + now.Format(time.RFC3339) + `","followUpMinutes":0}`
+	req = withUser(httptest.NewRequest(http.MethodPost, "/api/logs", strings.NewReader(body)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	handler.Create(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create current log (clear): status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := followUpCount(scheduleStore, householdID, choreID); got != 0 {
+		t.Fatalf("after current log without follow-up: follow-up count=%d, want 0 (current log must clear)", got)
 	}
 }

@@ -23,6 +23,15 @@ type LogHandler struct {
 	scheduleStore  schedule.Store
 }
 
+// backdateFollowUpTolerance is the grace period used to decide whether a log
+// records a fresh/current completion versus a backdated historical entry. A
+// log whose completion time falls within this window of "now" is treated as
+// current and may clear/replace an existing follow-up; anything older is
+// treated as a backdated entry and leaves existing follow-ups untouched. The
+// value comfortably exceeds form-fill latency and clock skew while remaining
+// far below the hour-scale durations used by the follow-up feature.
+const backdateFollowUpTolerance = 10 * time.Minute
+
 func NewLogHandler(service *log.Service) *LogHandler {
 	return &LogHandler{service: service}
 }
@@ -159,38 +168,63 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.scheduleStore != nil {
-		if err := h.scheduleStore.DeleteFollowUpSchedulesByChore(r.Context(), req.ChoreID); err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
+		// A follow-up schedule represents a forward-looking reminder ("do
+		// this chore again at time X"). Only a log that records a fresh,
+		// current completion should clear/replace an existing follow-up —
+		// the user just did the chore, so the reminder is satisfied and a
+		// new one (if any) takes its place.
+		//
+		// A backdated log records a historical event; it must NOT disrupt an
+		// existing future follow-up. Even if the backdated log itself
+		// specifies a follow-up, that follow-up would be anchored to a past
+		// time and is irrelevant, so we leave the existing follow-up intact
+		// (and keep the single-follow-up-per-chore invariant). The chore's
+		// lastFollowUpMinutes (the "last used" pre-fill) is left untouched
+		// for the same reason — a historical entry shouldn't wipe the
+		// user's preferred follow-up duration.
+		//
+		// "Backdated" is determined from the log's completion timestamp: a
+		// small tolerance accommodates form-fill latency and clock skew so
+		// that a normal "log now" entry is never misclassified.
+		backdated := false
+		if logCompletedAt != nil {
+			backdated = logCompletedAt.Before(time.Now().Add(-backdateFollowUpTolerance))
 		}
-		if req.FollowUpMinutes > 0 && req.FollowUpTime != "" {
-			t, err := time.Parse("2006-01-02T15:04", req.FollowUpTime)
-			if err != nil {
-				writeError(w, http.StatusBadRequest, "invalid followUpTime format")
-				return
-			}
-			specificTime := t.Format("15:04")
-			startDate := schedule.DateOnly{Time: t.Truncate(24 * time.Hour)}
-			_, err = h.scheduleStore.Create(r.Context(), schedule.ChoreSchedule{
-				HouseholdID:   *user.HouseholdID,
-				ChoreID:       req.ChoreID,
-				FrequencyType: "once",
-				TimePeriod:    schedule.PeriodAnytime,
-				SpecificTime:  specificTime,
-				StartDate:     &startDate,
-				IsActive:      true,
-				IsFollowUp:    true,
-			})
-			if err != nil {
+
+		if !backdated {
+			if err := h.scheduleStore.DeleteFollowUpSchedulesByChore(r.Context(), req.ChoreID); err != nil {
 				writeError(w, http.StatusInternalServerError, err.Error())
 				return
 			}
-		}
-		if h.choreStore != nil {
-			c, err := h.choreStore.GetChore(r.Context(), req.ChoreID)
-			if err == nil && c.HouseholdID == *user.HouseholdID {
-				c.LastFollowUpMinutes = req.FollowUpMinutes
-				_ = h.choreStore.UpdateChore(r.Context(), c)
+			if req.FollowUpMinutes > 0 && req.FollowUpTime != "" {
+				t, err := time.Parse("2006-01-02T15:04", req.FollowUpTime)
+				if err != nil {
+					writeError(w, http.StatusBadRequest, "invalid followUpTime format")
+					return
+				}
+				specificTime := t.Format("15:04")
+				startDate := schedule.DateOnly{Time: t.Truncate(24 * time.Hour)}
+				_, err = h.scheduleStore.Create(r.Context(), schedule.ChoreSchedule{
+					HouseholdID:   *user.HouseholdID,
+					ChoreID:       req.ChoreID,
+					FrequencyType: "once",
+					TimePeriod:    schedule.PeriodAnytime,
+					SpecificTime:  specificTime,
+					StartDate:     &startDate,
+					IsActive:      true,
+					IsFollowUp:    true,
+				})
+				if err != nil {
+					writeError(w, http.StatusInternalServerError, err.Error())
+					return
+				}
+			}
+			if h.choreStore != nil {
+				c, err := h.choreStore.GetChore(r.Context(), req.ChoreID)
+				if err == nil && c.HouseholdID == *user.HouseholdID {
+					c.LastFollowUpMinutes = req.FollowUpMinutes
+					_ = h.choreStore.UpdateChore(r.Context(), c)
+				}
 			}
 		}
 	}

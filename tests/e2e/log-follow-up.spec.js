@@ -323,4 +323,106 @@ test.describe('Log follow-up scheduling', () => {
     const found = updatedChores.find(c => c.id === chore.id);
     expect(found.followUpEnabled).toBe(true);
   });
+
+  // Regression: a backdated log (a log whose completion time is in the past)
+  // must not clear an existing forward-looking follow-up schedule. The
+  // follow-up represents a future reminder that is still valid regardless of
+  // historical entries being recorded. Likewise a backdated log that itself
+  // has a follow-up set must not replace the existing follow-up.
+  test('backdated log does not clear existing follow-up schedule', async ({ page }) => {
+    const { csrf, chores } = await setupWithChores(page);
+
+    const feedBaby = chores.find(c => c.name === 'Feed Baby');
+    expect(feedBaby).toBeDefined();
+    expect(feedBaby.followUpEnabled).toBe(true);
+    const choreId = feedBaby.id;
+
+    // Helper: list follow-up schedules for this chore.
+    async function followUps() {
+      const { schedules } = await (await page.request.get('/api/schedules')).json();
+      return schedules.filter(s => s.choreId === choreId && s.isFollowUp);
+    }
+
+    // 1) Log "now" with a 3-hour follow-up. This creates a follow-up schedule
+    //    scheduled for ~3 hours in the future.
+    const now = new Date();
+    const pad = n => String(n).padStart(2, "0");
+    const futureFU = new Date(now.getTime() + 3 * 3600 * 1000);
+    const followUpTimeStr = `${futureFU.getFullYear()}-${pad(futureFU.getMonth() + 1)}-${pad(futureFU.getDate())}T${pad(futureFU.getHours())}:${pad(futureFU.getMinutes())}`;
+    let resp = await page.request.post('/api/logs', {
+      data: {
+        choreId,
+        completedAt: now.toISOString(),
+        date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+        hour: now.getHours(),
+        followUpMinutes: 180,
+        followUpTime: followUpTimeStr,
+      },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    expect(resp.ok()).toBe(true);
+
+    const fuBefore = await followUps();
+    expect(fuBefore.length).toBe(1);
+    const originalId = fuBefore[0].id;
+
+    // 2) Backdate a log to one day ago WITHOUT a follow-up (followUpMinutes=0).
+    //    Bug: this deletes the existing follow-up. Expected: follow-up survives.
+    const yesterday = new Date(now.getTime() - 24 * 3600 * 1000);
+    resp = await page.request.post('/api/logs', {
+      data: {
+        choreId,
+        completedAt: yesterday.toISOString(),
+        date: `${yesterday.getFullYear()}-${pad(yesterday.getMonth() + 1)}-${pad(yesterday.getDate())}`,
+        hour: yesterday.getHours(),
+        followUpMinutes: 0,
+      },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    expect(resp.ok()).toBe(true);
+
+    const fuAfterBackdate = await followUps();
+    expect(fuAfterBackdate.length).toBe(1);
+    expect(fuAfterBackdate[0].id).toBe(originalId);
+
+    // 3) Backdate a log to one day ago WITH a follow-up set for "3 hours from
+    //    the past" (i.e. in the past). This must not replace the existing
+    //    future follow-up either.
+    const pastFU = new Date(yesterday.getTime() + 3 * 3600 * 1000);
+    const pastFollowUpTimeStr = `${pastFU.getFullYear()}-${pad(pastFU.getMonth() + 1)}-${pad(pastFU.getDate())}T${pad(pastFU.getHours())}:${pad(pastFU.getMinutes())}`;
+    resp = await page.request.post('/api/logs', {
+      data: {
+        choreId,
+        completedAt: yesterday.toISOString(),
+        date: `${yesterday.getFullYear()}-${pad(yesterday.getMonth() + 1)}-${pad(yesterday.getDate())}`,
+        hour: yesterday.getHours(),
+        followUpMinutes: 180,
+        followUpTime: pastFollowUpTimeStr,
+      },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    expect(resp.ok()).toBe(true);
+
+    const fuAfterBackdateWithFU = await followUps();
+    expect(fuAfterBackdateWithFU.length).toBe(1);
+    expect(fuAfterBackdateWithFU[0].id).toBe(originalId);
+
+    // 4) A current log (now) without a follow-up still clears the existing
+    //    follow-up (preserves the established "re-log clears follow-up"
+    //    behaviour for current logs).
+    resp = await page.request.post('/api/logs', {
+      data: {
+        choreId,
+        completedAt: now.toISOString(),
+        date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+        hour: now.getHours(),
+        followUpMinutes: 0,
+      },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    expect(resp.ok()).toBe(true);
+
+    const fuAfterCurrent = await followUps();
+    expect(fuAfterCurrent.length).toBe(0);
+  });
 });
