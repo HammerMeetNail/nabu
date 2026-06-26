@@ -95,6 +95,8 @@ export function renderScheduleTab(state) {
       const summarySuffix = r.sch.recurrenceEnd
         ? ` until ${new Date(r.sch.recurrenceEnd).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
         : "";
+      const slotTime = r.sch.specificTime || "";
+      const slotHour = slotTime ? slotTime.split(':')[0] : "";
       return `
         <div class="sch-row ${doneClass}" style="--chore-color:${r.chore.color}">
           <button type="button" class="sch-row-main"
@@ -102,7 +104,8 @@ export function renderScheduleTab(state) {
             data-chore-id="${r.chore.id}"
             data-schedule-id="${r.sch.id}"
             data-date="${r.iso}"
-            data-slot-hour="${r.sch.specificTime ? r.sch.specificTime.split(':')[0] : ''}">
+            data-slot-hour="${slotHour}"
+            data-slot-time="${slotTime}">
             <span class="sch-icon">${escapeHTML(r.chore.icon)}</span>
             <div class="sch-body">
               <div class="sch-name-row">

@@ -572,15 +572,14 @@ func TestLogCreateFollowUpBackdatePreservesExisting(t *testing.T) {
 	now := time.Now().UTC()
 	yesterday := now.Add(-24 * time.Hour)
 
-	// followUpTime formats a time as the "2006-01-02T15:04" string expected
-	// by the log handler for followUpTime placement (~3h after the given base).
 	fuTime := func(base time.Time) string {
 		fu := base.Add(3 * time.Hour)
 		return fu.Format("2006-01-02T15:04")
 	}
+	fmtDate := func(t time.Time) string { return t.Format("2006-01-02") }
 
-	// 1) Current log with a 3h follow-up -> creates a follow-up schedule.
-	body := `{"choreId":1,"completedAt":"` + now.Format(time.RFC3339) + `","followUpMinutes":180,"followUpTime":"` + fuTime(now) + `"}`
+	// 1) Current log (today's date) with a 3h follow-up -> creates a follow-up.
+	body := `{"choreId":1,"date":"` + fmtDate(now) + `","completedAt":"` + now.Format(time.RFC3339) + `","followUpMinutes":180,"followUpTime":"` + fuTime(now) + `"}`
 	req := withUser(httptest.NewRequest(http.MethodPost, "/api/logs", strings.NewReader(body)), authService, sessionID)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -592,8 +591,8 @@ func TestLogCreateFollowUpBackdatePreservesExisting(t *testing.T) {
 		t.Fatalf("after current log: follow-up count=%d, want 1", got)
 	}
 
-	// 2) Backdated log (no follow-up) must NOT delete the existing follow-up.
-	body = `{"choreId":1,"completedAt":"` + yesterday.Format(time.RFC3339) + `","followUpMinutes":0}`
+	// 2) Backdated log (yesterday's date, no follow-up) must NOT delete the existing follow-up.
+	body = `{"choreId":1,"date":"` + fmtDate(yesterday) + `","completedAt":"` + yesterday.Format(time.RFC3339) + `","followUpMinutes":0}`
 	req = withUser(httptest.NewRequest(http.MethodPost, "/api/logs", strings.NewReader(body)), authService, sessionID)
 	req.Header.Set("Content-Type", "application/json")
 	rec = httptest.NewRecorder()
@@ -605,9 +604,9 @@ func TestLogCreateFollowUpBackdatePreservesExisting(t *testing.T) {
 		t.Fatalf("after backdated log without follow-up: follow-up count=%d, want 1 (existing must be preserved)", got)
 	}
 
-	// 3) Backdated log WITH a follow-up (anchored to the past) must not
-	//    create a second follow-up nor replace the existing one.
-	body = `{"choreId":1,"completedAt":"` + yesterday.Format(time.RFC3339) + `","followUpMinutes":180,"followUpTime":"` + fuTime(yesterday) + `"}`
+	// 3) Backdated log (yesterday's date) WITH a follow-up must not create a
+	//    second follow-up nor replace the existing one (anchored to the past).
+	body = `{"choreId":1,"date":"` + fmtDate(yesterday) + `","completedAt":"` + yesterday.Format(time.RFC3339) + `","followUpMinutes":180,"followUpTime":"` + fuTime(yesterday) + `"}`
 	req = withUser(httptest.NewRequest(http.MethodPost, "/api/logs", strings.NewReader(body)), authService, sessionID)
 	req.Header.Set("Content-Type", "application/json")
 	rec = httptest.NewRecorder()
@@ -619,10 +618,9 @@ func TestLogCreateFollowUpBackdatePreservesExisting(t *testing.T) {
 		t.Fatalf("after backdated log with follow-up: follow-up count=%d, want 1 (existing must be preserved, no dupes)", got)
 	}
 
-	// 4) A fresh/current log without a follow-up still clears the existing
-	//    follow-up (preserves the established "re-log clears follow-up"
-	//    behaviour for current logs).
-	body = `{"choreId":1,"completedAt":"` + now.Format(time.RFC3339) + `","followUpMinutes":0}`
+	// 4) A fresh/current log (today's date) without a follow-up still clears
+	//    the existing follow-up.
+	body = `{"choreId":1,"date":"` + fmtDate(now) + `","completedAt":"` + now.Format(time.RFC3339) + `","followUpMinutes":0}`
 	req = withUser(httptest.NewRequest(http.MethodPost, "/api/logs", strings.NewReader(body)), authService, sessionID)
 	req.Header.Set("Content-Type", "application/json")
 	rec = httptest.NewRecorder()
@@ -632,5 +630,118 @@ func TestLogCreateFollowUpBackdatePreservesExisting(t *testing.T) {
 	}
 	if got := followUpCount(scheduleStore, householdID, choreID); got != 0 {
 		t.Fatalf("after current log without follow-up: follow-up count=%d, want 0 (current log must clear)", got)
+	}
+}
+
+// TestLogCreateFollowUpTodayWithOlderHourClearsExisting verifies that a log
+// for today's date clears and replaces an existing follow-up even when the
+// completedAt hour is behind the current wall clock (e.g. when the when
+// input was pre-filled from a schedule's rounded-down hour).  This scenario
+// used to be misclassified as backdated by the 10-minute tolerance.
+func TestLogCreateFollowUpTodayWithOlderHourClearsExisting(t *testing.T) {
+	handler, sessionID, authService, scheduleStore, _, householdID := setupLogTestWithFollowUp(t)
+
+	const choreID = 1
+	now := time.Now().UTC()
+	fmtDate := func(t time.Time) string { return t.Format("2006-01-02") }
+
+	fuTime := func(base time.Time) string {
+		fu := base.Add(3 * time.Hour)
+		return fu.Format("2006-01-02T15:04")
+	}
+
+	// 1) Log with today's date at 12:30 with a 3h follow-up (creates a
+	//    follow-up around 15:30).
+	base := time.Date(now.Year(), now.Month(), now.Day(), 12, 30, 0, 0, time.UTC)
+	body := `{"choreId":1,"date":"` + fmtDate(base) + `","completedAt":"` + base.Format(time.RFC3339) + `","followUpMinutes":180,"followUpTime":"` + fuTime(base) + `"}`
+	req := withUser(httptest.NewRequest(http.MethodPost, "/api/logs", strings.NewReader(body)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("first log: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := followUpCount(scheduleStore, householdID, choreID); got != 1 {
+		t.Fatalf("after first log: follow-up count=%d, want 1", got)
+	}
+
+	// 2) Log again with today's date at 15:00 (round hour — mimics the
+	//    schedule-tab pre-filling the when input to :00) with a new follow-up.
+	//    The old follow-up must be deleted and replaced; today's date must
+	//    not be considered backdated regardless of the hour.
+	later := time.Date(now.Year(), now.Month(), now.Day(), 15, 0, 0, 0, time.UTC)
+	body2 := `{"choreId":1,"date":"` + fmtDate(later) + `","completedAt":"` + later.Format(time.RFC3339) + `","followUpMinutes":180,"followUpTime":"` + fuTime(later) + `"}`
+	req2 := withUser(httptest.NewRequest(http.MethodPost, "/api/logs", strings.NewReader(body2)), authService, sessionID)
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	handler.Create(rec2, req2)
+	if rec2.Code != http.StatusCreated {
+		t.Fatalf("second log: status=%d body=%s", rec2.Code, rec2.Body.String())
+	}
+	if got := followUpCount(scheduleStore, householdID, choreID); got != 1 {
+		t.Fatalf("after second log (today with older hour): follow-up count=%d, want 1 (old must be replaced)", got)
+	}
+}
+
+func TestLogCreateFollowUpReplacesExisting(t *testing.T) {
+	handler, sessionID, authService, scheduleStore, _, householdID := setupLogTestWithFollowUp(t)
+
+	const choreID = 1
+	now := time.Now().UTC()
+
+	fuTime := func(base time.Time) string {
+		fu := base.Add(3 * time.Hour)
+		return fu.Format("2006-01-02T15:04")
+	}
+
+	// 1) Log with a 3h follow-up -> creates a follow-up schedule.
+	body := `{"choreId":1,"completedAt":"` + now.Format(time.RFC3339) + `","followUpMinutes":180,"followUpTime":"` + fuTime(now) + `"}`
+	req := withUser(httptest.NewRequest(http.MethodPost, "/api/logs", strings.NewReader(body)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("first log: status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	schedules, _ := scheduleStore.ListByHousehold(context.TODO(), householdID)
+	firstFuID := int64(0)
+	for _, s := range schedules {
+		if s.ChoreID == choreID && s.IsFollowUp {
+			firstFuID = s.ID
+		}
+	}
+	if firstFuID == 0 {
+		t.Fatal("first log did not create a follow-up")
+	}
+
+	// 2) Log again with a NEW 3h follow-up. The old follow-up must be
+	//    deleted and replaced; there must not be two follow-ups.
+	later := now.Add(1 * time.Minute)
+	body2 := `{"choreId":1,"completedAt":"` + later.Format(time.RFC3339) + `","followUpMinutes":180,"followUpTime":"` + fuTime(later) + `"}`
+	req2 := withUser(httptest.NewRequest(http.MethodPost, "/api/logs", strings.NewReader(body2)), authService, sessionID)
+	req2.Header.Set("Content-Type", "application/json")
+	rec2 := httptest.NewRecorder()
+	handler.Create(rec2, req2)
+	if rec2.Code != http.StatusCreated {
+		t.Fatalf("second log: status=%d body=%s", rec2.Code, rec2.Body.String())
+	}
+
+	schedules2, _ := scheduleStore.ListByHousehold(context.TODO(), householdID)
+	found := int64(0)
+	for _, s := range schedules2 {
+		if s.ChoreID == choreID && s.IsFollowUp {
+			found = s.ID
+		}
+	}
+	if found == 0 {
+		t.Fatal("second log did not create a replacement follow-up")
+	}
+	if found == firstFuID {
+		t.Fatal("old follow-up was not replaced (same ID survived)")
+	}
+
+	// Only one follow-up must exist.
+	if n := followUpCount(scheduleStore, householdID, choreID); n != 1 {
+		t.Fatalf("after replace: follow-up count=%d, want 1", n)
 	}
 }

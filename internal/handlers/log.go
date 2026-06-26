@@ -183,11 +183,15 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		// for the same reason — a historical entry shouldn't wipe the
 		// user's preferred follow-up duration.
 		//
-		// "Backdated" is determined from the log's completion timestamp: a
-		// small tolerance accommodates form-fill latency and clock skew so
-		// that a normal "log now" entry is never misclassified.
+		// Backdate detection uses the log's calendar date first (more
+		// robust against minor time drift from UI pre-fills), then falls
+		// back to a 10-minute tolerance on completedAt when no date is
+		// available.
 		backdated := false
-		if logCompletedAt != nil {
+		if logDate != nil {
+			today := time.Now().UTC().Truncate(24 * time.Hour)
+			backdated = logDate.Before(today)
+		} else if logCompletedAt != nil {
 			backdated = logCompletedAt.Before(time.Now().Add(-backdateFollowUpTolerance))
 		}
 

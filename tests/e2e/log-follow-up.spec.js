@@ -425,4 +425,65 @@ test.describe('Log follow-up scheduling', () => {
     const fuAfterCurrent = await followUps();
     expect(fuAfterCurrent.length).toBe(0);
   });
+
+  // Regression: logging a chore again with a new follow-up must replace
+  // (delete and re-create) the existing follow-up, not leave two.
+  test('re-log with follow-up replaces existing follow-up', async ({ page }) => {
+    const { csrf, chores } = await setupWithChores(page);
+
+    const feedBaby = chores.find(c => c.name === 'Feed Baby');
+    expect(feedBaby).toBeDefined();
+    expect(feedBaby.followUpEnabled).toBe(true);
+    const choreId = feedBaby.id;
+
+    async function followUps() {
+      const { schedules } = await (await page.request.get('/api/schedules')).json();
+      return schedules.filter(s => s.choreId === choreId && s.isFollowUp);
+    }
+
+    const now = new Date();
+    const pad = n => String(n).padStart(2, "0");
+    const fuTime = (base) => {
+      const fu = new Date(base.getTime() + 3 * 3600 * 1000);
+      return `${fu.getFullYear()}-${pad(fu.getMonth() + 1)}-${pad(fu.getDate())}T${pad(fu.getHours())}:${pad(fu.getMinutes())}`;
+    };
+
+    // 1) Log with a 3h follow-up.
+    let resp = await page.request.post('/api/logs', {
+      data: {
+        choreId,
+        completedAt: now.toISOString(),
+        date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+        hour: now.getHours(),
+        followUpMinutes: 180,
+        followUpTime: fuTime(now),
+      },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    expect(resp.ok()).toBe(true);
+
+    const before = await followUps();
+    expect(before.length).toBe(1);
+    const firstId = before[0].id;
+
+    // 2) Log again, also with a 3h follow-up (at the same time).
+    //    The old follow-up must be deleted and replaced; there must not
+    //    be two follow-ups for the same chore.
+    resp = await page.request.post('/api/logs', {
+      data: {
+        choreId,
+        completedAt: now.toISOString(),
+        date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
+        hour: now.getHours(),
+        followUpMinutes: 180,
+        followUpTime: fuTime(now),
+      },
+      headers: { 'X-CSRF-Token': csrf },
+    });
+    expect(resp.ok()).toBe(true);
+
+    const after = await followUps();
+    expect(after.length).toBe(1);
+    expect(after[0].id).not.toBe(firstId);
+  });
 });

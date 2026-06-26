@@ -509,6 +509,8 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     if (log?.completedAt) {
       const d = new Date(log.completedAt);
       whenVal = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    } else if (date && opts.slotTime && opts.slotTime.includes(":")) {
+      whenVal = `${date}T${opts.slotTime}`;
     } else if (date && opts.slotHour != null) {
       whenVal = `${date}T${pad(opts.slotHour)}:00`;
     } else if (date) {
