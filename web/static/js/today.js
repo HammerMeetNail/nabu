@@ -205,7 +205,10 @@ export function renderHistoryView(state) {
     const d = l.completedAt ? new Date(l.completedAt) : null;
     if (!d) continue;
     const dateKey = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    const timeStr = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const h = d.getHours();
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h % 12 || 12;
+    const timeStr = `${h12}:${pad(d.getMinutes())} ${ampm}`;
     const dayLabel = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
     if (dateKey !== currentDate) {
