@@ -27,10 +27,17 @@ type LogHandler struct {
 // records a fresh/current completion versus a backdated historical entry. A
 // log whose completion time falls within this window of "now" is treated as
 // current and may clear/replace an existing follow-up; anything older is
-// treated as a backdated entry and leaves existing follow-ups untouched. The
-// value comfortably exceeds form-fill latency and clock skew while remaining
-// far below the hour-scale durations used by the follow-up feature.
-const backdateFollowUpTolerance = 10 * time.Minute
+// treated as a backdated entry and leaves existing follow-ups untouched.
+//
+// The value is generous (6 hours) to cover two scenarios that would otherwise
+// be misclassified:
+//  1. The schedule-tab log sheet pre-fills the when input to the scheduled
+//     time (e.g. 15:30); the user may tap Log without updating it even though
+//     the wall clock is hours later.
+//  2. The user's local date and the server's UTC date differ (timezone
+//     offset). A date-based comparison breaks across timezone boundaries,
+//     while completedAt vs time.Now() both use absolute UTC timestamps.
+const backdateFollowUpTolerance = 6 * time.Hour
 
 func NewLogHandler(service *log.Service) *LogHandler {
 	return &LogHandler{service: service}
@@ -183,15 +190,12 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		// for the same reason — a historical entry shouldn't wipe the
 		// user's preferred follow-up duration.
 		//
-		// Backdate detection uses the log's calendar date first (more
-		// robust against minor time drift from UI pre-fills), then falls
-		// back to a 10-minute tolerance on completedAt when no date is
-		// available.
+		// Backdate detection uses the completedAt timestamp against the
+		// current wall clock. Both are absolute UTC timestamps, which
+		// avoids the timezone ambiguity inherent in comparing calendar
+		// dates across client and server timezones.
 		backdated := false
-		if logDate != nil {
-			today := time.Now().UTC().Truncate(24 * time.Hour)
-			backdated = logDate.Before(today)
-		} else if logCompletedAt != nil {
+		if logCompletedAt != nil {
 			backdated = logCompletedAt.Before(time.Now().Add(-backdateFollowUpTolerance))
 		}
 

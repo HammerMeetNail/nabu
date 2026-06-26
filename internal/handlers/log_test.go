@@ -634,10 +634,10 @@ func TestLogCreateFollowUpBackdatePreservesExisting(t *testing.T) {
 }
 
 // TestLogCreateFollowUpTodayWithOlderHourClearsExisting verifies that a log
-// for today's date clears and replaces an existing follow-up even when the
-// completedAt hour is behind the current wall clock (e.g. when the when
-// input was pre-filled from a schedule's rounded-down hour).  This scenario
-// used to be misclassified as backdated by the 10-minute tolerance.
+// whose completedAt is slightly behind the current wall clock clears and
+// replaces an existing follow-up (e.g. when the when input was pre-filled
+// from a schedule row and the user taps Log without updating it).  This
+// scenario was misclassified as backdated by the original 10-minute tolerance.
 func TestLogCreateFollowUpTodayWithOlderHourClearsExisting(t *testing.T) {
 	handler, sessionID, authService, scheduleStore, _, householdID := setupLogTestWithFollowUp(t)
 
@@ -650,9 +650,11 @@ func TestLogCreateFollowUpTodayWithOlderHourClearsExisting(t *testing.T) {
 		return fu.Format("2006-01-02T15:04")
 	}
 
-	// 1) Log with today's date at 12:30 with a 3h follow-up (creates a
-	//    follow-up around 15:30).
-	base := time.Date(now.Year(), now.Month(), now.Day(), 12, 30, 0, 0, time.UTC)
+	// Use times relative to now so the test is not flaky at different hours
+	// of the day.  Both times are well within the 6-hour backdate tolerance.
+
+	// 1) Log 3 hours ago with a 3h follow-up (creates a follow-up).
+	base := now.Add(-3 * time.Hour)
 	body := `{"choreId":1,"date":"` + fmtDate(base) + `","completedAt":"` + base.Format(time.RFC3339) + `","followUpMinutes":180,"followUpTime":"` + fuTime(base) + `"}`
 	req := withUser(httptest.NewRequest(http.MethodPost, "/api/logs", strings.NewReader(body)), authService, sessionID)
 	req.Header.Set("Content-Type", "application/json")
@@ -665,11 +667,10 @@ func TestLogCreateFollowUpTodayWithOlderHourClearsExisting(t *testing.T) {
 		t.Fatalf("after first log: follow-up count=%d, want 1", got)
 	}
 
-	// 2) Log again with today's date at 15:00 (round hour — mimics the
-	//    schedule-tab pre-filling the when input to :00) with a new follow-up.
-	//    The old follow-up must be deleted and replaced; today's date must
-	//    not be considered backdated regardless of the hour.
-	later := time.Date(now.Year(), now.Month(), now.Day(), 15, 0, 0, 0, time.UTC)
+	// 2) Log 2 hours ago (mimics the schedule-tab pre-filling the when
+	//    input to a slightly older time) with a new follow-up.  The old
+	//    follow-up must be deleted and replaced.
+	later := now.Add(-2 * time.Hour)
 	body2 := `{"choreId":1,"date":"` + fmtDate(later) + `","completedAt":"` + later.Format(time.RFC3339) + `","followUpMinutes":180,"followUpTime":"` + fuTime(later) + `"}`
 	req2 := withUser(httptest.NewRequest(http.MethodPost, "/api/logs", strings.NewReader(body2)), authService, sessionID)
 	req2.Header.Set("Content-Type", "application/json")
@@ -679,7 +680,7 @@ func TestLogCreateFollowUpTodayWithOlderHourClearsExisting(t *testing.T) {
 		t.Fatalf("second log: status=%d body=%s", rec2.Code, rec2.Body.String())
 	}
 	if got := followUpCount(scheduleStore, householdID, choreID); got != 1 {
-		t.Fatalf("after second log (today with older hour): follow-up count=%d, want 1 (old must be replaced)", got)
+		t.Fatalf("after second log (slightly older hour): follow-up count=%d, want 1 (old must be replaced)", got)
 	}
 }
 
