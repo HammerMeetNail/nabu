@@ -474,13 +474,13 @@ function renderScheduleView() {
     }
   }
   if (state.activeSheet === "log") {
-    const { choreId, logId, date, scheduleId } = state.activeSheetData || {};
+    const { choreId, logId, date, scheduleId, slotTime } = state.activeSheetData || {};
     const chore = (state.chores || []).find(c => c.id === choreId);
     if (chore) {
       const allLogs = state.todayLogs || [];
       const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
       const cachedIndicatorVolumes = state.latestLogs[choreId]?.indicatorVolumes ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), scheduleId, cachedIndicatorVolumes });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), scheduleId, slotTime, cachedIndicatorVolumes });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}
@@ -1631,8 +1631,9 @@ export async function init() {
         const slotHour = slotHourVal && slotHourVal !== ""
           ? parseInt(slotHourVal, 10)
           : null;
+        const slotTime = actionEl.dataset.slotTime || "";
         state.activeSheet     = "log";
-        state.activeSheetData = { choreId, logId: null, date, slotHour, scheduleId };
+        state.activeSheetData = { choreId, logId: null, date, slotHour, scheduleId, slotTime };
         render(app);
         break;
       }
