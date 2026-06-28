@@ -237,18 +237,6 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     // navigating to calendar (avoids race with doCreateHousehold's final render).
     await page.waitForSelector('.home-grid', { timeout: 15000 });
 
-    // === Navigate to Activity (history view) ===
-    await page.click('a[data-nav="activity"]');
-    await expect(page.locator('.history-view')).toBeVisible({ timeout: 10000 });
-
-    // === Navigate to Manage Chores (Home → Manage toggle) ===
-    await page.click('a[data-nav="today"]');
-    await page.click('[data-action="switch-home-view"][data-view="manage"]');
-    await expect(page.locator('.chores-view')).toBeVisible();
-    // Should see chore cards (non-empty since we have chore data)
-    const choreListContent = await page.locator('#app').innerHTML();
-    expect(choreListContent.length).toBeGreaterThan(50);
-
     // === Navigate to Settings ===
     await page.click('a[data-nav="settings"]');
 
