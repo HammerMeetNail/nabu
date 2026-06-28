@@ -2,6 +2,28 @@
 
 Living matrix tracking feature parity between the PWA and native iOS app.
 
+> **Re-baselined 2026-06-28** against the code on `main`. The previous matrix
+> was inaccurate in both directions: it marked ~50 rows "iOS pending" even
+> though the corresponding SwiftUI views and API calls already shipped, and its
+> per-row iOS test column referenced ~30 test files that do not exist
+> (e.g. `HomeUITests.swift`, `StatsSnapshotTests.swift`, `APNsContractTests.swift`).
+> The real iOS test suite is a smaller set of unit/contract tests
+> (`NabuTests/*.swift`) plus a single `NabuUITests.swift`. Statuses and test
+> references below now reflect what is actually in the repository.
+
+## Status legend
+
+- **Built** — Implemented in iOS (view + API wiring present on `main`).
+  Behavioral parity against the *current* PWA has not been re-confirmed by an
+  automated UI run, so treat as "implemented, verify before release."
+- **Done** — Implemented on both clients with passing iOS test coverage and
+  parity confirmed.
+- **iOS pending** — Not yet implemented in the native app.
+- **Deferred** — Intentionally absent from both clients' navigation.
+- **Not built** — A contract/stub exists but the feature is non-functional
+  end-to-end (currently APNs only).
+- **N/A** — Feature applies to only one client (with justification).
+
 ## Phase progress
 
 | Phase | Description | Status |
@@ -9,155 +31,130 @@ Living matrix tracking feature parity between the PWA and native iOS app.
 | 0 | Guardrails and parity infrastructure | Done |
 | 1 | iOS project skeleton | Done |
 | 2 | API models and contract tests | Done |
-| 3 | Auth, session, and onboarding | Done |
-| 4 | Bootstrap data loading and preferences | Done |
-| 5 | Home and log sheet | Done |
-| 6 | Chores management | Done |
-| 7 | Activity history, day, and week | Done |
-| 8 | Schedule | Done |
-| 9 | Household, members, and multi-household | Done |
-| 10 | Notifications and APNs | Done |
-| 11 | Stats | Done |
-| 12 | Security, accessibility, and polish | Done |
-| 13 | Release readiness | Done |
+| 3 | Auth, session, and onboarding | Built (email verification pending) |
+| 4 | Bootstrap data loading and preferences | Built |
+| 5 | Home and log sheet | Built |
+| 6 | Chores management | Built |
+| 7 | Activity history (day/week calendar removed to match PWA) | Built |
+| 8 | Schedule | Built (schedules/for-date overlay pending) |
+| 9 | Household, members, and multi-household | Built |
+| 10 | Notifications (in-app) | Built |
+| 10b | APNs native push | **Not built** — see notes |
+| 11 | Stats | Built (breakdown / streaks / recap / feeding-gaps pending) |
+| 12 | Security, accessibility, and polish | Built |
+| 13 | Release readiness | In progress |
 
 ## How to use
 
-When implementing an iOS feature or changing PWA behavior, update the corresponding row. Set the parity status to one of:
-
-- **Done** — Both clients implement the feature with test coverage.
-- **iOS pending** — Not yet implemented in the native app.
-- **PWA pending** — PWA change needed to match iOS.
-- **N/A** — Feature applies to only one client (with justification).
+When implementing an iOS feature or changing PWA behavior, update the
+corresponding row and set its parity status from the legend above. A status of
+**Built** should be promoted to **Done** only once the behavior is covered by a
+test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml`).
 
 ## Feature matrix
 
 | Feature | PWA module/specs | iOS module/tests | Shared API | Parity | Known differences |
 |---------|-----------------|------------------|------------|--------|-------------------|
 | **Auth & Onboarding** |
-| Login/register | `auth.js`, `validation.spec.js`, `settings-auth.spec.js` | `Auth/LoginView.swift`, `Auth/RegisterView.swift`, `AuthUITests.swift`, `AuthContractTests.swift` | `/api/auth/login`, `/api/auth/register` | iOS pending | |
-| Magic link | `auth.js`, `magic-link.spec.js` | `Auth/MagicLinkView.swift`, `MagicLinkUITests.swift` | `/api/auth/magic-link/request`, `/api/auth/magic-link/consume` | iOS pending | |
-| Password reset | `auth.js`, `settings-auth.spec.js` | `Auth/PasswordResetView.swift`, `AccountSettingsUITests.swift` | `/api/auth/password/forgot`, `/api/auth/password/reset`, `/api/auth/password` | iOS pending | |
-| Email verification | `auth.js`, `magic-link.spec.js` | `Auth/MagicLinkView.swift`, `AuthContractTests.swift` | `/api/auth/email/verify`, `/api/auth/email/verification/resend` | iOS pending | |
-| Google OAuth | `auth.js` | `Auth/GoogleOAuthCoordinator.swift` | `/api/auth/google/login`, `/api/auth/google/callback` | iOS pending | |
-| Logout | `auth.js`, `validation.spec.js` | `Auth/AuthStore.swift` | `/api/auth/logout` | iOS pending | |
-| Session bootstrap | `app.js` | `App/AppState.swift`, `API/APIClient.swift` | `/api/me` | iOS pending | |
+| Login/register | `auth.js`, `validation.spec.js` | `Auth/LoginView.swift`, `Auth/RegisterView.swift`, `AuthTests.swift` | `/api/auth/login`, `/api/auth/register` | Built | |
+| Magic link | `auth.js`, `magic-link.spec.js` | `Auth/MagicLinkView.swift`, `AuthTests.swift` | `/api/auth/magic-link/request`, `/api/auth/magic-link/consume` | Built | |
+| Password reset | `auth.js`, `settings-auth.spec.js` | `Auth/`, `APIContractTests.swift` | `/api/auth/password/forgot`, `/api/auth/password/reset`, `/api/auth/password` | Built | iOS has no dedicated PasswordResetView; reset is wired via the auth store |
+| Email verification | `auth.js`, `magic-link.spec.js` | — | `/api/auth/email/verify`, `/api/auth/email/verification/resend` | **iOS pending** | Endpoints not referenced anywhere in iOS source |
+| Google OAuth | `auth.js` | `Auth/GoogleOAuthCoordinator.swift` | `/api/auth/google/login`, `/api/auth/google/callback` | Built | |
+| Logout | `auth.js` | `Auth/AuthStore.swift`, `AuthTests.swift` | `/api/auth/logout` | Built | |
+| Session bootstrap | `app.js` | `App/AppState.swift`, `API/APIClient.swift`, `StateTests.swift` | `/api/me` | Built | iOS adds a CSRF pre-flight `GET /api/me` |
 | **Household & Members** |
-| Household CRUD | `household.js`, `household-multi.spec.js` | `Household/`, `HouseholdSwitchingUITests.swift` | `/api/household`, `/api/households`, `/api/households/{id}/activate` | iOS pending | |
-| Join by invite code | `household.js`, `invite-link.spec.js` | `Household/`, `InviteUITests.swift` | `/api/household/join` | iOS pending | |
-| Invite management | `household.js`, `invite-link.spec.js` | `Household/`, `InviteUITests.swift` | `/api/household/invites`, `/api/household/invites/{id}` | iOS pending | |
-| Member roles | `household.js`, `household-roles.spec.js` | `Household/`, `HouseholdRolesUITests.swift` | `/api/household/members/{userId}`, `/api/household/transfer` | iOS pending | |
-| Remove member | `household.js`, `settings-remove-member.spec.js` | `Household/`, `HouseholdMembersUITests.swift` | `/api/household/members/{userId}` | iOS pending | |
-| Leave household | `household.js`, `household-multi.spec.js` | `Household/`, `HouseholdSwitchingUITests.swift` | `/api/household/leave` | iOS pending | |
-| Multi-household switching | `household.js`, `household-multi.spec.js` | `Household/`, `HouseholdSwitchingUITests.swift` | `/api/households`, `/api/households/{id}/activate` | iOS pending | |
-| Join notifications | `notifications.js`, `household-join-notify.spec.js` | `Notifications/`, `HouseholdNotificationsUITests.swift` | `/api/notifications` | iOS pending | |
+| Household CRUD | `household.js`, `household-multi.spec.js` | `Views/HouseholdView.swift` | `/api/household`, `/api/households`, `/api/households/{id}/activate` | Built | |
+| Join by invite code | `household.js`, `invite-link.spec.js` | `Views/HouseholdView.swift` | `/api/household/join` | Built | |
+| Invite management | `household.js`, `invite-link.spec.js` | `Views/HouseholdView.swift` | `/api/household/invites`, `/api/household/invites/{id}` | Built | |
+| Member roles | `household.js`, `household-roles.spec.js` | `Views/HouseholdView.swift` | `/api/household/members/{userId}`, `/api/household/transfer` | Built | |
+| Remove member | `household.js`, `settings-remove-member.spec.js` | `Views/HouseholdView.swift` | `/api/household/members/{userId}` | Built | |
+| Leave household | `household.js`, `household-multi.spec.js` | `Views/HouseholdView.swift` | `/api/household/leave` | Built | |
+| Multi-household switching | `household.js`, `household-multi.spec.js` | `Views/HouseholdView.swift` | `/api/households`, `/api/households/{id}/activate` | Built | |
+| Join notifications | `notifications.js`, `household-join-notify.spec.js` | `Views/NotificationsView.swift`, `NotificationTests.swift` | `/api/notifications` | Built | |
 | **Home** |
-| Home grid | `home.js`, `home-grid.spec.js` | `Home/`, `HomeUITests.swift`, `HomeSnapshotTests.swift` | `/api/logs/latest-per-chore`, `/api/logs/today` | iOS pending | |
-| Direct tap log | `today.js`, `home-time-accuracy.spec.js` | `Home/`, `LogRequestTests.swift`, `HomeUITests.swift` | `/api/logs` | iOS pending | |
-| Log sheet (when picker) | `schedule.js`, `home-when-picker.spec.js` | `Home/`, `LogRequestTests.swift`, `HomeUITests.swift` | `/api/logs`, `/api/logs/{id}` | iOS pending | |
-| Jiggle mode reorder | `home.js`, `home-jiggle-grid.spec.js` | `Home/`, `HomeReorderUITests.swift` | `/api/preferences` | iOS pending | |
-| Hide from home | `home.js`, `home-remove-chore.spec.js` | `Home/`, `HomeManageUITests.swift` | `/api/preferences` | iOS pending | |
-| Undo toast | `today.js`, `home-grid.spec.js` | `Home/`, `HomeUITests.swift` | `/api/logs/{id}` | iOS pending | |
+| Home grid | `home.js`, `home-grid.spec.js` | `Views/HomeView.swift`, `Views/HomeGrid.swift`, `HomeTests.swift` | `/api/logs/latest-per-chore`, `/api/logs/today` | Built | |
+| Direct tap log | `today.js`, `home-time-accuracy.spec.js` | `Views/HomeView.swift`, `RequestEncodingTests.swift` | `/api/logs` | Built | |
+| Log sheet (when picker) | `schedule.js`, `home-when-picker.spec.js` | `Views/LogSheet.swift`, `Views/QuickLogSheet.swift` | `/api/logs`, `/api/logs/{id}` | Built | |
+| Jiggle mode reorder | `home.js`, `home-jiggle-grid.spec.js` | `Views/HomeView.swift` | `/api/preferences` | Built | |
+| Hide from home | `home.js`, `home-remove-chore.spec.js` | `Views/HomeView.swift` | `/api/preferences` | Built | |
+| Undo toast | `today.js`, `home-grid.spec.js` | `Views/UndoToast.swift`, `HomeTests.swift` | `/api/logs/{id}` | Built | |
 | **Activity** |
-| History list (paginated) | `today.js`, `history-pagination.spec.js` | `Activity/`, `HistoryUITests.swift` | `/api/logs/history` | iOS pending | |
-| History filter | `today.js`, `history-filter.spec.js` | `Activity/`, `HistoryFilterUITests.swift` | `/api/logs/history` | iOS pending | |
-| Day calendar | `calendar.js`, `schedule.spec.js` | `Activity/`, `ActivityCalendarUITests.swift` | `/api/logs/today`, `/api/schedules/for-date` | iOS pending | |
-| Week calendar | `calendar.js`, `schedule.spec.js` | `Activity/`, `ActivityCalendarUITests.swift` | `/api/logs/week`, `/api/schedules/for-date` | iOS pending | |
-| Ad-hoc log placement | `calendar.js`, `log-from-slot.spec.js` | `Activity/`, `LogPlacementTests.swift` | `/api/logs` | iOS pending | |
-| Log edit from calendar | `calendar.js`, `schedule.spec.js` | `Activity/`, `ActivityCalendarUITests.swift` | `/api/logs/{id}` | iOS pending | |
-| Add chore from hour slot | `calendar.js`, `calendar-add-history.spec.js` | `Activity/`, `ActivityCalendarUITests.swift` | `/api/chores`, `/api/schedules`, `/api/logs` | iOS pending | |
+| History list (paginated) | `today.js`, `history-pagination.spec.js` | `Views/ActivityView.swift`, `ActivityTests.swift` | `/api/logs/history` | Built | |
+| History filter | `today.js`, `history-filter.spec.js` | `Views/ActivityView.swift` | `/api/logs/history` | Built | iOS has `historyChoreFilter` state; UI surface to re-verify |
+| Day calendar | `calendar.js` (unrouted) | — | `/api/logs/today`, `/api/schedules/for-date` | Deferred | Removed from the Activity tab on both clients (PWA `e9a9527`); iOS DayView removed to match. PWA retains unrouted `renderCalendarView` code |
+| Week calendar | `calendar.js` (unrouted) | — | `/api/logs/week`, `/api/schedules/for-date` | Deferred | As above; iOS WeekView removed |
+| Ad-hoc log placement | `calendar.js`, `log-from-slot.spec.js` | — | `/api/logs` | Deferred | Was calendar-only; removed with the calendar |
 | **Schedule** |
-| Schedule CRUD | `schedule.js`, `schedule-tab.spec.js` | `Schedule/`, `ScheduleUITests.swift` | `/api/schedules`, `/api/schedules/{id}` | iOS pending | |
-| Recurrence logic | `calendar.js`, `schedule.spec.js` | `Schedule/`, `RecurrenceTests.swift` | N/A (client-side) | iOS pending | |
-| Pick chore sheet | `schedule.js`, `schedule-tab.spec.js` | `Schedule/`, `ScheduleUITests.swift` | `/api/chores`, `/api/schedules` | iOS pending | |
-| Schedule edit (sparse PATCH) | `schedule.js`, `schedule-tab.spec.js` | `Schedule/`, `ScheduleContractTests.swift` | `/api/schedules/{id}` | iOS pending | |
+| Schedule CRUD | `schedule.js`, `schedule-tab.spec.js` | `Views/ScheduleView.swift`, `ScheduleTests.swift` | `/api/schedules`, `/api/schedules/{id}` | Built | |
+| Recurrence logic | `calendar.js`, `schedule.spec.js` | `API/ScheduleStore.swift`, `ScheduleTests.swift` | N/A (client-side) | Built | |
+| Pick chore sheet | `schedule.js`, `schedule-tab.spec.js` | `Views/ScheduleView.swift` | `/api/chores`, `/api/schedules` | Built | |
+| Schedule edit (sparse PATCH) | `schedule.js`, `schedule-tab.spec.js` | `API/ScheduleStore.swift`, `RequestEncodingTests.swift` | `/api/schedules/{id}` | Built | |
+| Schedule for-date overlay | `schedule.js` | — | `/api/schedules/for-date` | **iOS pending** | Endpoint not referenced in iOS |
 | **Chores Management** |
-| Chore CRUD | `chores.js`, `chores-management.spec.js` | `Chores/`, `ChoresManagementUITests.swift` | `/api/chores`, `/api/chores/{id}` | iOS pending | |
-| Seed defaults | `chores.js`, `chores-management.spec.js` | `Chores/`, `ChoresManagementUITests.swift` | `/api/chores/defaults`, `/api/chores/seed-defaults` | iOS pending | |
-| Restore default | `chores.js`, `chores-management.spec.js` | `Chores/`, `ChoresManagementUITests.swift` | `/api/chores/{id}/restore-default` | iOS pending | |
-| Indicator editing | `chores.js`, `chores-management.spec.js` | `Chores/`, `ChoresManagementUITests.swift` | `/api/chores/{id}` | iOS pending | |
-| Color/emoji pickers | `chores.js`, `chores-management.spec.js` | `Chores/`, `ChoresManagementUITests.swift` | `/api/chores/{id}` | iOS pending | |
-| Validation | `chores.js`, `security-escape.spec.js` | `Chores/`, `ValidationContractTests.swift` | `/api/chores`, `/api/chores/{id}` | iOS pending | |
+| Chore CRUD | `chores.js`, `chores-management.spec.js` | `Views/ManageChoresView.swift`, `Views/ChoreEditView.swift`, `ChoreTests.swift` | `/api/chores`, `/api/chores/{id}` | Built | |
+| Seed defaults | `chores.js`, `chores-management.spec.js` | `Views/ManageChoresView.swift` | `/api/chores/defaults`, `/api/chores/seed-defaults` | Built | |
+| Restore default | `chores.js`, `chores-management.spec.js` | `Views/ManageChoresView.swift` | `/api/chores/{id}/restore-default` | Built | |
+| Indicator editing | `chores.js`, `chores-management.spec.js` | `Views/ChoreEditView.swift`, `ChoreTests.swift` | `/api/chores/{id}` | Built | |
+| Color/emoji pickers | `chores.js`, `chores-management.spec.js` | `Views/ChoreEditView.swift` | `/api/chores/{id}` | Built | |
+| Validation | `chores.js`, `security-escape.spec.js` | `Views/ChoreEditView.swift`, `ChoreTests.swift` | `/api/chores`, `/api/chores/{id}` | Built | |
 | **Notifications** |
-| In-app notification list | `notifications.js`, `notifications.spec.js` | `Notifications/`, `NotificationsUITests.swift` | `/api/notifications` | iOS pending | |
-| Mark read / read all | `notifications.js`, `notifications.spec.js` | `Notifications/`, `NotificationsUITests.swift` | `/api/notifications/{id}/read`, `/api/notifications/read-all` | iOS pending | |
-| Delete notification | `notifications.js`, `notifications.spec.js` | `Notifications/`, `NotificationsUITests.swift` | `/api/notifications/{id}` | iOS pending | |
-| Notification preferences | `notifications.js`, `settings-notification-prefs.spec.js` | `Settings/`, `NotificationPreferencesUITests.swift` | `/api/notification-preferences` | iOS pending | |
+| In-app notification list | `notifications.js`, `notifications.spec.js` | `Views/NotificationsView.swift`, `NotificationTests.swift` | `/api/notifications` | Built | |
+| Mark read / read all | `notifications.js`, `notifications.spec.js` | `Views/NotificationsView.swift` | `/api/notifications/{id}/read`, `/api/notifications/read-all` | Built | |
+| Delete notification | `notifications.js`, `notifications.spec.js` | `Views/NotificationsView.swift` | `/api/notifications/{id}` | Built | |
+| Notification preferences | `notifications.js`, `settings-notification-prefs.spec.js` | `Views/NotificationPreferencesView.swift` | `/api/notification-preferences` | Built | |
 | **Push** |
 | Web Push (VAPID) | `notifications.js` | N/A (PWA only) | `/api/push/subscribe`, `/api/push/unsubscribe` | N/A | PWA-only feature |
-| APNs (native iOS) | N/A (iOS only) | `Notifications/`, `APNsContractTests.swift` | `/api/mobile/apns/register`, `/api/mobile/apns/unregister` | N/A | Requires backend APNs package (Phase 10) |
+| APNs (native iOS) | N/A (iOS only) | `API/RequestModels.swift` (structs only) | `/api/mobile/apns/register`, `/api/mobile/apns/unregister` (not routed) | **Not built** | `APNsRegisterRequest`/`Unregister` structs are defined but referenced nowhere; no `registerForRemoteNotifications`/`UNUserNotificationCenter` client code; backend does not route `/api/mobile/apns/*`. Non-functional end-to-end. See `docs/apns-implementation-plan.md` |
 | **Stats** |
-| Overview | `stats.js`, `stats-tab.spec.js` | `Stats/`, `StatsUITests.swift`, `StatsSnapshotTests.swift` | `/api/stats/overview` | iOS pending | |
-| Heatmap | `stats.js`, `stats-tab.spec.js` | `Stats/`, `StatsSnapshotTests.swift` | `/api/stats/heatmap` | iOS pending | |
-| Busy hours | `stats.js`, `stats-busy-hours-filter.spec.js` | `Stats/`, `BusyHoursUITests.swift` | `/api/stats/busy-hours` | iOS pending | |
-| Leaderboard | `stats.js`, `stats-leaderboard.spec.js` | `Stats/`, `StatsSnapshotTests.swift` | `/api/stats/leaderboard` | iOS pending | |
-| Top chores | `stats.js`, `stats-top-chores.spec.js` | `Stats/`, `TopChoresUITests.swift` | `/api/stats/top-chores` | iOS pending | |
-| Breakdown | `stats.js`, `stats-tab.spec.js` | `Stats/`, `StatsSnapshotTests.swift` | `/api/stats/breakdown` | iOS pending | |
-| Streaks | `stats.js`, `stats-tab.spec.js` | `Stats/`, `StatsSnapshotTests.swift` | `/api/stats/streaks` | iOS pending | |
-| Recap | `stats.js`, `stats-tab.spec.js` | `Stats/`, `StatsSnapshotTests.swift` | `/api/stats/recap` | iOS pending | |
-| Chore stats | `stats.js`, `stats-top-chores.spec.js` | `Stats/`, `TopChoresUITests.swift` | `/api/stats/chores`, `/api/stats/chores/{id}`, `/api/stats/chores/{id}/time-series` | iOS pending | |
-| Timezone sync | `preferences.js`, `stats-timezone.spec.js` | `Support/TimeZoneSync.swift`, `StatsTimezoneContractTests.swift` | `/api/preferences` | iOS pending | |
+| Overview | `stats.js`, `stats-tab.spec.js` | `Views/StatsView.swift` | `/api/stats/overview` | Built | |
+| Heatmap | `stats.js`, `stats-tab.spec.js` | `Views/StatsView.swift` | `/api/stats/heatmap` | Built | |
+| Busy hours | `stats.js`, `stats-busy-hours-filter.spec.js` | `Views/StatsView.swift` | `/api/stats/busy-hours` | Built | |
+| Leaderboard | `stats.js`, `stats-leaderboard.spec.js` | `Views/StatsView.swift` | `/api/stats/leaderboard` | Built | |
+| Top chores | `stats.js`, `stats-top-chores.spec.js` | `Views/StatsView.swift` | `/api/stats/top-chores` | Built | |
+| Breakdown | `stats.js`, `stats-tab.spec.js` | — | `/api/stats/breakdown` | **iOS pending** | Endpoint not referenced in iOS |
+| Streaks | `stats.js`, `stats-tab.spec.js` | — | `/api/stats/streaks` | **iOS pending** | Endpoint not referenced in iOS |
+| Recap | `stats.js`, `stats-tab.spec.js` | — | `/api/stats/recap` | **iOS pending** | Endpoint not referenced in iOS |
+| Chore stats | `stats.js`, `stats-top-chores.spec.js` | `Views/StatsView.swift` | `/api/stats/chores`, `/api/stats/chores/{id}`, `/api/stats/chores/{id}/time-series` | Built | |
+| Feeding gaps | `stats.js` | — | `/api/stats/feeding-gaps` | **iOS pending** | Endpoint not referenced in iOS |
+| Timezone sync | `preferences.js`, `stats-timezone.spec.js` | `Support/TimeZoneSync.swift` | `/api/preferences` | Built | |
 | **Baby Care** |
-| Feed Baby volume | `schedule.js`, `feed-baby-volume.spec.js` | `Home/`, `Stats/`, `BabyCareUITests.swift`, `BabyCareUnitTests.swift` | `/api/logs` | iOS pending | |
-| Change Baby indicators | `schedule.js`, `feed-baby-volume.spec.js` | `Home/`, `Stats/`, `BabyCareUITests.swift` | `/api/logs` | iOS pending | |
-| Volume prefill | `schedule.js`, `feed-baby-volume.spec.js` | `BabyCareUnitTests.swift` | `/api/logs` | iOS pending | |
+| Feed Baby volume | `schedule.js`, `feed-baby-volume.spec.js` | `Views/LogSheet.swift`, `Views/StatsView.swift` | `/api/logs` | Built | |
+| Change Baby indicators | `schedule.js`, `feed-baby-volume.spec.js` | `Views/LogSheet.swift` | `/api/logs` | Built | |
+| Volume prefill | `schedule.js`, `feed-baby-volume.spec.js` | `Views/LogSheet.swift` | `/api/logs` | Built | |
 | **Preferences** |
-| Chore order | `preferences.js`, `home-jiggle-grid.spec.js` | `Settings/`, `HomeReorderUITests.swift` | `/api/preferences` | iOS pending | |
-| Hidden home chores | `preferences.js`, `home-remove-chore.spec.js` | `Settings/`, `HomeManageUITests.swift` | `/api/preferences` | iOS pending | |
-| Timezone | `preferences.js`, `stats-timezone.spec.js` | `Support/TimeZoneSync.swift` | `/api/preferences` | iOS pending | |
+| Chore order | `preferences.js`, `home-jiggle-grid.spec.js` | `API/`, `RequestEncodingTests.swift` | `/api/preferences` | Built | |
+| Hidden home chores | `preferences.js`, `home-remove-chore.spec.js` | `API/`, `RequestEncodingTests.swift` | `/api/preferences` | Built | |
+| Timezone | `preferences.js`, `stats-timezone.spec.js` | `Support/TimeZoneSync.swift` | `/api/preferences` | Built | |
 | **Navigation** |
-| Five tabs | `app.js`, `nav-tabs-position.spec.js` | `App/NavigationModel.swift`, `NavigationUITests.swift` | N/A (client routing) | iOS pending | |
-| Tab order (Stats, Activity, Home, Schedule, Settings) | `app.js`, `nav-tabs-position.spec.js` | `App/NavigationModel.swift`, `NavigationUITests.swift` | N/A (client routing) | iOS pending | |
+| Five tabs | `app.js`, `nav-tabs-position.spec.js` | `App/NavigationModel.swift`, `NabuUITests.swift` | N/A (client routing) | Built | |
+| Tab order (Stats, Activity, Home, Schedule, Settings) | `app.js`, `nav-tabs-position.spec.js` | `App/NavigationModel.swift`, `NabuUITests.swift` | N/A (client routing) | Built | Same tab set/order as PWA |
 | **Log Member Attribution** |
-| Log by member | `schedule.js`, `log-member-attribution.spec.js` | `Home/`, `LogAttributionUITests.swift` | `/api/logs` | iOS pending | |
+| Log by member | `schedule.js`, `log-member-attribution.spec.js` | `Views/HomeView.swift`, `Views/LogSheet.swift` | `/api/logs` | Built | |
 | **Security** |
-| Escaping user content | `utils.js`, `security-escape.spec.js` | `SecurityRenderingTests.swift` | N/A (client rendering) | iOS pending | |
-| CSRF protection | `api.js` | `API/CSRFTokenProvider.swift`, `APIClientTests.swift` | All state-changing endpoints | iOS pending | |
+| Escaping user content | `utils.js`, `security-escape.spec.js` | SwiftUI `Text` (auto-escapes) | N/A (client rendering) | Built | SwiftUI does not interpret markup, so HTML-escaping is not applicable |
+| CSRF protection | `api.js` | `API/CSRFTokenProvider.swift`, `APIContractTests.swift` | All state-changing endpoints | Built | |
 | **Schedule Reminders** |
-| Schedule reminder notification type | `notifications.js`, `settings-notification-prefs.spec.js` | `NotificationPreferencesView.swift`, `NotificationTests.swift` | `/api/notification-preferences` | iOS pending | |
-| Per-chore reminder pref | `chores.js`, `app.js` | `ChoreEditView.swift`, `Models.swift` | `/api/chore-reminder-prefs`, `/api/chore-reminder-prefs/{id}` | Done | |
-| Default lead time in settings | `notifications.js`, `settings-notification-prefs.spec.js` | `NotificationPreferencesView.swift` | `/api/notification-preferences` | Done | |
-| Schedule done visual (amber bg) | `schedule-tab.js`, `app.css` | `ScheduleView.swift` | N/A (client rendering) | Done | |
-| Once schedules not crossed out | `schedule-tab.js` | `ScheduleView.swift` | N/A (client rendering) | Done | |
-| followUpTime in log request | `today.js`, `app.js` | `LogSheet.swift`, `LogStore.swift`, `RequestModels.swift` | `/api/logs` | Done | |
+| Schedule reminder notification type | `notifications.js`, `settings-notification-prefs.spec.js` | `Views/NotificationPreferencesView.swift`, `NotificationTests.swift` | `/api/notification-preferences` | Built | |
+| Per-chore reminder pref | `chores.js`, `app.js` | `Views/ChoreEditView.swift`, `ModelDecodingTests.swift` | `/api/chore-reminder-prefs`, `/api/chore-reminder-prefs/{id}` | Done | |
+| Default lead time in settings | `notifications.js`, `settings-notification-prefs.spec.js` | `Views/NotificationPreferencesView.swift` | `/api/notification-preferences` | Done | |
+| Schedule done visual (amber bg) | `schedule-tab.js`, `app.css` | `Views/ScheduleView.swift` | N/A (client rendering) | Done | |
+| Once schedules not crossed out | `schedule-tab.js` | `Views/ScheduleView.swift` | N/A (client rendering) | Done | |
+| followUpTime in log request | `today.js`, `app.js` | `Views/LogSheet.swift`, `API/RequestModels.swift`, `RequestEncodingTests.swift` | `/api/logs` | Done | |
+| followUpEnabled in chore request | `chores.js`, `app.js` | `API/RequestModels.swift`, `RequestEncodingTests.swift` | `/api/chores` | Done | |
 | **Service Worker** |
 | Update/reload | `sw-update-reload.spec.js` | N/A (native app) | N/A | N/A | PWA-only; native apps use App Store updates |
 
-## Test mapping
+## Real iOS test inventory
 
-| PWA spec | iOS target |
-|----------|------------|
-| `validation.spec.js` | `AuthUITests.swift`, `ValidationContractTests.swift` |
-| `magic-link.spec.js` | `MagicLinkUITests.swift`, `AuthContractTests.swift` |
-| `settings-auth.spec.js` | `AccountSettingsUITests.swift` |
-| `home-grid.spec.js` | `HomeUITests.swift`, `HomeSnapshotTests.swift` |
-| `home-time-accuracy.spec.js` | `LogRequestTests.swift`, `HomeUITests.swift` |
-| `home-when-picker.spec.js` | `LogRequestTests.swift`, `HomeUITests.swift` |
-| `home-remove-chore.spec.js` | `HomeManageUITests.swift` |
-| `home-jiggle-grid.spec.js` | `HomeReorderUITests.swift` |
-| `schedule.spec.js` | `ActivityCalendarUITests.swift`, `ScheduleContractTests.swift` |
-| `log-from-slot.spec.js` | `LogPlacementTests.swift`, `ActivityCalendarUITests.swift` |
-| `calendar-add-history.spec.js` | `ActivityCalendarUITests.swift` |
-| `schedule-tab.spec.js` | `ScheduleUITests.swift` |
-| `chores-management.spec.js` | `ChoresManagementUITests.swift` |
-| `chores.spec.js` | `ChoresContractTests.swift`, `ScheduleUITests.swift` |
-| `household-multi.spec.js` | `HouseholdSwitchingUITests.swift` |
-| `invite-link.spec.js` | `InviteUITests.swift` |
-| `household-roles.spec.js` | `HouseholdRolesUITests.swift`, `HouseholdContractTests.swift` |
-| `settings-remove-member.spec.js` | `HouseholdMembersUITests.swift` |
-| `household-join-notify.spec.js` | `HouseholdNotificationsUITests.swift` |
-| `notifications.spec.js` | `NotificationsUITests.swift`, `APNsContractTests.swift` |
-| `settings-notification-prefs.spec.js` | `NotificationPreferencesUITests.swift` |
-| `history-pagination.spec.js` | `HistoryUITests.swift` |
-| `history-filter.spec.js` | `HistoryFilterUITests.swift` |
-| `stats-tab.spec.js` | `StatsUITests.swift`, `StatsSnapshotTests.swift` |
-| `stats-top-chores.spec.js` | `TopChoresUITests.swift` |
-| `stats-busy-hours-filter.spec.js` | `BusyHoursUITests.swift` |
-| `stats-timezone.spec.js` | `StatsTimezoneContractTests.swift` |
-| `feed-baby-volume.spec.js` | `BabyCareUITests.swift`, `BabyCareUnitTests.swift` |
-| `log-member-attribution.spec.js` | `LogAttributionUITests.swift` |
-| `security-escape.spec.js` | `SecurityRenderingTests.swift`, `ValidationContractTests.swift` |
-| `sw-update-reload.spec.js` | No direct native equivalent. Cover app relaunch/session survival instead. |
-| `nav-tabs-position.spec.js` | `NavigationUITests.swift` semantic tab checks |
-| `three-fixes.spec.js` | Split into `NavigationUITests.swift`, `LogDedupTests.swift`, and native layout checks |
-| `home-log-to-calendar.spec.js` | `LogPlacementTests.swift`, `HomeUITests.swift` |
+The repository currently contains these iOS test targets (all under `ios/`):
+
+| Target | Files |
+|--------|-------|
+| `NabuTests` (unit/contract) | `ActivityTests`, `APIContractTests`, `AuthTests`, `ChoreTests`, `DataLoaderTests`, `HomeTests`, `ModelDecodingTests`, `NotificationTests`, `RequestEncodingTests`, `ScheduleTests`, `StateTests` |
+| `NabuUITests` (UI) | `NabuUITests.swift` |
+
+Earlier revisions of this matrix referenced a large set of per-feature
+`*UITests.swift` / `*SnapshotTests.swift` / `*ContractTests.swift` files that
+were planned but never created. Add real test files before promoting a row from
+**Built** to **Done**.
