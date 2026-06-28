@@ -22,6 +22,7 @@ type Config struct {
 	GoogleClientSecret string
 	TrustedProxyCIDRs  string
 	RateLimitAuthMax   int
+	RateLimitGlobalMax int
 	VAPIDPublicKey     string
 	VAPIDPrivateKey    string
 	VAPIDSubject       string
@@ -43,6 +44,7 @@ func Load() (Config, error) {
 		GoogleClientSecret: getenv("GOOGLE_CLIENT_SECRET", ""),
 		TrustedProxyCIDRs:  getenv("TRUSTED_PROXY_CIDRS", ""),
 		RateLimitAuthMax:   getenvInt("RATE_LIMIT_AUTH_MAX", 5),
+		RateLimitGlobalMax: getenvInt("RATE_LIMIT_GLOBAL_MAX", 120),
 		VAPIDPublicKey:     getenv("VAPID_PUBLIC_KEY", ""),
 		VAPIDPrivateKey:    getenv("VAPID_PRIVATE_KEY", ""),
 		VAPIDSubject:       getenv("VAPID_SUBJECT", ""),

@@ -139,6 +139,22 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitAuthMax, time.Minute)
 	rateLimiter.SetTrustedProxies(cfg.TrustedProxyCIDRs)
 
+	// Permissive global backstop covering all /api/ routes (per IP, per path).
+	// The strict auth limiter still applies to /api/auth on top of this.
+	globalRateLimiter := middleware.NewRateLimiter(cfg.RateLimitGlobalMax, time.Minute)
+	globalRateLimiter.SetTrustedProxies(cfg.TrustedProxyCIDRs)
+
+	// In production, both rate limiting and audit-log IP attribution depend on
+	// TRUSTED_PROXY_CIDRS being set: behind a reverse proxy/tunnel, an empty
+	// value means every request appears to originate from the proxy's IP,
+	// collapsing per-client limits into one shared bucket and rendering audit
+	// IPs meaningless. Warn loudly so this isn't discovered the hard way.
+	if cfg.IsProduction() && strings.TrimSpace(cfg.TrustedProxyCIDRs) == "" {
+		log.Printf("warning: APP_ENV=production but TRUSTED_PROXY_CIDRS is empty; " +
+			"rate limiting and audit-log client IPs will be based on the proxy address. " +
+			"Set TRUSTED_PROXY_CIDRS to your proxy/tunnel CIDR ranges.")
+	}
+
 	mux.HandleFunc("/health", handlers.Health)
 	mux.HandleFunc("/ready", handlers.Ready)
 
@@ -382,10 +398,11 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 
 	var handler http.Handler = mux
 	handler = middleware.RequestLogger(nil)(handler)
-	handler = middleware.SecurityHeaders()(handler)
+	handler = middleware.SecurityHeaders(cfg.ServerSecure)(handler)
 	handler = middleware.Session(authService, "nabu_session")(handler)
-	handler = middleware.CSRF("nabu_csrf")(handler)
+	handler = middleware.CSRF("nabu_csrf", cfg.ServerSecure)(handler)
 	handler = rateLimiter.Middleware("/api/auth")(handler)
+	handler = globalRateLimiter.Middleware("/api/")(handler)
 
 	return &Server{handler: handler}
 }

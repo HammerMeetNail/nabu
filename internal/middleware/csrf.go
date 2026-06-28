@@ -8,7 +8,12 @@ import (
 	"strings"
 )
 
-func CSRF(cookieName string) func(http.Handler) http.Handler {
+// CSRF implements double-submit-cookie protection. The secure argument should
+// reflect the SERVER_SECURE config (the deployment is served over HTTPS), which
+// drives the cookie's Secure flag — exactly as the session cookie does. The
+// flag is intentionally NOT derived from the client-supplied X-Forwarded-Proto
+// header, which any client can spoof.
+func CSRF(cookieName string, secure bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			token := ""
@@ -22,7 +27,7 @@ func CSRF(cookieName string) func(http.Handler) http.Handler {
 					Value:    token,
 					Path:     "/",
 					SameSite: http.SameSiteLaxMode,
-					Secure:   requestIsHTTPS(r),
+					Secure:   secure || r.TLS != nil,
 				})
 			}
 			if isStateChanging(r.Method) && strings.HasPrefix(r.URL.Path, "/api/") {
@@ -35,10 +40,6 @@ func CSRF(cookieName string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 		})
 	}
-}
-
-func requestIsHTTPS(r *http.Request) bool {
-	return r.TLS != nil || strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
 
 func isStateChanging(method string) bool {

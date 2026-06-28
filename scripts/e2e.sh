@@ -13,7 +13,7 @@ done
 echo "=== E2E: Starting stack ==="
 if [ "${CI}" = "true" ]; then
   # CI: run app with in-memory stores, Mailpit as service container
-  SMTP_HOST=127.0.0.1 SMTP_PORT=1025 RATE_LIMIT_AUTH_MAX=1000 go run ./cmd/server &
+  SMTP_HOST=127.0.0.1 SMTP_PORT=1025 RATE_LIMIT_AUTH_MAX=1000 RATE_LIMIT_GLOBAL_MAX=1000000 go run ./cmd/server &
   APP_PID=$!
   trap "kill ${APP_PID} 2>/dev/null" EXIT
 else
