@@ -71,13 +71,22 @@ export async function loadBusyHours({ choreId, userId, start, end } = {}) {
   return data;
 }
 
-export async function loadChoreStats({ start, end } = {}) {
+export async function loadChoreStats({ start, end, period } = {}) {
   const params = new URLSearchParams();
-  if (start) params.set("start", start);
-  if (end) params.set("end", end);
+  if (period) {
+    params.set("period", period);
+  } else {
+    if (start) params.set("start", start);
+    if (end) params.set("end", end);
+  }
   const qs = params.toString();
   const url = qs ? `/api/stats/chores?${qs}` : "/api/stats/chores";
   const { data } = await apiFetch(url);
+  return data;
+}
+
+export async function loadCategoryBreakdown(period) {
+  const { data } = await apiFetch(`/api/stats/breakdown?period=${period || "week"}`);
   return data;
 }
 
@@ -139,10 +148,11 @@ function currentWeekLabel() {
 const STATS_PERIODS = ["day", "week", "month", "all"];
 const STATS_PERIOD_LABELS = { day: "Day", week: "Week", month: "Month", all: "All" };
 
-function renderStatsPeriodToggle(activePeriod, section) {
-  const period = STATS_PERIODS.includes(activePeriod) ? activePeriod : "week";
+function renderStatsPeriodToggle(activePeriod, section, includeAll = true) {
+  const periods = includeAll ? STATS_PERIODS : STATS_PERIODS.filter(p => p !== "all");
+  const period = periods.includes(activePeriod) ? activePeriod : (includeAll ? "week" : periods[0]);
   return `<div class="period-toggle" role="group" aria-label="Time period for ${escapeHTML(section)}">
-    ${STATS_PERIODS.map(p => {
+    ${periods.map(p => {
       const active = p === period ? " period-toggle--active" : "";
       const label = STATS_PERIOD_LABELS[p];
       return `<button class="period-toggle-btn${active}" data-action="stats-period" data-section="${escapeHTML(section)}" data-period="${p}" aria-pressed="${p === period}">${label}</button>`;
@@ -225,17 +235,16 @@ export function renderStatsPage(state) {
     leaderboard: renderLeaderboardSection(state),
     "top-chores": renderTopChoresSection(state),
     categories: `<div class="card mb-3">
-      <h3>Categories</h3>
-      ${renderWeekDateRange()}
-      ${renderCategoryBars(overview.breakdown || [])}
+      <div class="stats-section-header">
+        <h3>Categories</h3>
+        ${renderStatsPeriodToggle(stats.categoriesPeriod || "week", "categories", false)}
+      </div>
+      ${renderCategoryBars(stats.categoriesBreakdown || overview.breakdown || [])}
     </div>`,
     chores: `<div class="card mb-3">
-      <h3>Chores</h3>
-      <div class="busy-hours-date-filters">
-        <input type="date" class="busy-hours-filter" data-action="chore-stats-filter" data-filter="start"
-          value="${state.stats?.choreStatsFilter?.start || state.stats?.choreStatsStart || ""}">
-        <input type="date" class="busy-hours-filter" data-action="chore-stats-filter" data-filter="end"
-          value="${state.stats?.choreStatsFilter?.end || state.stats?.choreStatsEnd || ""}">
+      <div class="stats-section-header">
+        <h3>Chores</h3>
+        ${renderStatsPeriodToggle(stats.choreStatsPeriod || "month", "chores", false)}
       </div>
       ${renderChoreStatsList(choreStats, choreMap)}
     </div>`,
