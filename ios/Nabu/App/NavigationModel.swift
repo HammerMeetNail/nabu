@@ -28,25 +28,6 @@ enum MainTab: CaseIterable {
     }
 }
 
-enum ActivityViewMode: CaseIterable, Hashable {
-    case history
-    case day
-    case week
-
-    var title: String {
-        switch self {
-        case .history: return "History"
-        case .day: return "Day"
-        case .week: return "Week"
-        }
-    }
-}
-
-enum CalendarViewMode {
-    case day
-    case week
-}
-
 enum HomeViewMode: CaseIterable, Hashable {
     case log
     case manage

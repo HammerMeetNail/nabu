@@ -19,10 +19,6 @@ final class ActivityStore {
     func loadToday(date: String) async throws -> TodayResponse {
         try await api.get("/api/logs/today", query: [URLQueryItem(name: "date", value: date)])
     }
-
-    func loadWeek(start: String) async throws -> LogsResponse {
-        try await api.get("/api/logs/week", query: [URLQueryItem(name: "start", value: start)])
-    }
 }
 
 // MARK: - Date helpers
@@ -70,14 +66,6 @@ func fmtShortDate(_ dateStr: String) -> String {
     f.dateFormat = "yyyy-MM-dd"
     guard let d = f.date(from: dateStr) else { return dateStr }
     f.dateFormat = "E, d"
-    return f.string(from: d)
-}
-
-func fmtLongDate(_ dateStr: String) -> String {
-    let f = DateFormatter()
-    f.dateFormat = "yyyy-MM-dd"
-    guard let d = f.date(from: dateStr) else { return dateStr }
-    f.dateFormat = "EEEE, MMMM d"
     return f.string(from: d)
 }
 
