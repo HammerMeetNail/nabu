@@ -214,9 +214,13 @@ jobs:
         working-directory: ios
         run: |
           DEST="platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}"
-          # Build the app module first so the test target resolves it reliably
-          # (a clean parallel build can otherwise race on the module), then run
-          # the fast unit/contract suite. UI tests are intentionally excluded.
+          # Build the app target ALONE first: on a clean checkout a parallel
+          # build-for-testing can compile NabuTests before the Nabu swiftmodule
+          # is emitted, failing with "no such module 'Nabu'". Building the app
+          # module first warms it so @testable import resolves. Then build the
+          # test target and run the fast unit/contract suite (UI tests excluded).
+          xcodebuild build \
+            -project Nabu.xcodeproj -scheme Nabu -destination "$DEST"
           xcodebuild build-for-testing \
             -project Nabu.xcodeproj -scheme Nabu -destination "$DEST"
           xcodebuild test-without-building \
