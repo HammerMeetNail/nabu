@@ -79,7 +79,8 @@ final class RequestEncodingTests: XCTestCase {
             color: "#FF0000",
             category: "exercise",
             indicatorLabels: ["morning", "evening"],
-            indicatorDefaults: ["morning"]
+            indicatorDefaults: ["morning"],
+            followUpEnabled: true
         )
         let data = try encoder.encode(req)
         let dict = json(data)
@@ -89,15 +90,17 @@ final class RequestEncodingTests: XCTestCase {
         XCTAssertEqual(dict["category"] as? String, "exercise")
         XCTAssertEqual(dict["indicator_labels"] as? [String], ["morning", "evening"])
         XCTAssertEqual(dict["indicator_defaults"] as? [String], ["morning"])
+        XCTAssertEqual(dict["follow_up_enabled"] as? Bool, true)
     }
 
     func testCreateChoreRequestMinimal() throws {
-        let req = CreateChoreRequest(name: "Simple", icon: nil, color: nil, category: nil, indicatorLabels: nil, indicatorDefaults: nil)
+        let req = CreateChoreRequest(name: "Simple", icon: nil, color: nil, category: nil, indicatorLabels: nil, indicatorDefaults: nil, followUpEnabled: nil)
         let data = try encoder.encode(req)
         let dict = json(data)
         XCTAssertEqual(dict["name"] as? String, "Simple")
         XCTAssertNil(dict["icon"])
         XCTAssertNil(dict["color"])
+        XCTAssertNil(dict["follow_up_enabled"])
     }
 
     // MARK: - Logs
