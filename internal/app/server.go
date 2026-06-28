@@ -128,6 +128,12 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		reminderStore, scheduleStore, scheduleService,
 		notifStore, choreStore, householdStore, userPrefsStore, pushService,
 	)
+	// Guard the scheduler with a Postgres advisory lock so that running multiple
+	// app instances does not emit duplicate reminders (only the leader ticks).
+	// In-memory mode (db == nil) is single-instance, so no lock is needed.
+	if db != nil {
+		reminderSched.SetLeaderLock(reminder.NewPostgresAdvisoryLock(db, reminder.LeaderLockKey))
+	}
 	go reminderSched.Start(context.Background())
 
 	reminderHandler := handlers.NewChoreReminderPrefsHandler(reminderStore)
