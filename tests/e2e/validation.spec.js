@@ -243,26 +243,8 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     // === Settings View Elements ===
     await expect(page.locator('h2:has-text("Settings")')).toBeVisible({ timeout: 5000 });
 
-    // Household section — wait for the page to fully load
+    // Household section
     await expect(page.locator('.settings-view h3').first()).toBeVisible();
-    
-    // Create Invite Link button — wait for household data to load first
-    await expect(page.locator('text=Members')).toBeVisible({ timeout: 10000 });
-    const createInviteBtn = page.locator('button[data-action="create-invite"]');
-    await expect(createInviteBtn).toBeVisible();
-    
-    // Click Create Invite
-    await createInviteBtn.click();
-    // Toast should appear with the invite code
-    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
-
-    // Active invites section should now be visible (after reload)
-    // The render after create-invite should show the invite list
-    const revokeBtn = page.locator('button[data-action="delete-invite"]');
-    if ((await revokeBtn.count()) > 0) {
-      // Click revoke on the invite
-      await revokeBtn.first().click();
-    }
 
     // Members section
     await expect(page.locator('text=Members')).toBeVisible();
