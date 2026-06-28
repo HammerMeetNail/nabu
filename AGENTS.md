@@ -134,16 +134,13 @@ Session cookie name: `nabu_session`. CSRF cookie name: `nabu_csrf`.
 
 ### JS static file serving and cache busting
 
-**Do not change this mechanism without understanding it fully.**
+**Do not change this mechanism without understanding it fully** — the full rationale (Cloudflare's cache override, why `no-store`/`cf-cache-status: BYPASS`) is in the README's "JS static file serving and cache busting" section.
 
-At startup, `buildVersionedJSCache` in `internal/app/server.go` walks every `.js` file in the embedded FS and rewrites all relative ES module import paths to include `?v=<version>` (e.g. `from './calendar.js'` → `from './calendar.js?v=0.1.6'`). The rewritten content is held in memory and served with `Cache-Control: no-store`.
+`buildVersionedJSCache` in `internal/app/server.go` rewrites every relative ES-module import to `?v=<version>` at startup and serves all `.js` from memory with `Cache-Control: no-store`, busting both the CDN and browser module caches on each deploy. Rules:
 
-Why this exists: Cloudflare sits in front of production and overrides `Cache-Control: no-cache` with `max-age=14400` (4 hours). `no-store` is stronger — Cloudflare responds with `cf-cache-status: BYPASS` and does not cache at all. The versioned import paths additionally bust the browser module cache on every deploy, since each new version produces new URLs for every module in the import graph.
-
-Rules that follow from this:
-- **Never add `?v=anything` manually to a relative import in JS source.** The rewriter skips paths that already contain `?`, so a hard-coded version will not be updated on deploy and will serve stale code.
-- **Always verify after a deploy** (see Production section below).
-- If you add a new JS module that itself imports other modules, the rewriter handles it automatically — no extra work needed.
+- **Never add `?v=anything` manually to a relative import in JS source.** The rewriter skips paths that already contain `?`, so a hard-coded version will not update on deploy and serves stale code.
+- New JS modules that import other modules are handled automatically — no extra work.
+- Verify after a deploy (see `docs/deploy-runbook.md`).
 
 ## Client parity
 
@@ -184,37 +181,9 @@ When `DATABASE_URL` is empty, the server falls back to in-memory stores (useful 
 
 ### Coordinating multiple local stacks
 
-The compose file binds to fixed host ports (8080, 5432, 8025, 1025). Only one stack can run at a time. When multiple agents are working across worktrees, they will conflict.
+The compose file binds to fixed host ports (8080, 5432, 8025, 1025), so **only one stack runs at a time.** Before starting a new one, `make down` in the worktree that owns the running containers (find it with `podman ps --format '{{.Names}}' | grep nabu`). E2E tests respect `BASE_URL` (default `http://localhost:8080`).
 
-**Simple rule**: only one agent runs `make local` at a time. Before starting a new stack, run `make down` in the worktree that has it to free the ports. If you're not sure which worktree owns the running containers, use:
-
-```bash
-podman ps --format '{{.Names}}' | grep nabu
-```
-
-If containers are running, `cd` to the worktree that started them and run `make down`.
-
-**If you genuinely need two stacks simultaneously** (e.g. comparing behaviour between branches):
-
-```bash
-# First stack (default ports): clean up any existing stack, then start fresh
-make down
-COMPOSE_PROJECT_NAME=nabu-A make local
-
-# Second stack: use a unique project name and override ports
-COMPOSE_PROJECT_NAME=nabu-B \
-  PORT=8081 APP_BASE_URL=http://localhost:8081 \
-  make -e local
-```
-
-Then edit `compose.yaml` temporarily in the second worktree to change the host-side port mappings (app `8081:8080`, Postgres `5433:5432`, Mailpit `8026:8025`), or pass them as `COMPOSE_FILE` overrides. When done, bring both down:
-
-```bash
-COMPOSE_PROJECT_NAME=nabu-A make down
-COMPOSE_PROJECT_NAME=nabu-B make down
-```
-
-E2E tests respect the `BASE_URL` environment variable (defaults to `http://localhost:8080`), so you can target a non-default app port by setting `BASE_URL=http://localhost:8081 make e2e`.
+To run **two stacks simultaneously** (project-name + port overrides), see **`docs/dev-multistack.md`**.
 
 ## Test credentials
 
@@ -228,79 +197,7 @@ Production test account: `verify@yearofbingo.com` / `test123456` (household and 
 - **Deploy trigger**: push a `v*` tag (e.g. `git tag v0.1.7 && git push origin v0.1.7`). CI builds, tests, and deploys automatically.
 - **CI**: `.github/workflows/ci.yaml` — runs secret scan, JS tests, lint, Go tests (with coverage), E2E tests, the client-parity gate (PR only), and the iOS `NabuTests` lane (macOS, when `ios/**` changes) before deploying.
 
-### Verifying a production deploy
-
-After CI goes green, confirm the correct version is serving versioned imports:
-
-```bash
-# Check that JS imports carry the new version tag
-curl -s https://nabu-app.com/static/js/calendar.js | grep "^import"
-# Expected: import { ... } from "./utils.js?v=0.1.X";
-
-# Check cache headers — must be no-store, must NOT be max-age
-curl -sI https://nabu-app.com/static/js/app.js | grep -i cache
-# Expected: cache-control: no-store
-#           cf-cache-status: BYPASS
-```
-
-If `cf-cache-status` is `HIT` or `MISS` (not `BYPASS`), the `no-store` header is not reaching Cloudflare — investigate `server.go`.
-
-If imports still show the old version number, the binary was not rebuilt with the new tag — check that `internal/version/version.go` (or equivalent) is populated at build time via `-ldflags`.
-
-### Checking the version endpoint
-
-```bash
-# The index page embeds the version; check it with:
-curl -s https://nabu-app.com/ | grep 'app.js'
-# Expected: <script ... src="/static/js/app.js?v=0.1.X" ...>
-```
-
-## CI / Deploy babysitting
-
-After pushing a `v*` tag, an agent should monitor the pipeline to completion and verify production. Use this process:
-
-### 1. Watch the CI run
-
-```bash
-# Find the run ID for the tag
-gh run list --limit 5
-
-# Stream logs until the run completes (blocks until done)
-gh run watch <run-id>
-
-# If a job fails, check which step failed
-gh run view <run-id> --json jobs \
-  --jq '.jobs[] | {name: .name, conclusion: .conclusion, steps: [.steps[] | select(.conclusion == "failure") | .name]}'
-
-# Re-run only failed jobs (for transient infra errors)
-gh run rerun <run-id> --failed
-```
-
-### 2. Distinguish transient vs. real failures
-
-- If **only** the checkout/setup step failed and all test jobs passed → transient GitHub Actions infra error → re-run with `gh run rerun <run-id> --failed`.
-- If a test job (Go Tests, JS Tests, E2E, Lint) failed → real failure → read the full log, fix the code, commit, re-tag, and push a new `v*` tag.
-
-### 3. Verify production after deploy
-
-Once the `Deploy to Production` job goes green:
-
-```bash
-# Confirm versioned imports carry the new tag
-curl -s https://nabu-app.com/static/js/calendar.js | grep "^import"
-# Expected: import { ... } from "./utils.js?v=0.1.X";
-
-# Confirm cache headers
-curl -sI https://nabu-app.com/static/js/app.js | grep -i cache
-# Expected: cache-control: no-store
-#           cf-cache-status: BYPASS
-
-# Confirm correct version in index page
-curl -s https://nabu-app.com/ | grep 'app.js'
-# Expected: src="/static/js/app.js?v=0.1.X"
-```
-
-If `cf-cache-status` is `HIT` or imports show the old version, the deploy did not take — investigate `server.go` and the CI build logs.
+**After pushing a `v*` tag, watch the pipeline to completion and verify production** (don't wait to be asked; a cheaper subagent may be delegated to it). The full runbook — `gh run watch`, transient-vs-real failure triage, and the production verification commands (`/health`, versioned imports, `no-store`/`BYPASS` cache headers) — lives in **`docs/deploy-runbook.md`**.
 
 ## E2E tests
 
@@ -424,32 +321,6 @@ Every operation that reads or mutates data must verify the actor is authorized f
 
 ## Push notification troubleshooting
 
-See `docs/plans/PUSH_DEBUG.md` for the diagnostic playbook. The key gotcha: the HKDF chain in `internal/push/encrypt.go` must match `http_ece` (npm) exactly — Apple returns 201 even when the encryption keys are wrong, so there is no error signal at the gateway. The only way to know the push arrived is to check `self.lastPush` or `self.__diag` in the service worker.
+Web Push (RFC 8291 aes128gcm + VAPID ES256) lives in `internal/push/` (`encrypt.go`, `vapid.go`, `service.go`). The key gotcha: **Apple returns 201 even when the encryption keys are wrong**, so there is no error signal at the gateway — the only way to know a push arrived is `self.lastPush` / `self.__diag` in the service worker.
 
-### Push architecture (`internal/push/`)
-
-- `encrypt.go` — RFC 8291 aes128gcm encryption. HKDF chain: HKDF-Extract(auth, DH) → HKDF-Expand("WebPush: info\0" + clientPub + ephemeralPub, 32) → HKDF-Extract(randomSalt, secret) → HKDF-Expand("Content-Encoding: aes128gcm\0", 16) for CEK, HKDF-Expand("Content-Encoding: nonce\0", 12) for nonce.
-- `vapid.go` — VAPID JWT signing (ES256). JWT header must contain ONLY `typ` and `alg` — no `kty`/`crv`.
-- `service.go` — HTTP POST to push endpoint. Uses `Content-Encoding: aes128gcm`, `TTL: 60`, VAPID `Authorization` header.
-
-### iOS PWA debugging
-
-Use `remotedebug-ios-webkit-adapter` (npm) to connect Chrome DevTools Protocol to an iPhone PWA. Run it on the Mac, then connect via WebSocket to evaluate JS in the main page:
-
-```bash
-remotedebug_ios_webkit_adapter --port 9222
-# Browse to http://localhost:9222/json to list pages
-# WebSocket: ws://localhost:9222/ios_<UDID>/ws://127.0.0.1:<port>/devtools/page/<n>
-```
-
-The service worker debugging page is listed but often unresponsive. Use the main page to relay diagnostics via `MessageChannel`:
-
-```js
-// The SW (v0.1.37+) responds to "push-diag" message:
-sw.postMessage("push-diag", [channel.port2])
-// Returns: { lastPush, diag: [...], registration }
-```
-
-`self.lastPush` being `{}` means no push event ever fired. The `diag` array logs `push-received`, `push-decode-error`, and `subscriptionchange` events.
-
-`showNotification()` from the main page tests the notification display path independently of push delivery. If it works but pushes don't arrive, the issue is in the server-side encryption or VAPID headers.
+The full diagnostic playbook — the exact HKDF chain, the VAPID JWT header rules (`typ`/`alg` only, no `kty`/`crv`), `remotedebug-ios-webkit-adapter` setup, and the `push-diag` `MessageChannel` flow — is in **`docs/plans/PUSH_DEBUG.md`**.
