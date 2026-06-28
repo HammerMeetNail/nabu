@@ -115,7 +115,7 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | Breakdown | `stats.js`, `stats-tab.spec.js` | — | `/api/stats/breakdown` | **iOS pending** | Endpoint not referenced in iOS |
 | Streaks | `stats.js`, `stats-tab.spec.js` | — | `/api/stats/streaks` | **iOS pending** | Endpoint not referenced in iOS |
 | Recap | `stats.js`, `stats-tab.spec.js` | — | `/api/stats/recap` | **iOS pending** | Endpoint not referenced in iOS |
-| Chore stats | `stats.js`, `stats-top-chores.spec.js` | `Views/StatsView.swift` | `/api/stats/chores`, `/api/stats/chores/{id}`, `/api/stats/chores/{id}/time-series` | Built | |
+| Chore stats | `stats.js`, `stats-top-chores.spec.js` | `Views/StatsView.swift` | `/api/stats/chores`, `/api/stats/chores/{id}`, `/api/stats/chores/{id}/time-series` | Built | **Structural divergence (#84/#85):** PWA added day/week/month period toggles to its categories/chores sections and scopes indicators/volume to the selected period (sends `?period=`). iOS Stats uses a different design (daily/weekly/monthly time-series charts + baby columns) and does not send `period=`. Backend `period=` is backward-compatible, so no breakage; converging the two is a design-led task, not a correctness fix |
 | Feeding gaps | `stats.js` | — | `/api/stats/feeding-gaps` | **iOS pending** | Endpoint not referenced in iOS |
 | Timezone sync | `preferences.js`, `stats-timezone.spec.js` | `Support/TimeZoneSync.swift` | `/api/preferences` | Built | |
 | **Baby Care** |
