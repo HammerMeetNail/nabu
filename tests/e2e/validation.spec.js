@@ -236,92 +236,10 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     // Wait for household creation to finish and home grid to appear before
     // navigating to calendar (avoids race with doCreateHousehold's final render).
     await page.waitForSelector('.home-grid', { timeout: 15000 });
-    await page.click('[data-nav="activity"]');
-    await page.click('[data-action="switch-view"][data-view="day"]');
-    await page.waitForSelector('.cal-date', { timeout: 15000 });
 
-    // Schedule the first chore at 08:00 so a card is visible in the day view
-    const csrf2 = (await page.context().cookies()).find(c => c.name === 'nabu_csrf')?.value || '';
-    const { chores: seededChores } = await (await page.request.get('/api/chores')).json();
-    await page.request.post('/api/schedules', {
-      data: { choreId: seededChores[0].id, timePeriod: 'anytime', specificTime: '08:00', frequencyType: 'daily', isActive: true },
-      headers: { 'X-CSRF-Token': csrf2 },
-    });
-    await page.reload();
-    await page.click('[data-nav="activity"]');
-    await page.click('[data-action="switch-view"][data-view="day"]');
-    await page.waitForSelector('.cal-date', { timeout: 15000 });
-
-    await expect(page.locator('.chore-card').first()).toBeVisible({ timeout: 8000 });
-
-    // === Day View Elements ===
-    // Date header (new calendar view uses .cal-date)
-    await expect(page.locator('.cal-date')).toBeVisible();
-    // View tabs (Day / Week)
-    await expect(page.locator('.view-tab').first()).toBeVisible();
-    // Progress bar
-    await expect(page.locator('.progress-bar')).toBeVisible();
-    // Progress label
-    await expect(page.locator('.progress-label')).toBeVisible();
-    // Chore cards
-    const choreCards = page.locator('.chore-card');
-    const totalChores = await choreCards.count();
-    expect(totalChores).toBeGreaterThan(0);
-    // Each chore has name and icon
-    for (let i = 0; i < Math.min(totalChores, 3); i++) {
-      await expect(choreCards.nth(i).locator('.chore-icon')).toBeVisible();
-      await expect(choreCards.nth(i).locator('.chore-name')).toBeVisible();
-    }
-
-    // === Day Navigation ===
-    const arrows = page.locator('button[data-action="navigate-day"]');
-    expect(await arrows.count()).toBe(2);
-
-    const todayDate = await page.locator('.cal-date').innerText();
-
-    // Click right arrow → tomorrow
-    await arrows.last().click();
-    await expect(page.locator('.cal-date')).not.toHaveText(todayDate, { timeout: 5000 });
-
-    // Click left arrow → back to today
-    await arrows.first().click();
-    await expect(page.locator('.cal-date')).toHaveText(todayDate, { timeout: 5000 });
-
-    // === Log a Chore ===
-    const firstChore = choreCards.first();
-    await expect(firstChore).toHaveAttribute('data-action', 'log-chore');
-    await firstChore.click();
-
-    // Chore should now show as done (new class is chore-card--done)
-    const doneCards = page.locator('.chore-card.chore-card--done');
-    await expect(doneCards.first()).toBeVisible({ timeout: 5000 });
-    // Done card opens the log detail sheet (view-log), not direct undo.
-    await expect(doneCards.first()).toHaveAttribute('data-action', 'view-log');
-
-    // Check progress label updates (format: "1 of N done")
-    const progressText = await page.locator('.progress-label').innerText();
-    expect(progressText).toMatch(/1 of \d+ done/);
-
-    // === Undo the Chore ===
-    // Tapping a done card opens the log sheet; the undo button lives inside.
-    await doneCards.first().click();
-    await expect(page.locator('.bottom-sheet')).toBeVisible();
-    await page.locator('[data-action="undo-chore"]').click();
-
-    // Done count should decrease
-    await expect(page.locator('.chore-card.chore-card--done')).toHaveCount(0, { timeout: 5000 });
-
-    // === Log Multiple Chores ===
-    await firstChore.click();
-    if (totalChores > 1) {
-      await choreCards.nth(1).click();
-    }
-
-    // === Navigate to Activity (history view is default) ===
+    // === Navigate to Activity (history view) ===
     await page.click('a[data-nav="activity"]');
-    await page.click('[data-action="switch-view"][data-view="history"]');
     await expect(page.locator('.history-view')).toBeVisible({ timeout: 10000 });
-    await expect(page.locator('.view-tabs')).toBeVisible();
 
     // === Navigate to Manage Chores (Home → Manage toggle) ===
     await page.click('a[data-nav="today"]');

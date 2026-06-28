@@ -183,11 +183,6 @@ export function renderHistoryView(state) {
 
   if (logs.length === 0) {
     return `<div class="history-view">
-      <div class="view-tabs">
-        <button type="button" class="view-tab view-tab--active" data-action="switch-view" data-view="history">History</button>
-        <button type="button" class="view-tab" data-action="switch-view" data-view="day">Day</button>
-        <button type="button" class="view-tab" data-action="switch-view" data-view="week">Week</button>
-      </div>
       <p class="text-secondary">No completed chores yet.</p>
       ${filterFab}
     </div>`;
@@ -250,11 +245,6 @@ export function renderHistoryView(state) {
 
   if (dayGroups.length === 0) {
     return `<div class="history-view">
-      <div class="view-tabs">
-        <button type="button" class="view-tab view-tab--active" data-action="switch-view" data-view="history">History</button>
-        <button type="button" class="view-tab" data-action="switch-view" data-view="day">Day</button>
-        <button type="button" class="view-tab" data-action="switch-view" data-view="week">Week</button>
-      </div>
       ${filterFab}
       ${filter !== null ? '<p class="text-secondary">No logs match the selected chores.</p>' : '<p class="text-secondary">No completed chores yet.</p>'}
     </div>`;
@@ -346,11 +336,6 @@ export function renderHistoryView(state) {
     : '';
 
   return `<div class="history-view">
-    <div class="view-tabs">
-      <button type="button" class="view-tab view-tab--active" data-action="switch-view" data-view="history">History</button>
-      <button type="button" class="view-tab" data-action="switch-view" data-view="day">Day</button>
-      <button type="button" class="view-tab" data-action="switch-view" data-view="week">Week</button>
-    </div>
     ${html}
     ${loadMore}
     ${filterFab}

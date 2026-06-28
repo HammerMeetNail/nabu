@@ -171,46 +171,7 @@ test.describe('History filter', () => {
     }
   });
 
-  test('filter persists when switching between history sub-views', async ({ page }) => {
-    const { csrf } = await setupWithChores(page);
 
-    const choresRes = await page.request.get('/api/chores', {
-      headers: { 'X-CSRF-Token': csrf },
-    });
-    const chores = (await choresRes.json()).chores;
-    expect(chores.length).toBeGreaterThanOrEqual(3);
-
-    await page.request.post('/api/logs', {
-      data: { choreId: chores[0].id, note: '', indicators: [], completedAt: new Date().toISOString() },
-      headers: { 'X-CSRF-Token': csrf },
-    });
-    await page.request.post('/api/logs', {
-      data: { choreId: chores[1].id, note: '', indicators: [], completedAt: new Date().toISOString() },
-      headers: { 'X-CSRF-Token': csrf },
-    });
-
-    await page.click('[data-nav="activity"]');
-    await page.waitForSelector('.history-view', { timeout: 10000 });
-    await page.waitForSelector('.hist-row', { timeout: 10000 });
-
-    await openFilter(page);
-
-    await page.locator('.hist-filter-chip[data-action="history-filter-chore"]').first().click();
-    await page.waitForTimeout(300);
-    await expect(page.locator('.hist-row')).toHaveCount(1);
-
-    // Switch to Day view
-    await page.click('[data-action="switch-view"][data-view="day"]');
-    await page.waitForSelector('.day-view', { timeout: 10000 });
-
-    // Switch back to History
-    await page.click('[data-action="switch-view"][data-view="history"]');
-    await page.waitForSelector('.hist-row', { timeout: 10000 });
-
-    await expect(page.locator('.hist-row')).toHaveCount(1);
-    await openFilter(page);
-    await expect(page.locator('.hist-filter-chip[data-action="history-filter-chore"]').first()).not.toHaveClass(/active/);
-  });
 
   test('re-adding a chore via chip toggles it back in', async ({ page }) => {
     const { csrf } = await setupWithChores(page);

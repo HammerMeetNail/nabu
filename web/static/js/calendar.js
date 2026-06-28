@@ -128,11 +128,6 @@ export function renderDayView(state) {
         <button type="button" class="btn btn-icon btn-ghost"
           data-action="navigate-day" data-date="${next}" aria-label="Next day">→</button>
       </div>
-      <div class="view-tabs">
-        <button type="button" class="view-tab" data-action="switch-view" data-view="history">History</button>
-        <button type="button" class="view-tab view-tab--active" data-action="switch-view" data-view="day">Day</button>
-        <button type="button" class="view-tab" data-action="switch-view" data-view="week">Week</button>
-      </div>
       <div class="progress-bar">
         <div class="progress-fill" style="width:${pct}%"></div>
       </div>
@@ -301,11 +296,6 @@ export function renderWeekView(state) {
         <h2 class="cal-date">${fmtWeekRange(weekStart)}</h2>
         <button type="button" class="btn btn-icon btn-ghost"
           data-action="navigate-week" data-date="${nextWeek}" aria-label="Next week">→</button>
-      </div>
-      <div class="view-tabs">
-        <button type="button" class="view-tab" data-action="switch-view" data-view="history">History</button>
-        <button type="button" class="view-tab" data-action="switch-view" data-view="day">Day</button>
-        <button type="button" class="view-tab view-tab--active" data-action="switch-view" data-view="week">Week</button>
       </div>
       <div class="week-grid-wrapper">
         <div class="week-grid">

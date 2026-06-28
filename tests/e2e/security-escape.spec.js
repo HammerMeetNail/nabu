@@ -134,7 +134,6 @@ test.describe('Security: output escaping', () => {
     await page.reload();
     await page.waitForSelector('.home-grid', { timeout: 15000 });
     await page.click('a[data-nav="activity"]');
-    await page.click('[data-action="switch-view"][data-view="history"]');
     await page.waitForSelector('.history-view', { timeout: 10000 });
 
     const histMeta = page.locator('.hist-meta').first();

@@ -167,46 +167,4 @@ test.describe('Log member attribution', () => {
     await memberCtx.close();
     await ownerPage.context().close();
   });
-
-  test('log via calendar pick-chore sheet attributes to selected member', async ({ browser }) => {
-    const { ownerPage, memberCtx, memberId } = await setupOwnerAndMember(browser);
-    const todayDate = await ownerPage.evaluate(() => {
-      const d = new Date();
-      return d.toLocaleDateString('en-CA');
-    });
-
-    // Navigate to calendar day view.
-    await ownerPage.locator('[data-nav="activity"]').click();
-    await ownerPage.locator('[data-action="switch-view"][data-view="day"]').click();
-    await ownerPage.waitForSelector('.day-hour-grid', { timeout: 10000 });
-
-    // Tap an hour label to open the pick-chore sheet.
-    const hourBtn = ownerPage.locator('.hour-label').first();
-    await hourBtn.click();
-    await expect(ownerPage.locator('.bottom-sheet')).toBeVisible();
-
-    // Long-press a chore in the pick-chore sheet to open the log sheet.
-    const choreItem = ownerPage.locator('.sheet-chore-item').first();
-    await choreItem.hover();
-    await ownerPage.mouse.down();
-    await ownerPage.waitForTimeout(650);
-    await ownerPage.mouse.up();
-    await expect(ownerPage.locator('#log-member')).toBeVisible({ timeout: 5000 });
-
-    // Select the other member.
-    await ownerPage.locator('#log-member').selectOption(String(memberId));
-
-    // Log the chore.
-    await ownerPage.locator('[data-action="save-log"]').click();
-    await ownerPage.waitForTimeout(500);
-
-    // Verify attribution via API.
-    const logsRes = await ownerPage.request.get(`/api/logs/today?date=${todayDate}`);
-    const logs = (await logsRes.json()).logs || [];
-    const memberLog = logs.find(l => l.userId === memberId);
-    expect(memberLog).toBeTruthy();
-
-    await memberCtx.close();
-    await ownerPage.context().close();
-  });
 });

@@ -124,75 +124,6 @@ test.describe('Feed Baby volume picker', () => {
     await expect(page.locator('.indicator-volume-select')).toHaveCount(0);
   });
 
-  test('calendar log sheet shows per-indicator volume picker for Feed Baby', async ({ page }) => {
-    const { feedBaby } = await setupWithChores(page);
-
-    await page.click('[data-nav="activity"]');
-    await page.click('[data-action="switch-view"][data-view="day"]');
-    await page.waitForSelector('.cal-date', { timeout: 15000 });
-
-    const csrf = (await page.context().cookies()).find(c => c.name === 'nabu_csrf')?.value || '';
-    await page.request.post('/api/schedules', {
-      data: { choreId: feedBaby.id, timePeriod: 'anytime', specificTime: '10:00', frequencyType: 'daily', isActive: true },
-      headers: { 'X-CSRF-Token': csrf },
-    });
-    await page.reload();
-    await page.click('[data-nav="activity"]');
-    await page.click('[data-action="switch-view"][data-view="day"]');
-    await page.waitForSelector('.cal-date', { timeout: 15000 });
-
-    const scheduleCard = page.locator('[data-drop-hour="10"] .chore-card').first();
-    await expect(scheduleCard).toBeVisible();
-    await scheduleCard.scrollIntoViewIfNeeded();
-    const box = await scheduleCard.boundingBox();
-    const cx = box.x + box.width / 2;
-    const cy = box.y + box.height / 2;
-    await page.mouse.move(cx, cy);
-    await page.mouse.down();
-    await page.waitForTimeout(650);
-    await page.mouse.up();
-
-    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
-    await expect(page.locator(formulaVol)).toBeVisible();
-  });
-
-  test('calendar log sheet saves indicatorVolumes via API', async ({ page }) => {
-    const { feedBaby } = await setupWithChores(page);
-
-    await page.click('[data-nav="activity"]');
-    await page.click('[data-action="switch-view"][data-view="day"]');
-    await page.waitForSelector('.cal-date', { timeout: 15000 });
-
-    const csrf = (await page.context().cookies()).find(c => c.name === 'nabu_csrf')?.value || '';
-    await page.request.post('/api/schedules', {
-      data: { choreId: feedBaby.id, timePeriod: 'anytime', specificTime: '10:00', frequencyType: 'daily', isActive: true },
-      headers: { 'X-CSRF-Token': csrf },
-    });
-    await page.reload();
-    await page.click('[data-nav="activity"]');
-    await page.click('[data-action="switch-view"][data-view="day"]');
-    await page.waitForSelector('.cal-date', { timeout: 15000 });
-
-    const scheduleCard = page.locator('[data-drop-hour="10"] .chore-card').first();
-    await scheduleCard.scrollIntoViewIfNeeded();
-    const box = await scheduleCard.boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.waitForTimeout(650);
-    await page.mouse.up();
-
-    await expect(page.locator(formulaVol)).toBeVisible({ timeout: 3000 });
-    await page.selectOption(formulaVol, '50');
-    await page.click('[data-action="save-log"]');
-    await page.waitForTimeout(1500);
-
-    const resp = await page.request.get('/api/logs/latest-per-chore');
-    const body = await resp.json();
-    const log = body.latestLogs[feedBaby.id];
-    expect(log).toBeDefined();
-    expect(log.indicatorVolumes['🍼 formula']).toBe(50);
-  });
-
   test('home log sheet pre-populates per-indicator volume from previous log', async ({ page }) => {
     const { feedBaby } = await setupWithChores(page);
 
@@ -275,40 +206,7 @@ test.describe('Feed Baby volume picker', () => {
     await expect(page.locator('.log-chip').nth(1)).not.toHaveClass(/log-chip--on/);
   });
 
-  test('calendar log sheet pre-populates per-indicator volume from previous log', async ({ page }) => {
-    const { feedBaby } = await setupWithChores(page);
 
-    const csrf = (await page.context().cookies()).find(c => c.name === 'nabu_csrf')?.value || '';
-    await page.request.post('/api/schedules', {
-      data: { choreId: feedBaby.id, timePeriod: 'anytime', specificTime: '10:00', frequencyType: 'daily', isActive: true },
-      headers: { 'X-CSRF-Token': csrf },
-    });
-
-    const homeCard = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
-    await homeCard.click();
-    await expect(page.locator(formulaVol)).toBeVisible({ timeout: 3000 });
-    await page.selectOption(formulaVol, '65');
-    await page.click('[data-action="save-log"]');
-    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
-
-    await page.reload();
-    await page.waitForSelector('.home-grid', { timeout: 15000 });
-    await page.click('[data-nav="activity"]');
-    await page.click('[data-action="switch-view"][data-view="day"]');
-    await page.waitForSelector('.cal-date', { timeout: 15000 });
-
-    const scheduleCard = page.locator('[data-drop-hour="10"] .chore-card').first();
-    await expect(scheduleCard).toBeVisible();
-    await scheduleCard.scrollIntoViewIfNeeded();
-    const box = await scheduleCard.boundingBox();
-    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-    await page.mouse.down();
-    await page.waitForTimeout(650);
-    await page.mouse.up();
-
-    await expect(page.locator(formulaVol)).toBeVisible({ timeout: 3000 });
-    await expect(page.locator(formulaVol)).toHaveValue('65');
-  });
 
   test('editing an existing log uses its own volume, not the cache', async ({ page }) => {
     const { feedBaby } = await setupWithChores(page);

@@ -63,10 +63,9 @@ test.describe('Navigation Tabs: Positioning', () => {
   test('bottom tabs stay flush after navigating to another tab', async ({ page }) => {
     await setupWithChores(page);
 
-    // Navigate to Calendar
+    // Navigate to Activity
     await page.click('[data-nav="activity"]');
-    await page.click('[data-action="switch-view"][data-view="day"]');
-    await expect(page.locator('.cal-date')).toBeVisible({ timeout: 10000 });
+    await page.waitForSelector('.history-view', { timeout: 10000 });
 
     const result = await tabsBottomGap(page);
     expect(result).not.toBeNull();
@@ -78,8 +77,7 @@ test.describe('Navigation Tabs: Positioning', () => {
 
     // Navigate away and back
     await page.click('[data-nav="activity"]');
-    await page.click('[data-action="switch-view"][data-view="day"]');
-    await page.waitForSelector('.cal-date', { timeout: 10000 });
+    await page.waitForSelector('.history-view', { timeout: 10000 });
     await page.click('[data-nav="today"]');
     await expect(page.locator('.home-grid')).toBeVisible({ timeout: 5000 });
 

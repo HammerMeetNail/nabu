@@ -1,6 +1,6 @@
 // tests/e2e/home-log-to-calendar.spec.js
-// Regression tests: chores logged from the home tab must appear at the
-// system time they were tapped, not in the catch-all "Anytime" row.
+// Regression tests: chores logged from the home tab must store the correct
+// slotHour via the API.
 //
 // All chores now open the log sheet before saving.
 
@@ -94,91 +94,5 @@ test.describe('Home tab log → calendar visibility', () => {
     });
     expect(logged).toBeDefined();
     expect(logged.slotHour).toBe(expectedHour);
-  });
-
-  test('timed-schedule chore logged from home tab shows as done in the schedule hour row', async ({ page }) => {
-    const { csrf, chores } = await setupWithChores(page);
-
-    const choreId = chores[0].id;
-    await page.request.post('/api/schedules', {
-      data: { choreId, timePeriod: 'anytime', specificTime: '08:00', frequencyType: 'daily', isActive: true },
-      headers: { 'X-CSRF-Token': csrf },
-    });
-
-    await page.reload();
-    await page.waitForSelector('.home-grid', { timeout: 15000 });
-
-    const firstCard = page.locator('.home-chore-card').first();
-    const choreName = await firstCard.locator('.home-card-name').innerText();
-    await logChoreViaSheet(page, firstCard);
-
-    await page.click('[data-nav="activity"]');
-    await page.click('[data-action="switch-view"][data-view="day"]');
-    await page.waitForSelector('.cal-date', { timeout: 15000 });
-
-    const hourRowCard = page.locator('[data-drop-hour="8"] .chore-card');
-    await expect(hourRowCard).toHaveCount(1);
-    await expect(hourRowCard.first()).toHaveClass(/chore-card--done/);
-    await expect(hourRowCard.first().locator('.chore-name')).toContainText(choreName);
-
-    await expect(page.locator('.day-anytime-row .chore-card--done')).toHaveCount(0);
-  });
-
-  test('chore logged from home sheet with explicit 2 PM time appears in hour-14 row, not Anytime', async ({ page }) => {
-    const { chores } = await setupWithChores(page);
-    const chore = chores[0];
-    expect(chore).toBeDefined();
-
-    const card = page.locator(`.home-chore-card[data-home-chore-id="${chore.id}"]`);
-    await expect(card).toBeVisible();
-    await card.click();
-    await expect(page.locator('#log-when')).toBeVisible({ timeout: 5000 });
-
-    const now = new Date();
-    const pad = n => String(n).padStart(2, '0');
-    const dtLocal = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T14:00`;
-    await page.fill('#log-when', dtLocal);
-
-    await page.locator('[data-action="save-log"]').click();
-    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
-
-    await page.click('[data-nav="activity"]');
-    await page.click('[data-action="switch-view"][data-view="day"]');
-    await page.waitForSelector('.cal-date', { timeout: 15000 });
-
-    const slotCards = page.locator('[data-drop-hour="14"] .chore-card--done');
-    await expect(slotCards).toHaveCount(1);
-    await expect(slotCards.first().locator('.chore-name')).toContainText(chore.name);
-
-    await expect(page.locator('.day-anytime-row .chore-card--done')).toHaveCount(0);
-  });
-
-  test('chore logged from home sheet with explicit 2 PM time appears in hour-14 row of week view', async ({ page }) => {
-    const { chores } = await setupWithChores(page);
-    const chore = chores[0];
-    expect(chore).toBeDefined();
-
-    const card = page.locator(`.home-chore-card[data-home-chore-id="${chore.id}"]`);
-    await card.click();
-    await expect(page.locator('#log-when')).toBeVisible({ timeout: 5000 });
-
-    const now = new Date();
-    const pad = n => String(n).padStart(2, '0');
-    const todayISO = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-    await page.fill('#log-when', `${todayISO}T14:00`);
-    await page.locator('[data-action="save-log"]').click();
-    await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
-
-    await page.click('[data-nav="activity"]');
-    await page.click('[data-action="switch-view"][data-view="day"]');
-    await page.waitForSelector('.cal-date', { timeout: 15000 });
-    await page.click('[data-action="switch-view"][data-view="week"]');
-    await page.waitForSelector('.week-view', { timeout: 5000 });
-
-    const hourCell = page.locator(`.hour-row[data-hour="14"] [data-drop-date="${todayISO}"]`);
-    await expect(hourCell.locator('.chore-card--done')).toHaveCount(1);
-    await expect(hourCell.locator('.chore-card--done').first()).toHaveAttribute('aria-label', new RegExp(chore.name));
-
-    await expect(page.locator('.week-anytime-row .chore-card--done')).toHaveCount(0);
   });
 });

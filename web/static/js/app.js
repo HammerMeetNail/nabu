@@ -244,10 +244,7 @@ function renderActivityView() {
     <div class="empty-state-title">No chores set up yet</div>
     <p>Use the Home tab to add chores.</p></div></div>`;
   }
-  if (state.activityView === "history") {
-    return renderHistoryView();
-  }
-  return renderCalendarView();
+  return renderHistoryView();
 }
 
 function renderHistoryView() {
@@ -1810,26 +1807,6 @@ export async function init() {
         state.calendarDate = actionEl.dataset.date;
         state.todayDate = actionEl.dataset.date;
         loadTodayData().then(() => render(app));
-        break;
-
-      case "switch-view":
-        e.preventDefault();
-        state.activityView = actionEl.dataset.view;
-        if (state.activityView === "history") {
-          loadHistory().then(data => {
-            state.historyLogs = data?.logs || [];
-            state.historyHasMore = data?.hasMore || false;
-            state.historyBefore = data?.start || null;
-            render(app);
-          }).catch(() => render(app));
-        } else {
-          state.calendarView = state.activityView;
-          if (state.calendarView === "week") {
-            loadWeekData().then(() => render(app));
-          } else {
-            loadTodayData().then(() => render(app));
-          }
-        }
         break;
 
       case "navigate-week":

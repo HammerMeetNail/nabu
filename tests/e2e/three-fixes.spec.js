@@ -266,8 +266,7 @@ test.describe('Fix 3: nav tabs are a fixed bar at the page bottom', () => {
 
     // Navigate to calendar
     await page.click('[data-nav="activity"]');
-    await page.click('[data-action="switch-view"][data-view="day"]');
-    await page.waitForSelector('.cal-date', { timeout: 15000 });
+    await page.waitForSelector('.history-view', { timeout: 15000 });
     await expect(page.locator('.tab-item[data-nav="activity"]')).toHaveClass(/active/);
     await expect(page.locator('.tab-item[data-nav="today"]')).not.toHaveClass(/active/);
   });

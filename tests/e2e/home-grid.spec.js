@@ -343,21 +343,19 @@ test.describe('Home Grid: Jiggle Mode', () => {
 // ─── Home Grid: Tab Navigation ────────────────────────────────────────────────
 
 test.describe('Home Grid: Tab Navigation', () => {
-  test('Calendar tab navigates to the calendar view (.cal-date visible)', async ({ page }) => {
+  test('Activity tab navigates to the history view', async ({ page }) => {
     await setupWithChores(page);
 
     await page.click('[data-nav="activity"]');
-    await page.click('[data-action="switch-view"][data-view="day"]');
-    await expect(page.locator('.cal-date')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('.history-view')).toBeVisible({ timeout: 10000 });
   });
 
-  test('Home tab returns to the home grid from calendar', async ({ page }) => {
+  test('Home tab returns to the home grid from activity', async ({ page }) => {
     await setupWithChores(page);
 
-    // Navigate to calendar
+    // Navigate to activity
     await page.click('[data-nav="activity"]');
-    await page.click('[data-action="switch-view"][data-view="day"]');
-    await page.waitForSelector('.cal-date', { timeout: 10000 });
+    await page.waitForSelector('.history-view', { timeout: 10000 });
 
     // Navigate back
     await page.click('[data-nav="today"]');
