@@ -82,6 +82,7 @@ type ChoreStats struct {
 	ChoreIcon       string         `json:"choreIcon"`
 	TotalThisWeek   int            `json:"totalThisWeek"`
 	TotalThisMonth  int            `json:"totalThisMonth"`
+	TotalInRange    int            `json:"totalInRange"`
 	IndicatorCounts map[string]int `json:"indicatorCounts,omitempty"`
 	VolumeHistory   []VolumeDay    `json:"volumeHistory,omitempty"`
 	AvgVolume       *float64       `json:"avgVolume,omitempty"`
@@ -432,17 +433,24 @@ func (s *Service) GetChoreStats(ctx context.Context, householdID int64, loc *tim
 
 	var result []ChoreStats
 	for _, ch := range chores {
-		var weekCount, monthCount int
+		var weekCount, monthCount, rangeCount int
 		indicatorCounts := map[string]int{}
 		volumeByDay := map[string]int{}
 		var totalVolume, volumeLogs int
 
 		for _, l := range logsByChore[ch.ID] {
+			inRange := logInRange(l, fetchStart, fetchEnd, loc)
+			if inRange {
+				rangeCount++
+			}
 			if !l.CompletedAt.In(loc).Before(weekStart) {
 				weekCount++
 			}
 			if !l.CompletedAt.In(loc).Before(monthStart) {
 				monthCount++
+			}
+			if !inRange {
+				continue
 			}
 			for _, ind := range l.Indicators {
 				indicatorCounts[ind]++
@@ -471,6 +479,7 @@ func (s *Service) GetChoreStats(ctx context.Context, householdID int64, loc *tim
 			ChoreIcon:      ch.Icon,
 			TotalThisWeek:  weekCount,
 			TotalThisMonth: monthCount,
+			TotalInRange:   rangeCount,
 			HasVolume:      ch.HasVolumeML,
 			HasIndicators:  len(ch.IndicatorLabels) > 0,
 		}
@@ -492,6 +501,9 @@ func (s *Service) GetChoreStats(ctx context.Context, householdID int64, loc *tim
 	}
 
 	sort.Slice(result, func(i, j int) bool {
+		if result[i].TotalInRange != result[j].TotalInRange {
+			return result[i].TotalInRange > result[j].TotalInRange
+		}
 		return result[i].TotalThisMonth > result[j].TotalThisMonth
 	})
 

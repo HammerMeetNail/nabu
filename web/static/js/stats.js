@@ -246,7 +246,7 @@ export function renderStatsPage(state) {
         <h3>Chores</h3>
         ${renderStatsPeriodToggle(stats.choreStatsPeriod || "month", "chores", false)}
       </div>
-      ${renderChoreStatsList(choreStats, choreMap)}
+      ${renderChoreStatsList(choreStats, choreMap, stats.choreStatsPeriod || "month")}
     </div>`,
     recap: recap.totalChores > 0 ? `<div class="card mb-3">
       <h3>Weekly Recap</h3>
@@ -554,18 +554,20 @@ function renderTopChoresSection(state) {
   </div>`;
 }
 
-function renderChoreStatsList(choreStats, choreMap) {
+function renderChoreStatsList(choreStats, choreMap, period) {
   if (!choreStats || choreStats.length === 0) {
     return '<p class="text-secondary text-center">No chore data yet</p>';
   }
 
-  const filtered = choreStats.filter(cs => (cs.totalThisWeek || 0) > 0 || (cs.totalThisMonth || 0) > 0);
+  const filtered = choreStats.filter(cs => (cs.totalInRange || 0) > 0);
+
+  const periodLabels = { day: "today", week: "this week", month: "this month" };
+  const periodLabel = periodLabels[period] || period;
 
   const items = filtered.map(cs => {
     const chore = choreMap[cs.choreId];
     const icon = cs.choreIcon || (chore ? chore.icon : "✓");
-    const totalThisWeek = cs.totalThisWeek || 0;
-    const totalThisMonth = cs.totalThisMonth || 0;
+    const count = cs.totalInRange || 0;
 
     let detailHTML = "";
     const detailParts = [];
@@ -589,8 +591,9 @@ function renderChoreStatsList(choreStats, choreMap) {
         avgStr = `<span class="text-secondary">Avg ${Math.round(cs.avgVolume)}mL / feed</span>`;
       }
 
+      const volLabel = period === "day" ? "Volume" : period === "week" ? `Volume (${periodLabel})` : `Volume (${periodLabel})`;
       detailParts.push(`<div class="chore-stat-detail">
-        <span class="chore-stat-detail-label">Volume (30d)</span>
+        <span class="chore-stat-detail-label">${volLabel}</span>
         <div class="vol-chart">${volBars}</div>
         ${avgStr}
       </div>`);
@@ -610,8 +613,7 @@ function renderChoreStatsList(choreStats, choreMap) {
         <span class="chore-stat-icon">${icon}</span>
         <span class="chore-stat-name">${escapeHTML(cs.choreName)}</span>
         <span class="chore-stat-counts">
-          <span class="chore-stat-week">${totalThisWeek}/wk</span>
-          <span class="chore-stat-month">${totalThisMonth}/mo</span>
+          <span class="chore-stat-week">${count} ${periodLabel}</span>
         </span>
         ${chevron}
       </summary>
