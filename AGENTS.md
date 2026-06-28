@@ -98,7 +98,7 @@ CI runs `go vet ./...` for lint (not golangci-lint). `make lint` uses golangci-l
 
 - **`app/server.go`** — All route registration in one place via `http.ServeMux`. Routes use `method()` helper for HTTP verb enforcement (some with `RequireAuth` wrapper).
 - **`handlers/`** — HTTP handlers grouped by feature. Handlers call services; they contain no business logic.
-- **`middleware/`** — Applied in order: RequestLogger → SecurityHeaders → Session → CSRF → RateLimiter. RateLimiter only applies to `/api/auth` routes. Session middleware attaches user to context; handlers check with `middleware.CurrentUser(ctx)`.
+- **`middleware/`** — Applied in order: RequestLogger → SecurityHeaders → Session → CSRF → RateLimiter. There are two rate limiters: a strict per-IP limiter on `/api/auth` (`RATE_LIMIT_AUTH_MAX`, default 5/min) and a permissive global backstop on all `/api/*` (`RATE_LIMIT_GLOBAL_MAX`, default 120/min). The global backstop is only wired up when `TRUSTED_PROXY_CIDRS` is set, so that per-client IPs are reliably attributable (otherwise it would key every request to a proxy's single IP and could 429 the whole user base). Session middleware attaches user to context; handlers check with `middleware.CurrentUser(ctx)`. `SecurityHeaders` and `CSRF` take a `secure` bool (from `SERVER_SECURE`) that drives HSTS and the cookie `Secure` flag — not the spoofable `X-Forwarded-Proto`.
 - **`database/`** — Connection setup + migration runner. Migrations are embedded SQL files from `migrations/` (via `//go:embed` in `migrations/assets.go`), applied at startup. Migration order follows `fs.ReadDir` order, not filename sort — check ordering carefully.
 - **`audit/`** — Audit logging interface + std logger implementation.
 
@@ -127,6 +127,7 @@ Session cookie name: `nabu_session`. CSRF cookie name: `nabu_csrf`.
 
 - **Service/Store separation**: Services hold business logic, stores hold persistence. Both have memory and Postgres implementations. When `DATABASE_URL` is empty, everything uses in-memory stores.
 - **Dependency injection via function args**: `BuildServer()` in `app/server.go` wires all dependencies; there are no global singletons.
+- **Reminder scheduler is leader-gated**: the background reminder scheduler (`internal/reminder`) runs ticks only while it holds a Postgres session-level advisory lock (`reminder.PostgresAdvisoryLock`), so running multiple app instances does not emit duplicate reminders. In-memory/single-node mode passes no lock and always ticks. Don't add a second always-on scheduler without the same guard.
 - **Optimistic UI**: Frontend updates state before server confirms; rolls back on error.
 - **`apiFetch()`** adds `X-CSRF-Token` header read from `nabu_csrf` cookie for all state-changing requests.
 - **`slotHour` in logs**: `POST /api/logs` accepts `hour` (integer) in the JSON body → stored as `slot_hour` in the DB → drives calendar placement. A missing or null `hour` puts the log in the Anytime row. Always pass `hour` from timed UI paths.
@@ -165,12 +166,13 @@ Every feature, bug fix, validation change, security fix, API change, or UI behav
 - A matching JS render/unit test.
 - A matching backend handler/service/store change.
 
-**PR descriptions must state one of:**
-- "PWA and iOS both updated."
-- "PWA-only change; iOS not affected because \<reason\>."
-- "iOS-only change; PWA not affected because \<reason\>."
+**Keep `docs/plans/client-parity.md` updated.** When a PR changes shared client surface — `web/static/js/**`, `ios/**`, or the shared API in `internal/handlers/**` — it must also update the parity matrix to reflect the change. The CI `parity` job (`.github/workflows/ci.yaml`) enforces this: it (a) lints the matrix (every row must use a known status: `Done`, `Built`, `iOS pending`, `PWA pending`, `Deferred`, `Not built`, `N/A`) and (b) fails if client/API code changed but the matrix wasn't touched. Escape hatch: include `no-parity-update: <reason>` in the PR body for changes that genuinely need no matrix update.
 
-CI enforces this via the `parity` job (`.github/workflows/ci.yaml`). Run `bash scripts/check-parity.sh` locally to see all pending parity gaps. Use the `client-parity` skill (`/client-parity`) for parity-aware guidance during development.
+> Note: this replaced an older check that only grepped the PR description for phrases like "PWA-only change". The phrase is no longer what CI checks — update the matrix instead.
+
+`scripts/check-parity.sh` is now a **matrix linter** by default (exit 0 if well-formed, exit 2 on an unknown status); pass `--strict` to also fail when any row is still `iOS pending`/`PWA pending` (useful as a release gate, not a per-PR gate). `make check-parity` runs it.
+
+**iOS is built and tested in CI.** The `ios` job (`.github/workflows/ci.yaml`, `macos` runner) runs `xcodebuild test` of the `NabuTests` unit/contract suite whenever `ios/**` changes, so a backend model/API change that breaks the iOS request models fails at PR time. Keep `NabuTests` green. Use the `client-parity` skill (`/client-parity`) for parity-aware guidance during development.
 
 See `ios/AGENTS.md` for iOS-specific agent instructions.
 
@@ -224,7 +226,7 @@ Production test account: `verify@yearofbingo.com` / `test123456` (household and 
 
 - **URL**: `https://nabu-app.com`
 - **Deploy trigger**: push a `v*` tag (e.g. `git tag v0.1.7 && git push origin v0.1.7`). CI builds, tests, and deploys automatically.
-- **CI**: `.github/workflows/ci.yaml` — runs secret scan, JS tests, lint, Go tests (with coverage), and E2E tests before deploying.
+- **CI**: `.github/workflows/ci.yaml` — runs secret scan, JS tests, lint, Go tests (with coverage), E2E tests, the client-parity gate (PR only), and the iOS `NabuTests` lane (macOS, when `ios/**` changes) before deploying.
 
 ### Verifying a production deploy
 
@@ -411,8 +413,8 @@ Every operation that reads or mutates data must verify the actor is authorized f
 
 ### HTTP security
 
-- **Strict-Transport-Security header** must be set when the request arrived over TLS (direct or via a trusted proxy).
-- **Rate-limit authentication endpoints.**  The default is conservative — extend with `RATE_LIMIT_AUTH_MAX` in production if needed.
+- **Strict-Transport-Security header** must be set when the deployment is configured secure (`SERVER_SECURE=true`) or the request arrived over direct TLS. Drive HSTS and the CSRF/session cookie `Secure` flag from `SERVER_SECURE`, **not** from the client-supplied `X-Forwarded-Proto` header (any client can spoof it).
+- **Rate-limit authentication endpoints.**  `/api/auth` has a strict limiter (`RATE_LIMIT_AUTH_MAX`, default 5/min/IP). A permissive global backstop on all `/api/*` (`RATE_LIMIT_GLOBAL_MAX`, default 120/min/IP) is enabled only when `TRUSTED_PROXY_CIDRS` is set, so it can't 429 the whole user base behind an unconfigured proxy. Behind a proxy/tunnel, set `TRUSTED_PROXY_CIDRS` so client IPs (and audit-log IPs) are real.
 - **`429 Too Many Requests` responses must carry a `Retry-After` header.**
 
 ### Error handling prevents enumeration

@@ -106,10 +106,12 @@ These PWA behaviors must be preserved in the native iOS app:
 9. Use `Date` for RFC3339 timestamps and `LocalDate` for `YYYY-MM-DD` values.
 10. Never update only one client when behavior is shared.
 
-## PR description requirements
+## Parity bookkeeping on PRs
 
-When submitting a PR that touches iOS or PWA code, the description must state one of:
+When a PR touches shared client surface — `ios/**`, `web/static/js/**`, or the shared API in `internal/handlers/**` — it must also update the parity matrix (`docs/plans/client-parity.md`) to reflect the change. The CI `parity` job enforces this (it lints the matrix and fails if client/API code changed without a matrix update); the escape hatch is a `no-parity-update: <reason>` line in the PR body.
 
-- "PWA and iOS both updated."
-- "PWA-only change; iOS not affected because \<reason\>."
-- "iOS-only change; PWA not affected because \<reason\>."
+(This replaced an older rule that required a "PWA-only change…" / "iOS-only change…" phrase in the PR description — that phrase is no longer what CI checks.)
+
+## iOS tests run in CI
+
+The `ios` CI job (`.github/workflows/ci.yaml`, macOS runner) builds the app and runs the `NabuTests` unit/contract suite on every change under `ios/**`. Keep `NabuTests` green — a backend model/API change that breaks the iOS request models (e.g. an added field on `CreateChoreRequest`) will fail this lane. The build sequence is: build the app target alone first (so `@testable import Nabu` resolves on a clean checkout), then `build-for-testing`, then `test-without-building -only-testing:NabuTests`. UI tests are not run in CI.

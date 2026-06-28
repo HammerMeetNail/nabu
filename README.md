@@ -23,7 +23,7 @@ make fmt         # Format Go code
 
 ## Prerequisites
 
-- **Go 1.25+** (CI uses 1.25, `go.mod` specifies 1.25.10)
+- **Go 1.25+** (CI uses 1.25, `go.mod` specifies 1.25.11)
 - **JS tests require `pnpm install` first** for `jsdom` (dev dependency). Tests use Node's built-in test runner.
 - **E2E tests require `pnpm exec playwright install chromium`** to download the browser binary.
 - **Podman Compose** for local stack (`make local`). Docker Compose may work but is untested.
@@ -47,7 +47,7 @@ make fmt         # Format Go code
 | `stats` | Leaderboard, streaks, heatmap, category breakdown, busy hours, weekly recap |
 | `userprefs` | Chore ordering, hidden home chores, timezone preferences |
 | `handlers` | HTTP handlers grouped by feature — no business logic, call services directly |
-| `middleware` | RequestLogger → SecurityHeaders → Session → CSRF → RateLimiter |
+| `middleware` | RequestLogger → SecurityHeaders → Session → CSRF → RateLimiter (strict `/api/auth` + optional global `/api/*` backstop) |
 | `database` | pgx connection pool + embedded SQL migration runner (26 migrations) |
 | `config` | Environment variable loader with defaults |
 | `audit` | Audit logging interface + std logger implementation |
@@ -121,8 +121,9 @@ Nabu is a Progressive Web App with a service worker caching strategy. Key PWA fe
 | `SMTP_FROM` | (empty) | From address for emails |
 | `GOOGLE_CLIENT_ID` | (empty) | Google OAuth2 client ID |
 | `GOOGLE_CLIENT_SECRET` | (empty) | Google OAuth2 client secret |
-| `TRUSTED_PROXY_CIDRS` | (empty) | CIDR list for trusted reverse proxy IPs (rate limiter) |
-| `RATE_LIMIT_AUTH_MAX` | `5` | Max auth requests per minute per IP |
+| `TRUSTED_PROXY_CIDRS` | (empty) | CIDR list for trusted reverse-proxy IPs. Enables real client-IP attribution (X-Forwarded-For) for rate limiting and audit logs, and gates the global rate-limit backstop. Logs a startup warning if empty when `APP_ENV=production`. |
+| `RATE_LIMIT_AUTH_MAX` | `5` | Max `/api/auth` requests per minute per IP |
+| `RATE_LIMIT_GLOBAL_MAX` | `120` | Permissive backstop on all `/api/*`, per IP per path. Only active when `TRUSTED_PROXY_CIDRS` is set. |
 | `VAPID_PUBLIC_KEY` | (empty) | VAPID public key (base64-encoded uncompressed EC point) |
 | `VAPID_PRIVATE_KEY` | (empty) | VAPID private key (base64-encoded) |
 | `VAPID_SUBJECT` | (empty) | VAPID subject (e.g. `mailto:admin@example.com`) |
@@ -185,10 +186,12 @@ Pushes to `main` and `v*` tags trigger:
 3. **Go tests** with race detector and coverage (reported to Codecov)
 4. **JS tests** (Node built-in test runner)
 5. **E2E tests** (Playwright, Chromium, 31 spec files)
-6. **Build** — multi-arch container image (linux/amd64, linux/arm64) on Quay.io
-7. **Scan & Sign** — Trivy vulnerability scan + Cosign keyless signing
-8. **GitHub Release** — auto-generated from conventional commits
-9. **Deploy** — verifies tag is on `main`, then deploys via SSH + Cloudflare Tunnel
+6. **iOS unit tests** (`xcodebuild test` of `NabuTests` on macOS, when `ios/**` changes)
+7. **Client parity** (PR only) — lints the parity matrix and requires it to be updated when client/API code changes
+8. **Build** — multi-arch container image (linux/amd64, linux/arm64) on Quay.io
+9. **Scan & Sign** — Trivy vulnerability scan + Cosign keyless signing
+10. **GitHub Release** — auto-generated from conventional commits
+11. **Deploy** — verifies tag is on `main`, then deploys via SSH + Cloudflare Tunnel
 
 ### Verifying a production deploy
 
