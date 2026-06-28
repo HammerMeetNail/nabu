@@ -243,10 +243,11 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     // === Settings View Elements ===
     await expect(page.locator('h2:has-text("Settings")')).toBeVisible({ timeout: 5000 });
 
-    // Household section
+    // Household section — wait for the page to fully load
     await expect(page.locator('.settings-view h3').first()).toBeVisible();
     
-    // Create Invite Link button
+    // Create Invite Link button — wait for household data to load first
+    await expect(page.locator('text=Members')).toBeVisible({ timeout: 10000 });
     const createInviteBtn = page.locator('button[data-action="create-invite"]');
     await expect(createInviteBtn).toBeVisible();
     
