@@ -163,23 +163,56 @@ func (h *StatsHandler) Breakdown(w http.ResponseWriter, r *http.Request) {
 
 	startStr := r.URL.Query().Get("start")
 	endStr := r.URL.Query().Get("end")
+	periodStr := r.URL.Query().Get("period")
 
 	loc := h.userLocation(r)
 	now := nowInLoc(loc)
-	year, month, day := now.Date()
-	midnight := time.Date(year, month, day, 0, 0, 0, 0, loc)
-	start := midnight.AddDate(0, 0, -7)
-	end := midnight.AddDate(0, 0, 1)
 
-	if startStr != "" {
-		if parsed, err := time.ParseInLocation("2006-01-02", startStr, loc); err == nil {
-			start = parsed
+	var start, end time.Time
+
+	if periodStr != "" {
+		y, m, d := now.Date()
+		midnight := time.Date(y, m, d, 0, 0, 0, 0, loc)
+		switch periodStr {
+		case "day":
+			start = midnight
+			end = midnight.AddDate(0, 0, 1)
+		case "week":
+			weekday := int(now.Weekday()) - int(time.Monday)
+			if weekday < 0 {
+				weekday += 7
+			}
+			start = time.Date(y, m, d-weekday, 0, 0, 0, 0, loc)
+			end = start.AddDate(0, 0, 7)
+		case "month":
+			start = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
+			end = start.AddDate(0, 1, 0)
+		default:
+			writeError(w, http.StatusBadRequest, "invalid period")
+			return
 		}
-	}
-	if endStr != "" {
-		if parsed, err := time.ParseInLocation("2006-01-02", endStr, loc); err == nil {
-			end = parsed
+	} else if startStr != "" || endStr != "" {
+		midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+		start = midnight.AddDate(0, 0, -7)
+		end = midnight.AddDate(0, 0, 1)
+		if startStr != "" {
+			if parsed, err := time.ParseInLocation("2006-01-02", startStr, loc); err == nil {
+				start = parsed
+			}
 		}
+		if endStr != "" {
+			if parsed, err := time.ParseInLocation("2006-01-02", endStr, loc); err == nil {
+				end = parsed
+			}
+		}
+	} else {
+		midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
+		weekday := int(now.Weekday()) - int(time.Monday)
+		if weekday < 0 {
+			weekday += 7
+		}
+		start = midnight.AddDate(0, 0, -weekday)
+		end = start.AddDate(0, 0, 7)
 	}
 
 	breakdown, err := h.service.GetCategoryBreakdown(r.Context(), *user.HouseholdID, start, end, loc)
@@ -287,15 +320,45 @@ func (h *StatsHandler) ChoreStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	loc := h.userLocation(r)
+	now := nowInLoc(loc)
+
 	var customStart, customEnd *time.Time
-	startStr := r.URL.Query().Get("start")
-	endStr := r.URL.Query().Get("end")
-	if startStr != "" && endStr != "" {
-		if parsed, err := time.ParseInLocation("2006-01-02", startStr, loc); err == nil {
-			customStart = &parsed
+
+	periodStr := r.URL.Query().Get("period")
+	if periodStr != "" {
+		y, m, d := now.Date()
+		midnight := time.Date(y, m, d, 0, 0, 0, 0, loc)
+		var s, e time.Time
+		switch periodStr {
+		case "day":
+			s = midnight
+			e = midnight.AddDate(0, 0, 1)
+		case "week":
+			weekday := int(now.Weekday()) - int(time.Monday)
+			if weekday < 0 {
+				weekday += 7
+			}
+			s = time.Date(y, m, d-weekday, 0, 0, 0, 0, loc)
+			e = s.AddDate(0, 0, 7)
+		case "month":
+			s = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
+			e = s.AddDate(0, 1, 0)
+		default:
+			writeError(w, http.StatusBadRequest, "invalid period")
+			return
 		}
-		if parsed, err := time.ParseInLocation("2006-01-02", endStr, loc); err == nil {
-			customEnd = &parsed
+		customStart = &s
+		customEnd = &e
+	} else {
+		startStr := r.URL.Query().Get("start")
+		endStr := r.URL.Query().Get("end")
+		if startStr != "" && endStr != "" {
+			if parsed, err := time.ParseInLocation("2006-01-02", startStr, loc); err == nil {
+				customStart = &parsed
+			}
+			if parsed, err := time.ParseInLocation("2006-01-02", endStr, loc); err == nil {
+				customEnd = &parsed
+			}
 		}
 	}
 
@@ -305,7 +368,6 @@ func (h *StatsHandler) ChoreStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	now := nowInLoc(loc)
 	fetchStart := now.AddDate(0, 0, -29)
 	fetchEnd := now.AddDate(0, 0, 1)
 	if customStart != nil {
