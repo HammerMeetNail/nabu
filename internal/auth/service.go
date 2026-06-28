@@ -245,7 +245,7 @@ func (s *Service) RequestMagicLink(ctx context.Context, email string) error {
 		return err
 	}
 
-	fields := map[string]string{"email": normalizedEmail}
+	fields := map[string]string{"email_hash": hashEmailForAudit(normalizedEmail)}
 	if userID != nil {
 		fields["user_id"] = fmt.Sprintf("%d", *userID)
 	}
@@ -515,6 +515,17 @@ func randomToken(numBytes int) string {
 func hashToken(token string) string {
 	h := sha256.Sum256([]byte(token))
 	return base64.RawURLEncoding.EncodeToString(h[:])
+}
+
+// hashEmailForAudit returns a short, stable fingerprint of an email address for
+// audit logs. It lets operators correlate repeated events for the same address
+// (e.g. magic-link request floods) without writing raw PII to the log. Note
+// that email addresses are low-entropy, so this is disclosure reduction — not a
+// cryptographic guarantee against a determined attacker who can brute-force
+// candidate addresses.
+func hashEmailForAudit(email string) string {
+	h := sha256.Sum256([]byte(normalizeEmail(email)))
+	return base64.RawURLEncoding.EncodeToString(h[:])[:16]
 }
 
 func emailVerificationTemplate(baseURL, token string) string {
