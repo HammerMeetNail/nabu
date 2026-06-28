@@ -3,21 +3,6 @@ import XCTest
 
 final class ActivityTests: XCTestCase {
 
-    // MARK: - ActivityViewMode
-
-    func testActivityViewModeAllCases() {
-        XCTAssertEqual(ActivityViewMode.allCases.count, 3)
-        XCTAssertTrue(ActivityViewMode.allCases.contains(.history))
-        XCTAssertTrue(ActivityViewMode.allCases.contains(.day))
-        XCTAssertTrue(ActivityViewMode.allCases.contains(.week))
-    }
-
-    func testActivityViewModeTitles() {
-        XCTAssertEqual(ActivityViewMode.history.title, "History")
-        XCTAssertEqual(ActivityViewMode.day.title, "Day")
-        XCTAssertEqual(ActivityViewMode.week.title, "Week")
-    }
-
     // MARK: - Date helpers
 
     func testTodayISO() {

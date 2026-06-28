@@ -26,6 +26,15 @@ type Scheduler struct {
 	hhStore    household.Store
 	userPrefs  userprefs.Store
 	pushSender notification.PushSender
+	leader     LeaderLock
+}
+
+// SetLeaderLock configures an optional single-runner guard. When set, the
+// scheduler only runs ticks while this instance holds leadership, so running
+// multiple app instances does not produce duplicate reminders. When nil (the
+// default, e.g. single-node or in-memory mode) the scheduler always ticks.
+func (s *Scheduler) SetLeaderLock(l LeaderLock) {
+	s.leader = l
 }
 
 func NewScheduler(
@@ -54,14 +63,25 @@ func (s *Scheduler) Start(ctx context.Context) {
 	log.Printf("reminder: scheduler started (interval=%v)", tickInterval)
 	ticker := time.NewTicker(tickInterval)
 	defer ticker.Stop()
+	if s.leader != nil {
+		defer func() {
+			if err := s.leader.Release(context.Background()); err != nil {
+				log.Printf("reminder: leader release error: %v", err)
+			}
+		}()
+	}
 
 	var purgeCounter int
+	wasLeader := false
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			if !s.acquireLeadership(ctx, &wasLeader) {
+				continue
+			}
 			if err := s.tick(ctx); err != nil {
 				log.Printf("reminder: tick error: %v", err)
 			}
@@ -77,6 +97,28 @@ func (s *Scheduler) Start(ctx context.Context) {
 			}
 		}
 	}
+}
+
+// acquireLeadership reports whether this instance may run a tick. With no
+// leader lock configured it is always true. Otherwise it attempts to acquire/
+// hold leadership and logs leadership transitions (via *wasLeader) so the log
+// shows exactly one instance taking over.
+func (s *Scheduler) acquireLeadership(ctx context.Context, wasLeader *bool) bool {
+	if s.leader == nil {
+		return true
+	}
+	ok, err := s.leader.TryAcquire(ctx)
+	if err != nil {
+		log.Printf("reminder: leader acquire error: %v", err)
+		ok = false
+	}
+	if ok && !*wasLeader {
+		log.Printf("reminder: acquired leadership, running ticks")
+	} else if !ok && *wasLeader {
+		log.Printf("reminder: lost leadership, pausing ticks")
+	}
+	*wasLeader = ok
+	return ok
 }
 
 func (s *Scheduler) tick(ctx context.Context) error {

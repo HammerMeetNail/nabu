@@ -128,6 +128,12 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		reminderStore, scheduleStore, scheduleService,
 		notifStore, choreStore, householdStore, userPrefsStore, pushService,
 	)
+	// Guard the scheduler with a Postgres advisory lock so that running multiple
+	// app instances does not emit duplicate reminders (only the leader ticks).
+	// In-memory mode (db == nil) is single-instance, so no lock is needed.
+	if db != nil {
+		reminderSched.SetLeaderLock(reminder.NewPostgresAdvisoryLock(db, reminder.LeaderLockKey))
+	}
 	go reminderSched.Start(context.Background())
 
 	reminderHandler := handlers.NewChoreReminderPrefsHandler(reminderStore)
@@ -136,8 +142,33 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	statsService := stats.NewService(logStore, &choreStatsAdapter{choreStore})
 	statsHandler := handlers.NewStatsHandler(statsService, userPrefsStore)
 
+	hasTrustedProxy := strings.TrimSpace(cfg.TrustedProxyCIDRs) != ""
+
 	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitAuthMax, time.Minute)
 	rateLimiter.SetTrustedProxies(cfg.TrustedProxyCIDRs)
+
+	// Permissive global backstop covering all /api/ routes (per IP, per path).
+	// It is only constructed/wired when TRUSTED_PROXY_CIDRS is configured: a
+	// per-IP global limiter is only safe when the deployment can attribute a
+	// real client IP, which behind a reverse proxy/tunnel requires trusting it.
+	// The strict auth limiter still applies to /api/auth regardless.
+	var globalRateLimiter *middleware.RateLimiter
+	if hasTrustedProxy {
+		globalRateLimiter = middleware.NewRateLimiter(cfg.RateLimitGlobalMax, time.Minute)
+		globalRateLimiter.SetTrustedProxies(cfg.TrustedProxyCIDRs)
+	}
+
+	// Both rate limiting and audit-log IP attribution depend on
+	// TRUSTED_PROXY_CIDRS being set: behind a reverse proxy/tunnel, an empty
+	// value means every request appears to originate from the proxy's IP,
+	// collapsing per-client limits into one shared bucket and rendering audit
+	// IPs meaningless. Warn loudly so this isn't discovered the hard way.
+	if cfg.IsProduction() && !hasTrustedProxy {
+		log.Printf("warning: APP_ENV=production but TRUSTED_PROXY_CIDRS is empty; " +
+			"audit-log client IPs will be based on the proxy address and the global " +
+			"/api rate-limit backstop is disabled. Set TRUSTED_PROXY_CIDRS to your " +
+			"proxy/tunnel CIDR ranges.")
+	}
 
 	mux.HandleFunc("/health", handlers.Health)
 	mux.HandleFunc("/ready", handlers.Ready)
@@ -382,10 +413,16 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 
 	var handler http.Handler = mux
 	handler = middleware.RequestLogger(nil)(handler)
-	handler = middleware.SecurityHeaders()(handler)
+	handler = middleware.SecurityHeaders(cfg.ServerSecure)(handler)
 	handler = middleware.Session(authService, "nabu_session")(handler)
-	handler = middleware.CSRF("nabu_csrf")(handler)
+	handler = middleware.CSRF("nabu_csrf", cfg.ServerSecure)(handler)
 	handler = rateLimiter.Middleware("/api/auth")(handler)
+	// Engage the global per-IP backstop only when client IPs are reliably
+	// attributable (trusted proxy configured); otherwise it would key every
+	// request to the proxy's single IP and could 429 the whole user base.
+	if globalRateLimiter != nil {
+		handler = globalRateLimiter.Middleware("/api/")(handler)
+	}
 
 	return &Server{handler: handler}
 }

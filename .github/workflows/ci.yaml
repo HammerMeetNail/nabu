@@ -27,6 +27,7 @@ jobs:
     outputs:
       code: ${{ startsWith(github.ref, 'refs/tags/v') || steps.filter.outputs.code }}
       tests: ${{ steps.filter.outputs.tests }}
+      ios: ${{ steps.filter.outputs.ios }}
     steps:
       - uses: actions/checkout@v6
       - uses: dorny/paths-filter@v3
@@ -47,6 +48,8 @@ jobs:
               - 'scripts/**'
             tests:
               - '**/*_test.go'
+            ios:
+              - 'ios/**'
 
   parity:
     name: Client Parity
@@ -66,33 +69,41 @@ jobs:
               - 'web/templates/**'
             ios:
               - 'ios/**'
-      - name: Check PR description for parity statement
-        if: steps.client.outputs.pwa == 'true' || steps.client.outputs.ios == 'true'
+            api:
+              - 'internal/handlers/**'
+            matrix:
+              - 'docs/plans/client-parity.md'
+      # Always lint the matrix: every row must use a known status. This catches
+      # typos and malformed rows so the matrix stays machine-readable.
+      - name: Lint parity matrix
+        run: bash scripts/check-parity.sh
+      # Real coupling gate: when a PR changes the shared client surface (PWA
+      # client code, iOS app, or shared API handlers) it must also touch the
+      # parity matrix, forcing a conscious "does the other client need this?"
+      # decision. Escape hatch: put "no-parity-update: <reason>" in the PR body.
+      - name: Require parity matrix update on client/API changes
+        if: >-
+          steps.client.outputs.pwa == 'true' ||
+          steps.client.outputs.ios == 'true' ||
+          steps.client.outputs.api == 'true'
+        env:
+          MATRIX_TOUCHED: ${{ steps.client.outputs.matrix }}
+          PR_BODY: ${{ toJSON(github.event.pull_request.body) }}
         run: |
-          PR_BODY='${{ toJSON(github.event.pull_request.body) }}'
-          PR_BODY_LOWER=$(echo "$PR_BODY" | tr '[:upper:]' '[:lower:]')
-
-          if echo "$PR_BODY_LOWER" | grep -q "pwa and ios both updated"; then
-            echo "::notice::✅ Parity: PWA and iOS both updated."
+          if [ "$MATRIX_TOUCHED" = "true" ]; then
+            echo "::notice::✅ Parity matrix updated alongside client/API changes."
             exit 0
           fi
-          if echo "$PR_BODY_LOWER" | grep -q "pwa-only change"; then
-            echo "::notice::✅ Parity: PWA-only change acknowledged."
+          if echo "$PR_BODY" | tr '[:upper:]' '[:lower:]' | grep -q "no-parity-update:"; then
+            echo "::notice::✅ Parity matrix update explicitly waived via 'no-parity-update:' in PR body."
             exit 0
           fi
-          if echo "$PR_BODY_LOWER" | grep -q "ios-only change"; then
-            echo "::notice::✅ Parity: iOS-only change acknowledged."
-            exit 0
-          fi
-
-          echo "::error::❌ PR changes client code (PWA or iOS) but description is missing a parity statement."
+          echo "::error::❌ This PR changes client (PWA/iOS) or shared API code but does not update docs/plans/client-parity.md."
           echo ""
-          echo "Required — include one of these verbatim in the PR description:"
-          echo '  - "PWA and iOS both updated."'
-          echo '  - "PWA-only change; iOS not affected because <reason>."'
-          echo '  - "iOS-only change; PWA not affected because <reason>."'
+          echo "Update the matrix to reflect the change, OR add a line to the PR description:"
+          echo '  no-parity-update: <reason this needs no matrix change>'
           echo ""
-          echo "See docs/plans/client-parity.md for the feature matrix."
+          echo "See docs/plans/client-parity.md."
           exit 1
 
   secrets:
@@ -173,6 +184,48 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: JS tests
         run: node --test web/static/js/tests/runner.js
+
+  ios:
+    name: iOS Unit Tests
+    runs-on: macos-15
+    needs: [changes]
+    if: needs.changes.outputs.ios == 'true'
+    steps:
+      - uses: actions/checkout@v6
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes
+      - name: Pick an iPhone simulator
+        id: sim
+        run: |
+          # Choose the first available iPhone simulator on this runner's Xcode,
+          # rather than hardcoding a model that may not exist on every image.
+          UDID=$(xcrun simctl list devices available -j \
+            | jq -r '.devices | to_entries[] | .value[] | select(.name|test("iPhone")) | .udid' \
+            | head -1)
+          if [ -z "$UDID" ]; then
+            echo "No iPhone simulator available" >&2
+            exit 1
+          fi
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+          echo "Using simulator $UDID"
+      - name: Run NabuTests (unit/contract)
+        working-directory: ios
+        run: |
+          DEST="platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}"
+          # Build the app target ALONE first: on a clean checkout a parallel
+          # build-for-testing can compile NabuTests before the Nabu swiftmodule
+          # is emitted, failing with "no such module 'Nabu'". Building the app
+          # module first warms it so @testable import resolves. Then build the
+          # test target and run the fast unit/contract suite (UI tests excluded).
+          xcodebuild build \
+            -project Nabu.xcodeproj -scheme Nabu -destination "$DEST"
+          xcodebuild build-for-testing \
+            -project Nabu.xcodeproj -scheme Nabu -destination "$DEST"
+          xcodebuild test-without-building \
+            -project Nabu.xcodeproj -scheme Nabu -destination "$DEST" \
+            -only-testing:NabuTests
 
   e2e:
     name: E2E Tests

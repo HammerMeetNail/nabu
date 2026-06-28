@@ -13,7 +13,7 @@ import (
 )
 
 func TestCSRFMiddlewareRejectsMissingHeader(t *testing.T) {
-	handler := CSRF("csrf")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := CSRF("csrf", false)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
@@ -76,7 +76,7 @@ func TestSessionMiddlewareInjectsCurrentUser(t *testing.T) {
 }
 
 func TestSecurityHeadersMiddlewareSetsHeaders(t *testing.T) {
-	handler := SecurityHeaders()(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := SecurityHeaders(false)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -94,12 +94,33 @@ func TestSecurityHeadersMiddlewareSetsHeaders(t *testing.T) {
 	}
 }
 
-func TestCSRFMiddlewareUsesSecureCookieWhenForwardedHTTPS(t *testing.T) {
-	handler := CSRF("csrf")(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func TestSecurityHeadersHSTSDrivenByConfigNotForwardedProto(t *testing.T) {
+	// HSTS must be emitted when the deployment is configured secure...
+	secureHandler := SecurityHeaders(true)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+	secureHandler.ServeHTTP(rec, req)
+	if rec.Header().Get("Strict-Transport-Security") == "" {
+		t.Fatal("expected HSTS header when secure=true")
+	}
+
+	// ...but a spoofed X-Forwarded-Proto must NOT be enough to trigger it.
+	insecureHandler := SecurityHeaders(false)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	req2 := httptest.NewRequest(http.MethodGet, "/", nil)
+	req2.Header.Set("X-Forwarded-Proto", "https")
+	rec2 := httptest.NewRecorder()
+	insecureHandler.ServeHTTP(rec2, req2)
+	if rec2.Header().Get("Strict-Transport-Security") != "" {
+		t.Fatal("HSTS must not be driven by client-supplied X-Forwarded-Proto")
+	}
+}
+
+func TestCSRFMiddlewareSecureCookieDrivenByConfig(t *testing.T) {
+	// Secure cookie when the deployment is configured secure.
+	handler := CSRF("csrf", true)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	req.Header.Set("X-Forwarded-Proto", "https")
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
@@ -108,12 +129,31 @@ func TestCSRFMiddlewareUsesSecureCookieWhenForwardedHTTPS(t *testing.T) {
 		if cookie.Name == "csrf" {
 			found = true
 			if !cookie.Secure {
-				t.Fatal("expected secure csrf cookie")
+				t.Fatal("expected secure csrf cookie when secure=true")
 			}
 		}
 	}
 	if !found {
 		t.Fatal("expected csrf cookie")
+	}
+}
+
+func TestCSRFMiddlewareIgnoresForwardedProtoForSecureFlag(t *testing.T) {
+	// A spoofed X-Forwarded-Proto must not make the cookie Secure when the
+	// deployment is configured insecure (otherwise a client could downgrade or
+	// upgrade the flag at will).
+	handler := CSRF("csrf", false)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("X-Forwarded-Proto", "https")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	for _, cookie := range rec.Result().Cookies() {
+		if cookie.Name == "csrf" && cookie.Secure {
+			t.Fatal("csrf cookie Secure flag must not be driven by X-Forwarded-Proto")
+		}
 	}
 }
 

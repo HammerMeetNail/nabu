@@ -1,9 +1,45 @@
 package reminder
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 )
+
+type fakeLeaderLock struct {
+	acquired bool
+	err      error
+}
+
+func (f fakeLeaderLock) TryAcquire(context.Context) (bool, error) { return f.acquired, f.err }
+func (f fakeLeaderLock) Release(context.Context) error            { return nil }
+
+func TestAcquireLeadership(t *testing.T) {
+	tests := []struct {
+		name   string
+		leader LeaderLock
+		want   bool
+	}{
+		{"no lock means always leader", nil, true},
+		{"lock acquired", fakeLeaderLock{acquired: true}, true},
+		{"lock held by another instance", fakeLeaderLock{acquired: false}, false},
+		{"acquire error means not leader", fakeLeaderLock{err: errors.New("boom")}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Scheduler{leader: tt.leader}
+			was := false
+			if got := s.acquireLeadership(context.Background(), &was); got != tt.want {
+				t.Fatalf("acquireLeadership() = %v, want %v", got, tt.want)
+			}
+			// wasLeader is only tracked for transition logging when a lock is set.
+			if tt.leader != nil && was != tt.want {
+				t.Fatalf("wasLeader = %v, want %v", was, tt.want)
+			}
+		})
+	}
+}
 
 func TestParseHM(t *testing.T) {
 	tests := []struct {

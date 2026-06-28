@@ -10,7 +10,6 @@ final class AppState: ObservableObject {
     @Published var invites: [Invite] = []
     @Published var chores: [Chore] = []
     @Published var todayLogs: [ChoreLog] = []
-    @Published var weekLogs: [ChoreLog] = []
     @Published var schedules: [ChoreSchedule] = []
     @Published var latestLogs: [Int: ChoreLog] = [:]
     @Published var notifications: [AppNotification] = []
@@ -21,9 +20,6 @@ final class AppState: ObservableObject {
     @Published var choreOrder: [Int] = []
     @Published var hiddenHomeChoreIDs: [Int] = []
     @Published var currentTab: MainTab = .home
-    @Published var activityView: ActivityViewMode = .history
-    @Published var calendarView: CalendarViewMode = .day
-    @Published var calendarDate: LocalDate?
     @Published var homeView: HomeViewMode = .log
     @Published var activeSheet: ActiveSheet?
     @Published var toast: Toast?
@@ -40,7 +36,6 @@ final class AppState: ObservableObject {
         invites = []
         chores = []
         todayLogs = []
-        weekLogs = []
         schedules = []
         latestLogs = [:]
         notifications = []
@@ -51,9 +46,6 @@ final class AppState: ObservableObject {
         choreOrder = []
         hiddenHomeChoreIDs = []
         currentTab = .home
-        activityView = .history
-        calendarView = .day
-        calendarDate = nil
         homeView = .log
         activeSheet = nil
         toast = nil
@@ -69,7 +61,6 @@ final class AppState: ObservableObject {
         invites = []
         chores = []
         todayLogs = []
-        weekLogs = []
         schedules = []
         latestLogs = [:]
         choreOrder = []
