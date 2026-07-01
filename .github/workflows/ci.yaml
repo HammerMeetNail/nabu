@@ -162,7 +162,7 @@ jobs:
       - run: go test -v -race -timeout 600s -coverprofile=coverage.out ./...
         env:
           DATABASE_URL: postgres://nabu:nabu@localhost:5432/nabu?sslmode=disable
-      - uses: codecov/codecov-action@v5
+      - uses: codecov/codecov-action@v6
         with:
           files: coverage.out
           flags: go
