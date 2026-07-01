@@ -2,6 +2,7 @@ package notification
 
 import (
 	"context"
+	"sync"
 	"time"
 )
 
@@ -37,7 +38,13 @@ type Store interface {
 	UpdateReminderPreferences(ctx context.Context, prefs ReminderPreference) error
 }
 
+// MemoryStore is an in-memory implementation for tests and the zero-DB fallback.
+// The reminder scheduler goroutine reads preferences concurrently with HTTP
+// handlers creating notifications and updating preferences, so all access is
+// guarded by mu to avoid a data race (a concurrent map write is a fatal panic
+// in Go).
 type MemoryStore struct {
+	mu     sync.Mutex
 	notifs []Notification
 	idSeq  int64
 	prefs  map[int64]ReminderPreference
@@ -50,6 +57,8 @@ func NewMemoryStore() *MemoryStore {
 }
 
 func (s *MemoryStore) CreateNotification(_ context.Context, n Notification) (Notification, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.idSeq++
 	n.ID = s.idSeq
 	n.CreatedAt = time.Now().UTC()
@@ -58,6 +67,8 @@ func (s *MemoryStore) CreateNotification(_ context.Context, n Notification) (Not
 }
 
 func (s *MemoryStore) ListNotifications(_ context.Context, userID int64, limit, offset int) ([]Notification, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	var result []Notification
 	for _, n := range s.notifs {
 		if n.UserID == userID {
@@ -76,6 +87,8 @@ func (s *MemoryStore) ListNotifications(_ context.Context, userID int64, limit, 
 }
 
 func (s *MemoryStore) GetUnreadCount(_ context.Context, userID int64) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	count := 0
 	for _, n := range s.notifs {
 		if n.UserID == userID && !n.IsRead {
@@ -86,6 +99,8 @@ func (s *MemoryStore) GetUnreadCount(_ context.Context, userID int64) (int, erro
 }
 
 func (s *MemoryStore) MarkRead(_ context.Context, id, userID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for i, n := range s.notifs {
 		if n.ID == id && n.UserID == userID {
 			s.notifs[i].IsRead = true
@@ -96,6 +111,8 @@ func (s *MemoryStore) MarkRead(_ context.Context, id, userID int64) error {
 }
 
 func (s *MemoryStore) MarkAllRead(_ context.Context, userID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for i, n := range s.notifs {
 		if n.UserID == userID {
 			s.notifs[i].IsRead = true
@@ -105,6 +122,8 @@ func (s *MemoryStore) MarkAllRead(_ context.Context, userID int64) error {
 }
 
 func (s *MemoryStore) DeleteNotification(_ context.Context, id, userID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for i, n := range s.notifs {
 		if n.ID == id && n.UserID == userID {
 			s.notifs = append(s.notifs[:i], s.notifs[i+1:]...)
@@ -115,6 +134,8 @@ func (s *MemoryStore) DeleteNotification(_ context.Context, id, userID int64) er
 }
 
 func (s *MemoryStore) GetReminderPreferences(_ context.Context, userID int64) (ReminderPreference, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	p, ok := s.prefs[userID]
 	if !ok {
 		return ReminderPreference{UserID: userID, PushEnabled: true, Timezone: "UTC", EnabledPushTypes: []string{}, DefaultReminderLeadMinutes: 10}, nil
@@ -126,6 +147,8 @@ func (s *MemoryStore) GetReminderPreferences(_ context.Context, userID int64) (R
 }
 
 func (s *MemoryStore) UpdateReminderPreferences(_ context.Context, prefs ReminderPreference) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.prefs[prefs.UserID] = prefs
 	return nil
 }

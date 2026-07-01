@@ -3,6 +3,7 @@ package push
 import (
 	"context"
 	"database/sql"
+	"sync"
 )
 
 type Subscription struct {
@@ -18,7 +19,11 @@ type Store interface {
 }
 
 // MemoryStore is an in-memory implementation for tests and the zero-DB fallback.
+// The reminder scheduler goroutine reads subscriptions concurrently with HTTP
+// handlers writing them, so all access is guarded by mu to avoid a data race
+// (a concurrent map write is a fatal panic in Go).
 type MemoryStore struct {
+	mu   sync.Mutex
 	data map[int64][]Subscription
 }
 
@@ -27,6 +32,8 @@ func NewMemoryStore() *MemoryStore {
 }
 
 func (s *MemoryStore) SaveSubscription(_ context.Context, userID int64, sub Subscription) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	for i, existing := range s.data[userID] {
 		if existing.Endpoint == sub.Endpoint {
 			s.data[userID][i] = sub
@@ -38,10 +45,14 @@ func (s *MemoryStore) SaveSubscription(_ context.Context, userID int64, sub Subs
 }
 
 func (s *MemoryStore) GetSubscriptions(_ context.Context, userID int64) ([]Subscription, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return append([]Subscription(nil), s.data[userID]...), nil
 }
 
 func (s *MemoryStore) DeleteSubscription(_ context.Context, userID int64, endpoint string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	filtered := s.data[userID][:0]
 	for _, sub := range s.data[userID] {
 		if sub.Endpoint != endpoint {

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/audit"
+	"github.com/HammerMeetNail/nabu/internal/chore"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
 	"github.com/HammerMeetNail/nabu/internal/schedule"
 )
@@ -18,12 +19,34 @@ import (
 type ScheduleHandler struct {
 	store       schedule.Store
 	service     *schedule.Service
+	choreStore  chore.Store
 	auditLogger audit.Logger
 }
 
 // NewScheduleHandler creates a new ScheduleHandler.
 func NewScheduleHandler(store schedule.Store, service *schedule.Service) *ScheduleHandler {
 	return &ScheduleHandler{store: store, service: service, auditLogger: audit.NopLogger{}}
+}
+
+// WithChoreStore attaches a chore store so the handler can verify that a
+// schedule's referenced chore belongs to the caller's household, preventing a
+// user from scheduling (and thus surfacing) another household's chore.
+func (h *ScheduleHandler) WithChoreStore(cs chore.Store) *ScheduleHandler {
+	h.choreStore = cs
+	return h
+}
+
+// choreBelongsToHousehold reports whether choreID is owned by householdID. When
+// no chore store is wired (some tests) it returns true so behavior is unchanged.
+func (h *ScheduleHandler) choreBelongsToHousehold(ctx context.Context, choreID, householdID int64) bool {
+	if h.choreStore == nil {
+		return true
+	}
+	c, err := h.choreStore.GetChore(ctx, choreID)
+	if err != nil {
+		return false
+	}
+	return c.HouseholdID == householdID
 }
 
 // SetAuditLogger attaches a sink for schedule mutation events. A nil logger is
@@ -108,6 +131,10 @@ func (h *ScheduleHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "choreId is required")
 		return
 	}
+	if !h.choreBelongsToHousehold(r.Context(), req.ChoreID, *user.HouseholdID) {
+		writeError(w, http.StatusForbidden, "chore does not belong to your household")
+		return
+	}
 	if req.TimePeriod == "" {
 		req.TimePeriod = schedule.PeriodAnytime
 	}
@@ -173,6 +200,12 @@ func (h *ScheduleHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	if v, ok := raw["choreId"]; ok {
 		_ = json.Unmarshal(v, &req.ChoreID)
+		// Re-check ownership: a patched choreId must not point at another
+		// household's chore.
+		if !h.choreBelongsToHousehold(r.Context(), req.ChoreID, *user.HouseholdID) {
+			writeError(w, http.StatusForbidden, "chore does not belong to your household")
+			return
+		}
 	}
 	if v, ok := raw["timePeriod"]; ok {
 		var s string

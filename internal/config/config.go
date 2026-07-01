@@ -56,6 +56,13 @@ func Load() (Config, error) {
 	if cfg.AppBaseURL == "" {
 		return Config{}, fmt.Errorf("APP_BASE_URL must not be empty")
 	}
+	// Fail fast rather than silently falling back to the ephemeral in-memory
+	// store in production: without a database the app loses all data on restart
+	// and cannot share state across instances. The in-memory path remains
+	// available for development (APP_ENV != production).
+	if cfg.IsProduction() && cfg.DatabaseURL == "" {
+		return Config{}, fmt.Errorf("DATABASE_URL must be set when APP_ENV=production")
+	}
 
 	return cfg, nil
 }

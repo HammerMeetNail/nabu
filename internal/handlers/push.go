@@ -4,11 +4,23 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"net/url"
 
 	"github.com/HammerMeetNail/nabu/internal/audit"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
 	"github.com/HammerMeetNail/nabu/internal/push"
 )
+
+// endpointHost returns just the scheme+host of a push endpoint for logging.
+// The full endpoint URL is a bearer-style capability (its path/query authorize
+// delivery to a specific browser), so only the host is safe to log.
+func endpointHost(endpoint string) string {
+	u, err := url.Parse(endpoint)
+	if err != nil || u.Host == "" {
+		return "unknown"
+	}
+	return u.Scheme + "://" + u.Host
+}
 
 type PushHandler struct {
 	store       push.Store
@@ -50,7 +62,7 @@ func (h *PushHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("push: subscribe user %d endpoint=%.50s", user.ID, req.Subscription.Endpoint)
+	log.Printf("push: subscribe user %d endpoint_host=%s", user.ID, endpointHost(req.Subscription.Endpoint))
 
 	sub := push.Subscription{
 		Endpoint: req.Subscription.Endpoint,

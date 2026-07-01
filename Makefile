@@ -6,7 +6,7 @@ COMPOSE ?= podman compose
 test: test-go test-js
 
 test-go:
-	$(GO) test ./...
+	$(GO) test -timeout 300s ./...
 
 test-js:
 	node --test web/static/js/tests/runner.js
@@ -58,7 +58,7 @@ lint:
 	.cache/golangci-lint run ./...
 
 coverage:
-	$(GO) test -race -coverprofile=coverage.out ./...
+	$(GO) test -race -timeout 600s -coverprofile=coverage.out ./...
 	$(GO) tool cover -func=coverage.out
 
 hooks:

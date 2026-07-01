@@ -34,7 +34,22 @@ import (
 )
 
 type Server struct {
-	handler http.Handler
+	handler  http.Handler
+	cancel   context.CancelFunc
+	limiters []*middleware.RateLimiter
+}
+
+// Close releases background resources started by the server: it cancels the
+// reminder scheduler goroutine and stops each rate-limiter's cleanup goroutine.
+// It is safe to call once, after the HTTP server has stopped accepting requests.
+func (s *Server) Close() error {
+	if s.cancel != nil {
+		s.cancel()
+	}
+	for _, l := range s.limiters {
+		l.Stop()
+	}
+	return nil
 }
 
 func NewServer(cfg config.Config) http.Handler {
@@ -42,6 +57,9 @@ func NewServer(cfg config.Config) http.Handler {
 }
 
 func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
+	// Cancelable context so the reminder scheduler goroutine stops on shutdown
+	// (Server.Close calls cancel).
+	ctx, cancel := context.WithCancel(context.Background())
 	mux := http.NewServeMux()
 
 	var authStore auth.Store
@@ -98,6 +116,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	}
 	scheduleService := schedule.NewService()
 	scheduleHandler := handlers.NewScheduleHandler(scheduleStore, scheduleService)
+	scheduleHandler.WithChoreStore(choreStore)
 	scheduleHandler.SetAuditLogger(auditLog)
 	logHandler.WithScheduleStore(scheduleStore)
 
@@ -134,7 +153,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	if db != nil {
 		reminderSched.SetLeaderLock(reminder.NewPostgresAdvisoryLock(db, reminder.LeaderLockKey))
 	}
-	go reminderSched.Start(context.Background())
+	go reminderSched.Start(ctx)
 
 	reminderHandler := handlers.NewChoreReminderPrefsHandler(reminderStore)
 	userPrefsService := userprefs.NewService(userPrefsStore)
@@ -424,13 +443,20 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		handler = globalRateLimiter.Middleware("/api/")(handler)
 	}
 
-	return &Server{handler: handler}
+	limiters := []*middleware.RateLimiter{rateLimiter}
+	if globalRateLimiter != nil {
+		limiters = append(limiters, globalRateLimiter)
+	}
+
+	return &Server{handler: handler, cancel: cancel, limiters: limiters}
 }
 
 func BuildServer(ctx context.Context, cfg config.Config) (http.Handler, io.Closer, error) {
 	if cfg.DatabaseURL == "" {
-		_ = audit.NewStdLogger(log.Default())
-		return NewServer(cfg), io.NopCloser(strings.NewReader("")), nil
+		srv := NewServer(cfg)
+		// The *Server implements io.Closer (stops the scheduler + rate-limiter
+		// goroutines); return it so callers tear those down on shutdown.
+		return srv, srv.(io.Closer), nil
 	}
 
 	db, err := database.Open(cfg.DatabaseURL)
@@ -442,7 +468,21 @@ func BuildServer(ctx context.Context, cfg config.Config) (http.Handler, io.Close
 		return nil, nil, err
 	}
 
-	return NewServerWithDB(cfg, db), db, nil
+	srv := NewServerWithDB(cfg, db)
+	return srv, multiCloser{srv.(io.Closer), db}, nil
+}
+
+// multiCloser closes several io.Closers in order, returning the first error.
+type multiCloser []io.Closer
+
+func (m multiCloser) Close() error {
+	var firstErr error
+	for _, c := range m {
+		if err := c.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {

@@ -3,13 +3,16 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/HammerMeetNail/nabu/internal/auth"
+	"github.com/HammerMeetNail/nabu/internal/chore"
 	"github.com/HammerMeetNail/nabu/internal/household"
 	"github.com/HammerMeetNail/nabu/internal/mail"
 	"github.com/HammerMeetNail/nabu/internal/schedule"
@@ -38,6 +41,58 @@ func setupScheduleTest(t *testing.T) (*ScheduleHandler, string, *auth.Service) {
 		t.Fatalf("CreateHousehold: %v", err)
 	}
 	return handler, session.ID, authService
+}
+
+// TestScheduleCreateRejectsForeignChore verifies that a user cannot create a
+// schedule referencing a chore owned by another household (cross-household IDOR).
+func TestScheduleCreateRejectsForeignChore(t *testing.T) {
+	authStore := auth.NewMemoryStore()
+	authService := auth.NewService(authStore)
+	mailer := mail.NewMemorySender()
+	authService.SetMailer(mailer, "http://localhost:8080")
+
+	householdStore := household.NewMemoryStore()
+	householdService := household.NewService(householdStore, authService)
+
+	choreStore := chore.NewMemoryStore()
+	scheduleStore := schedule.NewMemoryStore()
+	handler := NewScheduleHandler(scheduleStore, schedule.NewService()).WithChoreStore(choreStore)
+
+	user, session := quickRegister(authService, "alice@example.com")
+	ctx := context.Background()
+	hh, err := householdService.CreateHousehold(ctx, "My Home", "", user.ID)
+	if err != nil {
+		t.Fatalf("CreateHousehold: %v", err)
+	}
+
+	ownChore, err := choreStore.CreateChore(ctx, chore.Chore{HouseholdID: hh.ID, Name: "Dishes"})
+	if err != nil {
+		t.Fatalf("create own chore: %v", err)
+	}
+	foreignChore, err := choreStore.CreateChore(ctx, chore.Chore{HouseholdID: hh.ID + 999, Name: "Litter"})
+	if err != nil {
+		t.Fatalf("create foreign chore: %v", err)
+	}
+
+	// Referencing another household's chore must be rejected.
+	body := fmt.Sprintf(`{"choreId":%d,"frequencyType":"daily","timePeriod":"morning"}`, foreignChore.ID)
+	req := withUser(httptest.NewRequest(http.MethodPost, "/api/schedules", strings.NewReader(body)), authService, session.ID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("foreign chore: expected 403, got %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	// Referencing an owned chore must succeed.
+	body = fmt.Sprintf(`{"choreId":%d,"frequencyType":"daily","timePeriod":"morning"}`, ownChore.ID)
+	req = withUser(httptest.NewRequest(http.MethodPost, "/api/schedules", strings.NewReader(body)), authService, session.ID)
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	handler.Create(rec, req)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("own chore: expected 201, got %d, body=%s", rec.Code, rec.Body.String())
+	}
 }
 
 func TestScheduleListEmpty(t *testing.T) {

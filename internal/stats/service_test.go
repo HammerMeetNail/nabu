@@ -460,7 +460,7 @@ func TestGetTopChores_Limit(t *testing.T) {
 	now := time.Now().UTC()
 	midnight := now.Truncate(24 * time.Hour)
 	if now.Hour() < 4 {
-		t.Skip("skip: test requires UTC hour >= 4 to avoid day boundary")
+		t.Skip("skip: test requires UTC hour >= 4 so the 3am seed reference is in the past")
 	}
 	ref := midnight.Add(3 * time.Hour) // 3am today
 
@@ -477,7 +477,12 @@ func TestGetTopChores_Limit(t *testing.T) {
 	for i, ch := range cs.chores {
 		count := 6 - i
 		for j := 0; j < count; j++ {
-			d := ref.Add(time.Duration(-j) * time.Hour)
+			// Spread the seed timestamps by minutes (not hours) so all entries
+			// stay within today, and therefore within the current calendar month.
+			// Seeding backward by hours put the earliest logs at ~10pm the
+			// previous day, which on the 1st of the month fell into the previous
+			// month and was excluded by the "month" window, failing the test.
+			d := ref.Add(time.Duration(-j) * time.Minute)
 			_, err := logSvc.LogChore(ctx, 1, 10, ch.ID, nil, "", nil, nil, &d, nil, &d, nil, nil)
 			if err != nil {
 				t.Fatalf("seed log: %v", err)

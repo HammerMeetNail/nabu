@@ -92,6 +92,28 @@ func TestLoadAppliesDefaultsForEmptyEnv(t *testing.T) {
 	}
 }
 
+func TestLoadRequiresDatabaseURLInProduction(t *testing.T) {
+	t.Setenv("PORT", "8080")
+	t.Setenv("APP_BASE_URL", "https://example.com")
+	t.Setenv("APP_ENV", "production")
+	t.Setenv("DATABASE_URL", "")
+
+	if _, err := Load(); err == nil {
+		t.Fatal("expected error when APP_ENV=production and DATABASE_URL is empty")
+	}
+}
+
+func TestLoadAllowsEmptyDatabaseURLInDevelopment(t *testing.T) {
+	t.Setenv("PORT", "8080")
+	t.Setenv("APP_BASE_URL", "http://localhost:8080")
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("DATABASE_URL", "")
+
+	if _, err := Load(); err != nil {
+		t.Fatalf("Load returned error in development: %v", err)
+	}
+}
+
 // TestLoad_RateLimitAuthMaxFromEnv covers the getenvInt success path (return n).
 func TestLoad_RateLimitAuthMaxFromEnv(t *testing.T) {
 	t.Setenv("PORT", "8080")

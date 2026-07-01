@@ -132,6 +132,15 @@ Session cookie name: `nabu_session`. CSRF cookie name: `nabu_csrf`.
 - **`apiFetch()`** adds `X-CSRF-Token` header read from `nabu_csrf` cookie for all state-changing requests.
 - **`slotHour` in logs**: `POST /api/logs` accepts `hour` (integer) in the JSON body → stored as `slot_hour` in the DB → drives calendar placement. A missing or null `hour` puts the log in the Anytime row. Always pass `hour` from timed UI paths.
 
+### Concurrency, config, shutdown, and logging (do not regress)
+
+These four rules cover classes of bug found in past audits. Apply them to every new store, config key, background goroutine, and log line.
+
+- **In-memory stores must be goroutine-safe.** The reminder scheduler runs as a background goroutine (`go reminderSched.Start(ctx)` in `NewServerWithDB`) that reads notification/push/schedule state *concurrently with HTTP handlers* — this is true even in `DATABASE_URL`-empty mode, where all stores are in-memory. Every `MemoryStore` therefore must guard its maps/slices with a `sync.Mutex`/`RWMutex` and lock in every method (a concurrent map write is a fatal Go panic, not just a race). When adding a memory store, copy the locking discipline from `internal/chore/store_memory.go`; do not ship an unsynchronized one. Run `go test -race ./...` for anything touching stores or the scheduler.
+- **Config fails fast in production; no silent insecure fallback.** `config.Load` rejects a missing `DATABASE_URL` when `APP_ENV=production` rather than silently booting on the ephemeral in-memory store. When you add a REQUIRED-in-prod env var (a real database, OAuth, proxy CIDRs), validate it in `config.Load` and return an error — never degrade silently.
+- **Background goroutines must be cancelable and torn down on shutdown.** The scheduler takes the context from `NewServerWithDB`, and `Server.Close()` (invoked by `BuildServer`'s returned `io.Closer`) cancels it and stops the rate-limiter cleanup goroutines. `cmd/server` shuts the HTTP server down gracefully on SIGINT/SIGTERM. Don't start a goroutine with `context.Background()` and no stop path; wire new long-lived goroutines into `Server.Close()`.
+- **Never log secrets, tokens, capability URLs, or raw PII.** Request logs emit a *hashed* client IP (`hashClientIP`), not the raw address; push subscribe logs only the endpoint *host* (`endpointHost`), never the full endpoint (its path is a bearer-style capability). Auth flows log `user_id` and hashed-email fingerprints only. Follow the same discipline for any new log line.
+
 ### JS static file serving and cache busting
 
 **Do not change this mechanism without understanding it fully** — the full rationale (Cloudflare's cache override, why `no-store`/`cf-cache-status: BYPASS`) is in the README's "JS static file serving and cache busting" section.
@@ -254,6 +263,8 @@ Name spec files after the feature/area: `<area>-<feature>.spec.js` (e.g. `home-r
 - Adding a new JSON field → ensure both `json` tags and JS code handle it
 
 **The pre-push hook** (`scripts/pre-push-hook.sh`, installed via `make hooks`) enforces `go build`, `go vet`, and `make test-go` automatically. It does not run JS or E2E tests (those need Node/Playwright), so you must run `make test-js` manually.
+
+**Run one Go test invocation at a time.** `go test ./...` runs package test binaries in parallel, and the `auth` package spends ~25s pegging a core on bcrypt (cost 13). Launching overlapping `go test`/`go build`/`go vet` processes (or two `./...` runs at once) starves the cheap packages and can trip their timeout — this looks like a hang or a spurious `stats`/`userprefs` failure but is pure contention. If you see a package time out, re-run it in isolation (`go test ./internal/<pkg>/`) before believing it's a real failure. `make test-go` and CI pin an explicit `-timeout` so a genuine hang fails fast and legibly instead of silently consuming the default 10 minutes.
 
 ## Key invariants — do not break
 
