@@ -142,8 +142,11 @@ that anchor is the one geometry confirmed stale.
 - [x] Tests + lint (Go unit, 39 JS unit, 272/275 e2e — 3 failures are
       Mailpit-dependent email specs, environmental; `three-fixes.spec.js`
       updated to assert the static layout instead of position:fixed)
-- [ ] On-device cold-open + pinch-zoom verification (screenshots)
-- [ ] Remove debug overlay, deploy
+- [x] Deployed: v0.1.328 (commit 0e112bc) — CI all green, production
+      verified (health 200, versioned imports, no-store/BYPASS headers)
+- [x] On-device verification: confirmed fixed on iPhone 17 Pro
+      (iOS 26.5.1) — tab bar flush at cold open, 2026-07-01
+- [x] Debug overlay removed after confirmation
 
 ## History
 
