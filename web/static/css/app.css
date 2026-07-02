@@ -31,9 +31,10 @@
 html {
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
-  /* --app-h is set to window.innerHeight by an inline script in <head>.
-     On iOS PWA, 100dvh excludes the bottom safe-area inset at cold open
-     even with viewport-fit=cover; innerHeight returns the full screen height. */
+  /* --app-h is set by head-init.js: physical screen height in standalone
+     mode (every viewport measurement — 100dvh, innerHeight — is stale at
+     iOS PWA cold open even with viewport-fit=cover), innerHeight in
+     browser mode. */
   height: var(--app-h, 100dvh);
 }
 
@@ -92,8 +93,6 @@ input:focus, select:focus, textarea:focus {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  /* Keep content clear of the fixed bottom tab bar */
-  padding-bottom: calc(64px + var(--safe-bottom) + 6px);
 }
 
 [hidden] {
@@ -176,14 +175,14 @@ input:focus, select:focus, textarea:focus {
 
 /* Bottom Tabs */
 #bottom-tabs {
-  /* position:fixed keeps the tab bar pinned to the visual viewport during
-     pinch-zoom, preventing it from jumping into the content area.  The
-     body's flex column + --app-h still guarantees it lands at the screen
-     bottom on cold open. */
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  /* Static flex item at the end of the body's flex column. Must NOT be
+     position:fixed/sticky anchored to the bottom: on iOS standalone cold
+     open, WebKit's layout-viewport bottom edge sits above the physical
+     screen bottom until the first scroll gesture, so anything anchored to
+     it hovers with a visible gap. This bar's position derives from body
+     height (--app-h, see head-init.js) instead. Pinch-zoom jumping is
+     prevented by the scale guard in head-init.js, not by fixed
+     positioning. */
   margin: 0 auto;
   width: 100%;
   max-width: 480px;
@@ -193,6 +192,7 @@ input:focus, select:focus, textarea:focus {
   background: var(--surface);
   border-top: 1px solid var(--border);
   z-index: 100;
+  flex-shrink: 0;
 }
 
 .tab-item {
@@ -4047,10 +4047,6 @@ details[open] .chore-stat-chevron {
   .sheet-header,
   .sheet-body {
     max-width: 100%;
-  }
-
-  .app-shell {
-    padding-bottom: calc(44px + var(--safe-bottom) + 4px);
   }
 
   #bottom-tabs {

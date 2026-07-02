@@ -6,10 +6,11 @@
 //   2. Layout: .app-shell (scroll container) ends where #bottom-tabs begins;
 //      no content is hidden under an overlapping tab bar.
 //   3. Nav tabs: #bottom-tabs is a static flex item at the page bottom —
-//      no position:sticky/fixed so there is no iOS PWA cold-open gap.
-//      The body height is driven by --app-h (set from window.innerHeight in
-//      an inline <head> script) rather than 100dvh, so the body always covers
-//      the full visual viewport including the iOS safe-area-inset-bottom.
+//      no position:sticky/fixed so there is no iOS PWA cold-open gap (fixed
+//      elements anchor to WebKit's layout viewport, whose bottom edge is
+//      stale at standalone cold open). The body height is driven by --app-h
+//      (set by head-init.js: screen height in standalone, innerHeight in
+//      browser) so the tab bar lands at the physical screen bottom.
 
 import { test, expect } from '@playwright/test';
 
@@ -145,8 +146,8 @@ test.describe('Fix 1: multiple logs per chore per day', () => {
 
 // ─── Fix 2: Content area clearance above fixed bottom tabs ───────────────────
 
-test.describe('Fix 2: content area stays clear of the fixed bottom tab bar', () => {
-  test('#bottom-tabs is position:fixed at viewport bottom', async ({ page }) => {
+test.describe('Fix 2: content area stays clear of the bottom tab bar', () => {
+  test('#bottom-tabs is a static flex item flush with the viewport bottom', async ({ page }) => {
     await setupWithChores(page);
 
     const result = await page.evaluate(() => {
@@ -156,41 +157,42 @@ test.describe('Fix 2: content area stays clear of the fixed bottom tab bar', () 
       const rect  = tabs.getBoundingClientRect();
       return {
         position: style.position,
-        bottom:   parseInt(style.bottom, 10),
-        height:   Math.round(rect.height),
         rectBottom: Math.round(rect.bottom),
         viewportH:  window.innerHeight,
       };
     });
 
     expect(result).not.toBeNull();
-    // Tab bar must be fixed at the viewport bottom.
-    expect(result.position).toBe('fixed');
-    expect(result.bottom).toBe(0);
+    // Tab bar must be a static flex item (never fixed/sticky: fixed elements
+    // anchor to the layout viewport, whose bottom edge is stale on iOS
+    // standalone cold open) landing exactly at the viewport bottom.
+    expect(result.position).toBe('static');
     expect(result.rectBottom).toBe(result.viewportH);
   });
 
-  test('.app-shell has padding-bottom matching tab bar height', async ({ page }) => {
+  test('.app-shell ends exactly where the tab bar begins', async ({ page }) => {
     await setupWithChores(page);
 
     const result = await page.evaluate(() => {
       const shell = document.querySelector('.app-shell');
       const tabs  = document.querySelector('#bottom-tabs');
       if (!shell || !tabs) return null;
-      const shellPad = parseInt(window.getComputedStyle(shell).paddingBottom, 10);
-      const tabsH    = Math.round(tabs.getBoundingClientRect().height);
-      return { shellPad, tabsH };
+      return {
+        shellBottom: Math.round(shell.getBoundingClientRect().bottom),
+        tabsTop:     Math.round(tabs.getBoundingClientRect().top),
+      };
     });
 
     expect(result).not.toBeNull();
-    // Padding should at least cover the tab bar so content isn't hidden.
-    expect(result.shellPad).toBeGreaterThanOrEqual(result.tabsH);
+    // Flex siblings: the scroll container ends where the tab bar begins, so
+    // no content can be hidden underneath it.
+    expect(result.shellBottom).toBe(result.tabsTop);
   });
 });
 
 // ─── Fix 3: Nav tabs at bottom ───────────────────────────────────────────────
 
-test.describe('Fix 3: nav tabs are a fixed bar at the page bottom', () => {
+test.describe('Fix 3: nav tabs are a static bar at the page bottom', () => {
   test('#bottom-tabs is NOT a descendant of #top-bar', async ({ page }) => {
     await setupWithChores(page);
 
@@ -217,14 +219,14 @@ test.describe('Fix 3: nav tabs are a fixed bar at the page bottom', () => {
     expect(result.bodyH).toBe(result.innerH);
   });
 
-  test('#bottom-tabs is position:fixed (pinned to visual viewport)', async ({ page }) => {
+  test('#bottom-tabs is NOT position:fixed/sticky (iOS cold-open gap regression)', async ({ page }) => {
     await setupWithChores(page);
 
     const position = await page.evaluate(() => {
       return window.getComputedStyle(document.querySelector('#bottom-tabs')).position;
     });
 
-    expect(position).toBe('fixed');
+    expect(position).toBe('static');
   });
 
   test('tab text labels are visible', async ({ page }) => {
