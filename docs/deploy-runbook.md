@@ -1,4 +1,4 @@
-# Deploy & CI Babysitting Runbook
+# Deploy and CI verification runbook
 
 > Extracted from `AGENTS.md` for progressive disclosure — read this when cutting a release tag, watching the deploy pipeline, or verifying production.
 
@@ -6,18 +6,19 @@
 
 Push a `v*` tag on `main` (e.g. `git tag v0.1.7 && git push origin v0.1.7`). CI builds, tests, scans/signs the image, deploys via SSH + Cloudflare Tunnel, and creates a GitHub release. The deploy job verifies the tagged commit is reachable from `origin/main` before proceeding — **never tag on a branch.**
 
-Production URL: `https://nabu-app.com`. Production test account: `verify@yearofbingo.com` / `test123456`.
+Production URL: `https://nabu-app.com`. The health/cache checks below need no login. For authenticated checks, use production test credentials provided in the authorized session or secret storage; keep credentials out of repository files and logs.
 
 ## 1. Watch the CI run
 
-After pushing a `v*` tag, monitor the pipeline to completion and verify production. Do not wait for the user to ask. (A cheaper subagent may be delegated to this.)
+After an authorized `v*` tag push, monitor the pipeline to completion and verify production. Delegate monitoring to an available `watcher` with the repository, exact tag/commit, run ID, artifact locations, and acceptance conditions. The lead owns corrections and reruns; the watcher reports failures and terminal results. If no suitable role is available, the lead completes monitoring locally.
 
 ```bash
-# Find the run ID for the tag
-gh run list --limit 5
+# Find the run ID and verify its headSha matches the intended tag commit
+gh run list --workflow ci.yaml --branch <tag> --limit 5 \
+  --json databaseId,headSha,headBranch,event,status,conclusion,url
 
 # Stream logs until the run completes (blocks until done)
-gh run watch <run-id>
+gh run watch <run-id> --exit-status
 
 # If a job fails, check which step failed
 gh run view <run-id> --json jobs \
@@ -27,10 +28,13 @@ gh run view <run-id> --json jobs \
 gh run rerun <run-id> --failed
 ```
 
-## 2. Distinguish transient vs. real failures
+Do not treat a green deploy job as an overall pass. Inspect every required job, including iOS, and distinguish expected path-filter skips from missing validation. CI skips the main branch-push validation jobs; ordinary feature branch pushes do not trigger this workflow. Follow the PR or tag run for the exact commit rather than waiting for a nonexistent branch run.
 
-- If **only** the checkout/setup step failed and all test jobs passed → transient GitHub Actions infra error → re-run with `gh run rerun <run-id> --failed`.
-- If a test job (Go Tests, JS Tests, E2E, Lint, iOS Unit Tests) failed → real failure → read the full log, fix the code, commit, re-tag, and push a new `v*` tag.
+## 2. Diagnose failures before rerunning
+
+- Classify the failed step and evidence: setup, runner, network, or simulator failures may be transient; compiler errors, assertions, and reproducible application failures need a fix. A job name alone is not enough to classify a failure.
+- For a supported transient diagnosis, the lead can rerun the failed jobs and have the watcher verify the new attempt. If the same failure recurs, investigate it instead of repeatedly rerunning unchanged work.
+- For a code failure, fix it in a worktree, validate it, and merge through `main` before cutting a new release tag. Never move an existing release tag or tag an unmerged fix branch. If a required job fails after deployment already succeeded, report the release as failing validation and assess the production impact.
 
 ## 3. Verify production after deploy
 
@@ -92,16 +96,20 @@ Also spot-check request logs: the hashed `client` attribute should now vary betw
 - If `cf-cache-status` is `HIT` or `MISS` (not `BYPASS` for JS / `DYNAMIC` for HTML), the `no-store` header is not reaching Cloudflare — investigate `internal/app/server.go` and the CI build logs.
 - If imports still show the old version number, the binary was not rebuilt with the new tag — check that `internal/version/version.go` is populated at build time via `-ldflags`.
 
-## Known limitations (candidates for a future fix)
+## Known CI limitations
 
 ### iOS tests on release tags
 
-**Fixed (2026-07-02, iOS v1 plan P1/D5):** the `changes` job in
-`.github/workflows/ci.yaml` now forces the iOS lane on for `v*` tag pushes,
-the same way `code` is forced, so iOS unit tests are a release gate. The
-trade-off (accepted): iOS tests run on **every** release tag, including
-server/web-only releases, costing ~1–2 min of macOS-runner time per deploy.
+The `changes` job forces the iOS lane on for every `v*` tag push, including
+server/web-only releases. However, `build-image.needs` lists the Go/JS/E2E
+checks but omits `ios`; the downstream image publication and deployment
+can succeed while iOS is running or failing. It is a required result to
+inspect, not an enforced deployment dependency today. Verify the full run
+before reporting release success. Changing that job graph is separate CI
+work; do not assume documentation makes it a gate.
 
-If a tag-time iOS failure looks unrelated to the release (e.g. a
-simulator/runner infra flake), re-run the failed job; a genuine failure means
-the tagged commit shipped an iOS regression — fix, re-tag, push.
+The native job runs `NabuTests`, not XCUITest flows. Snapshot suites can skip
+when the runner's simulator does not match their recorded OS major. Inspect
+those skips and run required native UI/visual coverage on a suitable Mac
+when the release changes those behaviors. Backend-only PRs do not select
+the iOS lane unless iOS files also change.

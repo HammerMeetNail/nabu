@@ -1,88 +1,52 @@
-# Nabu iOS App
+# Nabu iOS app
 
-Native SwiftUI client for Nabu, targeting iPhone. Uses the existing Go backend JSON API.
+Native SwiftUI client for Nabu, using the existing Go backend JSON API.
 
-## Project overview
+## Project and layout
 
-- **Language**: Swift (SwiftUI)
-- **Minimum iOS**: TBD (likely iOS 17+)
-- **Project format**: Xcode project + Swift Package Manager
-- **Test targets**: NabuTests (XCTest unit), NabuUITests (XCUITest)
-
-## Directory layout
+Open `ios/Nabu.xcodeproj`. It contains the app and test targets and manages Swift package dependencies, including SnapshotTesting. The current deployment target is iOS 18; [project.pbxproj](Nabu.xcodeproj/project.pbxproj) is the source of truth for build settings. There is no standalone `ios/Package.swift`.
 
 ```text
 ios/
-  Nabu.xcodeproj/
-  Package.swift
+  Nabu.xcodeproj/   # Project, schemes, dependencies, target membership
   Nabu/
-    App/          # App entry point, state, environment, navigation
-    API/          # API client, error handling, cookie/CSRF, models
-    Auth/         # Login, register, magic link, OAuth
-    Household/    # Household CRUD, members, invites
-    Home/         # Home grid, log sheet, chore management
-    Activity/     # History, day calendar, week calendar
-    Schedule/     # Schedule list and CRUD
-    Chores/       # Chore management
-    Notifications/# In-app notifications and push
-    Stats/        # All stats views and charts
-    Settings/     # Account, household, preferences
-    DesignSystem/ # Colors, typography, reusable components
-    Support/      # Date formatting, recurrence logic, timezone sync
-  NabuTests/      # Unit and contract tests
-  NabuUITests/    # UI tests (XCUITest)
-  TestSupport/    # Mock API server, fixture factory
+    App/           # App lifecycle, environment, state, navigation
+    API/           # HTTP, cookie/CSRF handling, models, stores, data loaders
+    Auth/          # Authentication and onboarding
+    Views/         # Screens, including Views/Stats/ for charts
+    DesignSystem/  # Shared colors and components
+    Support/       # Dates, timers, offline queue, push, other helpers
+    Resources/     # Assets, app metadata, entitlements
+    ContentView.swift
+  NabuTests/       # XCTest contracts/logic and snapshot baselines
+  NabuUITests/     # XCUITest flows
+  TestSupport/    # Mock API and fixture support
 ```
 
-## Prerequisites
+## Build and test
 
-- macOS with Xcode (version TBD)
-- Go 1.25+ (for backend)
-- Running backend for integration tests (see root `AGENTS.md` for `make local`)
+Use macOS with Xcode and a compatible installed simulator. The backend toolchain is specified by [go.mod](../go.mod); real-server flow tests also need the local backend on port 8080.
 
-## Test commands
+[ios/AGENTS.md](AGENTS.md#validation) contains the maintained build and test commands. Select a simulator by UDID, build the app first, then build the tests and use `test-without-building`. Both test targets use the `Nabu` scheme. Snapshot suites have runtime-specific baselines; record skips separately from passing tests.
 
-### Unit and contract tests
+CI runs `NabuTests` for iOS changes and release tags. It does not run XCUITest flows or automatically validate native contracts on backend-only PRs.
 
-```bash
-xcodebuild test \
-  -project ios/Nabu.xcodeproj \
-  -scheme Nabu \
-  -destination 'platform=iOS Simulator,name=iPhone 16'
-```
+## Test launch arguments
 
-### UI tests
-
-```bash
-xcodebuild test \
-  -project ios/Nabu.xcodeproj \
-  -scheme NabuUITests \
-  -destination 'platform=iOS Simulator,name=iPhone 16'
-```
-
-### Single test
-
-```bash
-xcodebuild test \
-  -project ios/Nabu.xcodeproj \
-  -scheme Nabu \
-  -destination 'platform=iOS Simulator,name=iPhone 16' \
-  -only-testing:NabuTests/APIClientTests/testGETSuccess
-```
-
-## Launch arguments for tests
+These arguments are consumed by the app's test support; inspect [TestHooks.swift](Nabu/Support/TestHooks.swift) and the relevant UI test when changing them.
 
 | Argument | Purpose |
-|----------|---------|
-| `-nabuBaseURL <url>` | Override backend base URL |
+|---|---|
+| `-nabuBaseURL <url>` | Override backend URL |
 | `-resetState` | Clear persisted state on launch |
-| `-disableAnimations` | Disable SwiftUI animations |
-| `-useMockAPI` | Use `MockAPIServer` instead of real backend |
+| `-disableAnimations` | Disable animations for tests |
+| `-useMockAPI` | Use mock API support |
+| `-nabuAutoRegister <email> <password>` | Provision a test account/household without driving onboarding UI |
 
 ## Related documentation
 
-- [iOS App Store v1 plan](../docs/plans/ios-appstore-v1.md) (active)
-- [iOS conversion plan](../docs/plans/ios.md) (superseded, historical)
+- [iOS agent instructions](AGENTS.md)
+- [Repository workflow](../AGENTS.md)
+- [Active iOS App Store plan](../docs/plans/ios-appstore-v1.md)
 - [Client parity matrix](../docs/plans/client-parity.md)
-- [Repository guidelines](../AGENTS.md)
-- [iOS agent instructions](./AGENTS.md)
+- [Historical conversion plan](../docs/plans/ios.md)

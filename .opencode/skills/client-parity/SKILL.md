@@ -1,71 +1,53 @@
 ---
 name: client-parity
-description: Ensure PWA and native iOS app stay in sync. Load this when making changes to frontend code, API endpoints, or any feature that affects the user experience. Required before finishing any work that touches web/static/js/, web/templates/, ios/, or internal/handlers/.
+description: Evaluate Nabu PWA and native iOS behavior, API contracts, tests, and parity bookkeeping when a change affects either client or shared backend behavior.
 license: MIT
-compatibility: opencode
 metadata:
   audience: all
   workflow: check-before-commit
 ---
 
-## What I do
+# Client parity
 
-Remind you to check both clients (PWA and iOS) when making changes.
+This repository-local workflow can be read directly by any coding agent; an installed skill or `/client-parity` command is not required. Paths below are relative to the task worktree root. Follow the user's task and the root/scoped `AGENTS.md` instructions.
 
-## When to load
+## Evaluate the affected behavior
 
-Load this skill whenever the user asks you to:
-- Add a feature that has a UI component
-- Fix a bug in the PWA or iOS app
-- Change an API endpoint or its request/response shape
-- Update validation logic or business rules
+1. Read the actual implementation and tests for the requested change. Identify whether it affects requests/responses, validation, authorization, persistence, logging times, or presentation only.
+2. Inspect the corresponding PWA and iOS code. Shared behavior must match; SwiftUI presentation should use native idioms. Make matching changes within the task, and record intentional platform differences with a concrete reason.
+3. Check [the parity matrix](../../../docs/plans/client-parity.md) for the affected rows. Update behavior, status, test references, and known differences accurately. A pre-existing pending row calls for a scope decision; it does not require completing unrelated backlog. Do not mark work Done just because source exists or a linter passes.
+4. For backend/API changes, check Swift `Models.swift` / `RequestModels.swift`, native store/data-loader calls, JS API consumers, and fixtures in `ios/NabuTests/Fixtures/`. A backend-only PR does not automatically run the native CI lane.
+5. Add/run coverage at the changed layer following the root and platform guides. PWA flows use Playwright; native flows use XCTest/XCUITest and relevant snapshots. Report unavailable platform checks and runtime skips explicitly.
 
-## Instructions
+If a known bug is within the task, correct the shared behavior rather than reproducing it in the other client. Ask only when an unresolved product or scope decision needs the user; continue independent work.
 
-Before finalizing any change, you must:
+## Matrix lint and PR requirements
 
-1. **Run the parity check script** to see what's pending:
-   ```bash
-   bash scripts/check-parity.sh
-   ```
+Run from the task worktree root:
 
-2. **Check the parity matrix** at `docs/plans/client-parity.md` — if your change matches a row that says "iOS pending" or "PWA pending", you MUST update the corresponding client.
+```bash
+make check-parity
+```
 
-3. **For PWA changes** (`web/static/js/`, `web/templates/`, `web/static/css/`):
-   - Check if `ios/Nabu/` needs the same change (models, views, store calls)
-   - If the iOS app needs changes, make them in the same PR
-   - If the change is truly PWA-only, explain why in the PR description
+The script validates status names and reports a tally. Exit 0 means the matrix is well-formed; it does not prove feature parity or test coverage. Known statuses are `Done`, `Built`, `iOS pending`, `PWA pending`, `Deferred`, `Not built`, and `N/A`. `bash scripts/check-parity.sh --strict` additionally fails on pending rows when a release/task requires that check; it is not the default per-PR gate and still does not verify implementation.
 
-4. **For iOS changes** (`ios/`):
-   - Check if `web/static/js/` needs the same change
-   - If the PWA needs changes, make them in the same PR
-   - If the change is truly iOS-only, explain why in the PR description
+The [CI parity job](../../../.github/workflows/ci.yaml) checks changes under `web/static/js/**`, `web/static/css/**`, `web/templates/**`, `ios/**`, and `internal/handlers/**`. A matching PR must update `docs/plans/client-parity.md`, or include `no-parity-update: <reason>` when no matrix change is appropriate. Documentation-only changes under `ios/` are one example. The older three prescribed “both updated / PWA-only / iOS-only” phrases are not required by this CI job.
 
-5. **For API/backend changes** (`internal/`):
-   - Check if both client model files need updates (Swift `Models.swift` / `RequestModels.swift` and JS `api.js` / state models)
-   - Check if both clients' store/service files need new API calls
-   - Check if fixture files under `ios/NabuTests/Fixtures/` need updates
+Describe the actual parity outcome and validation in the PR. The local pre-push hook has a separate legacy client-path check; follow the root guide's documented handling of that check, without skipping its build/test stages. An unrelated pending feature is not a reason to block a correctly scoped change.
 
-6. **PR description** must include one of these three statements verbatim:
-   - "PWA and iOS both updated."
-   - "PWA-only change; iOS not affected because [reason]."
-   - "iOS-only change; PWA not affected because [reason]."
+## Useful counterparts
 
-7. **Update the parity matrix** if you add a new feature row or change the status of an existing row.
+| PWA | iOS |
+|---|---|
+| `web/static/js/app.js`, `state.js` | `ios/Nabu/ContentView.swift`, `App/AppState.swift` |
+| `web/static/js/api.js` and feature API wrappers | `ios/Nabu/API/APIClient.swift`, `Models.swift`, `RequestModels.swift` |
+| `web/static/js/home.js`, `today.js` | `ios/Nabu/Views/HomeView.swift`, `LogSheet.swift`, `API/LogStore.swift` |
+| `web/static/js/calendar.js` | `ios/Nabu/Views/ActivityView.swift`, `API/ActivityStore.swift` |
+| `web/static/js/schedule.js` | `ios/Nabu/Views/ScheduleView.swift`, `API/ScheduleStore.swift` |
+| `web/static/js/stats.js` | `ios/Nabu/Views/StatsView.swift`, `Views/Stats/` |
+| `web/static/js/chores.js` | `ios/Nabu/Views/ChoreEditView.swift`, `API/ChoreStore.swift` |
+| `web/static/js/household.js` | `ios/Nabu/Views/HouseholdView.swift` |
+| `web/static/js/notifications.js` | `ios/Nabu/Views/NotificationPreferencesView.swift`, `NotificationsView.swift` |
+| `web/static/js/preferences.js` | `ios/Nabu/API/Data/PreferencesDataLoader.swift` |
 
-## Key files to check
-
-| PWA | iOS | Both consume |
-|-----|-----|-------------|
-| `web/static/js/app.js` | `ios/Nabu/ContentView.swift` | API endpoints |
-| `web/static/js/state.js` | `ios/Nabu/App/AppState.swift` | Request/response models |
-| `web/static/js/api.js` | `ios/Nabu/API/APIClient.swift` | `/api/` routes |
-| `web/static/js/notifications.js` | `ios/Nabu/Views/NotificationPreferencesView.swift` | `/api/notification-preferences` |
-| `web/static/js/schedule.js` | `ios/Nabu/Views/ScheduleView.swift` | `/api/schedules` |
-| `web/static/js/chores.js` | `ios/Nabu/Views/ChoreEditView.swift` | `/api/chores` |
-| `web/static/js/today.js` | `ios/Nabu/Views/LogSheet.swift` | `/api/logs` |
-| `web/static/js/home.js` | `ios/Nabu/Views/HomeView.swift` | `/api/logs/latest-per-chore` |
-| `web/static/js/calendar.js` | `ios/Nabu/Views/ActivityView.swift` | `/api/logs/today`, `/api/logs/week` |
-| `web/static/js/stats.js` | `ios/Nabu/Views/StatsView.swift` | `/api/stats/*` |
-| `web/static/js/household.js` | `ios/Nabu/Views/HouseholdView.swift` | `/api/household*` |
-| `web/static/js/preferences.js` | `ios/Nabu/API/Data/PreferencesDataLoader.swift` | `/api/preferences` |
+Use `rg` to locate the current caller and real test coverage; this table is a starting map, not a complete inventory.

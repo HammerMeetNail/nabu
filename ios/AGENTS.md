@@ -1,156 +1,108 @@
-# iOS Client Agent Instructions
+# iOS client instructions
 
-This file provides guidance to an LLM when working on the Nabu native iOS app.
+Read the [root guide](../AGENTS.md) first. Commands below run from the task worktree root. The native app uses SwiftUI and the existing Go JSON API; the backend remains the authority for business rules and authorization.
 
-## Client parity rule
+## Locate the change
 
-The Nabu project has two clients: a PWA (`web/static/js/`) and a native iOS app (`ios/`). Every feature, bug fix, validation change, security fix, API change, or UI behavior change must be evaluated for both clients.
+| Area | Files |
+|---|---|
+| Project, targets, dependencies | [Nabu.xcodeproj/project.pbxproj](Nabu.xcodeproj/project.pbxproj) |
+| App lifecycle, state, navigation | `Nabu/App/`, [Nabu/ContentView.swift](Nabu/ContentView.swift) |
+| HTTP, cookies/CSRF, models, stores | `Nabu/API/`, especially `APIClient.swift`, `Models.swift`, `RequestModels.swift`, and `Data/` |
+| Authentication | `Nabu/Auth/` |
+| Screens and charts | `Nabu/Views/`, including `Views/Stats/` |
+| Shared presentation / helpers | `Nabu/DesignSystem/`, `Nabu/Support/` |
+| Unit, contract, snapshot tests | `NabuTests/` and `NabuTests/__Snapshots__/` |
+| Native UI tests / test support | `NabuUITests/`, `TestSupport/` |
 
-**Before editing iOS code**, inspect the corresponding PWA module under `web/static/js/` and the corresponding Playwright E2E spec under `tests/e2e/`. The governing rule is **behavior parity, presentation nativeness** (see `docs/plans/ios-appstore-v1.md` §2.1): behavioral semantics — requests sent, `slotHour`/`completedAt` invariants, validation, what an action does — must match the PWA; presentation should use native iOS idiom (native lists, sheets, pickers, SF Symbols) rather than pixel-copying PWA CSS. Record intentional presentation differences in the parity matrix's "Known differences" column.
+The project is an Xcode project with Swift package dependencies; there is no root `ios/Package.swift`. Check target membership in `project.pbxproj` when adding source, test, or fixture files. Use the project build settings and installed toolchain as the source for deployment/runtime requirements.
 
-**Before editing PWA behavior**, inspect the corresponding iOS screen, model, or test under `ios/` to check whether the iOS app needs the same change.
+Before changing shared behavior, inspect the corresponding PWA module and actual Playwright spec. The [active iOS plan](../docs/plans/ios-appstore-v1.md) calls for **behavior parity, native presentation**: match validation, data sent, action semantics, and persistence while using native lists, sheets, pickers, and symbols. Record intentional presentation differences in the [parity matrix](../docs/plans/client-parity.md).
 
-## File placement
+The [conversion plan](../docs/plans/ios.md) is historical. Plans and the parity matrix can contain aspirational or stale test inventories; use `rg --files ios/NabuTests ios/NabuUITests` to locate real coverage before choosing tests.
 
-- Place all iOS code under `ios/`.
-- Do not place iOS files outside `ios/` except:
-  - Shared documentation in `docs/`.
-  - Backend changes in `internal/`.
-  - CI changes in `.github/`.
-- The existing Go backend and its API are the single source of business authority. Do not fork business behavior into the iOS app.
+## API and state invariants
 
-## Testing requirements
+- Keep DTO field names aligned with Go's camelCase JSON (`choreId`, `volumeML`, `completedAt`). `apiEncoder` in `Nabu/API/Models.swift` uses `.useDefaultKeys`; do not switch it to `.convertToSnakeCase`.
+- Decode RFC3339 timestamps with and without fractional seconds using the existing custom decoder. Use `Date` for timestamps and `LocalDate` for `YYYY-MM-DD`; do not convert calendar-only values through UTC timestamps.
+- For arrays the server may return as null, use `decodeIfPresent(...) ?? []` where the API contract treats null as empty. Keep fixtures and custom decoders aligned with server responses.
+- Preserve native CSRF preflight/cookie handling. Before registration has a session, `GET /api/me` obtains a `nabu_csrf` cookie; native clients do not get it from an HTML page load.
+- Use `Int` for existing Go `int64` identifiers. Preserve ownership checks on the server when sending foreign resource IDs; stale client state is not authorization.
+- For direct current-time Home logs, send `hour = Calendar.current.component(.hour, from: now)` and `completedAt = now`. Sheet logs derive `date`, `hour`, and `completedAt` from the selected When value, including minutes.
+- Preserve `slotHour` separately from `completedAt`: nil means Anytime, an integer means the corresponding calendar row. Do not infer placement from the timestamp or round picker times to `:00`.
+- Render user-controlled metadata as plain text; do not interpret names, labels, or notes through `AttributedString(markdown:)`.
+- For asynchronous state changes, preserve actor isolation, cancellation, and stale-result rejection on navigation, logout, and household changes. Test the completion conditions and ownership as well as the successful response.
 
-Every iOS feature must have:
+If the PWA has a bug within the authorized task, investigate and fix the shared behavior in both clients. Clarify only unresolved product decisions that materially change the task; do not copy a known bug merely to claim parity or stop solely because the clients differ.
 
-1. **XCTest** unit tests for models, logic, and API contract behavior.
-2. **XCUITest** user-flow tests for the corresponding Playwright E2E spec.
-3. **Snapshot tests** for visual states where the PWA has visible UI.
+## Validation
 
-Before finishing any iOS work, run the documented test commands and verify all tests pass.
+New native behavior needs XCTest coverage for affected logic/contracts and XCUITest coverage for user flows. Visual changes need relevant snapshot coverage, including existing supported appearances/states. Bugs need a regression at the affected layer. Documentation and mechanical changes do not need artificial UI tests.
 
-### Running XCUITests against a real server
+Use deterministic fixtures and observable completion rather than sleeps. Concurrency/callback changes require independent behavior and test-synchronization review before the full gate. Keep one owner for the simulator and DerivedData; unrelated agents must not start competing builds.
 
-The E2E test class `NabuHomeEndToEndUITests` in `ios/NabuUITests/NabuUITests.swift` exercises the full register → onboard → seed → log flow against a real (non-mock) server.
+### Platform availability
 
-**Provision the server (once):**
+iOS builds and simulator tests require macOS with Xcode. On Linux or a host without Xcode, continue source, fixture, parity, and portable backend/PWA validation, then report the exact native checks that remain unrun. Do not treat a skipped snapshot suite or an unobserved CI lane as a pass.
 
-```bash
-# In-memory server (no Postgres needed):
-make run
-# or: go run ./cmd/server
+### Choose a simulator and artifact directory
 
-# Postgres-backed server (via Podman):
-make local
-```
-
-The server must be listening on `http://localhost:8080`.
-
-**Choose a simulator:**
-
-List installed runtimes and devices, then use a specific simulator UDID. Do
-not rely on `name=iPhone 16`: that name may exist in several installed
-runtimes and makes the destination ambiguous.
+List installed runtimes/devices and choose a concrete simulator UDID. Device names can be duplicated across runtimes. Snapshot suites currently use baselines recorded on iOS major 26 and skip other majors; inspect `recordedOSMajor` in the affected suite before choosing a runtime or updating baselines.
 
 ```bash
+xcodebuild -version
+xcrun simctl list runtimes
 xcrun simctl list devices available
-export NABU_SIMULATOR_ID="<simulator-udid>"
+export NABU_SIMULATOR_ID="<available-simulator-udid>"
+export NABU_IOS_ARTIFACTS="$(mktemp -d "${TMPDIR:-/tmp}/nabu-ios.XXXXXX")"
 ```
 
-Use an iOS 26 runtime when running snapshot coverage. Snapshot tests are
-intentionally skipped on other OS major versions because rendering differs.
+### Build and run unit/contract tests
 
-**Run iOS tests:**
-
-Build the app before building the test bundle. A direct `xcodebuild test` can
-race the `NabuTests` target against the app module, causing `@testable import
-Nabu` failures. This matches the CI build sequence.
+Build the app before building tests. A clean `build-for-testing` can otherwise race the test target's `@testable import Nabu` against emission of the app module. This follows the CI sequence, with task-specific artifacts:
 
 ```bash
 xcodebuild build \
-  -project ios/Nabu.xcodeproj \
-  -scheme Nabu \
-  -destination "platform=iOS Simulator,id=$NABU_SIMULATOR_ID"
+  -project ios/Nabu.xcodeproj -scheme Nabu \
+  -destination "platform=iOS Simulator,id=$NABU_SIMULATOR_ID" \
+  -derivedDataPath "$NABU_IOS_ARTIFACTS/DerivedData"
 
 xcodebuild build-for-testing \
-  -project ios/Nabu.xcodeproj \
-  -scheme Nabu \
-  -destination "platform=iOS Simulator,id=$NABU_SIMULATOR_ID"
+  -project ios/Nabu.xcodeproj -scheme Nabu \
+  -destination "platform=iOS Simulator,id=$NABU_SIMULATOR_ID" \
+  -derivedDataPath "$NABU_IOS_ARTIFACTS/DerivedData"
 
 xcodebuild test-without-building \
-  -project ios/Nabu.xcodeproj \
-  -scheme Nabu \
+  -project ios/Nabu.xcodeproj -scheme Nabu \
   -destination "platform=iOS Simulator,id=$NABU_SIMULATOR_ID" \
+  -derivedDataPath "$NABU_IOS_ARTIFACTS/DerivedData" \
+  -resultBundlePath "$NABU_IOS_ARTIFACTS/unit.xcresult" \
   -only-testing:NabuTests
 ```
 
-**Run the E2E test:**
+For a focused run, narrow `-only-testing:` to an existing test class/method. Rebuild after source/test edits before using `test-without-building`. Use a fresh result-bundle path for each run; when piping logs through another command, retain `xcodebuild`'s exit status (for example with Bash `pipefail`). Inspect final counts, failures, crashes, and skips in the result bundle, including snapshot runtime skips.
+
+### Native UI flows
+
+Most UI tests use mock support. [NabuHomeEndToEndUITests](NabuUITests/NabuUITests.swift) instead targets a real backend at `http://localhost:8080`. Start an owned backend with `make run` (development, empty `DATABASE_URL`) or `make local`; coordinate ports before starting it.
+
+After the build sequence above, run that real-server test class:
 
 ```bash
 xcodebuild test-without-building \
-  -project ios/Nabu.xcodeproj \
-  -scheme Nabu \
+  -project ios/Nabu.xcodeproj -scheme Nabu \
   -destination "platform=iOS Simulator,id=$NABU_SIMULATOR_ID" \
+  -derivedDataPath "$NABU_IOS_ARTIFACTS/DerivedData" \
+  -resultBundlePath "$NABU_IOS_ARTIFACTS/home-e2e.xcresult" \
   -only-testing:NabuUITests/NabuHomeEndToEndUITests
 ```
 
-**How it works:**
+Use `-only-testing:NabuUITests` with a new result path for the full native flow suite. The real-server class creates a unique email and uses `-nabuAutoRegister` to register, onboard, and seed programmatically; it does **not** cover the registration/onboarding UI. Test those screens through their own UI interactions when changing them.
 
-The test generates a unique email, then launches the app with these launch arguments:
+### CI and parity
 
-```
--disableAnimations -resetState -nabuBaseURL http://localhost:8080 -nabuAutoRegister <email> <password>
-```
+The [CI iOS job](../.github/workflows/ci.yaml) runs the app build, `build-for-testing`, and `test-without-building -only-testing:NabuTests` for `ios/**` changes and every `v*` release tag. UI tests are not run there. Snapshot tests inside `NabuTests` may skip on the selected runtime.
 
-`ContentView.task` in `ios/Nabu/ContentView.swift` parses these arguments via `parseTestCreds()` and programmatically calls `auth.register()` → `auth.createHousehold()` → `auth.seedDefaults()` → `loadAppData()` — bypassing the registration/onboarding UI entirely.
+Backend-only PR changes do not automatically select the iOS lane, and fixture-based contracts do not prove compatibility with a changed live server. Check native models/fixtures explicitly for API changes and run the relevant contracts/integration coverage on an available Mac. The image/deploy job dependencies currently omit the iOS job; release verification must inspect its result separately.
 
-A CSRF pre-flight (`GET /api/me`) runs before the `POST /api/auth/register` to obtain a `nabu_csrf` cookie; the native app has no HTML page load to set it the way the PWA does.
-
-**Key encoding rules enforced by this test:**
-
-- The Go server uses camelCase JSON tags (`choreId`, `volumeML`, `completedAt`). The iOS `apiEncoder` in `ios/Nabu/API/Models.swift` must use `.useDefaultKeys` — never `.convertToSnakeCase`.
-- Go's `time.Time` marshals to RFC3339 with fractional seconds (e.g. `2026-06-06T16:23:47.081048Z`). The iOS `apiDecoder` uses a custom `ISO8601DateFormatter` with `.withFractionalSeconds` and a fallback without fractions.
-- Server JSON fields that may be `null` (like `indicatorLabels` on a chore with no indicators) must use `decodeIfPresent(… ) ?? []` in custom `init(from:)` — Swift will not coerce `null` to `[String]`.
-- The log handler in `internal/handlers/log.go` validates that the chore exists and belongs to the user's household before creating a log (defense in depth against FK violations from stale client-side chore lists).
-
-## Reference files
-
-- Active plan: `docs/plans/ios-appstore-v1.md` (App Store v1 parity & polish)
-- Historical plan: `docs/plans/ios.md` (superseded conversion plan)
-- Parity matrix: `docs/plans/client-parity.md`
-- Backend architecture: root `AGENTS.md`
-- PWA source: `web/static/js/`
-- PWA E2E specs: `tests/e2e/`
-
-## Key invariants from the PWA
-
-These PWA behaviors must be preserved in the native iOS app:
-
-1. **Home-tab direct log**: must send `hour = Calendar.current.component(.hour, from: now)` and `completedAt = now`.
-2. **Home-tab sheet log**: must derive `completedAt`, `date`, and `hour` from the selected When picker value. The When picker must preserve minutes and must not round to `:00`.
-3. **Calendar ad-hoc log placement**: `slotHour == nil` → Anytime row. `slotHour == hour` → that hour row.
-4. **Never drop `slotHour` or replace it with `completedAt.hour`**. They are related but distinct behavior.
-5. **User-controlled metadata must be rendered as plain text**. Avoid `AttributedString(markdown:)` for user content.
-
-## Implementation rules
-
-1. Before implementing a feature, read the corresponding PWA files and Playwright specs.
-2. Write or port tests first.
-3. Implement the smallest native code that makes the tests pass.
-4. Do not invent new *behavior* (data sent, invariants, validation, feature semantics) because it feels more iOS-like. Native *presentation* is expected and encouraged per `docs/plans/ios-appstore-v1.md` §2.1.
-5. If PWA behavior appears buggy, stop and ask before intentionally diverging.
-6. If a backend endpoint lacks native support, add backend tests before changing the backend.
-7. Keep API DTO names close to server JSON names.
-8. Use `Int` for Go `int64` IDs unless a test proves overflow risk.
-9. Use `Date` for RFC3339 timestamps and `LocalDate` for `YYYY-MM-DD` values.
-10. Never update only one client when behavior is shared.
-
-## Parity bookkeeping on PRs
-
-When a PR touches shared client surface — `ios/**`, `web/static/js/**`, or the shared API in `internal/handlers/**` — it must also update the parity matrix (`docs/plans/client-parity.md`) to reflect the change. The CI `parity` job enforces this (it lints the matrix and fails if client/API code changed without a matrix update); the escape hatch is a `no-parity-update: <reason>` line in the PR body.
-
-(This replaced an older rule that required a "PWA-only change…" / "iOS-only change…" phrase in the PR description — that phrase is no longer what CI checks.)
-
-## iOS tests run in CI
-
-The `ios` CI job (`.github/workflows/ci.yaml`, macOS runner) builds the app and runs the `NabuTests` unit/contract suite on every change under `ios/**`. Keep `NabuTests` green — a backend model/API change that breaks the iOS request models (e.g. an added field on `CreateChoreRequest`) will fail this lane. The build sequence is: build the app target alone first (so `@testable import Nabu` resolves on a clean checkout), then `build-for-testing`, then `test-without-building -only-testing:NabuTests`. UI tests are not run in CI.
+Update the parity matrix for affected behavior and known differences. CI filters include all `ios/**` files, so documentation-only changes here can use `no-parity-update: <reason>` in the PR body when no feature row needs changing. Read the [parity workflow](../.opencode/skills/client-parity/SKILL.md) directly if it is not exposed as a skill in the current session. Complete the root checks applicable to the changed files.
