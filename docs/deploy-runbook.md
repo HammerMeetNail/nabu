@@ -72,17 +72,16 @@ curl -sI https://nabu-app.com/ | grep -i cache
 With `TRUSTED_PROXY_CIDRS` set, the auth limiter must key on real client IPs — not one shared tunnel bucket:
 
 ```bash
-# 8 rapid login attempts from one machine: expect 401 x5, then 429s
-for i in $(seq 1 8); do
+# With the default auth budget, 33 requests yield 30 allowed, then 429s.
+# Use GET to exercise the limiter without performing password hashing.
+for i in $(seq 1 33); do
   curl -s -o /dev/null -w "%{http_code}\n" \
-    -X POST https://nabu-app.com/api/auth/login \
-    -H 'Content-Type: application/json' \
-    -d '{"email":"nobody@example.com","password":"wrongpass"}'
+    https://nabu-app.com/api/auth/login
 done
-# Expected: 401 401 401 401 401 429 429 429 (with Retry-After on the 429s)
+# Expected: 405 x30, then 429 x3 (with Retry-After on the 429s)
 
 # From a second client on a different network (e.g. phone on LTE), a login
-# attempt must still return 401 while the first client is limited — that
+# GET must still return 405 while the first client is limited — that
 # proves per-IP bucketing rather than a sitewide bucket.
 ```
 

@@ -94,9 +94,9 @@ func Load() (Config, error) {
 		fallback int
 		target   *int
 	}{
-		{"RATE_LIMIT_AUTH_MAX", 5, &cfg.RateLimitAuthMax},
-		{"RATE_LIMIT_GLOBAL_MAX", 120, &cfg.RateLimitGlobalMax},
-		{"RATE_LIMIT_JOIN_MAX", 10, &cfg.RateLimitJoinMax},
+		{"RATE_LIMIT_AUTH_MAX", 30, &cfg.RateLimitAuthMax},
+		{"RATE_LIMIT_GLOBAL_MAX", 600, &cfg.RateLimitGlobalMax},
+		{"RATE_LIMIT_JOIN_MAX", 30, &cfg.RateLimitJoinMax},
 		{"RATE_LIMIT_MAX_CLIENTS", 4096, &cfg.RateLimitMaxClients},
 		{"DB_MAX_OPEN_CONNS", 25, &cfg.DBMaxOpenConns},
 		{"DB_MAX_IDLE_CONNS", 5, &cfg.DBMaxIdleConns},

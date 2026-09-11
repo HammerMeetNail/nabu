@@ -334,7 +334,7 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 
 	// Tighter per-IP limiter on household joins: invite codes are self-serve
 	// (free account + CSRF pair), so without a dedicated cap an attacker can
-	// hammer /api/household/join against many codes. 10/min per IP keeps
+	// hammer /api/household/join against many codes. The configured per-IP budget keeps
 	// legitimate multi-code joins (several family members, one network)
 	// working while stopping brute-force sweeps.
 	joinLimiter := middleware.NewRateLimiter(cfg.RateLimitJoinMax, time.Minute)

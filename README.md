@@ -130,9 +130,9 @@ Nabu is a Progressive Web App with a service worker caching strategy. Key PWA fe
 | `APNS_TEAM_ID` | (empty) | Apple developer team ID (also enables the universal-links AASA with `APNS_BUNDLE_ID`) |
 | `APNS_BUNDLE_ID` | (empty) | iOS app bundle ID (APNs topic) |
 | `TRUSTED_PROXY_CIDRS` | (empty) | CIDR list for trusted reverse-proxy IPs. Enables real client-IP attribution (X-Forwarded-For) for rate limiting and audit logs, and gates the global rate-limit backstop. Required in production; malformed/universal ranges are rejected at startup. |
-| `RATE_LIMIT_AUTH_MAX` | `5` | Max `/api/auth` requests per minute per IP |
-| `RATE_LIMIT_GLOBAL_MAX` | `120` | Aggregate backstop across all `/api/*` paths per IP. Only active when `TRUSTED_PROXY_CIDRS` is set. |
-| `RATE_LIMIT_JOIN_MAX` | `10` | Household-join requests per minute per IP |
+| `RATE_LIMIT_AUTH_MAX` | `30` | Max `/api/auth` requests per minute per IP |
+| `RATE_LIMIT_GLOBAL_MAX` | `600` | Aggregate backstop across all `/api/*` paths per IP. Only active when `TRUSTED_PROXY_CIDRS` is set. |
+| `RATE_LIMIT_JOIN_MAX` | `30` | Household-join requests per minute per IP |
 | `RATE_LIMIT_MAX_CLIENTS` | `4096` | Maximum tracked IPs per limiter; new clients receive 429 until a window expires when full |
 | `VAPID_PUBLIC_KEY` | (empty) | VAPID public key (base64-encoded uncompressed EC point) |
 | `VAPID_PRIVATE_KEY` | (empty) | VAPID private key (base64-encoded) |

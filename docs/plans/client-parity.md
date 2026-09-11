@@ -2,6 +2,10 @@
 
 Living matrix tracking feature parity between the PWA and native iOS app.
 
+Shared server rate limits default to 30 auth, 600 total API, and 30 household-join
+requests per minute per IP per replica. These allowances apply equally to PWA
+and iOS; no client UI or API model changes are required.
+
 > **Re-baselined 2026-06-28** against the code on `main`. The previous matrix
 > was inaccurate in both directions: it marked ~50 rows "iOS pending" even
 > though the corresponding SwiftUI views and API calls already shipped, and its

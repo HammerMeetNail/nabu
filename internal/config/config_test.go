@@ -187,3 +187,17 @@ func TestProductionRequiresSecureURLCookiesAndProxyTrust(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadRateLimitDefaults(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
+	for _, key := range []string{"RATE_LIMIT_AUTH_MAX", "RATE_LIMIT_GLOBAL_MAX", "RATE_LIMIT_JOIN_MAX"} {
+		t.Setenv(key, "")
+	}
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RateLimitAuthMax != 30 || cfg.RateLimitGlobalMax != 600 || cfg.RateLimitJoinMax != 30 {
+		t.Fatalf("rate limits = auth %d, global %d, join %d; want 30, 600, 30", cfg.RateLimitAuthMax, cfg.RateLimitGlobalMax, cfg.RateLimitJoinMax)
+	}
+}

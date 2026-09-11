@@ -98,3 +98,23 @@ test('household audit events omit names while recording the operation',async({re
     expect(output.includes(secret)).toBe(false);
   });
 });
+
+test('default budgets accommodate shared networks and still cap bursts',async({request})=>{
+  await withServer(request,async url=>{
+    for (const [path, allowance, ip] of [
+      ['/api/auth/login',30,'203.0.113.20'],
+      ['/api/me',600,'203.0.113.21'],
+      ['/api/household/join',30,'203.0.113.22'],
+    ]) {
+      const headers={'X-Forwarded-For':ip};
+      for(let i=0;i<allowance;i++) {
+        const response=await request.get(`${url}${path}`,{headers});
+        expect(response.status(),`${path} request ${i+1}`).not.toBe(429);
+      }
+      const rejected=await request.get(`${url}${path}`,{headers});
+      expect(rejected.status(),path).toBe(429);
+      expect(Number(rejected.headers()['retry-after'])).toBeGreaterThanOrEqual(1);
+      expect(Number(rejected.headers()['retry-after'])).toBeLessThanOrEqual(60);
+    }
+  },{RATE_LIMIT_AUTH_MAX:'',RATE_LIMIT_GLOBAL_MAX:'',RATE_LIMIT_JOIN_MAX:''});
+});
