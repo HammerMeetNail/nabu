@@ -2864,6 +2864,29 @@ details[open] .chore-stat-chevron {
   min-width: 0;
 }
 
+.sheet-amount-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 140px);
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.sheet-amount-field {
+  min-width: 0;
+}
+
+.sheet-amount-field .field-label {
+  margin-bottom: 6px;
+}
+
+.sheet-amount-field input,
+.sheet-amount-field select {
+  display: block;
+  min-width: 0;
+  height: 44px;
+}
+
 /* ─── Log sheet: member row ──────────────────────────────────────────────────── */
 
 .sheet-member-row {

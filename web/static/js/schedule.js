@@ -408,7 +408,7 @@ function renderIndicatorVolumeRow(label, on, selectedML = null, unit = "ml", cho
 export function renderLogSheet(chore, log, date, members, currentUserId, cachedVolumeML = null, opts = {}) {
   const selectedUnit = opts.metricUnit || log?.metricUnit || (isVolumeMetric(chore) ? (opts.volumeUnit === 'oz' ? 'oz' : 'mL') : chore.metricUnit || 'mL');
   chore = {...chore, metricUnit:selectedUnit};
-  const unitSection = chore.hasVolumeML ? `<div class="sheet-volume-row"><label for="log-metric-unit" class="field-label">Unit</label><select id="log-metric-unit" class="select-input">${amountUnitOptions(selectedUnit).map(unit => `<option value="${escapeHTML(unit)}"${unit === selectedUnit ? ' selected' : ''}>${escapeHTML(unit)}</option>`).join('')}</select></div>` : '';
+  const unitField = chore.hasVolumeML ? `<label for="log-metric-unit" class="field-label">Unit</label><select id="log-metric-unit" class="select-input">${amountUnitOptions(selectedUnit).map(unit => `<option value="${escapeHTML(unit)}"${unit === selectedUnit ? ' selected' : ''}>${escapeHTML(unit)}</option>`).join('')}</select>` : '';
   const title = `${escapeHTML(chore.icon)} ${escapeHTML(chore.name)}`;
   const noteVal = log ? escapeHTML(log.note || "") : "";
   const titleVal = log?.title ? escapeHTML(log.title) : "";
@@ -462,11 +462,17 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     </div>`;
   })();
 
-  // A plain volume input for amount-metric chores that have no indicator
-  // labels (generalized Phase 3 amount chores). Feed Baby keeps its
-  // per-indicator volume rows above.
-  const volumeOnlySection = chore.hasVolumeML && !(chore.indicatorLabels || []).length
-    ? `<div class="sheet-volume-row"><label for="log-volume" class="field-label">Amount</label><input id="log-volume" class="text-input volume-select" type="number" inputmode="decimal" min="0" max="${amountInputMax(selectedUnit)}" step="${selectedUnit === 'oz' ? 'any' : '1'}" value="${escapeHTML(amountInputValue(log?.volumeML ?? cachedVolumeML, selectedUnit))}"></div>` : '';
+  // Keep a plain amount and its unit together. Indicator chores share one
+  // unit selector above their per-type amount inputs.
+  const amountSection = !chore.hasVolumeML ? '' : volumeTypeChore
+    ? `<div class="sheet-volume-row">${unitField}</div>`
+    : `<div class="sheet-amount-row">
+        <div class="sheet-amount-field">
+          <label for="log-volume" class="field-label">Amount</label>
+          <input id="log-volume" class="text-input volume-select" type="number" inputmode="decimal" min="0" max="${amountInputMax(selectedUnit)}" step="${selectedUnit === 'oz' ? 'any' : '1'}" value="${escapeHTML(amountInputValue(log?.volumeML ?? cachedVolumeML, selectedUnit))}">
+        </div>
+        <div class="sheet-amount-field">${unitField}</div>
+      </div>`;
 
   // Recent-value chips (Phase 5.3): tappable last-3 distinct amounts. Tapping
   // one fills the volume input(s). Only shown for amount chores with history.
@@ -616,10 +622,9 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
       </div>
       ${whenSection}
       ${subjectSection}
-      ${unitSection}
+      ${amountSection}
       ${recentVolumeSection}
       ${indicatorSection}
-      ${volumeOnlySection}
       ${followUpSection}
       ${titleSection}
       ${ratingSection}
