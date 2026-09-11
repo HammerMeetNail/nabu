@@ -440,9 +440,15 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
           : (prevIndicatorSet.has(label) ? ((cachedIndicatorVolumes?.[label]) ?? null) : null);
         return renderIndicatorVolumeRow(label, on, volume, volumeUnit, chore);
       }).join("");
-      return `<div class="sheet-indicator-row">
-        <p class="field-label">Type</p>
-        <div class="indicator-rows">${rows}</div>
+      return `<div class="sheet-indicator-row sheet-indicator-amounts">
+        <div class="indicator-amount-fields">
+          <div class="indicator-amount-headings" aria-hidden="true">
+            <span class="field-label">Type</span>
+            <span class="field-label">Amount</span>
+          </div>
+          <div class="indicator-rows">${rows}</div>
+        </div>
+        <div class="indicator-unit-field">${unitField}</div>
       </div>`;
     }
 
@@ -462,17 +468,15 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     </div>`;
   })();
 
-  // Keep a plain amount and its unit together. Indicator chores share one
-  // unit selector above their per-type amount inputs.
-  const amountSection = !chore.hasVolumeML ? '' : volumeTypeChore
-    ? `<div class="sheet-volume-row">${unitField}</div>`
-    : `<div class="sheet-amount-row">
+  // Indicator amounts share one unit alongside their input column above.
+  const amountSection = chore.hasVolumeML && !volumeTypeChore
+    ? `<div class="sheet-amount-row">
         <div class="sheet-amount-field">
           <label for="log-volume" class="field-label">Amount</label>
           <input id="log-volume" class="text-input volume-select" type="number" inputmode="decimal" min="0" max="${amountInputMax(selectedUnit)}" step="${selectedUnit === 'oz' ? 'any' : '1'}" value="${escapeHTML(amountInputValue(log?.volumeML ?? cachedVolumeML, selectedUnit))}">
         </div>
         <div class="sheet-amount-field">${unitField}</div>
-      </div>`;
+      </div>` : '';
 
   // Recent-value chips (Phase 5.3): tappable last-3 distinct amounts. Tapping
   // one fills the volume input(s). Only shown for amount chores with history.

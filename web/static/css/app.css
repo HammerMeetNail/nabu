@@ -2730,26 +2730,49 @@ details[open] .chore-stat-chevron {
 }
 
 .indicator-row {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
   gap: 8px;
 }
 
-.indicator-row .log-chip:not(.log-chip--on) ~ .indicator-amount-unit {
-  display: none;
+.sheet-indicator-amounts {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 100px;
+  align-items: start;
+  gap: 8px;
+}
+
+.indicator-amount-fields,
+.indicator-unit-field {
+  min-width: 0;
+}
+
+.indicator-amount-headings {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.indicator-unit-field .select-input {
+  display: block;
+  min-width: 0;
+  height: 44px;
 }
 
 .indicator-row .log-chip {
-  min-height: 36px;
-  padding: 4px 14px;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 10px;
   font-size: 14px;
-  flex-shrink: 0;
+  overflow-wrap: anywhere;
 }
 
 .indicator-volume-select {
-  flex: 1;
   min-width: 0;
-  max-width: 140px;
+  height: 44px;
 }
 
 .log-chip {
