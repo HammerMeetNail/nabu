@@ -23,6 +23,49 @@ final class DataLoaderTests: XCTestCase {
         XCTAssertNotNil(dataLoader.preferences)
     }
 
+    func testSeedFixtureSurvivesConfirmedReloadAndForegroundRefresh() async throws {
+        let environment = AppEnvironment()
+        environment.seedHomeForUITestState(state)
+        let identity = ClientIdentity()
+        identity.accept(state.user)
+        state.adopt(identity.snapshot)
+        environment.seedHomeForUITestState(state)
+        identity.observer = { [weak state] snapshot in state?.adopt(snapshot) }
+        let responses = ReviewUITestResponses(scenario: "home", state: state)
+        state.household = nil
+        state.chores = []
+        state.latestLogs = [:]
+        state.todayLogs = []
+        var successfulReads: Set<String> = []
+        var fixtureAPI = APIClient(baseURL: URL(string: "http://localhost:9998")!, identity: identity)
+        fixtureAPI.mockAsyncHandler = { request in
+            let reply = try await responses.respond(to: request)
+            if (reply.1 as? HTTPURLResponse)?.statusCode == 200 {
+                successfulReads.insert(request.url!.path)
+            }
+            return reply
+        }
+        dataLoader.configure(api: fixtureAPI, state: state)
+
+        // Await the actual loaders rather than merely finding an existing
+        // screen element before the connectivity refresh can finish.
+        await dataLoader.reloadAfterAuth()
+        await dataLoader.foregroundRefresh()
+        for path in ["/api/me", "/api/household", "/api/households", "/api/chores", "/api/logs/latest-per-chore", "/api/logs/today"] {
+            XCTAssertTrue(successfulReads.contains(path), "Missing successful fixture read: \(path)")
+        }
+        XCTAssertEqual(state.revision, identity.snapshot.revision)
+        XCTAssertEqual(state.user?.id, 1)
+        XCTAssertEqual(state.household?.name, "Test Home")
+        XCTAssertEqual(state.chores.count, 5)
+        XCTAssertEqual(state.chores.first(where: { $0.name == "Walk Dog" })?.indicatorLabels, ["Short", "Long", "Park"])
+        XCTAssertEqual(state.latestLogs[1]?.id, 101)
+        XCTAssertEqual(state.latestLogs[4]?.volumeML, 120)
+        XCTAssertNil(state.latestLogs[3])
+        let (_, response) = try await responses.respond(to: URLRequest(url: URL(string: "http://localhost:9998/unhandled")!))
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 500)
+    }
+
     func testReloadAfterAuthWithoutUser() async {
         // No user set — should gracefully skip
         await dataLoader.reloadAfterAuth()

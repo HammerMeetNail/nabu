@@ -28,6 +28,25 @@ final class ScheduleStore {
 
 // MARK: - Frequency helpers
 
+/// Recurrence ends are calendar dates transported as UTC-midnight timestamps,
+/// matching the PWA. Convert components rather than shifting the selected day.
+func scheduleEndTimestamp(_ selection: Date, timeZone: TimeZone = .current) -> String {
+    let formatter = DateFormatter()
+    formatter.calendar = Calendar(identifier: .gregorian)
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.timeZone = timeZone
+    formatter.dateFormat = "yyyy-MM-dd"
+    return formatter.string(from: selection) + "T00:00:00Z"
+}
+
+func scheduleEndSelection(_ timestamp: Date, timeZone: TimeZone = .current) -> Date {
+    var utc = Calendar(identifier: .gregorian)
+    utc.timeZone = TimeZone(secondsFromGMT: 0)!
+    var local = utc
+    local.timeZone = timeZone
+    return local.date(from: utc.dateComponents([.year, .month, .day], from: timestamp)) ?? timestamp
+}
+
 enum FreqType: String, CaseIterable {
     case once, daily, weekly, everyNDays = "every_n_days"
     case monthlyByDate = "monthly_by_date"
@@ -81,6 +100,7 @@ func recurrenceSummary(_ sch: ChoreSchedule) -> String {
     }
     if let end = sch.recurrenceEnd {
         let f = DateFormatter()
+        f.timeZone = TimeZone(secondsFromGMT: 0)
         f.dateFormat = "MMM d"
         parts.append("until \(f.string(from: end))")
     }

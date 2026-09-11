@@ -354,6 +354,17 @@ final class StatsModelTests: XCTestCase {
     }
 
     func testOldModelCannotStartMoreWidgetRequestsAfterIdentityChange() async {
+        await assertOldModelRejectsCompletion(after: nil)
+    }
+
+    func testDelayedWidgetsCannotPublishAfterSameActorHouseholdSwitch() async {
+        let user = state.user!
+        let switched = User(id: user.id, householdId: 2, email: user.email, displayName: user.displayName,
+            avatarColor: user.avatarColor, emailVerified: user.emailVerified, role: user.role, createdAt: user.createdAt)
+        await assertOldModelRejectsCompletion(after: switched)
+    }
+
+    private func assertOldModelRejectsCompletion(after replacement: User?) async {
         let identity = ClientIdentity()
         identity.accept(state.user)
         state.adopt(identity.snapshot)
@@ -369,7 +380,7 @@ final class StatsModelTests: XCTestCase {
         model.configure(api: api, state: state)
         let old = Task { await model.loadWidgetData() }
         await gate.waitUntilPaused()
-        identity.accept(nil)
+        identity.accept(replacement)
         state.adopt(identity.snapshot)
         await gate.release()
         await old.value

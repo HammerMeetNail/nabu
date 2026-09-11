@@ -5,6 +5,7 @@ struct ContentView: View {
     @EnvironmentObject var environment: AppEnvironment
     @StateObject private var auth = AuthStore(api: APIClient(baseURL: URL(string: "http://localhost:8080")!))
     @StateObject private var dataLoader = DataLoader()
+    @StateObject private var accountDeletion = AccountDeletionModel()
     @State private var hasCheckedSession = false
     @State private var hasLoadedData = false
     @State private var handledLinks: Set<URL> = []
@@ -50,7 +51,18 @@ struct ContentView: View {
                 MainTabView(dataLoader: dataLoader)
             }
         }
+        .environmentObject(accountDeletion)
         .pageBackground()
+        .sheet(isPresented: $accountDeletion.isPresented, onDismiss: {
+            let returnToSettings = accountDeletion.matches(environment.apiClient)
+            accountDeletion.cancel()
+            if returnToSettings { state.currentTab = .settings }
+        }) {
+            DeleteAccountSheet().environmentObject(accountDeletion)
+        }
+        .onChange(of: state.revision) { _, _ in
+            accountDeletion.reconcile(api: environment.apiClient)
+        }
         .task {
             if !hasCheckedSession {
                 let args = ProcessInfo.processInfo.arguments

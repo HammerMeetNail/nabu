@@ -22,6 +22,7 @@ struct StatsView: View {
             Group {
                 if model.isLoading {
                     SkeletonCards()
+                        .accessibilityIdentifier("stats-loading")
                 } else {
                     ScrollView {
                         VStack(spacing: 16) {

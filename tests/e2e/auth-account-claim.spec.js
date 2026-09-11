@@ -62,7 +62,12 @@ test("email claim revokes earlier credentials and lets the owner set a password"
     await owner.locator("#change-password-form button[type=submit]").click();
     await expect(owner.locator("#change-password-error")).toContainText("do not match");
     await owner.locator("#confirm-password").fill("owner-password-123");
+    const passwordRequest = owner.waitForRequest(request =>
+      request.method() === "POST" && new URL(request.url()).pathname === "/api/auth/password");
     await owner.locator("#change-password-form button[type=submit]").click();
+    expect((await passwordRequest).postDataJSON()).toEqual({
+      current_password: "", new_password: "owner-password-123",
+    });
     await expect(owner.locator("#current-password")).toBeVisible();
     await owner.reload();
     await expect(owner.locator("#current-password")).toBeVisible();

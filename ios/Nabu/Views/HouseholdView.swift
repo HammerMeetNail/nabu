@@ -14,13 +14,13 @@ struct HouseholdView: View {
     @State private var exportFile: ExportFile?
     @State private var isExporting = false
     @State private var exportAllDates = true
-    @State private var exportStart = Calendar.current.date(byAdding: .month, value: -1, to: Date()) ?? Date()
-    @State private var exportEnd = Date()
+    @State private var exportStart = Calendar.current.date(byAdding: .month, value: -1, to: TestHooks.reviewDate ?? Date()) ?? Date()
+    @State private var exportEnd = TestHooks.reviewDate ?? Date()
     @State private var exportError: String?
     @State private var exportTask: Task<Void, Never>?
     @State private var exportJob = UUID()
     @State private var exportTempURL: URL?
-    @State private var showingDeleteAccount = false
+    @EnvironmentObject private var accountDeletion: AccountDeletionModel
     @State private var showingLeaveConfirm = false
     @State private var verificationSent = false
 	@State private var showingPassword = false
@@ -53,7 +53,7 @@ struct HouseholdView: View {
                             showingPassword = true
                         }
                         Button("Delete Account…", role: .destructive) {
-                            showingDeleteAccount = true
+                            accountDeletion.open(api: environment.apiClient)
                         }
                     }
                 }
@@ -252,16 +252,20 @@ struct HouseholdView: View {
                     Text("How feed amounts are shown and entered. Stored values don't change.")
                 }
 
-                Section("Export dates") {
+                Section {
                     Toggle("All dates", isOn: $exportAllDates).disabled(isExporting)
                     if !exportAllDates {
-                        DatePicker("From", selection: $exportStart, displayedComponents: .date).disabled(isExporting)
-                        DatePicker("Through", selection: $exportEnd, displayedComponents: .date).disabled(isExporting)
+                        DatePicker("From", selection: $exportStart, displayedComponents: .date)
+                            .disabled(isExporting).accessibilityIdentifier("export-start-date")
+                        DatePicker("Through", selection: $exportEnd, displayedComponents: .date)
+                            .disabled(isExporting).accessibilityIdentifier("export-end-date")
                     }
                     if let exportError {
                         Text(exportError).foregroundColor(.red).accessibilityIdentifier("export-error")
                     }
                     if isExporting { Button("Cancel export") { cancelExport() } }
+                } header: {
+                    Text("Export dates")
                 } footer: {
                     Text("Each export can contain up to 10,000 records and 16 MB. Choose a smaller date range if needed.")
                 }
@@ -335,7 +339,7 @@ struct HouseholdView: View {
                 await refreshHousehold()
             }
             // Warning haptics on destructive confirms (C3).
-            .sensoryFeedback(.warning, trigger: showingDeleteAccount) { _, new in new }
+            .sensoryFeedback(.warning, trigger: accountDeletion.isPresented) { _, new in new }
             .sensoryFeedback(.warning, trigger: showingLeaveConfirm) { _, new in new }
         }
         .onAppear {
@@ -348,9 +352,6 @@ struct HouseholdView: View {
         .onDisappear { cancelExport() }
         .sheet(item: $exportFile, onDismiss: clearExportFile) { file in
             ShareSheet(items: [file.url])
-        }
-        .sheet(isPresented: $showingDeleteAccount) {
-            DeleteAccountSheet()
         }
         .sheet(isPresented: $showingPassword) {
             PasswordChangeSheet()
@@ -691,9 +692,8 @@ struct DeleteAccountSheet: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var environment: AppEnvironment
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var accountDeletion: AccountDeletionModel
     @State private var confirmText = ""
-    @State private var errorMessage: String?
-    @State private var isDeleting = false
 
     private var confirmed: Bool {
         confirmText.trimmingCharacters(in: .whitespaces) == "DELETE"
@@ -716,18 +716,18 @@ struct DeleteAccountSheet: View {
                         .textInputAutocapitalization(.characters)
 
                     Button(role: .destructive) {
-                        Task { await deleteAccount() }
+                        Task { await accountDeletion.delete(api: environment.apiClient) }
                     } label: {
-                        if isDeleting {
+                        if accountDeletion.isDeleting {
                             ProgressView()
                         } else {
                             Text("Delete My Account")
                                 .frame(maxWidth: .infinity)
                         }
                     }
-                    .disabled(!confirmed || isDeleting)
+                    .disabled(!confirmed || accountDeletion.isDeleting)
                 } footer: {
-                    if let message = errorMessage {
+                    if let message = accountDeletion.errorMessage {
                         Text(message)
                             .foregroundColor(.red)
                     }
@@ -737,29 +737,15 @@ struct DeleteAccountSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        if accountDeletion.matches(environment.apiClient) { state.currentTab = .settings }
+                        accountDeletion.cancel()
+                    }
                 }
             }
         }
     }
 
-    private func deleteAccount() async {
-        let api = environment.apiClient.scoped()
-        isDeleting = true
-        errorMessage = nil
-        do {
-            let _: StatusResponse = try await api.delete(
-                "/api/me", body: DeleteAccountRequest(confirm: "DELETE"))
-            // The server cleared the session cookie; drop local state so the
-            // app lands on the login screen.
-            dismiss()
-        } catch let APIError.serverError(_, message) {
-            errorMessage = message
-        } catch {
-            errorMessage = "Account deletion failed. Please try again."
-        }
-        isDeleting = false
-    }
 }
 
 // MARK: - Member Row

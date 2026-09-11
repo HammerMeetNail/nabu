@@ -1,5 +1,68 @@
 import Foundation
 
+/// Lives above the identity-gated tabs so canonical session confirmation cannot
+/// destroy a deletion failure before the user can read it.
+@MainActor
+final class AccountDeletionModel: ObservableObject {
+    @Published var isPresented = false
+    @Published private(set) var isDeleting = false
+    @Published private(set) var errorMessage: String?
+    private struct Owner: Equatable {
+        let server: URL
+        let actorID: Int
+        let householdID: Int?
+    }
+    private var owner: Owner?
+    private var intent = UUID()
+
+    private func currentOwner(_ api: APIClient) -> Owner? {
+        let snapshot = api.identity.snapshot
+        guard snapshot.phase == .ready, let user = snapshot.user else { return nil }
+        return Owner(server: api.baseURL, actorID: user.id, householdID: user.householdId)
+    }
+
+    func matches(_ api: APIClient) -> Bool { owner != nil && owner == currentOwner(api) }
+
+    func open(api: APIClient) {
+        guard let current = currentOwner(api) else { return }
+        intent = UUID()
+        owner = current
+        errorMessage = nil
+        isDeleting = false
+        isPresented = true
+    }
+
+    func cancel() {
+        intent = UUID()
+        isPresented = false
+        isDeleting = false
+        errorMessage = nil
+        owner = nil
+    }
+
+    func reconcile(api: APIClient) {
+        guard isPresented, api.identity.snapshot.phase != .changing else { return }
+        if !matches(api) { cancel() }
+    }
+
+    func delete(api: APIClient) async {
+        guard isPresented, !isDeleting, matches(api) else { return }
+        let token = intent
+        isDeleting = true
+        errorMessage = nil
+        defer { if intent == token { isDeleting = false } }
+        do {
+            let _: StatusResponse = try await api.scoped().delete("/api/me", body: DeleteAccountRequest(confirm: "DELETE"))
+            if intent == token { cancel() }
+        } catch {
+            guard intent == token, isPresented else { return }
+            guard matches(api) else { cancel(); return }
+            if case APIError.serverError(_, let message) = error { errorMessage = message }
+            else { errorMessage = "Account deletion failed. Please try again." }
+        }
+    }
+}
+
 @MainActor
 final class AuthStore: ObservableObject {
     private(set) var api: APIClient

@@ -47,8 +47,12 @@ test.describe("Volume unit preference", () => {
     await expect(mlBtn).toHaveClass(/segmented-btn--active/);
 
     // Switch to oz.
+    const saved = page.waitForResponse(response => response.request().method() === 'PATCH'
+      && new URL(response.url()).pathname === '/api/preferences'
+      && response.request().postDataJSON().volumeUnit === 'oz');
     await ozBtn.click();
     await expect(ozBtn).toHaveClass(/segmented-btn--active/);
+    expect((await saved).status()).toBe(200);
 
     // Persisted server-side.
     const prefs = await (await page.request.get("/api/preferences")).json();

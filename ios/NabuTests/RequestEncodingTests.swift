@@ -46,6 +46,16 @@ final class RequestEncodingTests: XCTestCase {
         XCTAssertEqual(dict["password"] as? String, "newpass")
     }
 
+    func testChangePasswordUsesServerKeysWithProductionEncoder() throws {
+        for current in ["", "existing-password"] {
+            let request = ChangePasswordRequest(currentPassword: current, newPassword: "replacement-password")
+            let body = json(try apiEncoder.encode(request))
+            XCTAssertEqual(Set(body.keys), ["current_password", "new_password"])
+            XCTAssertEqual(body["current_password"] as? String, current)
+            XCTAssertEqual(body["new_password"] as? String, "replacement-password")
+        }
+    }
+
     // MARK: - Household
 
     func testCreateHouseholdRequest() throws {

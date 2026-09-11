@@ -185,8 +185,8 @@ test.describe('Schedule Tab', () => {
     await expect(page.locator('#edit-sheet-end-date')).toBeVisible();
   });
 
-  test('setting recurrenceEnd and saving updates the schedule', async ({ page }) => {
-    const { csrf, feedCats } = await setupWithSchedules(page);
+  test('setting and clearing recurrenceEnd survives reload', async ({ page }) => {
+    const { feedCats } = await setupWithSchedules(page);
 
     await page.click('[data-nav="schedule"]');
     await page.waitForSelector('.sch-edit-btn', { timeout: 5000 });
@@ -199,14 +199,33 @@ test.describe('Schedule Tab', () => {
     const endDate = tomorrow.toISOString().slice(0, 10);
     await page.fill('#edit-sheet-end-date', endDate);
 
+    const saved = page.waitForResponse(response => response.request().method() === 'PATCH'
+      && new URL(response.url()).pathname.startsWith('/api/schedules/'));
     await page.locator('[data-action="save-schedule-edit"]').click();
-    await page.waitForTimeout(1000);
+    const saveResponse = await saved;
+    expect(saveResponse.status()).toBe(200);
+    expect(saveResponse.request().postDataJSON().recurrenceEnd).toBe(`${endDate}T00:00:00Z`);
+    await expect(page.locator('[data-action="save-schedule-edit"]')).toBeHidden();
 
     const schedules = (await (await page.request.get('/api/schedules')).json()).schedules;
     const updated = schedules.find(s => s.choreId === feedCats.id);
     expect(updated).toBeDefined();
     expect(updated.recurrenceEnd).toBeTruthy();
     expect(String(updated.recurrenceEnd).slice(0, 10)).toBe(endDate);
+
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await page.click('[data-nav="schedule"]');
+    await page.locator('.sch-edit-btn').first().click();
+    await expect(page.locator('#edit-sheet-end-date')).toHaveValue(endDate);
+    await page.fill('#edit-sheet-end-date', '');
+    const cleared = page.waitForResponse(response => response.request().method() === 'PATCH'
+      && new URL(response.url()).pathname === `/api/schedules/${updated.id}`);
+    await page.locator('[data-action="save-schedule-edit"]').click();
+    const clearResponse = await cleared;
+    expect(clearResponse.status()).toBe(200);
+    expect(clearResponse.request().postDataJSON().recurrenceEnd).toBeNull();
+    const reloaded = (await (await page.request.get('/api/schedules')).json()).schedules;
+    expect(reloaded.find(schedule => schedule.id === updated.id).recurrenceEnd).toBeFalsy();
   });
 
   test('FAB button opens pick-chore sheet to schedule a chore', async ({ page }) => {

@@ -44,7 +44,7 @@ struct TimerChipView: View {
             .buttonStyle(.plain)
             .disabled(isLogging)
             .accessibilityIdentifier("timer-chip")
-            .accessibilityLabel("Stop timer and log \(timer.choreName)")
+            .accessibilityLabel(timer.stoppedAt == nil ? "Stop timer and log \(timer.choreName)" : "Retry saving \(timer.choreName)")
             if let errorMessage { Text(errorMessage).font(.caption).foregroundStyle(.red) }
             }
         }

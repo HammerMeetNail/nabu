@@ -404,7 +404,7 @@ struct PickChoreSheet: View {
             monthWeekday: nil,
             monthOfYear: nil,
             startDate: df.string(from: Date()),
-            recurrenceEnd: hasEndDate ? df.string(from: endDate) : nil,
+            recurrenceEnd: hasEndDate ? scheduleEndTimestamp(endDate) : nil,
             targetCount: nil,
             isActive: true,
             assignedUserId: nil
@@ -540,7 +540,7 @@ struct EditScheduleSheet: View {
         intervalDays = max(schedule.intervalDays, 2)
         if let end = schedule.recurrenceEnd {
             hasEndDate = true
-            endDate = end
+            endDate = scheduleEndSelection(end)
         }
     }
 
@@ -549,9 +549,6 @@ struct EditScheduleSheet: View {
         let mm = String(format: "%02d", selectedMinute)
         let specificTime = "\(hh):\(mm)"
 
-        let df = DateFormatter()
-        df.dateFormat = "yyyy-MM-dd"
-
         let body = PatchScheduleRequest(
             choreId: nil, timePeriod: nil, specificTime: specificTime,
             frequencyType: frequencyType.rawValue, isActive: nil,
@@ -559,7 +556,7 @@ struct EditScheduleSheet: View {
             intervalDays: frequencyType == .everyNDays ? intervalDays : nil,
             dayOfMonth: nil, monthOfYear: nil,
             startDate: nil,
-            recurrenceEnd: hasEndDate ? df.string(from: endDate) : nil
+            recurrenceEnd: .some(hasEndDate ? scheduleEndTimestamp(endDate) : nil)
         )
 
         do {

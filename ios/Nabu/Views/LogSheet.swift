@@ -21,7 +21,7 @@ struct LogSheet: View {
     @State private var volumeML: Int? = nil
     @State private var selectedSubject: String? = nil
     @State private var selectedUserId: Int?
-    @State private var whenDate: Date = Date()
+    @State private var whenDate: Date = TestHooks.reviewDate ?? Date()
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var followUpDays: Int = 0

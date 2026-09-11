@@ -1,7 +1,29 @@
 import XCTest
+import UIKit
+import SnapshotTesting
+
+private extension XCTestCase {
+    func captureReviewScreen(_ app: XCUIApplication, named name: String,
+                             file: StaticString = #filePath, testName: String = #function, line: UInt = #line) throws {
+        guard UIDevice.current.systemVersion.hasPrefix("26.") else { return }
+        let recording = ProcessInfo.processInfo.environment["NABU_RECORD_SNAPSHOTS"] == "1"
+        let previous = continueAfterFailure
+        // Keep exercising recovery after a pixel mismatch; the image assertion
+        // still fails the test and must be fixed before the gate can pass.
+        continueAfterFailure = true
+        defer { continueAfterFailure = previous }
+        assertSnapshot(of: app.screenshot().image,
+                       as: .image(precision: 0.99, perceptualPrecision: 0.98),
+                       named: name, record: recording, file: file, testName: testName, line: line)
+    }
+}
 
 private extension XCUIApplication {
     func launchForLocalTest() {
+        if launchArguments.contains("-seedHomeForUITest"),
+           !launchArguments.contains("-preserveTestState"), !launchArguments.contains("-resetState") {
+            launchArguments.append("-resetState")
+        }
         if !launchArguments.contains("-nabuBaseURL") {
             launchArguments += ["-nabuBaseURL", "http://localhost:8080"]
         }
@@ -16,7 +38,8 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["-disableAnimations", "-resetState", "-seedHomeForUITest", "-useMockAPI",
-                               "-reviewScenario", scenario, "-nabuBaseURL", "http://localhost:9998"]
+                               "-reviewScenario", scenario, "-nabuBaseURL", "http://localhost:9998",
+                               "-reviewDate", "2026-09-10T12:34:00Z"]
         if accessibilitySize {
             app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"]
         }
@@ -35,7 +58,40 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         XCTAssertTrue(element.exists && element.isHittable, "Expected reachable control: \(element)")
     }
 
-    func testGramEntryRecentChipAndFailedSaveRetainValuesForRetry() {
+    private func waitForStableScreen(_ app: XCUIApplication) {
+        var previous: Data?
+        var matches = 0
+        let stable = NSPredicate { _, _ in
+            let current = app.screenshot().pngRepresentation
+            matches = current == previous ? matches + 1 : 0
+            previous = current
+            return matches >= 2
+        }
+        let expectation = XCTNSPredicateExpectation(predicate: stable, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 10), .completed,
+                       "Screen did not settle before capture")
+    }
+
+    private func centerForCapture(_ element: XCUIElement, in app: XCUIApplication) {
+        let target = app.frame.height * 0.45
+        var dragAdjustment: CGFloat = 0
+        for _ in 0..<8 {
+            let before = element.frame.midY
+            let remaining = target - before
+            if abs(remaining) <= 1 { break }
+            let drag = max(-app.frame.height * 0.3, min(app.frame.height * 0.3, remaining + dragAdjustment))
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65))
+            start.press(forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: drag)),
+                        withVelocity: .slow, thenHoldForDuration: 0.3)
+            // Compensate for measured gesture slop instead of assuming a drag
+            // moves the scroll content by exactly the requested distance.
+            dragAdjustment = drag - (element.frame.midY - before)
+        }
+        XCTAssertEqual(element.frame.midY, target, accuracy: 1)
+        waitForStableScreen(app)
+    }
+
+    func testGramEntryRecentChipAndFailedSaveRetainValuesForRetry() throws {
         let app = launch("amount")
         let chore = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Weigh flour")).firstMatch
         reveal(chore, in: app)
@@ -44,6 +100,7 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         app.buttons["120 g"].tap()
         let amount = app.textFields["amount-input"]
         XCTAssertEqual(amount.value as? String, "120")
+        try captureReviewScreen(app, named: "gram-recent")
         amount.tap()
         amount.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3) + "37")
         let save = app.buttons["save-log-button"]
@@ -51,28 +108,35 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         save.tap()
         XCTAssertTrue(app.staticTexts["Could not save. Please retry."].waitForExistence(timeout: 5))
         XCTAssertEqual(amount.value as? String, "37")
+        XCTAssertFalse(amount.isEnabled)
+        try captureReviewScreen(app, named: "gram-save-error")
         save.tap()
         XCTAssertTrue(chore.waitForExistence(timeout: 5))
         app.tabBars.buttons["Activity"].tap()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "37 g")).firstMatch.waitForExistence(timeout: 5))
     }
 
-    func testNotificationOlderPageFailureRetainsReadRowsAndRetryWorks() {
+    func testNotificationOlderPageFailureRetainsReadRowsAndRetryWorks() throws {
         let app = launch("notifications", accessibilitySize: true)
         app.tabBars.buttons["Settings"].tap()
-        let notifications = app.buttons["Notifications"]
+        let notifications = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Notifications")).firstMatch
         reveal(notifications, in: app)
         notifications.tap()
         XCTAssertTrue(app.staticTexts["Read notice 1"].waitForExistence(timeout: 5))
+        try captureReviewScreen(app, named: "notification-history-large-text")
         let more = app.buttons["notifications-load-more"]
         reveal(more, in: app)
         more.tap()
         XCTAssertTrue(app.staticTexts["notification-error"].waitForExistence(timeout: 5))
+        reveal(app.staticTexts["notification-error"], in: app)
+        try captureReviewScreen(app, named: "notification-page-error-large-text")
         reveal(app.staticTexts["Read notice 1"], in: app)
         XCTAssertTrue(app.staticTexts["Read notice 1"].exists)
         reveal(more, in: app)
         more.tap()
         XCTAssertTrue(app.staticTexts["Older notice 3"].waitForExistence(timeout: 5))
+        reveal(app.staticTexts["Older notice 3"], in: app)
+        try captureReviewScreen(app, named: "notification-older-page-large-text")
         let mark = app.buttons["notification-mark-read-3"]
         reveal(mark, in: app)
         mark.tap()
@@ -81,33 +145,53 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         app.buttons["Delete"].tap()
         XCTAssertTrue(app.staticTexts["Older notice 3"].waitForNonExistence(timeout: 5))
         XCTAssertFalse(more.exists)
+        app.buttons["Mark All Read"].tap()
+        XCTAssertTrue(app.buttons["Mark All Read"].waitForNonExistence(timeout: 5))
+        app.buttons["Refresh notifications"].tap()
+        XCTAssertTrue(app.staticTexts["Read notice 1"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Mark All Read"].exists)
     }
 
-    func testExportRangeErrorCancelAndShareRecovery() {
+    func testExportRangeErrorCancelAndShareRecovery() throws {
         let app = launch("export")
         app.tabBars.buttons["Settings"].tap()
         let allDates = app.switches["All dates"]
         reveal(allDates, in: app)
-        allDates.tap()
-        XCTAssertTrue(app.datePickers["From"].exists)
-        XCTAssertTrue(app.datePickers["Through"].exists)
+        allDates.switches.firstMatch.tap()
+        XCTAssertEqual(allDates.value as? String, "0")
+        let startDate = app.descendants(matching: .any)["export-start-date"]
+        let endDate = app.descendants(matching: .any)["export-end-date"]
+        XCTAssertTrue(startDate.waitForExistence(timeout: 5))
+        XCTAssertTrue(endDate.exists)
+        XCTAssertTrue(startDate.isEnabled)
+        XCTAssertTrue(endDate.isEnabled)
+        reveal(endDate, in: app)
+        centerForCapture(endDate, in: app)
+        try captureReviewScreen(app, named: "export-date-range")
         let export = app.buttons["Export logs as CSV"]
         reveal(export, in: app)
         export.tap()
         let error = app.staticTexts["export-error"]
         reveal(error, in: app)
         XCTAssertTrue(error.waitForExistence(timeout: 5))
+        try captureReviewScreen(app, named: "export-error")
         reveal(export, in: app)
         export.tap()
         let cancel = app.buttons["Cancel export"]
         reveal(cancel, in: app)
         XCTAssertTrue(cancel.waitForExistence(timeout: 5))
+        XCTAssertFalse(startDate.isEnabled)
+        try captureReviewScreen(app, named: "export-cancel")
         cancel.tap()
         XCTAssertTrue(cancel.waitForNonExistence(timeout: 5))
+        reveal(allDates, in: app)
         XCTAssertTrue(allDates.isEnabled)
         reveal(export, in: app)
         export.tap()
-        XCTAssertTrue(app.otherElements["export-share-sheet"].waitForExistence(timeout: 5))
+        let share = app.otherElements["ActivityListView"]
+        XCTAssertTrue(share.waitForExistence(timeout: 5))
+        app.buttons["Close"].tap()
+        XCTAssertTrue(share.waitForNonExistence(timeout: 5))
     }
 
     func testActivityErrorRetryAndSearchSurviveTabRoundtrip() {
@@ -126,9 +210,280 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         XCTAssertEqual(search.value as? String, "Needle")
         XCTAssertTrue(result.waitForExistence(timeout: 5))
     }
+
+    func testStatsLoadingScreen() throws {
+        let app = launch("stats-loading", accessibilitySize: true)
+        app.tabBars.buttons["Stats"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["stats-loading"].waitForExistence(timeout: 5))
+        try captureReviewScreen(app, named: "stats-loading-large-text")
+    }
+
+    func testStatsErrorRetryRetainsEmptyControls() throws {
+        let app = launch("stats", accessibilitySize: true)
+        app.tabBars.buttons["Stats"].tap()
+        let error = app.staticTexts["Stats couldn't be loaded. Try again."]
+        XCTAssertTrue(error.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["stats-customize"].exists)
+        try captureReviewScreen(app, named: "stats-error-large-text")
+        app.buttons["Retry"].firstMatch.tap()
+        XCTAssertTrue(error.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts.matching(NSPredicate(format: "label == %@", "0")).count, 3)
+        XCTAssertTrue(app.buttons["Log Your First Chore"].exists)
+        try captureReviewScreen(app, named: "stats-recovered-large-text")
+    }
+
+    func testExportDateControlsAtLargeText() {
+        let app = launch("export", accessibilitySize: true)
+        app.tabBars.buttons["Settings"].tap()
+        let allDates = app.switches["All dates"]
+        reveal(allDates, in: app)
+        allDates.switches.firstMatch.tap()
+        let end = app.descendants(matching: .any)["export-end-date"]
+        reveal(end, in: app)
+        XCTAssertTrue(end.isEnabled)
+        let export = app.buttons["Export logs as CSV"]
+        reveal(export, in: app)
+        XCTAssertTrue(export.isEnabled)
+    }
+
+    private func openChore(_ name: String, in app: XCUIApplication) {
+        let chore = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name)).firstMatch
+        reveal(chore, in: app)
+        chore.tap()
+    }
+
+    func testCountEntryAtLargeTextAndActivityRoundtrip() throws {
+        let app = launch("count", accessibilitySize: true)
+        openChore("Count reps", in: app)
+        let recent = app.buttons["12 reps"]
+        reveal(recent, in: app)
+        recent.tap()
+        let amount = app.textFields["amount-input"]
+        reveal(amount, in: app)
+        XCTAssertEqual(amount.value as? String, "12")
+        XCTAssertFalse(app.buttons["volume-picker"].exists)
+        try captureReviewScreen(app, named: "count-large-text")
+        let save = app.buttons["save-log-button"]
+        reveal(save, in: app)
+        save.tap()
+        XCTAssertTrue(save.waitForNonExistence(timeout: 5))
+        app.tabBars.buttons["Activity"].tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "12 reps")).firstMatch.waitForExistence(timeout: 5))
+    }
+
+    func testRecentReadEmptyAndFailureKeepAmountEntryAvailable() throws {
+        for scenario in ["recent-empty", "recent-error"] {
+            let app = launch(scenario)
+            openChore("Weigh flour", in: app)
+            let input = app.textFields["amount-input"]
+            reveal(input, in: app)
+            XCTAssertTrue(input.isEnabled)
+            XCTAssertFalse(app.buttons["120 g"].exists)
+            if scenario == "recent-error" { XCTAssertTrue(app.buttons["75 g"].exists) }
+            waitForStableScreen(app)
+            try captureReviewScreen(app, named: scenario)
+            app.buttons["Cancel"].tap()
+        }
+    }
+
+    private func rejectSavedRequest() -> XCUIApplication {
+        let app = launch("journal")
+        openChore("Weigh flour", in: app)
+        let recent = app.buttons["120 g"]
+        reveal(recent, in: app)
+        recent.tap()
+        let save = app.buttons["save-log-button"]
+        reveal(save, in: app)
+        save.tap()
+        XCTAssertTrue(app.staticTexts["Could not save. Please retry."].waitForExistence(timeout: 5))
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.buttons["pending-saves"].waitForExistence(timeout: 5))
+        return app
+    }
+
+    private func relaunchPreservingSavedState(_ app: XCUIApplication, scenario: String) {
+        app.terminate()
+        app.launchArguments.removeAll { $0 == "-resetState" }
+        app.launchArguments.append("-preserveTestState")
+        let index = app.launchArguments.firstIndex(of: "-reviewScenario")!
+        app.launchArguments[index + 1] = scenario
+        app.launchForLocalTest()
+        XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 5))
+    }
+
+    func testRejectedJournalSurvivesRelaunchAndExplicitRetry() {
+        let app = rejectSavedRequest()
+        relaunchPreservingSavedState(app, scenario: "journal-retry")
+        let pending = app.buttons["pending-saves"]
+        XCTAssertTrue(pending.waitForExistence(timeout: 5))
+        pending.tap()
+        XCTAssertTrue(app.navigationBars["Pending saves"].waitForExistence(timeout: 5))
+        app.buttons["Retry saves"].tap()
+        XCTAssertTrue(pending.waitForNonExistence(timeout: 5))
+        app.tabBars.buttons["Activity"].tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "120 g")).firstMatch.waitForExistence(timeout: 5))
+    }
+
+    func testDiscardRejectedJournalPersistsAcrossRelaunch() {
+        let app = rejectSavedRequest()
+        app.buttons["pending-saves"].tap()
+        app.buttons["Discard saved request"].tap()
+        app.buttons["Discard"].tap()
+        XCTAssertTrue(app.buttons["pending-saves"].waitForNonExistence(timeout: 5))
+        relaunchPreservingSavedState(app, scenario: "journal-retry")
+        XCTAssertFalse(app.buttons["pending-saves"].exists)
+    }
+
+    func testStoppedTimerSurvivesRelaunchAndRetriesSave() {
+        let app = launch("timer")
+        openChore("Nap", in: app)
+        let start = app.buttons["start-timer-button"]
+        reveal(start, in: app)
+        start.tap()
+        let timer = app.buttons["timer-chip"]
+        XCTAssertTrue(timer.waitForExistence(timeout: 5))
+        timer.tap()
+        let retry = app.buttons["Retry saving Nap"]
+        XCTAssertTrue(app.staticTexts["Could not save. Please retry."].waitForExistence(timeout: 5))
+        XCTAssertTrue(retry.waitForExistence(timeout: 5))
+        XCTAssertTrue(retry.isEnabled)
+        relaunchPreservingSavedState(app, scenario: "timer-retry")
+        XCTAssertTrue(retry.waitForExistence(timeout: 5))
+        retry.tap()
+        XCTAssertTrue(timer.waitForNonExistence(timeout: 5))
+        relaunchPreservingSavedState(app, scenario: "timer-retry")
+        XCTAssertFalse(timer.exists)
+        XCTAssertFalse(app.buttons["pending-saves"].exists)
+    }
+
+    func testPreviousDayVolumePrefillExcludesUnselectedType() {
+        let app = launch("midnight")
+        openChore("Feed Baby", in: app)
+        let volumes = app.buttons.matching(identifier: "volume-picker")
+        XCTAssertEqual(volumes.count, 1)
+        XCTAssertTrue(volumes.firstMatch.label.contains("120"))
+        app.buttons["Breast"].tap()
+        XCTAssertEqual(volumes.count, 2)
+        XCTAssertTrue(volumes.element(boundBy: 1).label.contains("--"))
+        app.buttons["Cancel"].tap()
+        openChore("Feed Baby", in: app)
+        XCTAssertEqual(volumes.count, 1)
+        XCTAssertTrue(volumes.firstMatch.label.contains("120"))
+    }
+
+    func testRecurringSchedulePersistsThroughReloadAndEditor() throws {
+        let app = launch("schedule")
+        app.tabBars.buttons["Schedule"].tap()
+        app.buttons["empty-schedule-create"].tap()
+        let frequency = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Frequency,")).firstMatch
+        frequency.tap()
+        app.buttons["Every day"].tap()
+        let repeatThrough = app.switches["Repeat through (inclusive)"]
+        repeatThrough.switches.firstMatch.tap()
+        XCTAssertEqual(repeatThrough.value as? String, "1")
+        XCTAssertTrue(app.staticTexts["End date"].exists)
+        let end = app.datePickers.firstMatch.buttons["Date Picker"]
+        XCTAssertTrue(end.exists)
+        let endValue = try XCTUnwrap(end.value as? String)
+        let chore = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Feed Cats")).firstMatch
+        reveal(chore, in: app)
+        chore.tap()
+        XCTAssertTrue(app.navigationBars["Add to Schedule"].waitForNonExistence(timeout: 5))
+        app.tabBars.buttons["Home"].tap()
+        app.tabBars.buttons["Schedule"].tap()
+        let row = app.staticTexts["Feed Cats"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        let recurrence = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Every day")).firstMatch
+        XCTAssertTrue(recurrence.waitForExistence(timeout: 5))
+        XCTAssertTrue(recurrence.label.contains("until "))
+        let withoutEnd = try XCTUnwrap(recurrence.label.components(separatedBy: " · until ").first)
+        row.press(forDuration: 1)
+        try XCTUnwrap(app.buttons.matching(identifier: "Edit").allElementsBoundByIndex.first(where: { $0.isHittable })).tap()
+        XCTAssertTrue(app.navigationBars["Edit Schedule"].waitForExistence(timeout: 5))
+        XCTAssertTrue(frequency.label.contains("Every day"))
+        XCTAssertEqual(app.switches["Repeat through (inclusive)"].value as? String, "1")
+        XCTAssertEqual(try XCTUnwrap(end.value as? String), endValue)
+        app.switches["Repeat through (inclusive)"].switches.firstMatch.tap()
+        app.buttons["Save"].tap()
+        XCTAssertTrue(app.navigationBars["Edit Schedule"].waitForNonExistence(timeout: 5))
+        app.tabBars.buttons["Home"].tap()
+        app.tabBars.buttons["Schedule"].tap()
+        XCTAssertTrue(app.staticTexts[withoutEnd].firstMatch.waitForExistence(timeout: 5))
+        row.press(forDuration: 1)
+        try XCTUnwrap(app.buttons.matching(identifier: "Edit").allElementsBoundByIndex.first(where: { $0.isHittable })).tap()
+        XCTAssertTrue(app.navigationBars["Edit Schedule"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.switches["Repeat through (inclusive)"].value as? String, "0")
+        XCTAssertFalse(end.exists)
+        app.buttons["Cancel"].tap()
+    }
+
+    func testOwnershipDeletionFailureCanCancelAndReopenCleanly() throws {
+        let app = launch("delete-account")
+        app.tabBars.buttons["Settings"].tap()
+        let open = app.buttons["Delete Account…"]
+        reveal(open, in: app); open.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "transfer ownership (or remove")).firstMatch.exists)
+        let confirm = app.textFields["Type DELETE to confirm"]
+        let remove = app.buttons["Delete My Account"]
+        XCTAssertFalse(remove.isEnabled)
+        confirm.tap(); confirm.typeText("DELETE")
+        remove.tap()
+        let error = app.staticTexts["Transfer ownership before deleting your account."]
+        XCTAssertTrue(error.waitForExistence(timeout: 5))
+        reveal(error, in: app)
+        try captureReviewScreen(app, named: "deletion-ownership-error")
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(open.waitForExistence(timeout: 5))
+        open.tap()
+        XCTAssertFalse(remove.isEnabled)
+        XCTAssertEqual(confirm.value as? String, "Type DELETE to confirm")
+        XCTAssertFalse(error.exists)
+        app.buttons["Cancel"].tap()
+    }
+
+    func testStatsShowsNewHouseholdAfterSwitch() {
+        let app = launch("stats-switch")
+        app.tabBars.buttons["Stats"].tap()
+        let prior = app.staticTexts["This week you completed 13 chores."]
+        reveal(prior, in: app)
+        XCTAssertTrue(prior.waitForExistence(timeout: 5))
+        app.tabBars.buttons["Settings"].tap()
+        let switchHousehold = app.buttons["Switch"]
+        reveal(switchHousehold, in: app)
+        switchHousehold.tap()
+        XCTAssertTrue(app.staticTexts["No chores yet"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Stats"].tap()
+        let current = app.staticTexts["This week you completed 84 chores."]
+        reveal(current, in: app)
+        XCTAssertTrue(current.waitForExistence(timeout: 5))
+        XCTAssertFalse(prior.exists)
+    }
 }
 
 final class NabuPasswordSetupUITests: XCTestCase {
+    func testClaimedAccountCanSetPasswordAndReopenChangeForm() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-disableAnimations", "-seedHomeForUITest", "-useMockAPI",
+                               "-passwordlessAccount", "-nabuBaseURL", "http://localhost:9998"]
+        app.launchForLocalTest()
+        XCTAssertTrue(app.tabBars.buttons["Settings"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Settings"].tap()
+        app.buttons["Set Password"].tap()
+        let password = app.secureTextFields["New Password"]
+        XCTAssertTrue(password.waitForExistence(timeout: 5))
+        password.tap(); password.typeText("owner-password-123")
+        let confirmation = app.secureTextFields["Confirm New Password"]
+        confirmation.tap(); confirmation.typeText("owner-password-123")
+        app.buttons["Save"].tap()
+        XCTAssertTrue(password.waitForNonExistence(timeout: 5))
+        app.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(app.buttons["Change Password"].waitForExistence(timeout: 5))
+        app.buttons["Change Password"].tap()
+        XCTAssertTrue(app.secureTextFields["Current Password"].waitForExistence(timeout: 5))
+        app.buttons["Cancel"].tap()
+    }
+
     func testClaimedAccountCanOpenAndCancelPasswordSetup() {
         let app = XCUIApplication()
         app.launchArguments = ["-disableAnimations", "-seedHomeForUITest", "-useMockAPI",
@@ -147,7 +502,7 @@ final class NabuPasswordSetupUITests: XCTestCase {
 }
 
 final class NabuScheduleEmptyStateUITests: XCTestCase {
-    func testEmptyScheduleActionOpensPickerAndCancelReturns() {
+    func testEmptyScheduleActionOpensPickerAndCancelReturns() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-disableAnimations", "-resetState", "-seedHomeForUITest", "-useMockAPI",
                                "-nabuBaseURL", "http://localhost:8080"]
@@ -156,6 +511,7 @@ final class NabuScheduleEmptyStateUITests: XCTestCase {
         app.tabBars.buttons["Schedule"].tap()
         let create = app.buttons["empty-schedule-create"]
         XCTAssertTrue(create.waitForExistence(timeout: 5))
+        try captureReviewScreen(app, named: "empty-schedule")
         create.tap()
         XCTAssertTrue(app.navigationBars["Add to Schedule"].waitForExistence(timeout: 5))
         app.buttons["Cancel"].tap()
@@ -413,8 +769,7 @@ final class NabuHomeLogFlowUITests: XCTestCase {
         XCTAssertTrue(cell.label.contains("never done"), "Precondition: Water Plants should be 'never done'")
 
         openLogSheet(forChore: "Water Plants")
-        XCTAssertTrue(app.buttons["save-log-button"].waitForExistence(timeout: 3))
-        app.buttons["save-log-button"].tap()
+        saveLog()
 
         // Sheet should dismiss; grid cell should reappear with updated label.
         XCTAssertTrue(cell.waitForExistence(timeout: 5))
@@ -432,7 +787,7 @@ final class NabuHomeLogFlowUITests: XCTestCase {
         XCTAssertTrue(parkButton.waitForExistence(timeout: 3))
         parkButton.tap()
 
-        app.buttons["save-log-button"].tap()
+        saveLog()
 
         // Verify sheet dismissed and grid is visible.
         XCTAssertTrue(cell(named: "Walk Dog").waitForExistence(timeout: 5))
@@ -444,8 +799,16 @@ final class NabuHomeLogFlowUITests: XCTestCase {
 
         let volumeButton = app.buttons["volume-picker"]
         XCTAssertTrue(volumeButton.waitForExistence(timeout: 3))
+        let recentAmount = app.buttons["120 mL"]
+        for _ in 0..<8 {
+            if recentAmount.exists && recentAmount.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(recentAmount.exists && recentAmount.isHittable)
+        recentAmount.tap()
+        XCTAssertTrue(volumeButton.label.contains("120"))
 
-        app.buttons["save-log-button"].tap()
+        saveLog()
 
         XCTAssertTrue(cell(named: "Feed Baby").waitForExistence(timeout: 5))
     }
@@ -460,6 +823,17 @@ final class NabuHomeLogFlowUITests: XCTestCase {
         let c = cell(named: name)
         XCTAssertTrue(c.waitForExistence(timeout: 5))
         c.tap()
+    }
+
+    private func saveLog() {
+        let save = app.buttons["save-log-button"]
+        for _ in 0..<8 {
+            if save.exists && save.isHittable { break }
+            app.swipeUp()
+        }
+        XCTAssertTrue(save.exists && save.isHittable)
+        save.tap()
+        XCTAssertTrue(save.waitForNonExistence(timeout: 5))
     }
 }
 

@@ -1,6 +1,18 @@
 import Foundation
 
 enum TestHooks {
+    /// Fixed picker dates for reviewed screen baselines; ordinary launches
+    /// continue to use the current local date and time.
+    static var reviewDate: Date? {
+#if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if let index = args.firstIndex(of: "-reviewDate"), index + 1 < args.count {
+            return ISO8601DateFormatter().date(from: args[index + 1])
+        }
+#endif
+        return nil
+    }
+
     static var baseURLOverride: String? {
         let args = ProcessInfo.processInfo.arguments
         guard let index = args.firstIndex(of: "-nabuBaseURL"),

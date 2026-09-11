@@ -1,5 +1,10 @@
 # Mac validation handoff
 
+Mac follow-up completed: see the [validation record](review-2026-09-10-mac-validation.md)
+for fixes, exact source evidence and passing local Xcode/browser results. The
+physical-device release checks remain open. The original handoff below is kept
+as the verification checklist.
+
 The user deferred Xcode testing to a separate Mac session after this branch is
 committed and pushed. Use `pwa-review-20260910` and record the exact fetched commit
 before running these checks. The [implementation record](review-2026-09-10-implementation.md)

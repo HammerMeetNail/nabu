@@ -87,9 +87,10 @@ final class ScheduleTests: XCTestCase {
     }
 
     func testRecurrenceSummaryWithEnd() {
-        let df = DateFormatter()
-        df.dateFormat = "yyyy-MM-dd"
-        let end = df.date(from: "2026-07-04")!
+        let original = NSTimeZone.default
+        NSTimeZone.default = TimeZone(identifier: "America/New_York")!
+        defer { NSTimeZone.default = original }
+        let end = ISO8601DateFormatter().date(from: "2026-07-04T00:00:00Z")!
         let sch = ChoreSchedule(id: 1, householdId: 1, choreId: 1, frequencyType: "daily",
                                 timePeriod: "anytime", specificTime: nil,
                                 timesOfDay: [], daysOfWeek: [], intervalDays: 0,
@@ -321,5 +322,19 @@ final class ScheduleTests: XCTestCase {
         XCTAssertFalse(isActiveForDay(sch, "2026-09-09", timeZone: newYork))
         XCTAssertTrue(isActiveForDay(sch, "2026-09-09", timeZone: tokyo))
         XCTAssertFalse(isActiveForDay(sch, "2026-09-11", timeZone: tokyo))
+    }
+
+    func testEndDatePickerRoundtripKeepsCalendarDayAcrossTimezones() throws {
+        for zone in ["America/New_York", "Asia/Tokyo"] {
+            let timeZone = try XCTUnwrap(TimeZone(identifier: zone))
+            for value in ["2026-03-08T00:00:00Z", "2026-09-10T00:00:00Z"] {
+                let timestamp = try XCTUnwrap(ISO8601DateFormatter().date(from: value))
+                let selection = scheduleEndSelection(timestamp, timeZone: timeZone)
+                XCTAssertEqual(scheduleEndTimestamp(selection, timeZone: timeZone), value, zone)
+                var calendar = Calendar(identifier: .gregorian)
+                calendar.timeZone = timeZone
+                XCTAssertEqual(calendar.component(.day, from: selection), value.contains("03-08") ? 8 : 10)
+            }
+        }
     }
 }
