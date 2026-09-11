@@ -2,7 +2,7 @@ GO ?= go
 COMPOSE ?= podman compose
 GOLANGCI_VERSION := 2.13.2
 
-.PHONY: test test-go test-js fmt run e2e e2e-watch e2e-debug backup restore local local-fresh down seed lint coverage hooks check-parity deploy
+.PHONY: test test-go test-js perf-stats fmt run e2e e2e-watch e2e-debug backup restore local local-fresh down seed lint coverage hooks check-parity deploy
 
 test: test-go test-js
 
@@ -11,6 +11,13 @@ test-go:
 
 test-js:
 	node --test web/static/js/tests/runner.js tests/ops/*.test.js
+
+# Opt-in workload; use an already-running local PostgreSQL server.
+perf-stats: export TEST_DATABASE_URL ?= postgres://nabu:nabu@localhost:5432/nabu?sslmode=disable
+perf-stats: export NABU_PERF_REPORT ?= /tmp/nabu-stats-workload.json
+perf-stats:
+	@test -n "$$TEST_DATABASE_URL" || { echo "TEST_DATABASE_URL must not be empty" >&2; exit 1; }
+	NABU_PERF=1 NABU_PERF_ENFORCE=1 $(GO) test -timeout 240s ./internal/stats -run '^TestLocalStatsWorkload$$' -count=1 -v
 
 fmt:
 	$(GO) fmt ./...

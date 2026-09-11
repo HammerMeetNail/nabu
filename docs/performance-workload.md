@@ -138,11 +138,22 @@ It compares the original full-log reader with the optimized Stats readers and
 requires identical results at each size. No production data is used.
 
 ```sh
-TEST_DATABASE_URL='postgres://nabu:nabu@localhost:5432/nabu?sslmode=disable' \
-  NABU_PERF=1 NABU_PERF_ENFORCE=1 \
-  NABU_PERF_REPORT=/tmp/nabu-stats-workload.json \
-  go test -timeout 240s ./internal/stats -run '^TestLocalStatsWorkload$' -count=1 -v
+make perf-stats
 ```
+
+Run from a worktree with local PostgreSQL already running (`make local` starts
+the development stack). The target defaults to the local stack's
+`postgres://nabu:nabu@localhost:5432/nabu?sslmode=disable` connection and writes
+`/tmp/nabu-stats-workload.json`. Override `TEST_DATABASE_URL` or
+`NABU_PERF_REPORT` through the environment or Make command-line assignments.
+The database role needs `CREATEDB`; the workload creates and removes its own
+randomly named database. An empty connection setting fails instead of silently
+skipping the test.
+
+The target always runs fresh measurements with latency, allocation and query
+budgets enforced. It is an optional local check before pushing; `make test`,
+the pre-push hook and CI do not run this large workload automatically. Browser
+responsiveness regressions remain part of `make e2e`.
 
 On a macOS host with Go 1.26.8 (darwin/amd64) and PostgreSQL 17 in a Podman VM
 with six CPUs and 16 GiB, the 60,000-activity run measured 20 warmed calls:
