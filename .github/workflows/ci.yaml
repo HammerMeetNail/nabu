@@ -336,6 +336,9 @@ jobs:
       - name: Scan this architecture's release image
         if: startsWith(github.ref, 'refs/tags/v')
         uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          # Trivy defaults to amd64 even on the arm64 runner.
+          TRIVY_PLATFORM: linux/${{ matrix.arch }}
         with:
           version: v0.74.0
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
