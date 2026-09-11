@@ -189,3 +189,79 @@ final class NotificationTests: XCTestCase {
         XCTAssertTrue(state.availableNotificationTypes.isEmpty)
     }
 }
+
+@MainActor
+final class NotificationOwnershipTests: XCTestCase {
+    private func response(_ request: URLRequest, _ ids: [Int], cursor: String? = nil, status: Int = 200) throws -> (Data, URLResponse) {
+        let rows = ids.map { AppNotification(id: $0, userId: 1, type: "chore_logged", title: "Synthetic \($0)", body: "", isRead: false, createdAt: Date()) }
+        return (try apiEncoder.encode(NotificationsResponse(notifications: rows, unreadCount: rows.count, nextCursor: cursor)),
+                HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
+    }
+
+    func testRefreshOrMutationInvalidatesPendingNotificationPage() async throws {
+        for mutation in [false, true] {
+            let state = AppState()
+            let gate = NativeResponseGate()
+            var api = APIClient(baseURL: URL(string: "http://localhost:9999")!)
+            var reads = 0
+            api.mockAsyncHandler = { request in
+                if request.httpMethod == "DELETE" {
+                    return (Data(#"{"status":"ok"}"#.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+                }
+                if request.url!.query != nil { await gate.pause(); return try self.response(request, [60, 1], cursor: "obsolete") }
+                reads += 1
+                return try self.response(request, reads == 1 ? [60] : [70], cursor: reads == 1 ? "first" : "current")
+            }
+            let loader = NotificationDataLoader(api: api, state: state)
+            await loader.loadNotifData()
+            let old = Task { await loader.loadNotifData(append: true) }
+            await gate.waitUntilPaused()
+            if mutation { await loader.mutate(.delete(60)) } else { await loader.loadNotifData() }
+            await gate.release()
+            await old.value
+            XCTAssertEqual(state.notifications.map(\.id), mutation ? [] : [70])
+            XCTAssertEqual(state.notificationCursor, mutation ? "first" : "current")
+            XCTAssertFalse(state.notificationLoadingMore)
+            XCTAssertFalse(state.notificationMutating)
+            XCTAssertNil(state.notificationError)
+        }
+    }
+
+    func testFailedNotificationPageRetainsCursorAndCanRetry() async throws {
+        let state = AppState()
+        var api = APIClient(baseURL: URL(string: "http://localhost:9999")!)
+        var fail = true
+        api.mockAsyncHandler = { request in
+            if request.url!.query == nil { return try self.response(request, [60], cursor: "older") }
+            if fail { throw URLError(.notConnectedToInternet) }
+            return try self.response(request, [1])
+        }
+        let loader = NotificationDataLoader(api: api, state: state)
+        await loader.loadNotifData()
+        await loader.loadNotifData(append: true)
+        XCTAssertEqual(state.notifications.map(\.id), [60])
+        XCTAssertEqual(state.notificationCursor, "older")
+        XCTAssertNotNil(state.notificationError)
+        fail = false
+        await loader.loadNotifData(append: true)
+        XCTAssertEqual(state.notifications.map(\.id), [60, 1])
+        XCTAssertNil(state.notificationCursor)
+        XCTAssertNil(state.notificationError)
+    }
+
+    func testPendingNotificationResponseCannotPublishAfterReset() async throws {
+        let state = AppState()
+        var api = APIClient(baseURL: URL(string: "http://localhost:9999")!)
+        let gate = NativeResponseGate()
+        api.mockAsyncHandler = { request in await gate.pause(); return try self.response(request, [99], cursor: "old") }
+        let loader = NotificationDataLoader(api: api, state: state)
+        let old = Task { await loader.loadNotifData() }
+        await gate.waitUntilPaused()
+        state.reset()
+        await gate.release()
+        await old.value
+        XCTAssertTrue(state.notifications.isEmpty)
+        XCTAssertNil(state.notificationCursor)
+        XCTAssertFalse(state.notificationLoading)
+    }
+}

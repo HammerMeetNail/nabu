@@ -70,7 +70,10 @@ test.describe('Private household tasks', () => {
     const code = (await inviteRes.json()).invite.code;
 
     const { page: adminPage, context: adminCtx } = await joinAsUser(browser, code);
-    const { page: memberPage, context: memberCtx } = await joinAsUser(browser, code);
+    const memberInvite = await ownerPage.request.post('/api/household/invites', {
+      headers: { 'X-CSRF-Token': ownerCsrf },
+    });
+    const { page: memberPage, context: memberCtx } = await joinAsUser(browser, (await memberInvite.json()).invite.code);
 
     // Promote adminPage's user to admin — get admin's userId via /api/me
     const adminMeRes = await adminPage.request.get('/api/me');

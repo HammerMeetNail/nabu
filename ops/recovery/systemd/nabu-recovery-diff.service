@@ -1,0 +1,14 @@
+[Unit]
+Description=Nabu Daily differential backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=deploy
+WorkingDirectory=/opt/nabu
+UMask=0077
+TimeoutStartSec=65min
+TimeoutStopSec=30s
+KillMode=control-group
+ExecStart=/opt/nabu/scripts/recovery-job.sh diff

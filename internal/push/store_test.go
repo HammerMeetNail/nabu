@@ -5,6 +5,29 @@ import (
 	"testing"
 )
 
+func TestEndpointHasOneOwner(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	sub := Subscription{Endpoint: "https://fcm.googleapis.com/send/shared-browser", P256DH: "key", Auth: "auth"}
+	if err := store.SaveSubscription(ctx, 1, sub); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveSubscription(ctx, 2, sub); err != nil {
+		t.Fatal(err)
+	}
+	old, err := store.GetSubscriptions(ctx, 1)
+	if err != nil || len(old) != 0 {
+		t.Fatalf("previous account still owns endpoint: %d, %v", len(old), err)
+	}
+	if err := store.DeleteSubscription(ctx, 1, sub.Endpoint, ""); err != nil {
+		t.Fatal(err)
+	}
+	current, err := store.GetSubscriptions(ctx, 2)
+	if err != nil || len(current) != 1 {
+		t.Fatalf("old unsubscribe removed new owner: %d, %v", len(current), err)
+	}
+}
+
 func TestMemoryStore_SaveAndGet(t *testing.T) {
 	store := NewMemoryStore()
 	ctx := context.Background()
@@ -64,7 +87,7 @@ func TestMemoryStore_DeleteSubscription(t *testing.T) {
 	_ = store.SaveSubscription(ctx, 1, Subscription{Endpoint: "https://a.example.com", P256DH: "k", Auth: "a"})
 	_ = store.SaveSubscription(ctx, 1, Subscription{Endpoint: "https://b.example.com", P256DH: "k2", Auth: "a2"})
 
-	if err := store.DeleteSubscription(ctx, 1, "https://a.example.com"); err != nil {
+	if err := store.DeleteSubscription(ctx, 1, "https://a.example.com", ""); err != nil {
 		t.Fatalf("DeleteSubscription: %v", err)
 	}
 
@@ -83,7 +106,7 @@ func TestMemoryStore_DeleteNonExistentEndpoint(t *testing.T) {
 	_ = store.SaveSubscription(ctx, 1, Subscription{Endpoint: "https://a.example.com", P256DH: "k", Auth: "a"})
 
 	// Deleting a non-existent endpoint should not error and should not remove existing ones
-	if err := store.DeleteSubscription(ctx, 1, "https://nonexistent.example.com"); err != nil {
+	if err := store.DeleteSubscription(ctx, 1, "https://nonexistent.example.com", ""); err != nil {
 		t.Fatalf("DeleteSubscription: %v", err)
 	}
 	subs, _ := store.GetSubscriptions(ctx, 1)

@@ -25,6 +25,34 @@ final class AuthTests: XCTestCase {
         XCTAssertEqual(store.api.baseURL, URL(string: "http://other:8080")!)
     }
 
+    @MainActor
+    func testRegistrationRetryOffersRecovery() async {
+        api.mockHandler = { request in
+            let body = #"{"status":"if this email is new, check your inbox"}"#.data(using: .utf8)!
+            return (body, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let auth = AuthStore(api: api)
+        let user = await auth.register(email: "test@example.invalid", password: "synthetic-password")
+        XCTAssertNil(user)
+        XCTAssertNil(auth.errorMessage)
+        XCTAssertTrue(auth.registrationNotice?.contains("sign in") == true)
+    }
+
+    @MainActor
+    func testSetPasswordSendsEmptyCurrentAndReturnsUpdatedUser() async {
+        api.mockHandler = { request in
+            XCTAssertEqual(request.url?.path, "/api/auth/password")
+            let body = try! JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
+            XCTAssertEqual(body["current_password"] as? String, "")
+            XCTAssertEqual(body["new_password"] as? String, "owner-password")
+            let response = ##"{"user":{"id":1,"householdId":null,"email":"owner@test.local","displayName":"Owner","avatarColor":"#19323C","emailVerified":true,"hasPassword":true,"role":"","createdAt":"2026-09-10T12:00:00Z"}}"##.data(using: .utf8)!
+            return (response, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let auth = AuthStore(api: api)
+        let user = await auth.changePassword(current: "", new: "owner-password")
+        XCTAssertEqual(user?.hasPassword, true)
+    }
+
     // MARK: - Validation helpers (client-side password rules)
 
     func testPasswordMinLength8() {

@@ -63,3 +63,12 @@ enum VolumeUnits {
         return opts
     }
 }
+
+/// Amount columns keep their configured unit; the mL/oz preference applies
+/// only to actual liquid-volume chores.
+func formatChoreAmount(_ value: Int, chore: Chore?, volumeUnit: String) -> String {
+    guard let chore, !["", "ml", "oz"].contains(chore.metricUnit.lowercased()) else {
+        return VolumeUnits.formatVolume(value, unit: volumeUnit)
+    }
+    return "\(value) \(chore.metricUnit)"
+}

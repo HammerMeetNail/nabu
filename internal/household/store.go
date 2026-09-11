@@ -60,6 +60,8 @@ type Invite struct {
 }
 
 type Store interface {
+	InTransaction(ctx context.Context, fn func(Store) error) error
+	RevokeInvites(ctx context.Context, householdID int64) error
 	CreateHousehold(ctx context.Context, name, initials string, ownerID int64) (Household, error)
 	GetHousehold(ctx context.Context, id int64) (Household, error)
 	GetUserHousehold(ctx context.Context, userID int64) (Household, error)

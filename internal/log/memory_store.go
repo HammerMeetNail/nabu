@@ -2,6 +2,8 @@ package log
 
 import (
 	"context"
+	"github.com/HammerMeetNail/nabu/internal/lifecycle"
+	"github.com/HammerMeetNail/nabu/internal/readlimit"
 	"sort"
 	"strings"
 	"sync"
@@ -9,9 +11,10 @@ import (
 )
 
 type MemoryStore struct {
-	mu    sync.RWMutex
-	idSeq int64
-	logs  map[int64]ChoreLog
+	deleted lifecycle.Tombstones
+	mu      sync.RWMutex
+	idSeq   int64
+	logs    map[int64]ChoreLog
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -26,6 +29,17 @@ func (s *MemoryStore) nextID() int64 {
 func (s *MemoryStore) CreateLog(_ context.Context, log ChoreLog) (ChoreLog, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.deleted.Check(log.UserID, log.HouseholdID, log.ChoreID, 0, 0); err != nil {
+		return ChoreLog{}, err
+	}
+
+	if log.IdempotencyKey != "" {
+		for _, existing := range s.logs {
+			if existing.HouseholdID == log.HouseholdID && existing.IdempotencyKey == log.IdempotencyKey {
+				return ChoreLog{}, ErrIdempotencyConflict
+			}
+		}
+	}
 	log.ID = s.nextID()
 	log.CreatedAt = time.Now().UTC()
 	s.logs[log.ID] = log
@@ -45,29 +59,21 @@ func (s *MemoryStore) GetLog(_ context.Context, id int64) (ChoreLog, error) {
 	return l, nil
 }
 
-func (s *MemoryStore) UpdateLog(_ context.Context, log ChoreLog) error {
+func (s *MemoryStore) UpdateLog(_ context.Context, log ChoreLog, fields ...LogFields) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.deleted.Check(log.UserID, log.HouseholdID, log.ChoreID, 0, log.ID); err != nil {
+		return err
+	}
+
 	existing, ok := s.logs[log.ID]
 	if !ok {
 		return ErrNotFound
 	}
-	existing.Note = log.Note
-	if log.Indicators == nil {
-		existing.Indicators = []string{}
-	} else {
-		existing.Indicators = log.Indicators
+	if existing.HouseholdID != log.HouseholdID {
+		return ErrNotFound
 	}
-	existing.VolumeML = log.VolumeML
-	existing.IndicatorVolumes = log.IndicatorVolumes
-	existing.UserID = log.UserID
-	existing.CompletedAt = log.CompletedAt
-	existing.SlotHour = log.SlotHour
-	existing.LogDate = log.LogDate
-	existing.Title = log.Title
-	existing.Rating = log.Rating
-	existing.DurationSeconds = log.DurationSeconds
-	existing.Subject = log.Subject
+	existing = mergeLog(existing, log, fieldsOrAll(fields))
 	s.logs[log.ID] = existing
 	return nil
 }
@@ -92,25 +98,28 @@ func (s *MemoryStore) FindLog(_ context.Context, householdID, choreID int64, dat
 	return nil, ErrNotFound
 }
 
-func (s *MemoryStore) ListLogs(_ context.Context, householdID int64, date time.Time) ([]ChoreLog, error) {
+func (s *MemoryStore) ListLogs(ctx context.Context, householdID int64, date time.Time) ([]ChoreLog, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var result []ChoreLog
 	for _, l := range s.logs {
-		if l.HouseholdID == householdID && logMatchesDate(l, date) {
+		if readAllowed(ctx, householdID, l.ChoreID) && l.HouseholdID == householdID && logMatchesDate(l, date) {
 			result = append(result, l)
 		}
 	}
 	return result, nil
 }
 
-func (s *MemoryStore) ListLogsRange(_ context.Context, householdID int64, start, end time.Time) ([]ChoreLog, error) {
+func (s *MemoryStore) ListLogsRange(ctx context.Context, householdID int64, start, end time.Time) ([]ChoreLog, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var result []ChoreLog
 	for _, l := range s.logs {
-		if l.HouseholdID == householdID && logInRange(l, start, end) {
+		if readAllowed(ctx, householdID, l.ChoreID) && l.HouseholdID == householdID && logInRange(l, start, end) {
 			result = append(result, l)
+			if err := readlimit.Check(ctx, len(result)); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return result, nil
@@ -134,13 +143,13 @@ func (s *MemoryStore) ListLogUserIDs(_ context.Context, householdID int64) ([]in
 	return result, nil
 }
 
-func (s *MemoryStore) HistoryLogs(_ context.Context, householdID int64, start, end time.Time) ([]ChoreLog, bool, error) {
+func (s *MemoryStore) HistoryLogs(ctx context.Context, householdID int64, start, end time.Time) ([]ChoreLog, bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var result []ChoreLog
 	hasOlder := false
 	for _, l := range s.logs {
-		if l.HouseholdID == householdID {
+		if readAllowed(ctx, householdID, l.ChoreID) && l.HouseholdID == householdID {
 			if logInRange(l, start, end) {
 				result = append(result, l)
 			}
@@ -150,6 +159,9 @@ func (s *MemoryStore) HistoryLogs(_ context.Context, householdID int64, start, e
 		}
 	}
 	sort.Slice(result, func(i, j int) bool {
+		if result[i].CompletedAt.Equal(result[j].CompletedAt) {
+			return result[i].ID > result[j].ID
+		}
 		return result[i].CompletedAt.After(result[j].CompletedAt)
 	})
 	if result == nil {
@@ -158,7 +170,7 @@ func (s *MemoryStore) HistoryLogs(_ context.Context, householdID int64, start, e
 	return result, hasOlder, nil
 }
 
-func (s *MemoryStore) SearchHistoryLogs(_ context.Context, householdID int64, query string, limit int) ([]ChoreLog, error) {
+func (s *MemoryStore) SearchHistoryLogs(ctx context.Context, householdID int64, query string, limit int) ([]ChoreLog, error) {
 	if limit <= 0 {
 		limit = 50
 	}
@@ -167,7 +179,7 @@ func (s *MemoryStore) SearchHistoryLogs(_ context.Context, householdID int64, qu
 	defer s.mu.RUnlock()
 	var result []ChoreLog
 	for _, l := range s.logs {
-		if l.HouseholdID != householdID {
+		if !readAllowed(ctx, householdID, l.ChoreID) || l.HouseholdID != householdID {
 			continue
 		}
 		note := strings.ToLower(l.Note)
@@ -180,6 +192,9 @@ func (s *MemoryStore) SearchHistoryLogs(_ context.Context, householdID int64, qu
 		}
 	}
 	sort.Slice(result, func(i, j int) bool {
+		if result[i].CompletedAt.Equal(result[j].CompletedAt) {
+			return result[i].ID > result[j].ID
+		}
 		return result[i].CompletedAt.After(result[j].CompletedAt)
 	})
 	if len(result) > limit {
@@ -242,12 +257,12 @@ func logBeforeRange(l ChoreLog, start time.Time) bool {
 	return l.CompletedAt.Before(start)
 }
 
-func (s *MemoryStore) LatestPerChore(_ context.Context, householdID int64) (map[int64]ChoreLog, error) {
+func (s *MemoryStore) LatestPerChore(ctx context.Context, householdID int64) (map[int64]ChoreLog, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	result := map[int64]ChoreLog{}
 	for _, l := range s.logs {
-		if l.HouseholdID != householdID {
+		if !readAllowed(ctx, householdID, l.ChoreID) || l.HouseholdID != householdID {
 			continue
 		}
 		if existing, ok := result[l.ChoreID]; !ok || l.CompletedAt.After(existing.CompletedAt) || (l.CompletedAt.Equal(existing.CompletedAt) && l.ID > existing.ID) {
@@ -258,4 +273,18 @@ func (s *MemoryStore) LatestPerChore(_ context.Context, householdID int64) (map[
 		}
 	}
 	return result, nil
+}
+
+func (s *MemoryStore) CleanupAccount(d *lifecycle.Deletion) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for id, l := range s.logs {
+		if l.UserID == d.UserID || d.Households[l.HouseholdID] || d.Chores[l.ChoreID] {
+			d.Logs[id] = true
+			delete(s.logs, id)
+		}
+	}
+
+	s.deleted.Mark(d)
 }

@@ -10,6 +10,9 @@ enum APIError: LocalizedError {
     case encodingError(Error)
     case networkError(Error)
     case unauthorized
+    case contextChanged
+    case saveNotDurable
+    case submissionInProgress
 
     var errorDescription: String? {
         switch self {
@@ -34,6 +37,12 @@ enum APIError: LocalizedError {
             return "Network error: \(error.localizedDescription)"
         case .unauthorized:
             return "Session expired. Please sign in again."
+        case .contextChanged:
+            return "Your account or household changed. Confirm your session before continuing."
+        case .saveNotDurable:
+            return "This save could not be stored on your device. Keep this form open and retry."
+        case .submissionInProgress:
+            return "This save is already being sent."
         }
     }
 }

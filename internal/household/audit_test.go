@@ -44,7 +44,6 @@ func TestAudit_HouseholdCreated(t *testing.T) {
 	assertEvent(t, rec, "household.created", map[string]string{
 		"user_id":      "1",
 		"household_id": idStr(hh.ID),
-		"name":         "Smith",
 	})
 }
 
@@ -59,7 +58,6 @@ func TestAudit_HouseholdUpdated(t *testing.T) {
 	assertEvent(t, rec, "household.updated", map[string]string{
 		"user_id":      "1",
 		"household_id": idStr(hh.ID),
-		"name":         "New",
 	})
 }
 
@@ -274,4 +272,20 @@ func TestAudit_OwnershipTransferred_NotOwnerNotAudited(t *testing.T) {
 // idStr formats an int64 the same way the service does in audit attrs.
 func idStr(id int64) string {
 	return strconv.FormatInt(id, 10)
+}
+
+func TestAuditOmitsHouseholdNames(t *testing.T) {
+	svc, _, _, rec := newSvcWithAudit()
+	ctx := context.Background()
+	if _, err := svc.CreateHousehold(ctx, "PRIVATE-HOUSEHOLD-NAME", "", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := svc.UpdateHousehold(ctx, 1, "PRIVATE-UPDATED-NAME", ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, event := range rec.Events() {
+		if _, ok := event.Attrs["name"]; ok {
+			t.Fatal("raw household name in audit")
+		}
+	}
 }

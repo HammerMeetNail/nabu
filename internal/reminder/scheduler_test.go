@@ -15,6 +15,38 @@ type fakeLeaderLock struct {
 func (f fakeLeaderLock) TryAcquire(context.Context) (bool, error) { return f.acquired, f.err }
 func (f fakeLeaderLock) Release(context.Context) error            { return nil }
 
+type slowReleaseLock struct{ entered chan time.Time }
+
+func (s slowReleaseLock) TryAcquire(context.Context) (bool, error) { return true, nil }
+func (s slowReleaseLock) Release(ctx context.Context) error {
+	deadline, _ := ctx.Deadline()
+	s.entered <- deadline
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func TestShutdownBoundsLeadershipRelease(t *testing.T) {
+	lock := slowReleaseLock{entered: make(chan time.Time, 1)}
+	s := &Scheduler{leader: lock}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	done := make(chan struct{})
+	go func() { s.Start(ctx); close(done) }()
+	select {
+	case deadline := <-lock.entered:
+		if deadline.IsZero() || time.Until(deadline) > 2*time.Second {
+			t.Fatal("unbounded leadership cleanup")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("scheduler did not enter cleanup")
+	}
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("shutdown blocked on leadership release")
+	}
+}
+
 func TestAcquireLeadership(t *testing.T) {
 	tests := []struct {
 		name   string

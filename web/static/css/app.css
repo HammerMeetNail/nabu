@@ -2886,6 +2886,9 @@ details[open] .chore-stat-chevron {
   position: relative;
 }
 
+body.sheet-open .app-shell { overflow: hidden; }
+body.sheet-open .timer-chip { visibility: hidden; }
+
 .sheet-backdrop {
   position: fixed;
   inset: 0;
@@ -2962,6 +2965,7 @@ details[open] .chore-stat-chevron {
 
 .sheet-time-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
@@ -2974,7 +2978,10 @@ details[open] .chore-stat-chevron {
 }
 
 .sheet-time-input {
-  max-width: 140px;
+  flex: 1 1 240px;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /* Follow-up scheduling inside log sheet */
@@ -4517,7 +4524,7 @@ details[open] .chore-stat-chevron {
   bottom: 76px;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 900;
+  z-index: 250;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -4578,3 +4585,11 @@ details[open] .chore-stat-chevron {
   vertical-align: middle;
 }
 .hist-row--pending { opacity: 0.7; cursor: default; }
+
+
+.export-date-range { display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
+.export-date-range label { display: flex; flex: 1 1 150px; flex-direction: column; gap: 4px; min-width: 0; }
+.export-date-range input { width: 100%; min-width: 0; }
+
+.notif-read .notif-title { font-weight: 400; color: var(--text-secondary); }
+.notif-retention { padding: 0.75rem; font-size: 0.8rem; }

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -16,21 +17,20 @@ func NewNotificationHandler(service *notification.Service) *NotificationHandler 
 	return &NotificationHandler{service: service}
 }
 
-// List returns the 50 most-recent notifications and the current unread count.
+// List returns a bounded newest-first cursor page and the current unread count.
 func (h *NotificationHandler) List(w http.ResponseWriter, r *http.Request) {
 	user, _ := middleware.CurrentUser(r.Context())
-	notifs, unread, err := h.service.List(r.Context(), user.ID)
+	page, err := h.service.ListPage(r.Context(), user.ID, r.URL.Query().Get("cursor"))
+	if errors.Is(err, notification.ErrInvalidCursor) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
 	if err != nil {
 		writeServerError(w, "failed to load notifications", err)
 		return
 	}
-	if notifs == nil {
-		notifs = []notification.Notification{}
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"notifications": notifs,
-		"unreadCount":   unread,
-	})
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, page)
 }
 
 // MarkRead marks a single notification as read.

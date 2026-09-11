@@ -2,10 +2,12 @@ package mail
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 	"net/smtp"
 	"strings"
+	"time"
 )
 
 type SMTPSender struct {
@@ -29,7 +31,9 @@ func NewSMTPSender(host, port, user, pass, from string) *SMTPSender {
 	}
 }
 
-func (s *SMTPSender) Send(_ context.Context, msg Message) error {
+func (s *SMTPSender) Send(ctx context.Context, msg Message) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	from := s.from
 	if from == "" {
 		from = "no-reply@nabu.local"
@@ -38,16 +42,32 @@ func (s *SMTPSender) Send(_ context.Context, msg Message) error {
 	body := buildEmail(from, msg)
 	addr := net.JoinHostPort(s.host, s.port)
 
-	if s.user != "" && s.pass != "" {
-		auth := smtp.PlainAuth("", s.user, s.pass, s.host)
-		return smtp.SendMail(addr, auth, from, to, []byte(body))
-	}
-
-	c, err := smtp.Dial(addr)
+	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return fmt.Errorf("smtp dial: %w", err)
 	}
+	defer conn.Close()
+	deadline, _ := ctx.Deadline()
+	if err := conn.SetDeadline(deadline); err != nil {
+		return err
+	}
+	stop := context.AfterFunc(ctx, func() { _ = conn.Close() })
+	defer stop()
+	c, err := smtp.NewClient(conn, s.host)
+	if err != nil {
+		return fmt.Errorf("smtp greeting: %w", err)
+	}
 	defer c.Close()
+	if ok, _ := c.Extension("STARTTLS"); ok {
+		if err := c.StartTLS(&tls.Config{ServerName: s.host, MinVersion: tls.VersionTLS12}); err != nil {
+			return err
+		}
+	}
+	if s.user != "" && s.pass != "" {
+		if err := c.Auth(smtp.PlainAuth("", s.user, s.pass, s.host)); err != nil {
+			return err
+		}
+	}
 
 	if err := c.Mail(from); err != nil {
 		return fmt.Errorf("smtp mail: %w", err)
@@ -73,9 +93,9 @@ func (s *SMTPSender) Send(_ context.Context, msg Message) error {
 
 func buildEmail(from string, msg Message) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("From: %s\r\n", from))
-	b.WriteString(fmt.Sprintf("To: %s\r\n", msg.To))
-	b.WriteString(fmt.Sprintf("Subject: %s\r\n", msg.Subject))
+	fmt.Fprintf(&b, "From: %s\r\n", from)
+	fmt.Fprintf(&b, "To: %s\r\n", msg.To)
+	fmt.Fprintf(&b, "Subject: %s\r\n", msg.Subject)
 	b.WriteString("MIME-Version: 1.0\r\n")
 	b.WriteString("Content-Type: text/html; charset=UTF-8\r\n")
 	b.WriteString("\r\n")

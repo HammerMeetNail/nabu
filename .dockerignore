@@ -1,4 +1,10 @@
 .git
+/.env
+/.env.*
+/.cache
+/worktrees
+/test-results
+/playwright-report
 .gitignore
 .dockerignore
 Containerfile

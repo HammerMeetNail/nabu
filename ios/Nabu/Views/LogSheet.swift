@@ -9,6 +9,11 @@ struct LogSheet: View {
     var onUndo: ((Int, String) -> Void)?
 
     @State private var note = ""
+    @State private var submissionKey = UUID().uuidString
+    @State private var submissionStarted = false
+    @State private var recentAmounts: [Int] = []
+    @State private var durationSeconds: Int?
+    @State private var didInitialize = false
     @State private var title = ""
     @State private var rating: Int = 0
     @State private var selectedIndicators: [String] = []
@@ -25,10 +30,13 @@ struct LogSheet: View {
 
     private var isEditing: Bool { log != nil }
     private var volumeUnit: String { state.volumeUnit == "oz" ? "oz" : "ml" }
+    private var isVolume: Bool { chore.hasVolumeML && ["", "ml", "oz"].contains(chore.metricUnit.lowercased()) }
+    private var amountLabel: String { isVolume ? "Volume" : "Amount (\(chore.metricUnit))" }
 
     var body: some View {
         NavigationStack {
             Form {
+                Group {
                 if hasWhenPicker {
                     Section {
                         DatePicker("When", selection: $whenDate)
@@ -88,11 +96,18 @@ struct LogSheet: View {
 
                 // Volume-only chores (no indicators, but hasVolumeML)
                 if chore.hasVolumeML && !hasIndicators {
-                    Section("Volume") {
+                    Section(amountLabel) {
                         volumePicker(selection: $volumeML)
                     }
                 }
 
+                if chore.metricType == "duration" {
+                    Section("Duration (seconds)") {
+                        TextField("Optional", value: $durationSeconds, format: .number)
+                            .keyboardType(.numberPad)
+                            .accessibilityIdentifier("duration-seconds")
+                    }
+                }
                 if !isEditing && chore.metricType == "duration" {
                     Section {
                         Button {
@@ -167,7 +182,13 @@ struct LogSheet: View {
                         .lineLimit(2...4)
                 }
 
+                }
+                .disabled(isSaving || submissionStarted)
                 Section {
+                    if submissionStarted {
+                        Text("This saved request is fixed for safe retry. You can retry it here or manage it in Pending saves.")
+                            .font(.caption)
+                    }
                     if let error = errorMessage {
                         Text(error)
                             .foregroundColor(.red)
@@ -181,7 +202,7 @@ struct LogSheet: View {
                             ProgressView()
                                 .frame(maxWidth: .infinity)
                         } else {
-                            Text(isEditing ? "Update" : "Log")
+                            Text(isEditing ? "Update" : (submissionStarted ? "Retry save" : "Log"))
                                 .frame(maxWidth: .infinity)
                                 .fontWeight(.semibold)
                         }
@@ -210,35 +231,40 @@ struct LogSheet: View {
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .onAppear {
-            setupFromLog()
+            if !didInitialize { setupFromLog(); didInitialize = true }
+        }
+        .task {
+            guard !isEditing, chore.hasVolumeML else { return }
+            recentAmounts = state.recentAmounts[chore.id] ?? []
+            if let amounts = await logStore.loadRecentAmounts(choreId: chore.id, state: state) {
+                recentAmounts = amounts
+            }
         }
     }
 
     private var hasWhenPicker: Bool { true }
     private var hasIndicators: Bool { !chore.indicatorLabels.isEmpty }
 
-    /// Last 3 distinct amounts drawn from state, most-recent-first.
-    private var recentVolumeValues: [Int] {
-        // Fresh logs only — editing an existing log keeps its own value.
-        guard !isEditing else { return [] }
-        return recentVolumes(
-            forChore: chore.id,
-            latest: state.latestLogs[chore.id],
-            sources: state.todayLogs
-        )
-    }
+    private var recentVolumeValues: [Int] { isEditing ? [] : recentAmounts }
 
+    @ViewBuilder
     private func volumePicker(selection: Binding<Int?>) -> some View {
-        // Option values are always canonical mL; only labels change by unit.
-        let options = VolumeUnits.volumeOptions(unit: volumeUnit, selectedML: selection.wrappedValue)
-        return Picker("Volume", selection: selection) {
-            Text("--").tag(Int?.none)
-            ForEach(options, id: \.ml) { option in
-                Text(option.label).tag(Optional(option.ml))
+        if isVolume {
+            let options = VolumeUnits.volumeOptions(unit: volumeUnit, selectedML: selection.wrappedValue)
+            Picker("Volume", selection: selection) {
+                Text("--").tag(Int?.none)
+                ForEach(options, id: \.ml) { option in
+                    Text(option.label).tag(Optional(option.ml))
+                }
             }
+            .pickerStyle(.menu)
+            .accessibilityIdentifier("volume-picker")
+        } else {
+            TextField(amountLabel, value: selection, format: .number)
+                .keyboardType(.numberPad)
+                .accessibilityLabel(amountLabel)
+                .accessibilityIdentifier("amount-input")
         }
-        .pickerStyle(.menu)
-        .accessibilityIdentifier("volume-picker")
     }
 
     private var subjectChips: some View {
@@ -268,7 +294,7 @@ struct LogSheet: View {
                 Button {
                     applyRecentVolume(ml)
                 } label: {
-                    Text(VolumeUnits.formatVolume(ml, unit: volumeUnit))
+                    Text(isVolume ? VolumeUnits.formatVolume(ml, unit: volumeUnit) : "\(ml) \(chore.metricUnit)")
                         .font(.subheadline)
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
@@ -295,12 +321,14 @@ struct LogSheet: View {
     }
 
     private func startTimer() {
+        guard let origin = logStore.api.identity.snapshot.origin else { return }
+        guard state.activeTimer == nil else { errorMessage = "Finish the existing timer first."; return }
         let timer = ActiveTimer(
             choreId: chore.id, choreName: chore.name,
-            choreIcon: chore.icon, startedAt: Date()
+            choreIcon: chore.icon, startedAt: Date(), origin: origin
         )
+        guard DurationTimer.save(timer) else { errorMessage = APIError.saveNotDurable.errorDescription; return }
         state.activeTimer = timer
-        DurationTimer.save(timer)
         dismiss()
     }
 
@@ -340,6 +368,7 @@ struct LogSheet: View {
             selectedIndicators = log.indicators
             indicatorVolumes = log.indicatorVolumes ?? [:]
             volumeML = log.volumeML
+            durationSeconds = log.durationSeconds
             selectedSubject = log.subject
             selectedUserId = log.userId
             whenDate = log.completedAt
@@ -372,11 +401,19 @@ struct LogSheet: View {
 
     private func saveLog() {
         guard !isSaving else { return }
+        let amounts = Array(indicatorVolumes.values) + [volumeML].compactMap { $0 }
+        guard amounts.allSatisfy({ (0...100000).contains($0) }), durationSeconds.map({ (0...86400).contains($0) }) ?? true else {
+            errorMessage = "Amount must be 0–100000; duration must be 0–86400 seconds."
+            return
+        }
+        let owner = state.revision
         isSaving = true
         errorMessage = nil
 
         let isoFormatter = ISO8601DateFormatter()
         let dateFormatter = DateFormatter()
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        dateFormatter.calendar = Calendar(identifier: .gregorian)
         dateFormatter.dateFormat = "yyyy-MM-dd"
 
         let completedAtISO = isoFormatter.string(from: whenDate)
@@ -390,7 +427,7 @@ struct LogSheet: View {
                 selectedIndicators.contains(k)
             }.compactMapValues { $0 }
             if activeVolumes.isEmpty || selectedIndicators.isEmpty {
-                errorMessage = "Select a volume and food type"
+                errorMessage = "Select an amount and type"
                 isSaving = false
                 return
             }
@@ -403,36 +440,27 @@ struct LogSheet: View {
 
         let trimmedTitle = title.trimmingCharacters(in: .whitespaces)
 
+        if !isEditing { submissionStarted = true }
         Task {
             do {
                 if let logId = log?.id {
+                    let changedWhen = whenDate != log?.completedAt
                     let _ = try await logStore.updateLog(
                         logId: logId, note: note, indicators: selectedIndicators,
-                        volumeML: volumeML, userId: selectedUserId,
-                        completedAt: completedAtISO, hour: hour, date: dateStr,
-                        indicatorVolumes: activeVolumes.isEmpty ? nil : activeVolumes,
-                        rating: rating > 0 ? rating : nil,
-                        title: trimmedTitle.isEmpty ? nil : trimmedTitle,
-                        // Explicit .some so a deselected chip clears the tag.
+                        volumeML: chore.hasVolumeML ? .some(volumeML) : nil, userId: selectedUserId,
+                        completedAt: changedWhen ? completedAtISO : nil, hour: changedWhen ? hour : nil,
+                        date: changedWhen ? dateStr : nil,
+                        indicatorVolumes: chore.hasVolumeML && hasIndicators ? activeVolumes : nil,
+                        rating: chore.hasRating ? .some(rating > 0 ? rating : nil) : nil,
+                        title: chore.hasRating ? .some(trimmedTitle.isEmpty ? nil : trimmedTitle) : nil,
+                        durationSeconds: chore.metricType == "duration" ? .some(durationSeconds) : nil,
                         subject: chore.subjects.isEmpty ? nil : .some(selectedSubject)
                     )
-                    if let idx = state.todayLogs.firstIndex(where: { $0.id == logId }) {
-                        let updated = state.todayLogs[idx]
-                        let newLog = ChoreLog(
-                            id: updated.id, householdId: updated.householdId,
-                            userId: selectedUserId ?? updated.userId,
-                            choreId: updated.choreId, completedAt: whenDate,
-                            note: note, indicators: selectedIndicators,
-                            slotHour: hour, createdAt: updated.createdAt,
-                            volumeML: volumeML,
-                            indicatorVolumes: activeVolumes.isEmpty ? nil : activeVolumes,
-                            title: trimmedTitle.isEmpty ? updated.title : trimmedTitle,
-                            rating: rating > 0 ? rating : updated.rating,
-                            durationSeconds: updated.durationSeconds,
-                            subject: chore.subjects.isEmpty ? updated.subject : selectedSubject
-                        )
-                        state.todayLogs[idx] = newLog
-                    }
+                    guard state.revision == owner else { return }
+                    let loader = LogDataLoader(api: logStore.api, state: state)
+                    await loader.loadTodayData()
+                    guard state.revision == owner else { return }
+                    await loader.loadLatestLogsData()
                 } else {
                     let followUpMinutes = followUpDays * 1440 + followUpHours * 60 + followUpMins
                     let followUpTime: String? = {
@@ -454,8 +482,10 @@ struct LogSheet: View {
                         followUpTime: followUpTime,
                         rating: rating > 0 ? rating : nil,
                         title: trimmedTitle.isEmpty ? nil : trimmedTitle,
-                        subject: selectedSubject
+                        durationSeconds: durationSeconds, subject: selectedSubject,
+                        idempotencyKey: submissionKey
                     )
+                    guard state.revision == owner else { return }
                     switch outcome {
                     case .created(let response):
                         state.todayLogs.insert(response.log, at: 0)
@@ -466,8 +496,10 @@ struct LogSheet: View {
                         state.pendingLogs.insert(row, at: 0)
                     }
                 }
+                guard state.revision == owner else { return }
                 dismiss()
             } catch {
+                guard state.revision == owner else { return }
                 errorMessage = error.localizedDescription
                 isSaving = false
                 refreshChores()
@@ -476,9 +508,11 @@ struct LogSheet: View {
     }
 
     private func refreshChores() {
+        let owner = state.revision
         Task {
             do {
                 let data: ChoresResponse = try await logStore.api.get("/api/chores")
+                guard state.revision == owner else { return }
                 state.chores = data.chores
             } catch {}
         }

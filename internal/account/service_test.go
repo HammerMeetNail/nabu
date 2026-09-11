@@ -169,7 +169,7 @@ func TestDeleteAccount_SessionsInvalidated(t *testing.T) {
 	svc, users, _ := setup(t)
 	ctx := context.Background()
 	u := mustCreateUser(t, users, "sessions@test.com")
-	if _, err := users.CreateSession(ctx, u.ID, "hash1", tomorrow()); err != nil {
+	if _, err := users.CreateSession(ctx, u.ID, u.AuthVersion, "hash1", tomorrow()); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
 

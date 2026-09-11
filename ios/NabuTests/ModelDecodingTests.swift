@@ -42,6 +42,13 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertNil(response.user)
     }
 
+    func testClaimedAccountHasNoPassword() throws {
+        let json = ##"{"user":{"id":1,"householdId":null,"email":"owner@test.local","displayName":"Owner","avatarColor":"#19323C","emailVerified":true,"hasPassword":false,"role":"","createdAt":"2026-09-10T12:00:00Z"}}"##.data(using: .utf8)!
+        let user = try apiDecoder.decode(UserResponse.self, from: json).user
+        XCTAssertEqual(user?.hasPassword, false)
+        XCTAssertEqual(user?.emailVerified, true)
+    }
+
     // MARK: - Household
 
     func testDecodeHouseholdResponse() throws {

@@ -11,16 +11,23 @@ struct ActiveTimer: Codable, Equatable {
     /// Wall-clock start. Stored as milliseconds since epoch, matching the
     /// PWA's `Date.now()` shape.
     let startedAt: Date
+    let origin: LogOrigin?
+    let idempotencyKey: String
+    var stoppedAt: Date?
 
     enum CodingKeys: String, CodingKey {
-        case choreId, choreName, choreIcon, startedAt
+        case choreId, choreName, choreIcon, startedAt, origin, idempotencyKey, stoppedAt
     }
 
-    init(choreId: Int, choreName: String, choreIcon: String, startedAt: Date) {
+    init(choreId: Int, choreName: String, choreIcon: String, startedAt: Date, origin: LogOrigin? = nil,
+         idempotencyKey: String = UUID().uuidString, stoppedAt: Date? = nil) {
         self.choreId = choreId
         self.choreName = choreName
         self.choreIcon = choreIcon
         self.startedAt = startedAt
+        self.origin = origin
+        self.idempotencyKey = idempotencyKey
+        self.stoppedAt = stoppedAt
     }
 
     init(from decoder: Decoder) throws {
@@ -30,6 +37,9 @@ struct ActiveTimer: Codable, Equatable {
         choreIcon = try container.decodeIfPresent(String.self, forKey: .choreIcon) ?? "⏱"
         let ms = try container.decode(Double.self, forKey: .startedAt)
         startedAt = Date(timeIntervalSince1970: ms / 1000)
+        origin = try container.decodeIfPresent(LogOrigin.self, forKey: .origin)
+        idempotencyKey = try container.decodeIfPresent(String.self, forKey: .idempotencyKey) ?? UUID().uuidString
+        stoppedAt = try container.decodeIfPresent(Date.self, forKey: .stoppedAt)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -38,6 +48,9 @@ struct ActiveTimer: Codable, Equatable {
         try container.encode(choreName, forKey: .choreName)
         try container.encode(choreIcon, forKey: .choreIcon)
         try container.encode(startedAt.timeIntervalSince1970 * 1000, forKey: .startedAt)
+        try container.encodeIfPresent(origin, forKey: .origin)
+        try container.encode(idempotencyKey, forKey: .idempotencyKey)
+        try container.encodeIfPresent(stoppedAt, forKey: .stoppedAt)
     }
 }
 
@@ -46,23 +59,45 @@ enum DurationTimer {
 
     /// Returns the persisted active timer, or nil. Validates shape so a
     /// corrupt/partial value never crashes the caller.
-    static func load(from defaults: UserDefaults = .standard) -> ActiveTimer? {
-        guard let data = defaults.data(forKey: defaultsKey) else { return nil }
-        return try? JSONDecoder().decode(ActiveTimer.self, from: data)
+    static func load(from defaults: UserDefaults? = nil, origin: LogOrigin? = nil) -> ActiveTimer? {
+        let data: Data?
+        if let defaults { data = defaults.data(forKey: key(origin)) }
+        else { data = try? Data(contentsOf: file(origin)) }
+        guard let data, let timer = try? JSONDecoder().decode(ActiveTimer.self, from: data), timer.origin == origin else { return nil }
+        return timer
     }
 
     /// Persists (or clears, when nil) the active timer.
-    static func save(_ timer: ActiveTimer?, to defaults: UserDefaults = .standard) {
-        if let timer = timer, let data = try? JSONEncoder().encode(timer) {
-            defaults.set(data, forKey: defaultsKey)
-        } else {
-            defaults.removeObject(forKey: defaultsKey)
-        }
+    @discardableResult
+    static func save(_ timer: ActiveTimer?, to defaults: UserDefaults? = nil, origin: LogOrigin? = nil) -> Bool {
+        let owner = timer?.origin ?? origin
+        do {
+            if let timer {
+                let data = try JSONEncoder().encode(timer)
+                if let defaults { defaults.set(data, forKey: key(owner)) }
+                else {
+                    let target = file(owner)
+                    try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try data.write(to: target, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+                }
+            } else if let defaults { defaults.removeObject(forKey: key(owner)) }
+            else if FileManager.default.fileExists(atPath: file(owner).path) { try FileManager.default.removeItem(at: file(owner)) }
+            return true
+        } catch { return false }
+    }
+
+    private static func key(_ origin: LogOrigin?) -> String {
+        guard let origin else { return defaultsKey }
+        return "\(defaultsKey)_\(origin.actorID)_\(origin.householdID)"
+    }
+    private static func file(_ origin: LogOrigin?) -> URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            .appendingPathComponent(key(origin) + ".json")
     }
 
     /// Whole seconds elapsed since the timer started.
     static func elapsedSeconds(_ timer: ActiveTimer, now: Date = Date()) -> Int {
-        max(0, Int(now.timeIntervalSince(timer.startedAt)))
+        max(0, Int((timer.stoppedAt ?? now).timeIntervalSince(timer.startedAt)))
     }
 
     /// Renders seconds as m:ss (or h:mm:ss past an hour).

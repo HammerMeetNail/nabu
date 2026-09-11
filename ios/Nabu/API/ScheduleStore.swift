@@ -5,7 +5,7 @@ final class ScheduleStore {
     let api: APIClient
 
     init(api: APIClient) {
-        self.api = api
+        self.api = api.scoped()
     }
 
     func loadSchedules() async throws -> [ChoreSchedule] {
@@ -110,18 +110,25 @@ private func ordinalSuffix(_ n: Int) -> String {
     }
 }
 
-func isActiveForDay(_ sch: ChoreSchedule, _ isoDate: String) -> Bool {
+func isActiveForDay(_ sch: ChoreSchedule, _ isoDate: String, timeZone: TimeZone = .current) -> Bool {
     guard sch.isActive else { return false }
 
     let f = DateFormatter()
     f.dateFormat = "yyyy-MM-dd"
     f.locale = Locale(identifier: "en_US_POSIX")
+    f.timeZone = timeZone
 
     guard let date = f.date(from: isoDate) else { return false }
 
-    if let end = sch.recurrenceEnd, date > end { return false }
+    if let end = sch.recurrenceEnd {
+        let endFormatter = ISO8601DateFormatter()
+        endFormatter.formatOptions = [.withFullDate]
+        endFormatter.timeZone = TimeZone(secondsFromGMT: 0)
+        if isoDate > endFormatter.string(from: end) { return false }
+    }
 
-    let cal = Calendar(identifier: .gregorian)
+    var cal = Calendar(identifier: .gregorian)
+    cal.timeZone = timeZone
     let wd = cal.component(.weekday, from: date) - 1
 
     switch sch.frequencyType {
@@ -138,9 +145,7 @@ func isActiveForDay(_ sch: ChoreSchedule, _ isoDate: String) -> Bool {
         if let start = sch.startDate {
             originStr = String(start.prefix(10))
         } else {
-            let df = ISO8601DateFormatter()
-            df.formatOptions = [.withFullDate]
-            originStr = df.string(from: sch.createdAt)
+            originStr = f.string(from: sch.createdAt)
         }
         guard let origin = f.date(from: originStr) else { return false }
         let diffDays = cal.dateComponents([.day], from: origin, to: date).day ?? 0

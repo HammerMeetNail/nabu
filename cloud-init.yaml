@@ -9,6 +9,7 @@ packages:
   - gnupg
   - firewalld
   - curl
+  - python3
 
 users:
   - name: deploy
@@ -60,6 +61,8 @@ write_files:
       Type=oneshot
       User=deploy
       WorkingDirectory=/opt/nabu
+      UMask=0077
+      TimeoutStartSec=65min
       ExecStart=/opt/nabu/scripts/backup.sh
 
   - path: /etc/systemd/system/nabu-backup.timer
@@ -86,76 +89,8 @@ write_files:
       Type=oneshot
       User=deploy
       WorkingDirectory=/opt/nabu
-      ExecStart=/opt/nabu/scripts/verify-backup.sh
-
-  - path: /etc/systemd/system/nabu-verify-backup.timer
-    content: |
-      [Unit]
-      Description=Daily backup verification for Nabu
-
-      [Timer]
-      OnCalendar=*-*-* 04:00:00
-      RandomizedDelaySec=900
-      Persistent=true
-
-      [Install]
-      WantedBy=timers.target
-
-  - path: /etc/systemd/system/nabu.service
-    content: |
-      [Unit]
-      Description=Nabu App
-      After=network-online.target nabu.service
-      Wants=network-online.target
-
-      [Service]
-      Type=oneshot
-      RemainAfterExit=yes
-      User=deploy
-      WorkingDirectory=/opt/nabu
-      ExecStart=/usr/bin/podman-compose up -d
-      ExecStop=/usr/bin/podman-compose down
-
-      [Install]
-      WantedBy=multi-user.target
-
-  - path: /etc/systemd/system/nabu-backup.service
-    content: |
-      [Unit]
-      Description=Nabu Database Backup
-      After=network-online.target nabu.service
-      Wants=network-online.target
-
-      [Service]
-      Type=oneshot
-      User=deploy
-      WorkingDirectory=/opt/nabu
-      ExecStart=/opt/nabu/scripts/backup.sh
-
-  - path: /etc/systemd/system/nabu-backup.timer
-    content: |
-      [Unit]
-      Description=Daily backup for Nabu
-
-      [Timer]
-      OnCalendar=*-*-* 03:00:00
-      RandomizedDelaySec=900
-      Persistent=true
-
-      [Install]
-      WantedBy=timers.target
-
-  - path: /etc/systemd/system/nabu-verify-backup.service
-    content: |
-      [Unit]
-      Description=Nabu Backup Verification
-      After=network-online.target nabu-backup.service
-      Wants=network-online.target
-
-      [Service]
-      Type=oneshot
-      User=deploy
-      WorkingDirectory=/opt/nabu
+      UMask=0077
+      TimeoutStartSec=65min
       ExecStart=/opt/nabu/scripts/verify-backup.sh
 
   - path: /etc/systemd/system/nabu-verify-backup.timer
@@ -238,10 +173,9 @@ runcmd:
   - loginctl enable-linger deploy
   - systemctl enable --now firewalld
   - /usr/local/bin/setup-cloudflare-firewall.sh
-  - mkdir -p /opt/nabu
-  - chown deploy:deploy /opt/nabu
-  - mkdir -p /opt/nabu
-  - chown deploy:deploy /opt/nabu
+  - mkdir -p /opt/nabu/scripts /opt/nabu/state /etc/nabu
+  - chown -R deploy:deploy /opt/nabu /etc/nabu
+  - chmod 700 /opt/nabu/state /etc/nabu
   - |
     CLOUDFLARED_VERSION="2026.1.2"
     curl -fsSL "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-amd64" -o /usr/local/bin/cloudflared
@@ -253,7 +187,5 @@ runcmd:
   - systemctl daemon-reload
   - systemctl enable nabu.service
   - systemctl enable nabu-backup.timer
-  - systemctl enable nabu-verify-backup.timer
-  - systemctl enable nabu.service
-  - systemctl enable nabu-backup.timer
-  - systemctl enable nabu-verify-backup.timer
+  # Enable restore verification and WAL timers only after recovery.env and an
+  # isolated drill are verified; see docs/recovery-runbook.md.

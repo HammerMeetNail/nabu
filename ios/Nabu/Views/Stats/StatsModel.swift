@@ -19,6 +19,12 @@ final class StatsModel: ObservableObject {
     private(set) var preferences: PreferencesDataLoader?
 
     @Published var isLoading = true
+    @Published private(set) var loading: Set<String> = []
+    @Published private(set) var errors: [String: String] = [:]
+    private var stateRevision: UUID?
+    private var requests: [String: UUID] = [:]
+    private var queries: [String: String] = [:]
+    private var pageRequest = UUID()
 
     // Overview
     @Published var overview: StatsOverview?
@@ -80,17 +86,56 @@ final class StatsModel: ObservableObject {
     @Published var widgetWizardOpen = false
 
     func configure(api: APIClient, state: AppState) {
-        self.api = api
+        // A retained view model must never adopt a later account implicitly.
+        guard self.api == nil else { return }
+        self.api = api.scoped()
         self.state = state
-        self.preferences = PreferencesDataLoader(api: api, state: state)
+        stateRevision = state.revision
+        self.preferences = PreferencesDataLoader(api: api.scoped(), state: state)
+    }
+
+    private var contextIsCurrent: Bool {
+        guard let api, let state else { return false }
+        return stateRevision == state.revision && api.identity.isCurrent(api.requestContext)
+    }
+
+    private func visible(_ section: String) -> Bool {
+        section.isEmpty || !(state?.statsSectionHidden ?? []).contains(section)
+    }
+
+    /// Initial load, refresh, retry and controls all acquire the same resource
+    /// owner. Data from an older selection cannot publish or clear a newer
+    /// request's loading/error state. Failed refreshes retain same-query data.
+    private func read<T>(
+        _ key: String, section: String, query: String,
+        matches: () -> Bool = { true }, clear: () -> Void = {},
+        fetch: (APIClient) async throws -> T, publish: (T) -> Void
+    ) async {
+        guard contextIsCurrent, visible(section), matches(), let api else { return }
+        let request = UUID()
+        requests[key] = request
+        if queries[key] != query { clear() }
+        queries[key] = query
+        loading.insert(key)
+        errors[key] = nil
+        func owns() -> Bool { contextIsCurrent && requests[key] == request }
+        defer { if owns() { loading.remove(key) } }
+        do {
+            let data = try await fetch(api)
+            guard owns(), visible(section), matches(), !Task.isCancelled else { return }
+            publish(data)
+        } catch {
+            guard owns(), visible(section), matches(), !Task.isCancelled else { return }
+            errors[key] = "Could not load this chart. Retry to refresh."
+        }
     }
 
     // MARK: - Derived
 
     var chores: [Chore] { state?.chores ?? [] }
 
-    private var feedBabyChore: Chore? { chores.first { $0.name == "Feed Baby" } }
-    private var changeBabyChore: Chore? { chores.first { $0.name == "Change Baby" } }
+    var feedBabyChore: Chore? { chores.first { $0.name == "Feed Baby" } }
+    var changeBabyChore: Chore? { chores.first { $0.name == "Change Baby" } }
 
     /// The ordered, visible section keys for the current preferences +
     /// eligible dynamic sections.
@@ -116,9 +161,7 @@ final class StatsModel: ObservableObject {
     }
 
     var currentLeaderboard: [LeaderboardEntry] {
-        if let resp = leaderboardByPeriod[leaderboardPeriod] { return resp.leaderboard }
-        if leaderboardPeriod == "week", let ov = overview { return ov.leaderboard }
-        return []
+        leaderboardByPeriod[leaderboardPeriod]?.leaderboard ?? []
     }
 
     var currentTopChores: [TopChore] {
@@ -130,7 +173,9 @@ final class StatsModel: ObservableObject {
     /// `showSpinner: false` refreshes in place (pull-to-refresh) without
     /// flipping the whole tab back to the loading state.
     func loadAll(showSpinner: Bool = true) async {
-        guard api != nil else { return }
+        guard contextIsCurrent else { return }
+        let request = UUID()
+        pageRequest = request
         if showSpinner { isLoading = true }
         if topChoresUserId == 0 { topChoresUserId = state?.user?.id ?? 0 }
 
@@ -149,31 +194,39 @@ final class StatsModel: ObservableObject {
             await group.waitForAll()
         }
 
-        isLoading = false
+        if contextIsCurrent, pageRequest == request { isLoading = false }
     }
 
     private func loadOverview() async {
-        guard let api else { return }
-        if let data: OverviewResponse = try? await api.get("/api/stats/overview") {
+        await read("overview", section: "", query: "overview", fetch: { api in
+            try await api.get("/api/stats/overview") as OverviewResponse
+        }) { data in
             overview = data.overview
         }
     }
 
     private func loadHeatmap() async {
-        guard let api else { return }
-        if let data: HeatmapResponse = try? await api.get("/api/stats/heatmap") {
+        await read("activity", section: "activity", query: "heatmap", fetch: { api in
+            try await api.get("/api/stats/heatmap") as HeatmapResponse
+        }) { data in
             heatmap = data.heatmap
         }
     }
 
     func loadBusyHours() async {
-        guard let api else { return }
+        let filters = [bhChoreId.map(String.init) ?? "", bhUserId.map(String.init) ?? "", bhFilterStart, bhFilterEnd]
         var query: [URLQueryItem] = []
         if let cid = bhChoreId { query.append(URLQueryItem(name: "choreId", value: "\(cid)")) }
         if let uid = bhUserId { query.append(URLQueryItem(name: "userId", value: "\(uid)")) }
         if !bhFilterStart.isEmpty { query.append(URLQueryItem(name: "start", value: bhFilterStart)) }
         if !bhFilterEnd.isEmpty { query.append(URLQueryItem(name: "end", value: bhFilterEnd)) }
-        if let data: BusyHoursResponse = try? await api.get("/api/stats/busy-hours", query: query) {
+        await read("busy-hours", section: "busy-hours", query: filters.joined(separator: "|"), matches: {
+            filters == [bhChoreId.map(String.init) ?? "", bhUserId.map(String.init) ?? "", bhFilterStart, bhFilterEnd]
+        }, clear: {
+            busyHours = []; busyHoursStart = ""; busyHoursEnd = ""
+        }, fetch: { api in
+            try await api.get("/api/stats/busy-hours", query: query) as BusyHoursResponse
+        }) { data in
             busyHours = data.busyHours
             busyHoursStart = data.start
             busyHoursEnd = data.end
@@ -181,11 +234,12 @@ final class StatsModel: ObservableObject {
     }
 
     private func loadChoreStats() async {
-        guard let api else { return }
-        if let data: ChoreStatsResponse = try? await api.get(
-            "/api/stats/chores",
-            query: [URLQueryItem(name: "period", value: choreStatsPeriod)]
-        ) {
+        let period = choreStatsPeriod
+        await read("chores", section: "chores", query: period, matches: { choreStatsPeriod == period }, clear: {
+            choreStats = []; choreStatsStart = ""; choreStatsEnd = ""
+        }, fetch: { api in
+            try await api.get("/api/stats/chores", query: [URLQueryItem(name: "period", value: period)]) as ChoreStatsResponse
+        }) { data in
             choreStats = data.choreStats
             choreStatsStart = data.start
             choreStatsEnd = data.end
@@ -193,55 +247,57 @@ final class StatsModel: ObservableObject {
     }
 
     private func loadCategories() async {
-        guard let api else { return }
-        if let data: BreakdownResponse = try? await api.get(
-            "/api/stats/breakdown",
-            query: [URLQueryItem(name: "period", value: categoriesPeriod)]
-        ) {
+        let period = categoriesPeriod
+        await read("categories", section: "categories", query: period, matches: { categoriesPeriod == period }, clear: {
+            categoriesBreakdown = []
+        }, fetch: { api in
+            try await api.get("/api/stats/breakdown", query: [URLQueryItem(name: "period", value: period)]) as BreakdownResponse
+        }) { data in
             categoriesBreakdown = data.breakdown
         }
     }
 
     private func loadTopChores() async {
-        guard let api else { return }
         let key = "\(topChoresUserId)-\(topChoresPeriod)"
         var query = [URLQueryItem(name: "period", value: topChoresPeriod)]
         if topChoresUserId != 0 {
             query.insert(URLQueryItem(name: "userId", value: "\(topChoresUserId)"), at: 0)
         }
-        if let data: TopChoresResponse = try? await api.get("/api/stats/top-chores", query: query) {
+        await read("top-chores", section: "top-chores", query: key, matches: {
+            key == "\(topChoresUserId)-\(topChoresPeriod)"
+        }, fetch: { api in
+            try await api.get("/api/stats/top-chores", query: query) as TopChoresResponse
+        }) { data in
             topChoresByUserAndPeriod[key] = data.topChores
         }
     }
 
     private func loadLeaderboard() async {
-        guard let api else { return }
-        guard leaderboardByPeriod[leaderboardPeriod] == nil else { return }
-        if let data: LeaderboardResponse = try? await api.get(
-            "/api/stats/leaderboard",
-            query: [URLQueryItem(name: "period", value: leaderboardPeriod)]
-        ) {
-            leaderboardByPeriod[leaderboardPeriod] = data
+        let period = leaderboardPeriod
+        await read("leaderboard", section: "leaderboard", query: period, matches: { leaderboardPeriod == period }, fetch: { api in
+            try await api.get("/api/stats/leaderboard", query: [URLQueryItem(name: "period", value: period)]) as LeaderboardResponse
+        }) { data in
+            leaderboardByPeriod[period] = data
         }
     }
 
     func loadBabyTimeSeries() async {
-        guard let api else { return }
-        if let fb = feedBabyChore {
-            if let data: TimeSeriesResponse = try? await api.get(
-                "/api/stats/chores/\(fb.id)/time-series",
-                query: [URLQueryItem(name: "period", value: feedBabyPeriod)]
-            ) {
-                feedBabyTS = data.timeSeries
-            }
-        }
-        if let cb = changeBabyChore {
-            if let data: TimeSeriesResponse = try? await api.get(
-                "/api/stats/chores/\(cb.id)/time-series",
-                query: [URLQueryItem(name: "period", value: changeBabyPeriod)]
-            ) {
-                changeBabyTS = data.timeSeries
-            }
+        await loadBaby(type: "feed")
+        await loadBaby(type: "change")
+    }
+
+    private func loadBaby(type: String) async {
+        let feed = type == "feed"
+        guard let chore = feed ? feedBabyChore : changeBabyChore else { return }
+        let period = feed ? feedBabyPeriod : changeBabyPeriod
+        await read("baby:\(type)", section: "baby", query: "\(chore.id)|\(period)", matches: {
+            (feed ? feedBabyPeriod : changeBabyPeriod) == period && (feed ? feedBabyChore : changeBabyChore)?.id == chore.id
+        }, clear: {
+            if feed { feedBabyTS = nil } else { changeBabyTS = nil }
+        }, fetch: { api in
+            try await api.get("/api/stats/chores/\(chore.id)/time-series", query: [URLQueryItem(name: "period", value: period)]) as TimeSeriesResponse
+        }) { data in
+            if feed { feedBabyTS = data.timeSeries } else { changeBabyTS = data.timeSeries }
         }
     }
 
@@ -249,17 +305,22 @@ final class StatsModel: ObservableObject {
     /// inclusive (what the pickers show); the API gets an exclusive end one
     /// day later (PWA `apiExclusiveEnd`). Defaults to the last 7 days.
     func loadFeedingGaps() async {
-        guard let api, feedBabyChore != nil else { return }
+        guard contextIsCurrent, visible("baby"), let chore = feedBabyChore else { return }
         let today = Date()
         if feedingGapsEnd.isEmpty { feedingGapsEnd = Self.dateString(today) }
         if feedingGapsStart.isEmpty {
-            feedingGapsStart = Self.dateString(Calendar.current.date(byAdding: .day, value: -7, to: today) ?? today)
+            feedingGapsStart = Self.dateString(Calendar.current.date(byAdding: .day, value: -6, to: today) ?? today)
         }
         let query = [
             URLQueryItem(name: "start", value: feedingGapsStart),
             URLQueryItem(name: "end", value: Self.exclusiveEnd(feedingGapsEnd)),
         ]
-        if let data: FeedingGapsResponse = try? await api.get("/api/stats/feeding-gaps", query: query) {
+        let dates = [feedingGapsStart, feedingGapsEnd]
+        await read("gaps", section: "baby", query: dates.joined(separator: "|"), matches: {
+            dates == [feedingGapsStart, feedingGapsEnd] && feedBabyChore?.id == chore.id
+        }, clear: { feedingGaps = [] }, fetch: { api in
+            try await api.get("/api/stats/feeding-gaps", query: query) as FeedingGapsResponse
+        }) { data in
             feedingGaps = data.feedingGaps
         }
     }
@@ -285,133 +346,148 @@ final class StatsModel: ObservableObject {
     /// Fetches daily time-series for chores with a generalized analytics
     /// section, skipping hidden sections, capped at `maxAnalyticsFetches`.
     func loadChoreAnalytics() async {
-        guard let api else { return }
-        let hidden = Set(state?.statsSectionHidden ?? [])
-        let eligible = chores
-            .filter { StatsSections.choreHasAnalytics($0) }
-            .filter { !hidden.contains(StatsSections.choreSectionKey($0.id)) }
-            .prefix(Self.maxAnalyticsFetches)
-        guard !eligible.isEmpty else { return }
-        await withTaskGroup(of: (Int, ChoreTimeSeries?).self) { group in
-            for chore in eligible {
-                let grain = StatsSections.choreAnalyticsGrain(choreAnalyticsPeriod[chore.id] ?? "day")
-                group.addTask {
-                    let data: TimeSeriesResponse? = try? await api.get(
-                        "/api/stats/chores/\(chore.id)/time-series",
-                        query: [URLQueryItem(name: "period", value: grain)]
-                    )
-                    return (chore.id, data?.timeSeries)
-                }
-            }
-            for await (id, ts) in group {
-                if let ts { choreTimeSeries[id] = ts }
-            }
+        guard contextIsCurrent else { return }
+        let ids = chores.filter(StatsSections.choreHasAnalytics)
+            .filter { visible(StatsSections.choreSectionKey($0.id)) }
+            .prefix(Self.maxAnalyticsFetches).map(\.id)
+        await withTaskGroup(of: Void.self) { group in
+            for id in ids { group.addTask { await self.loadChoreAnalytics(choreId: id) } }
         }
     }
 
-    /// Day/week/month toggle on a per-chore analytics card: the period picks
-    /// the chart's bucket grain and refetches that chore's series.
+    private func loadChoreAnalytics(choreId: Int) async {
+        let key = StatsSections.choreSectionKey(choreId)
+        let period = choreAnalyticsPeriod[choreId] ?? "day"
+        await read(key, section: key, query: period, matches: {
+            (choreAnalyticsPeriod[choreId] ?? "day") == period && chores.contains { $0.id == choreId }
+        }, clear: { choreTimeSeries[choreId] = nil }, fetch: { api in
+            try await api.get("/api/stats/chores/\(choreId)/time-series", query: [
+                URLQueryItem(name: "period", value: StatsSections.choreAnalyticsGrain(period))
+            ]) as TimeSeriesResponse
+        }) { data in choreTimeSeries[choreId] = data.timeSeries }
+    }
+
     func setChoreAnalyticsPeriod(_ period: String, choreId: Int) async {
-        guard let api else { return }
-        guard choreAnalyticsPeriod[choreId] ?? "day" != period else { return }
+        guard contextIsCurrent, (choreAnalyticsPeriod[choreId] ?? "day") != period else { return }
         choreAnalyticsPeriod[choreId] = period
-        if let data: TimeSeriesResponse = try? await api.get(
-            "/api/stats/chores/\(choreId)/time-series",
-            query: [URLQueryItem(name: "period", value: StatsSections.choreAnalyticsGrain(period))]
-        ) {
-            choreTimeSeries[choreId] = data.timeSeries
-        }
+        await loadChoreAnalytics(choreId: choreId)
     }
 
-    /// Fetches the data each visible user-defined widget renders from:
-    /// timeseries widgets read the time-series endpoint at the widget's
-    /// grain; total/member-split (and any other type) read the period-scoped
-    /// summary so the widget's period actually bounds the numbers.
-    /// last-done reads latest-per-chore already in app state — no fetch.
     func loadWidgetData() async {
-        guard let api else { return }
-        let hidden = Set(state?.statsSectionHidden ?? [])
+        guard contextIsCurrent, let api else { return }
         let widgets = (state?.statsWidgets ?? [])
-            .filter { !hidden.contains(StatsSections.widgetSectionKey($0.id)) }
-            .prefix(Self.maxAnalyticsFetches)
-        guard !widgets.isEmpty else { return }
-        for widget in widgets {
-            await loadData(for: widget, api: api)
-        }
+            .filter { visible(StatsSections.widgetSectionKey($0.id)) }
+        // Saved widgets already have the server's 20-widget limit. The 15-chore
+        // analytics budget must not leave valid rendered cards without values.
+        for widget in widgets { await loadData(for: widget, api: api) }
     }
 
     func loadData(for widget: StatsWidget, api: APIClient) async {
+        // Ignore a caller's live API copy: every child uses the model's bound API.
         if widget.type == "last-done" { return }
+        let key = StatsSections.widgetSectionKey(widget.id)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        let fingerprint = (try? encoder.encode(widget)) ?? Data()
+        var seen = Set<Int>()
+        let ids = widget.choreIds.filter { seen.insert($0).inserted }.prefix(Self.maxAnalyticsFetches)
+        let matches = { [self] in
+            guard let current = state?.statsWidgets.first(where: { $0.id == widget.id }) else { return false }
+            return current == widget
+        }
         if widget.type == "timeseries" {
-            let grain = StatsSections.widgetGrain(widget)
-            var results: [ChoreTimeSeries] = []
-            for cid in widget.choreIds {
-                if let data: TimeSeriesResponse = try? await api.get(
-                    "/api/stats/chores/\(cid)/time-series",
-                    query: [URLQueryItem(name: "period", value: grain)]
-                ) {
+            await read(key, section: key, query: fingerprint.base64EncodedString(), matches: matches,
+                       clear: { widgetTimeSeries[widget.id] = nil }, fetch: { api in
+                var results: [ChoreTimeSeries] = []
+                for id in ids {
+                    guard contextIsCurrent, matches(), visible(key), !Task.isCancelled else { throw APIError.contextChanged }
+                    let data: TimeSeriesResponse = try await api.get("/api/stats/chores/\(id)/time-series", query: [
+                        URLQueryItem(name: "period", value: StatsSections.widgetGrain(widget))
+                    ])
                     results.append(data.timeSeries)
                 }
-            }
-            widgetTimeSeries[widget.id] = results
-            return
+                return results
+            }) { widgetTimeSeries[widget.id] = $0 }
+        } else {
+            await read(key, section: key, query: fingerprint.base64EncodedString(), matches: matches,
+                       clear: { widgetSummaries[widget.id] = nil }, fetch: { api in
+                var results: [ChoreSummary] = []
+                for id in ids {
+                    guard contextIsCurrent, matches(), visible(key), !Task.isCancelled else { throw APIError.contextChanged }
+                    let data: ChoreSummaryResponse = try await api.get("/api/stats/chores/\(id)/summary", query: [
+                        URLQueryItem(name: "period", value: widget.period.isEmpty ? "week" : widget.period)
+                    ])
+                    results.append(data.summary)
+                }
+                return results
+            }) { widgetSummaries[widget.id] = $0 }
         }
-        var results: [ChoreSummary] = []
-        let period = widget.period.isEmpty ? "week" : widget.period
-        for cid in widget.choreIds {
-            if let data: ChoreSummaryResponse = try? await api.get(
-                "/api/stats/chores/\(cid)/summary",
-                query: [URLQueryItem(name: "period", value: period)]
-            ) {
-                results.append(data.summary)
+    }
+
+    /// Every visible card keeps a retry path, including an empty first result.
+    func retrySection(_ key: String) async {
+        switch key {
+        case "overview", "recap": await loadOverview()
+        case "activity": await loadHeatmap()
+        case "busy-hours": await loadBusyHours()
+        case "chores": await loadChoreStats()
+        case "categories": await loadCategories()
+        case "leaderboard": await loadLeaderboard()
+        case "top-chores": await loadTopChores()
+        case "baby": await loadBabyTimeSeries(); await loadFeedingGaps()
+        case "baby:feed": await loadBaby(type: "feed")
+        case "baby:change": await loadBaby(type: "change")
+        case "gaps": await loadFeedingGaps()
+        default:
+            if let id = StatsSections.choreId(fromSectionKey: key) {
+                await loadChoreAnalytics(choreId: id)
+            } else if let api, let widget = state?.statsWidgets.first(where: { StatsSections.widgetSectionKey($0.id) == key }) {
+                await loadData(for: widget, api: api)
             }
         }
-        widgetSummaries[widget.id] = results
     }
 
     // MARK: - Period toggles
 
     func setLeaderboardPeriod(_ period: String) async {
-        guard period != leaderboardPeriod else { return }
+        guard contextIsCurrent, period != leaderboardPeriod else { return }
         leaderboardPeriod = period
         await loadLeaderboard()
     }
 
     func setTopChoresPeriod(_ period: String) async {
-        guard period != topChoresPeriod else { return }
+        guard contextIsCurrent, period != topChoresPeriod else { return }
         topChoresPeriod = period
-        if currentTopChores.isEmpty { await loadTopChores() }
+        await loadTopChores()
     }
 
     func setTopChoresUser(_ userId: Int) async {
-        guard userId != topChoresUserId else { return }
+        guard contextIsCurrent, userId != topChoresUserId else { return }
         topChoresUserId = userId
-        if topChoresByUserAndPeriod["\(userId)-\(topChoresPeriod)"] == nil {
-            await loadTopChores()
-        }
+        await loadTopChores()
     }
 
     func setCategoriesPeriod(_ period: String) async {
-        guard period != categoriesPeriod else { return }
+        guard contextIsCurrent, period != categoriesPeriod else { return }
         categoriesPeriod = period
         await loadCategories()
     }
 
     func setChoreStatsPeriod(_ period: String) async {
-        guard period != choreStatsPeriod else { return }
+        guard contextIsCurrent, period != choreStatsPeriod else { return }
         choreStatsPeriod = period
         await loadChoreStats()
     }
 
     func setBabyPeriod(_ period: String, type: String) async {
         if type == "feed" {
-            guard period != feedBabyPeriod else { return }
+            guard contextIsCurrent, period != feedBabyPeriod else { return }
             feedBabyPeriod = period
         } else {
-            guard period != changeBabyPeriod else { return }
+            guard contextIsCurrent, period != changeBabyPeriod else { return }
             changeBabyPeriod = period
         }
-        await loadBabyTimeSeries()
+        await loadBaby(type: type)
     }
 
     // MARK: - Widgets (customize)
@@ -420,7 +496,7 @@ final class StatsModel: ObservableObject {
     /// the normalized list; new widgets default to period "week" and expose
     /// a day/week/month toggle on the card.
     func addWidget(title: String, type: String, metric: String, choreIds: [Int]) async -> Bool {
-        guard let state, let preferences else { return false }
+        guard contextIsCurrent, let state, let preferences else { return false }
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let widget = StatsWidget(
             id: "", type: type, choreIds: choreIds, metric: metric,
@@ -428,13 +504,13 @@ final class StatsModel: ObservableObject {
             title: trimmed.isEmpty ? "Widget" : trimmed
         )
         let saved = await preferences.saveStatsWidgets(state.statsWidgets + [widget])
-        guard saved else { return false }
+        guard saved, contextIsCurrent else { return false }
         await loadWidgetData()
         return true
     }
 
     func removeWidget(id: String) async -> Bool {
-        guard let state, let preferences else { return false }
+        guard contextIsCurrent, let state, let preferences else { return false }
         let widgets = state.statsWidgets.filter { $0.id != id }
         return await preferences.saveStatsWidgets(widgets)
     }
@@ -442,7 +518,7 @@ final class StatsModel: ObservableObject {
     /// Day/week/month toggle on a widget card: persists the new period into
     /// the stored widget, then refetches that widget's data.
     func setWidgetPeriod(_ period: String, widgetId: String) async -> Bool {
-        guard let api, let state, let preferences else { return false }
+        guard contextIsCurrent, let api, let state, let preferences else { return false }
         guard let current = state.statsWidgets.first(where: { $0.id == widgetId }),
               current.period != period else { return true }
         let widgets = state.statsWidgets.map { w in
@@ -452,7 +528,7 @@ final class StatsModel: ObservableObject {
                 : w
         }
         let saved = await preferences.saveStatsWidgets(widgets)
-        guard saved else { return false }
+        guard saved, contextIsCurrent else { return false }
         if let updated = state.statsWidgets.first(where: { $0.id == widgetId }) {
             await loadData(for: updated, api: api)
         }
@@ -465,28 +541,36 @@ final class StatsModel: ObservableObject {
     /// key list (visible + hidden + dynamic) plus any missing canonical keys,
     /// like the PWA's drop handler.
     func moveSections(from source: IndexSet, to destination: Int) async {
-        guard let preferences else { return }
+        guard contextIsCurrent, let preferences else { return }
         var keys = customizeKeys
-        keys.move(fromOffsets: source, toOffset: destination)
+        let moved = source.sorted().map { keys[$0] }
+        let insertion = destination - source.filter { $0 < destination }.count
+        for index in source.sorted(by: >) { keys.remove(at: index) }
+        keys.insert(contentsOf: moved, at: insertion)
         var seen = Set<String>()
         let all = (keys + StatsSections.all).filter { seen.insert($0).inserted }
         await preferences.saveStatsSectionOrder(all)
     }
 
     func setSectionVisible(_ key: String, visible: Bool) async {
-        guard let state, let preferences else { return }
+        guard contextIsCurrent, let state, let preferences else { return }
         var hidden = state.statsSectionHidden
         if visible {
             hidden.removeAll { $0 == key }
         } else if !hidden.contains(key) {
             hidden.append(key)
         }
+        if !visible {
+            let keys = key == "baby" ? ["baby:feed", "baby:change", "gaps"] : [key]
+            for resource in keys {
+                requests[resource] = UUID()
+                loading.remove(resource)
+                errors[resource] = nil
+            }
+        }
         let saved = await preferences.saveStatsSectionHidden(hidden)
         // Newly-revealed sections may have never fetched their data.
-        if saved && visible {
-            if StatsSections.isChoreSectionKey(key) { await loadChoreAnalytics() }
-            if StatsSections.isWidgetSectionKey(key) { await loadWidgetData() }
-        }
+        if saved && visible && contextIsCurrent { await retrySection(key) }
     }
 
     // MARK: - Date helpers

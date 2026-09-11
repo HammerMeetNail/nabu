@@ -6,6 +6,9 @@ struct QuickLogSheet: View {
     let logStore: LogStore
 
     @State private var note = ""
+    @State private var submissionKey = UUID().uuidString
+    @State private var chosenChoreID: Int?
+    @State private var submittedAt: Date?
     @State private var isSaving = false
     @State private var errorMessage: String?
 
@@ -23,6 +26,7 @@ struct QuickLogSheet: View {
                 Section {
                     TextField("Add a note...", text: $note, axis: .vertical)
                         .lineLimit(2...4)
+                        .disabled(chosenChoreID != nil)
                 } header: {
                     Text("Log a chore")
                 } footer: {
@@ -45,6 +49,7 @@ struct QuickLogSheet: View {
                                 }
                             }
                         }
+                        .disabled(isSaving || (chosenChoreID != nil && chosenChoreID != chore.id))
                     }
                 }
             }
@@ -68,7 +73,10 @@ struct QuickLogSheet: View {
         guard !isSaving else { return }
         isSaving = true
 
-        let now = Date()
+        let owner = state.revision
+        chosenChoreID = chore.id
+        if submittedAt == nil { submittedAt = Date() }
+        let now = submittedAt!
         let isoFormatter = ISO8601DateFormatter()
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
@@ -82,8 +90,9 @@ struct QuickLogSheet: View {
                 let outcome = try await logStore.createLog(
                     choreId: chore.id, note: note, date: dateStr,
                     indicators: [], slotHour: hour,
-                    completedAt: completedAt
+                    completedAt: completedAt, idempotencyKey: submissionKey
                 )
+                guard state.revision == owner else { return }
                 switch outcome {
                 case .created(let response):
                     state.todayLogs.insert(response.log, at: 0)
@@ -95,6 +104,7 @@ struct QuickLogSheet: View {
                 }
                 dismiss()
             } catch {
+                guard state.revision == owner else { return }
                 errorMessage = error.localizedDescription
                 isSaving = false
             }

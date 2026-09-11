@@ -23,7 +23,7 @@ make fmt         # Format Go code
 
 ## Prerequisites
 
-- **Go 1.25+** (CI uses 1.25, `go.mod` specifies 1.25.11)
+- **Go 1.26.8** (local modules, CI and the release image use this compiler)
 - **JS tests require `pnpm install` first** for `jsdom` (dev dependency). Tests use Node's built-in test runner.
 - **E2E tests require `pnpm exec playwright install chromium`** to download the browser binary.
 - **Podman Compose** for local stack (`make local`). Docker Compose may work but is untested.
@@ -115,6 +115,8 @@ Nabu is a Progressive Web App with a service worker caching strategy. Key PWA fe
 | `SERVER_SECURE` | `false` | Set to `true` when behind TLS (enables Secure cookies, HSTS) |
 | `DATABASE_URL` | (empty) | Postgres connection string; empty = in-memory stores |
 | `SMTP_HOST` | (empty) | SMTP server hostname |
+| `DB_MAX_OPEN_CONNS` | `25` | Total PostgreSQL connection budget (10..100): 8 reserved for delivery, remainder for HTTP; size from workload measurements |
+| `DB_MAX_IDLE_CONNS` | `5` | Idle HTTP connections (capped to HTTP share); delivery keeps at most 2 idle |
 | `SMTP_PORT` | `587` | SMTP port |
 | `SMTP_USER` | (empty) | SMTP username |
 | `SMTP_PASS` | (empty) | SMTP password |
@@ -127,12 +129,16 @@ Nabu is a Progressive Web App with a service worker caching strategy. Key PWA fe
 | `APNS_KEY_ID` | (empty) | APNs auth key ID |
 | `APNS_TEAM_ID` | (empty) | Apple developer team ID (also enables the universal-links AASA with `APNS_BUNDLE_ID`) |
 | `APNS_BUNDLE_ID` | (empty) | iOS app bundle ID (APNs topic) |
-| `TRUSTED_PROXY_CIDRS` | (empty) | CIDR list for trusted reverse-proxy IPs. Enables real client-IP attribution (X-Forwarded-For) for rate limiting and audit logs, and gates the global rate-limit backstop. Logs a startup warning if empty when `APP_ENV=production`. |
+| `TRUSTED_PROXY_CIDRS` | (empty) | CIDR list for trusted reverse-proxy IPs. Enables real client-IP attribution (X-Forwarded-For) for rate limiting and audit logs, and gates the global rate-limit backstop. Required in production; malformed/universal ranges are rejected at startup. |
 | `RATE_LIMIT_AUTH_MAX` | `5` | Max `/api/auth` requests per minute per IP |
-| `RATE_LIMIT_GLOBAL_MAX` | `120` | Permissive backstop on all `/api/*`, per IP per path. Only active when `TRUSTED_PROXY_CIDRS` is set. |
+| `RATE_LIMIT_GLOBAL_MAX` | `120` | Aggregate backstop across all `/api/*` paths per IP. Only active when `TRUSTED_PROXY_CIDRS` is set. |
+| `RATE_LIMIT_JOIN_MAX` | `10` | Household-join requests per minute per IP |
+| `RATE_LIMIT_MAX_CLIENTS` | `4096` | Maximum tracked IPs per limiter; new clients receive 429 until a window expires when full |
 | `VAPID_PUBLIC_KEY` | (empty) | VAPID public key (base64-encoded uncompressed EC point) |
 | `VAPID_PRIVATE_KEY` | (empty) | VAPID private key (base64-encoded) |
 | `VAPID_SUBJECT` | (empty) | VAPID subject (e.g. `mailto:admin@example.com`) |
+
+Rate budgets apply independently to each server replica; they are not a distributed global quota. Auth, join and aggregate API scopes compose, so changing resource IDs cannot reset an allowance. Production requires a database, HTTPS `APP_BASE_URL`, `SERVER_SECURE=true`, and explicit trusted proxy ranges. The local release-image compose file uses development mode for plain HTTP.
 
 ## API Endpoints
 
@@ -228,8 +234,48 @@ curl -sI https://nabu-app.com/ | grep -i cache
 #           cf-cache-status: BYPASS
 ```
 
-See `compose.server.yaml` for full production setup (Cloudflare Tunnel, `/mnt/data` volumes, R2 backups). Server provisioning via `cloud-init.yaml`.
+The application deployment is defined in `compose.server.yaml`; the standalone PostgreSQL cluster must be inventoried separately. Server provisioning is in `cloud-init.yaml`. The [recovery runbook](docs/recovery-runbook.md) defines a five-minute data-loss target, one-hour recovery target, prepared encrypted WAL backups, freshness/restore alerts, and isolated restore/cutover procedures. Daily encrypted logical backups remain secondary protection; production archive health and timing require operational verification.
 
 ## License
 
 MIT
+
+Database diagnostics emit aggregate `database.pool` records once per minute.
+They report connection use/waits and cumulative query counts, failures, total/max
+latency and histogram bins (<=1/5/10/25/50/100/500/1000ms, then >1000ms). Query
+latency includes receiving rows; pool acquisition waits are separate. No SQL,
+arguments, connection strings or provider error bodies are retained. Compare
+these measurements with HTTP latency and DB resources before increasing pool
+limits or supported household counts. The monitor stops with the server.
+
+### PostgreSQL query regression workload
+
+`TEST_DATABASE_URL` must point to a disposable local/CI PostgreSQL service whose
+role can create databases. Integration tests create a random database per test,
+then close and drop only that database; extension migrations stay isolated too.
+They never use `DATABASE_URL` as a fallback.
+
+Run the opt-in history workload with `NABU_PERF=1 TEST_DATABASE_URL=… go test -v
+-timeout 360s ./internal/log -run TestLocalHistoryWorkload`. Set
+`NABU_PERF_REPORT` to an absolute path outside the checkout (the default is
+`/tmp/nabu-history-workload.json`). It compares query plans, allocations and index
+write cost across 10 synthetic households with 500,000 logs, then exercises both
+10 and 24 concurrent workers against a 12-connection pool. This is a local
+regression workload, not a supported household-count claim.
+
+### Notification retention and paging
+
+In-app notifications are recipient-owned receipts: read and unread notifications
+remain until the recipient deletes them or deletes the account. Marking read does
+not delete a receipt, and there is no automatic age purge. This policy deliberately
+avoids silent age-based data loss. Historical receipt text is not retroactively
+redacted when a household role or chore visibility changes; new delivery always
+rechecks current access. Activity logs have their own lifetime and are unaffected
+by deleting notifications.
+
+Both clients list newest first in pages of at most 50, ordered by creation time
+and ID. `GET /api/notifications?cursor=...` returns an optional `nextCursor`; clients
+must treat it as an opaque position. Each query still restricts rows to the
+signed-in recipient. New arrivals do not shift an older page, and deleting a
+cursor boundary does not create gaps. Open notification panels keep their loaded
+pages until an explicit refresh; background refresh resumes after closing.

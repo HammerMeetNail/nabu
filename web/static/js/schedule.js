@@ -1,6 +1,7 @@
 // web/static/js/schedule.js
 
 import { apiFetch } from "./api.js";
+import { isVolumeMetric, formatAmount } from './metrics.js';
 import { escapeHTML, volumeOptions, formatVolume } from "./utils.js";
 
 const MANAGE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>`;
@@ -220,7 +221,7 @@ export function renderFreqSelect(date, sch, prefix) {
       </div>
     </div>
     <div id="${prefix}-end-date-row" class="sheet-end-date-row" ${ft === "once" ? "hidden" : ""}>
-      <label for="${prefix}-end-date" class="field-label">Stop repeating</label>
+      <label for="${prefix}-end-date" class="field-label">Repeat through (inclusive)</label>
       <input type="date" id="${prefix}-end-date" class="text-input"
         value="${sch?.recurrenceEnd ? String(sch.recurrenceEnd).slice(0, 10) : ""}" />
     </div>`;
@@ -374,7 +375,7 @@ export function renderConfigureScheduleSheet(chore, date, hour, presetTime, pres
 
 // ─── Render: log-with-indicators bottom sheet ────────────────────────────────
 
-function renderIndicatorVolumeRow(label, on, selectedML = null, unit = "ml") {
+function renderIndicatorVolumeRow(label, on, selectedML = null, unit = "ml", chore = {hasVolumeML:true}) {
   // Option values are always canonical mL; only the labels change by unit.
   const optsHTML = volumeOptions(unit, selectedML).map(o => {
     const sel = selectedML === o.ml ? " selected" : "";
@@ -388,12 +389,15 @@ function renderIndicatorVolumeRow(label, on, selectedML = null, unit = "ml") {
       aria-pressed="${on}">
       ${escapeHTML(label)}
     </button>
-    <select class="indicator-volume-select select-input"
+    ${isVolumeMetric(chore) ? `<select class="indicator-volume-select select-input" aria-label="${escapeHTML(label)} volume"
       data-indicator="${escapeHTML(label)}"
       ${on ? "" : "style=\"display:none\""}>
       <option value=""${selectedML == null ? " selected" : ""}>--</option>
       ${optsHTML}
-    </select>
+    </select>` : `<input type="number" min="0" max="100000" step="1" inputmode="numeric"
+      class="indicator-volume-select text-input" data-indicator="${escapeHTML(label)}"
+      aria-label="${escapeHTML(label)} amount${chore.metricUnit ? ` (${escapeHTML(chore.metricUnit)})` : ''}"
+      value="${selectedML ?? ''}" ${on ? '' : 'style="display:none"'}>`}
   </div>`;
 }
 
@@ -439,7 +443,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
         // older log or a recent-chip fill) must never be shown.
         const volume = log ? (logIndicatorVolumes[label] ?? null)
           : (prevIndicatorSet.has(label) ? ((cachedIndicatorVolumes?.[label]) ?? null) : null);
-        return renderIndicatorVolumeRow(label, on, volume, volumeUnit);
+        return renderIndicatorVolumeRow(label, on, volume, volumeUnit, chore);
       }).join("");
       return `<div class="sheet-indicator-row">
         <p class="field-label">Type</p>
@@ -467,21 +471,19 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
   // labels (generalized Phase 3 amount chores). Feed Baby keeps its
   // per-indicator volume rows above.
   const volumeOnlySection = (chore.hasVolumeML && (chore.indicatorLabels || []).length === 0)
-    ? renderVolumeSelect(log ? (log.volumeML ?? null) : (cachedVolumeML ?? null), volumeUnit)
+    ? (isVolumeMetric(chore) ? renderVolumeSelect(log ? (log.volumeML ?? null) : (cachedVolumeML ?? null), volumeUnit)
+      : `<div class="sheet-volume-row"><label for="log-volume" class="field-label">Amount${chore.metricUnit ? ` (${escapeHTML(chore.metricUnit)})` : ''}</label>
+        <input id="log-volume" class="text-input" type="number" min="0" max="100000" step="1" inputmode="numeric" value="${log?.volumeML ?? cachedVolumeML ?? ''}"></div>`)
     : "";
 
   // Recent-value chips (Phase 5.3): tappable last-3 distinct amounts. Tapping
   // one fills the volume input(s). Only shown for amount chores with history.
-  const recentVolumeSection = (chore.hasVolumeML && (opts.recentVolumes || []).length > 0) ? (() => {
-    const chips = opts.recentVolumes.map(ml =>
-      `<button type="button" class="volume-recent-chip"
-        data-action="set-recent-volume" data-ml="${ml}">${escapeHTML(formatVolume(ml, volumeUnit))}</button>`
-    ).join("");
-    return `<div class="sheet-recent-volume-row">
-      <p class="field-label">Recent</p>
-      <div class="chip-list">${chips}</div>
-    </div>`;
-  })() : "";
+  const recentVolumeSection = chore.hasVolumeML ? `<div class="sheet-recent-volume-row">${renderRecentAmounts(chore,opts.recentVolumes || [],volumeUnit)}</div>` : '';
+
+  const durationInput = chore.metricType === 'duration' ? `<div class="sheet-duration-row">
+    <label for="log-duration" class="field-label">Duration (seconds)</label>
+    <input id="log-duration" class="text-input" type="number" inputmode="numeric" min="0" max="86400" step="1" value="${log?.durationSeconds ?? ''}">
+  </div>` : '';
 
   // Duration timer start (Phase 5.2): for duration-metric chores, offer a
   // "Start timer" action on a fresh log. Stopping happens from the top-bar chip.
@@ -577,8 +579,8 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
       whenVal = `${date}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
     }
     return `<div class="sheet-time-row">
-      <span class="field-label" style="white-space:nowrap;flex-shrink:0">When</span>
-      <input type="datetime-local" id="log-when" class="sheet-time-input text-input" value="${whenVal}" step="300">
+      <label for="log-when" class="field-label">When</label>
+      <input type="datetime-local" id="log-when" class="sheet-time-input text-input" value="${whenVal}" data-original-value="${whenVal}" step="60">
     </div>`;
   })() : "";
 
@@ -630,6 +632,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
       ${ratingSection}
       ${memberSection}
       ${noteSection}
+      ${durationInput}
       ${durationTimerSection}
       ${actions}
       ${removeScheduleBtn}
@@ -637,6 +640,13 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
         Cancel
       </button>
     </div>`;
+}
+
+export function renderRecentAmounts(chore, amounts, volumeUnit) {
+  if (!amounts.length) return '';
+  return `<p class="field-label">Recent</p><div class="chip-list">${amounts.map(amount =>
+    `<button type="button" class="volume-recent-chip" data-action="set-recent-volume" data-ml="${amount}">${escapeHTML(formatAmount(amount,chore,volumeUnit))}</button>`
+  ).join('')}</div>`;
 }
 
 // ─── Render: quick-log bottom sheet (FAB) ─────────────────────────────────────

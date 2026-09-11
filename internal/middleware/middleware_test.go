@@ -121,6 +121,17 @@ func TestSessionMiddlewareInjectsCurrentUser(t *testing.T) {
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusNoContent)
 	}
+	for _, header := range []string{"X-Nabu-User-ID", "X-Nabu-Household-ID"} {
+		mismatch := httptest.NewRequest(http.MethodPost, "/api/logs", nil)
+		mismatch.AddCookie(&http.Cookie{Name: "nabu_session", Value: session.ID})
+		mismatch.Header.Set(header, "999999")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, mismatch)
+		if response.Code != http.StatusConflict || response.Header().Get("X-Nabu-Context-Changed") != "true" {
+			t.Fatalf("%s mismatch: status=%d context_changed=%q", header, response.Code, response.Header().Get("X-Nabu-Context-Changed"))
+		}
+	}
+
 }
 
 func TestSecurityHeadersMiddlewareSetsHeaders(t *testing.T) {

@@ -57,8 +57,8 @@ test.describe("CSV export", () => {
     // Settings surfaces the export link.
     await page.click("a[data-nav=\"settings\"]");
     await page.waitForSelector(".settings-view", { timeout: 10000 });
-    const link = page.locator('a[href*="/api/logs/export"]');
+    const link = page.locator('button[data-action="export-csv"][data-kind="logs"]');
     await expect(link).toBeVisible();
-    await expect(link).toHaveText(/Export CSV/);
+    await expect(link).toHaveText(/Export logs as CSV/);
   });
 });

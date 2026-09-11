@@ -641,6 +641,26 @@ func TestHouseholdRemoveMemberSuccess(t *testing.T) {
 	}
 }
 
+func TestHouseholdRemoveSelfForbiddenAndMembershipRetained(t *testing.T) {
+	handler, ownerSession, _, authService := setupTwoMemberHousehold(t)
+	ctx := t.Context()
+	owner, err := authService.Authenticate(ctx, ownerSession)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := withUser(httptest.NewRequest(http.MethodDelete,
+		fmt.Sprintf("/api/household/members/%d", owner.ID), nil), authService, ownerSession)
+	rec := httptest.NewRecorder()
+	handler.RemoveMember(rec, req)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	current, err := authService.Authenticate(ctx, ownerSession)
+	if err != nil || current.HouseholdID == nil || owner.HouseholdID == nil || *current.HouseholdID != *owner.HouseholdID || current.Role != household.RoleOwner {
+		t.Fatalf("membership changed: role = %q, error = %v", current.Role, err)
+	}
+}
+
 // --- Leave ---
 
 func TestHouseholdLeaveNoAuth(t *testing.T) {

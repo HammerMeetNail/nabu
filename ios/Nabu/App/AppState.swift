@@ -2,6 +2,35 @@ import Foundation
 
 @MainActor
 final class AppState: ObservableObject {
+    @Published private(set) var revision = UUID()
+    @Published var sessionPhase: ClientIdentity.Phase = .checking
+    @Published var logoutIsDurable = true
+    private var operations: [String: UUID] = [:]
+    struct Owner { let revision: UUID; let key: String; let request: UUID }
+    func beginOperation(_ key: String) -> Owner {
+        let request = UUID()
+        operations[key] = request
+        return Owner(revision: revision, key: key, request: request)
+    }
+    func owns(_ owner: Owner) -> Bool {
+        revision == owner.revision && operations[owner.key] == owner.request
+    }
+    func adopt(_ session: ClientIdentity.Snapshot) {
+        if revision != session.revision {
+            reset()
+            revision = session.revision
+        }
+        sessionPhase = session.phase
+        logoutIsDurable = session.logoutIsDurable
+        user = session.user
+        activeHouseholdId = session.user?.householdId
+        if let origin = session.origin {
+            activeTimer = DurationTimer.load(origin: origin)
+            pendingLogs = OfflineLogQueue.shared.scopedItems(origin).map {
+                PendingLog(body: $0.body, fallbackUserId: origin.actorID)
+            }
+        }
+    }
     @Published var user: User?
     @Published var household: Household?
     @Published var userHouseholds: [HouseholdWithRole] = []
@@ -12,8 +41,16 @@ final class AppState: ObservableObject {
     @Published var chores: [Chore] = []
     @Published var todayLogs: [ChoreLog] = []
     @Published var schedules: [ChoreSchedule] = []
+    @Published var recentAmounts: [Int: [Int]] = [:]
     @Published var latestLogs: [Int: ChoreLog] = [:]
     @Published var notifications: [AppNotification] = []
+    @Published var notificationCursor: String?
+    @Published var notificationLoading = false
+    @Published var notificationLoadingMore = false
+    @Published var notificationMutating = false
+    @Published var notificationError: String?
+    @Published var notificationErrorIsAppend = false
+    @Published var notificationPanelOpen = false
     @Published var unreadNotifications = 0
     @Published var notificationPrefs: ReminderPreference?
     @Published var availableNotificationTypes: [NotificationTypeInfo] = []
@@ -63,6 +100,10 @@ final class AppState: ObservableObject {
     }
 
     func reset() {
+        revision = UUID()
+        operations = [:]
+        WidgetDataCache.write(chores: [])
+        PushRegistrationController.shared.suspend()
         user = nil
         household = nil
         userHouseholds = []
@@ -74,7 +115,15 @@ final class AppState: ObservableObject {
         todayLogs = []
         schedules = []
         latestLogs = [:]
+        recentAmounts = [:]
         notifications = []
+        notificationCursor = nil
+        notificationLoading = false
+        notificationLoadingMore = false
+        notificationMutating = false
+        notificationError = nil
+        notificationErrorIsAppend = false
+        notificationPanelOpen = false
         unreadNotifications = 0
         notificationPrefs = nil
         availableNotificationTypes = []
@@ -90,8 +139,7 @@ final class AppState: ObservableObject {
         historyFilterOpen = false
         volumeUnit = "ml"
         hideNotificationBadge = false
-        // activeTimer intentionally survives reset: the PWA's localStorage
-        // timer is device-scoped, not session-scoped.
+        activeTimer = nil
         pendingLogs = []
         dayNotes = [:]
         pendingQuickLog = nil
@@ -102,6 +150,10 @@ final class AppState: ObservableObject {
     }
 
     func resetHouseholdScoped() {
+        revision = UUID()
+        operations = [:]
+        WidgetDataCache.write(chores: [])
+        PushRegistrationController.shared.suspend()
         household = nil
         activeHouseholdId = nil
         members = []
@@ -111,6 +163,7 @@ final class AppState: ObservableObject {
         todayLogs = []
         schedules = []
         latestLogs = [:]
+        recentAmounts = [:]
         choreOrder = []
         hiddenHomeChoreIDs = []
         historyChoreFilter = nil
@@ -119,5 +172,25 @@ final class AppState: ObservableObject {
         statsSectionOrder = []
         statsSectionHidden = []
         statsWidgets = []
+        notifications = []
+        notificationCursor = nil
+        notificationLoading = false
+        notificationLoadingMore = false
+        notificationMutating = false
+        notificationError = nil
+        notificationErrorIsAppend = false
+        notificationPanelOpen = false
+        unreadNotifications = 0
+        notificationPrefs = nil
+        availableNotificationTypes = []
+        choreReminderPrefs = []
+        activeTimer = nil
+        pendingLogs = []
+        activeSheet = nil
+        toast = nil
+        pendingQuickLog = nil
+        jiggleMode = false
+        currentTab = .home
+        homeView = .log
     }
 }

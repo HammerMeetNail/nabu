@@ -2,27 +2,18 @@ package household_test
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/HammerMeetNail/nabu/internal/auth"
 	"github.com/HammerMeetNail/nabu/internal/household"
 )
 
-// stubAuthStore satisfies the household.AuthStore interface.
-type stubAuthStore struct {
-	calls []stubAuthCall
-}
+// The auth service resolves canonical membership instead of keeping a copy.
+type stubAuthStore struct{ resolve auth.MembershipResolver }
 
-type stubAuthCall struct {
-	userID      int64
-	householdID int64
-	role        string
-}
-
-func (s *stubAuthStore) SetUserHousehold(_ context.Context, userID, householdID int64, role string) error {
-	s.calls = append(s.calls, stubAuthCall{userID, householdID, role})
-	return nil
-}
+func (s *stubAuthStore) SetMembershipResolver(resolve auth.MembershipResolver) { s.resolve = resolve }
 
 func newSvc() (*household.Service, *household.MemoryStore, *stubAuthStore) {
 	store := household.NewMemoryStore()
@@ -47,10 +38,11 @@ func TestCreateHousehold_Basic(t *testing.T) {
 	if hh.Name != "Smith Family" {
 		t.Errorf("Name = %q", hh.Name)
 	}
-	// authStore should have been called
-	if len(auth.calls) != 1 || auth.calls[0].userID != 1 || auth.calls[0].role != household.RoleOwner {
-		t.Errorf("unexpected auth calls: %v", auth.calls)
+	id, role, err := auth.resolve(ctx, 1)
+	if err != nil || id == nil || *id != hh.ID || role != household.RoleOwner {
+		t.Fatalf("noncanonical auth profile: %v %s %v", id, role, err)
 	}
+
 }
 
 func TestCreateHousehold_EmptyNameError(t *testing.T) {
@@ -266,10 +258,11 @@ func TestJoinHousehold_ViaOneTimeInvite(t *testing.T) {
 	if joined.Name != "Test" {
 		t.Errorf("Joined household Name = %q", joined.Name)
 	}
-	// authStore called for both CreateHousehold and JoinHousehold
-	if len(auth.calls) < 2 {
-		t.Errorf("expected >=2 auth calls, got %d", len(auth.calls))
+	id, role, err := auth.resolve(ctx, 2)
+	if err != nil || id == nil || *id != joined.ID || role != household.RoleMember {
+		t.Fatalf("noncanonical joined profile: %v %s %v", id, role, err)
 	}
+
 }
 
 func TestJoinHousehold_AlreadyMember(t *testing.T) {
@@ -433,8 +426,8 @@ func TestRemoveMember_CannotRemoveSelf(t *testing.T) {
 
 	_, _ = svc.CreateHousehold(ctx, "Test", "", 1)
 	err := svc.RemoveMember(ctx, 1, 1)
-	if err == nil {
-		t.Fatal("expected error: use leave instead")
+	if !errors.Is(err, household.ErrNotAuthorized) {
+		t.Fatalf("self removal = %v, want ErrNotAuthorized", err)
 	}
 }
 

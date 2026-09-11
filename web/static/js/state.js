@@ -1,5 +1,6 @@
 export function createAppState() {
   return {
+    contextGeneration: 0,
     user: null,
     currentRoute: null,
     networkOnline: navigator.onLine,
@@ -11,6 +12,12 @@ export function createAppState() {
     userHouseholds: [],
     activeHouseholdId: null,
     notifications: [],
+    notificationCursor: null,
+    notificationLoading: false,
+    notificationLoadingMore: false,
+    notificationMutating: false,
+    notificationError: null,
+    notificationErrorAction: null,
     unreadNotifications: 0,
     schedules: [],
     activityView: "history",
@@ -19,6 +26,9 @@ export function createAppState() {
     weekLogs: [],
     activeSheet: null,
     activeSheetData: {},
+    deleteAccountOpen: false,
+    deleteAccountBusy: false,
+    deleteAccountError: null,
     choreOrder: [],            // per-user preferred chore order (array of chore IDs)
     hiddenHomeChoreIDs: [],    // chore IDs hidden from the Home tab grid
     volumeUnit: "ml",          // per-user volume display/input unit ("ml" | "oz")
@@ -32,6 +42,12 @@ export function createAppState() {
     historyChoreFilter: null,  // null = show all, []string = filtered chore IDs
     historyFilterOpen: false,  // filter dropdown starts closed
     historySearch: "",         // text search across note/title (empty = off)
+    historyLogs: [],
+    historyHasMore: false,
+    historyBefore: null,
+    pendingLogs: [],
+    activeTimer: null,
+    dayNotes: {},
     stats: {
       sectionOrder: [],       // ordered array of section keys (user pref)
       sectionHidden: [],      // array of hidden section keys (user pref)
@@ -41,40 +57,10 @@ export function createAppState() {
 }
 
 export function resetAuthedState(state) {
-  state.user = null;
-  state.household = null;
-  state.userHouseholds = [];
-  state.activeHouseholdId = null;
-  state.chores = [];
-  state.todayLogs = [];
-  state.notifications = [];
-  state.unreadNotifications = 0;
-  state.members = [];
-  state.historicalMembers = [];
-  state.invites = [];
-  state.schedules = [];
-  state.activityView = "history";
-  state.calendarView = "day";
-  state.calendarDate = null;
-  state.weekLogs = [];
-  state.activeSheet = null;
-  state.activeSheetData = {};
-  state.choreOrder = [];
-  state.hiddenHomeChoreIDs = [];
-  state.volumeUnit = "ml";
-  state.hideNotificationBadge = false;
-  state.jiggleMode = false;
-  state.homeView = "log";
-  state.latestLogs = {};
-	state.notificationPrefs = null;
-	state.availableNotificationTypes = [];
-	state.choreReminderPrefs = [];
-	state.historyChoreFilter = null;
-	state.historyFilterOpen = false;
-	state.historySearch = "";
-	state.stats = {
-		sectionOrder: [],
-		sectionHidden: [],
-		customizeOpen: false,
-	};
+  const publicState = { googleOAuthEnabled:state.googleOAuthEnabled, appleSignInEnabled:state.appleSignInEnabled,
+    contextGeneration:(state.contextGeneration || 0)+1 };
+  // Delete dynamic caches as well as declared defaults. Object.assign alone
+  // leaves Activity pages, timer state and detailed Stats from the old identity.
+  for (const key of Object.keys(state)) delete state[key];
+  Object.assign(state, createAppState(), publicState);
 }

@@ -1,4 +1,7 @@
 import { test, expect } from "@playwright/test";
+import {deferred,observeModuleCalls} from './review-fixtures.js';
+
+test.use({serviceWorkers:'block'});
 
 const BASE = "http://localhost:8080";
 
@@ -39,6 +42,30 @@ async function navigateToSettings(page) {
 }
 
 test.describe("Settings: delete account", () => {
+  test('a delayed rejection preserves Cancel and subsequent navigation',async({page})=>{
+    const joinDeletion=await observeModuleCalls(page,'app','doDeleteAccount',{exported:false});
+    await setupFullAccount(page);
+    await navigateToSettings(page);
+    const entered=deferred(),release=deferred();
+    await page.route('**/api/me',async route=>{
+      if(route.request().method()!=='DELETE') return route.continue();
+      entered.resolve();await release.promise;
+      await route.fulfill({status:409,contentType:'application/json',body:JSON.stringify({error:'Transfer ownership first'})});
+    });
+    try {
+      await page.locator('[data-action="open-delete-account"]').click();
+      await page.locator('#delete-account-input').fill('DELETE');
+      await page.locator('[data-action="confirm-delete-account"]').click();await entered.promise;
+      await page.locator('[data-action="cancel-delete-account"]').click();
+      await page.locator('[data-nav="today"]').click();
+      await expect(page.locator('.settings-view')).toHaveCount(0);
+      release.resolve();await joinDeletion();
+      await expect(page.locator('.settings-view')).toHaveCount(0);
+      await navigateToSettings(page);
+      await expect(page.getByTestId('delete-account-confirm')).toHaveCount(0);
+      await expect(page.locator('[data-action="open-delete-account"]')).toBeVisible();
+    } finally {release.resolve();}
+  });
   test("typed confirmation deletes the account and lands on login", async ({
     page,
   }) => {
@@ -123,5 +150,8 @@ test.describe("Settings: delete account", () => {
       /owner/i
     );
     await expect(page.locator(".settings-view")).toBeVisible();
+    await page.locator('[data-nav="today"]').click();
+    await navigateToSettings(page);
+    await expect(page.locator('#delete-account-error')).toContainText(/owner/i);
   });
 });

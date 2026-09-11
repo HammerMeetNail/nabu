@@ -3,6 +3,7 @@ package daynote
 import (
 	"context"
 	"database/sql"
+	"github.com/HammerMeetNail/nabu/internal/readlimit"
 	"time"
 )
 
@@ -20,7 +21,7 @@ func (s *postgresStore) ListRange(ctx context.Context, householdID int64, start,
 		SELECT to_char(note_date, 'YYYY-MM-DD'), note, updated_by, updated_at
 		FROM day_notes
 		WHERE household_id = $1 AND note_date >= $2::date AND note_date < $3::date
-		ORDER BY note_date DESC`,
+		ORDER BY note_date DESC`+readlimit.SQL(ctx),
 		householdID, start.Format("2006-01-02"), end.Format("2006-01-02"))
 	if err != nil {
 		return nil, err
@@ -38,6 +39,9 @@ func (s *postgresStore) ListRange(ctx context.Context, householdID int64, start,
 			n.UpdatedBy = &v
 		}
 		out = append(out, n)
+	}
+	if err := readlimit.Check(ctx, len(out)); err != nil {
+		return nil, err
 	}
 	return out, rows.Err()
 }

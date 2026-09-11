@@ -1,5 +1,6 @@
 GO ?= go
 COMPOSE ?= podman compose
+GOLANGCI_VERSION := 2.13.2
 
 .PHONY: test test-go test-js fmt run e2e e2e-watch e2e-debug backup restore local local-fresh down seed lint coverage hooks check-parity deploy
 
@@ -9,7 +10,7 @@ test-go:
 	$(GO) test -timeout 300s ./...
 
 test-js:
-	node --test web/static/js/tests/runner.js
+	node --test web/static/js/tests/runner.js tests/ops/*.test.js
 
 fmt:
 	$(GO) fmt ./...
@@ -40,22 +41,24 @@ e2e-debug: local
 	pnpm exec playwright test --project=chromium --headed --debug --reporter=list
 
 backup:
-	sh ./scripts/backup.sh
+	bash ./scripts/backup.sh
 
 restore:
-	sh ./scripts/restore.sh $(DUMP)
+	bash ./scripts/restore.sh $(RESTORE_ARGS)
 
 seed:
 	sh ./scripts/seed.sh
 
 lint:
 	mkdir -p .cache
-	@if [ ! -f .cache/golangci-lint ]; then \
-		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s v2.6.2; \
-		mv bin/golangci-lint .cache/golangci-lint; \
+	@if [ ! -f .cache/golangci-lint-$(GOLANGCI_VERSION) ]; then \
+		set -e; \
+		curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/v$(GOLANGCI_VERSION)/install.sh -o .cache/install-lint.sh; \
+		sh .cache/install-lint.sh v$(GOLANGCI_VERSION); \
+		mv bin/golangci-lint .cache/golangci-lint-$(GOLANGCI_VERSION); \
 		rm -rf bin; \
 	fi
-	.cache/golangci-lint run ./...
+	.cache/golangci-lint-$(GOLANGCI_VERSION) run ./...
 
 coverage:
 	$(GO) test -race -timeout 600s -coverprofile=coverage.out ./...
@@ -72,3 +75,7 @@ check-parity:
 
 deploy:
 	bash scripts/deploy.sh
+
+# Explicit image arguments keep drills independent of any live cluster.
+recovery-drill:
+	python3 scripts/recovery.py wal-drill --image "$(PG_IMAGE)" --app-image "$(APP_IMAGE)" --report "$(REPORT)"

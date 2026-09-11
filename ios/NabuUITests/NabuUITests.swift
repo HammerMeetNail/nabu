@@ -1,5 +1,168 @@
 import XCTest
 
+private extension XCUIApplication {
+    func launchForLocalTest() {
+        if !launchArguments.contains("-nabuBaseURL") {
+            launchArguments += ["-nabuBaseURL", "http://localhost:8080"]
+        }
+        launch()
+    }
+}
+
+/// Screen regressions for the review's dedicated reads and recovery controls.
+/// The fixture responds inside the app process; no production server is used.
+final class NabuReviewRecoveryUITests: XCTestCase {
+    private func launch(_ scenario: String, accessibilitySize: Bool = false) -> XCUIApplication {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-disableAnimations", "-resetState", "-seedHomeForUITest", "-useMockAPI",
+                               "-reviewScenario", scenario, "-nabuBaseURL", "http://localhost:9998"]
+        if accessibilitySize {
+            app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL"]
+        }
+        app.launchForLocalTest()
+        XCTAssertTrue(app.tabBars.buttons["Home"].waitForExistence(timeout: 5))
+        return app
+    }
+
+    private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
+        for upward in [true, false] {
+            for _ in 0..<12 {
+                if element.exists && element.isHittable { return }
+                if upward { app.swipeUp() } else { app.swipeDown() }
+            }
+        }
+        XCTAssertTrue(element.exists && element.isHittable, "Expected reachable control: \(element)")
+    }
+
+    func testGramEntryRecentChipAndFailedSaveRetainValuesForRetry() {
+        let app = launch("amount")
+        let chore = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Weigh flour")).firstMatch
+        reveal(chore, in: app)
+        chore.tap()
+        XCTAssertTrue(app.buttons["120 g"].waitForExistence(timeout: 5))
+        app.buttons["120 g"].tap()
+        let amount = app.textFields["amount-input"]
+        XCTAssertEqual(amount.value as? String, "120")
+        amount.tap()
+        amount.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3) + "37")
+        let save = app.buttons["save-log-button"]
+        reveal(save, in: app)
+        save.tap()
+        XCTAssertTrue(app.staticTexts["Could not save. Please retry."].waitForExistence(timeout: 5))
+        XCTAssertEqual(amount.value as? String, "37")
+        save.tap()
+        XCTAssertTrue(chore.waitForExistence(timeout: 5))
+        app.tabBars.buttons["Activity"].tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "37 g")).firstMatch.waitForExistence(timeout: 5))
+    }
+
+    func testNotificationOlderPageFailureRetainsReadRowsAndRetryWorks() {
+        let app = launch("notifications", accessibilitySize: true)
+        app.tabBars.buttons["Settings"].tap()
+        let notifications = app.buttons["Notifications"]
+        reveal(notifications, in: app)
+        notifications.tap()
+        XCTAssertTrue(app.staticTexts["Read notice 1"].waitForExistence(timeout: 5))
+        let more = app.buttons["notifications-load-more"]
+        reveal(more, in: app)
+        more.tap()
+        XCTAssertTrue(app.staticTexts["notification-error"].waitForExistence(timeout: 5))
+        reveal(app.staticTexts["Read notice 1"], in: app)
+        XCTAssertTrue(app.staticTexts["Read notice 1"].exists)
+        reveal(more, in: app)
+        more.tap()
+        XCTAssertTrue(app.staticTexts["Older notice 3"].waitForExistence(timeout: 5))
+        let mark = app.buttons["notification-mark-read-3"]
+        reveal(mark, in: app)
+        mark.tap()
+        XCTAssertTrue(mark.waitForNonExistence(timeout: 5))
+        app.staticTexts["Older notice 3"].swipeLeft()
+        app.buttons["Delete"].tap()
+        XCTAssertTrue(app.staticTexts["Older notice 3"].waitForNonExistence(timeout: 5))
+        XCTAssertFalse(more.exists)
+    }
+
+    func testExportRangeErrorCancelAndShareRecovery() {
+        let app = launch("export")
+        app.tabBars.buttons["Settings"].tap()
+        let allDates = app.switches["All dates"]
+        reveal(allDates, in: app)
+        allDates.tap()
+        XCTAssertTrue(app.datePickers["From"].exists)
+        XCTAssertTrue(app.datePickers["Through"].exists)
+        let export = app.buttons["Export logs as CSV"]
+        reveal(export, in: app)
+        export.tap()
+        let error = app.staticTexts["export-error"]
+        reveal(error, in: app)
+        XCTAssertTrue(error.waitForExistence(timeout: 5))
+        reveal(export, in: app)
+        export.tap()
+        let cancel = app.buttons["Cancel export"]
+        reveal(cancel, in: app)
+        XCTAssertTrue(cancel.waitForExistence(timeout: 5))
+        cancel.tap()
+        XCTAssertTrue(cancel.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(allDates.isEnabled)
+        reveal(export, in: app)
+        export.tap()
+        XCTAssertTrue(app.otherElements["export-share-sheet"].waitForExistence(timeout: 5))
+    }
+
+    func testActivityErrorRetryAndSearchSurviveTabRoundtrip() {
+        let app = launch("activity")
+        app.tabBars.buttons["Activity"].tap()
+        let retry = app.buttons["Retry"]
+        XCTAssertTrue(retry.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["No activity yet"].exists)
+        retry.tap()
+        let result = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Needle result")).firstMatch
+        XCTAssertTrue(result.waitForExistence(timeout: 5))
+        let search = app.searchFields.firstMatch
+        search.tap();search.typeText("Needle")
+        app.tabBars.buttons["Home"].tap()
+        app.tabBars.buttons["Activity"].tap()
+        XCTAssertEqual(search.value as? String, "Needle")
+        XCTAssertTrue(result.waitForExistence(timeout: 5))
+    }
+}
+
+final class NabuPasswordSetupUITests: XCTestCase {
+    func testClaimedAccountCanOpenAndCancelPasswordSetup() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-disableAnimations", "-seedHomeForUITest", "-useMockAPI",
+                               "-passwordlessAccount", "-nabuBaseURL", "http://localhost:8080"]
+        app.launchForLocalTest()
+        XCTAssertTrue(app.tabBars.buttons["Settings"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Settings"].tap()
+        XCTAssertTrue(app.buttons["Set Password"].waitForExistence(timeout: 5))
+        app.buttons["Set Password"].tap()
+        XCTAssertTrue(app.secureTextFields["New Password"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.secureTextFields["Current Password"].exists)
+        app.buttons["Cancel"].tap()
+        XCTAssertFalse(app.secureTextFields["New Password"].exists)
+        XCTAssertTrue(app.buttons["Set Password"].exists)
+    }
+}
+
+final class NabuScheduleEmptyStateUITests: XCTestCase {
+    func testEmptyScheduleActionOpensPickerAndCancelReturns() {
+        let app = XCUIApplication()
+        app.launchArguments = ["-disableAnimations", "-resetState", "-seedHomeForUITest", "-useMockAPI",
+                               "-nabuBaseURL", "http://localhost:8080"]
+        app.launchForLocalTest()
+        XCTAssertTrue(app.tabBars.buttons["Schedule"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Schedule"].tap()
+        let create = app.buttons["empty-schedule-create"]
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+        create.tap()
+        XCTAssertTrue(app.navigationBars["Add to Schedule"].waitForExistence(timeout: 5))
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(create.waitForExistence(timeout: 5))
+    }
+}
+
 // MARK: - Auth Flow Tests
 
 final class NabuUITests: XCTestCase {
@@ -9,7 +172,7 @@ final class NabuUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["-disableAnimations", "-resetState"]
-        app.launch()
+        app.launchForLocalTest()
     }
 
     func testLoginFormAppears() throws {
@@ -89,7 +252,7 @@ final class NabuHomeGridUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["-disableAnimations", "-seedHomeForUITest"]
-        app.launch()
+        app.launchForLocalTest()
     }
 
     func testGridShowsAllSeededChores() throws {
@@ -152,7 +315,7 @@ final class NabuHomeLogSheetUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["-disableAnimations", "-seedHomeForUITest", "-useMockAPI"]
-        app.launch()
+        app.launchForLocalTest()
     }
 
     func testCancelDismissesSheet() throws {
@@ -240,7 +403,7 @@ final class NabuHomeLogFlowUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["-disableAnimations", "-seedHomeForUITest", "-useMockAPI"]
-        app.launch()
+        app.launchForLocalTest()
     }
 
     /// Log a chore that had no prior log; verify time-ago updates on the grid.
@@ -310,7 +473,7 @@ final class NabuHomeQuickLogUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["-disableAnimations", "-seedHomeForUITest", "-useMockAPI"]
-        app.launch()
+        app.launchForLocalTest()
     }
 
     func testQuickLogSheetOpens() throws {
@@ -375,7 +538,7 @@ final class NabuHomeJiggleUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["-disableAnimations", "-seedHomeForUITest"]
-        app.launch()
+        app.launchForLocalTest()
     }
 
     func testJiggleModeToggle() throws {
@@ -411,7 +574,7 @@ final class NabuHomeManageUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["-disableAnimations", "-seedHomeForUITest", "-useMockAPI"]
-        app.launch()
+        app.launchForLocalTest()
     }
 
     func testManageTabShowsChores() throws {
@@ -478,7 +641,7 @@ final class NabuHomeEndToEndUITests: XCTestCase {
             "-nabuBaseURL", "http://localhost:8080",
             "-nabuAutoRegister", email, password,
         ]
-        app.launch()
+        app.launchForLocalTest()
 
         // 1. Wait for home grid to load — look for chore text in the home grid.
         // The HomeGrid accessibilityLabel includes chore name.
@@ -516,7 +679,7 @@ final class NabuAccessibilityUITests: XCTestCase {
             "-disableAnimations", "-seedHomeForUITest",
             "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityL",
         ]
-        app.launch()
+        app.launchForLocalTest()
     }
 
     /// The grid must survive an accessibility type size: tiles visible and
@@ -538,7 +701,7 @@ final class NabuAccessibilityUITests: XCTestCase {
     func testAccessibilityAuditOnHome() throws {
         let auditApp = XCUIApplication()
         auditApp.launchArguments = ["-disableAnimations", "-seedHomeForUITest"]
-        auditApp.launch()
+        auditApp.launchForLocalTest()
         XCTAssertTrue(auditApp.staticTexts["Feed Cats"].waitForExistence(timeout: 5))
         try auditApp.performAccessibilityAudit { issue in
             if let element = issue.element {

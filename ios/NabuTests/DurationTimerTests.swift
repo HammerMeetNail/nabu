@@ -70,4 +70,17 @@ final class DurationTimerTests: XCTestCase {
         XCTAssertEqual(DurationTimer.formatElapsed(3661), "1:01:01")
         XCTAssertEqual(DurationTimer.formatElapsed(-5), "0:00")
     }
+    func testStoppedTimerKeepsDurationKeyAndOriginAcrossReload() {
+        let origin = LogOrigin(actorID: 4, householdID: 9)
+        let timer = ActiveTimer(choreId: 3, choreName: "Sleep", choreIcon: "⏱",
+            startedAt: Date(timeIntervalSince1970: 1000), origin: origin,
+            idempotencyKey: "frozen", stoppedAt: Date(timeIntervalSince1970: 1090))
+        XCTAssertTrue(DurationTimer.save(timer, to: defaults))
+        let loaded = DurationTimer.load(from: defaults, origin: origin)
+        XCTAssertEqual(loaded, timer)
+        XCTAssertEqual(DurationTimer.elapsedSeconds(loaded!, now: Date(timeIntervalSince1970: 5000)), 90)
+        XCTAssertNil(DurationTimer.load(from: defaults, origin: LogOrigin(actorID: 5, householdID: 9)))
+        XCTAssertNil(DurationTimer.load(from: defaults, origin: LogOrigin(actorID: 4, householdID: 10)))
+    }
+
 }

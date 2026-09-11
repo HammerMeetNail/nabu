@@ -19,8 +19,8 @@ func TestPostgresLogStore_CreateLog(t *testing.T) {
 	store := NewPostgresStore(db)
 
 	now := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
-	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO chore_logs (household_id, user_id, chore_id, completed_at, note, indicators, slot_hour, log_date, volume_ml, indicator_volumes, rating, title, idempotency_key, duration_seconds, subject) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`)).
-		WithArgs(int64(1), int64(1), int64(1), now, "", "[]", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg()).
+	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO chore_logs (household_id, user_id, chore_id, completed_at, note, indicators, slot_hour, log_date, volume_ml, indicator_volumes, rating, title, idempotency_key, duration_seconds, subject, idempotency_actor_id, idempotency_hash) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`)).
+		WithArgs(int64(1), int64(1), int64(1), now, "", "[]", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), int64(0), "").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(1, now))
 
 	entry, err := store.CreateLog(context.Background(), ChoreLog{
@@ -147,8 +147,8 @@ func TestPostgresLogStore_LatestPerChore_TiebreakerInOrderBy(t *testing.T) {
 	now := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
 	// The ORDER BY must include id DESC as a tiebreaker so that when two
 	// logs share the same completed_at, the higher-id (newer) row wins
-	// after DISTINCT ON picks the first row in each group.
-	mock.ExpectQuery("(?s).*ORDER BY chore_id, completed_at DESC, id DESC.*").
+	// when the per-chore lookup selects one row.
+	mock.ExpectQuery("(?s).*ORDER BY completed_at DESC, id DESC.*").
 		WithArgs(int64(1)).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "user_id", "chore_id", "completed_at", "coalesce_note", "coalesce_indicators", "slot_hour", "created_at", "log_date", "volume_ml", "indicator_volumes", "rating", "title", "duration_seconds", "subject"}).
 			AddRow(2, 1, 1, 5, now, "", "[]", nil, now, nil, nil, nil, nil, nil, nil, nil))

@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"github.com/HammerMeetNail/nabu/internal/readlimit"
 	"strings"
 	"time"
 )
@@ -69,9 +71,9 @@ func (s *PostgresStore) CreateLog(ctx context.Context, log ChoreLog) (ChoreLog, 
 		idemKey = sql.NullString{String: log.IdempotencyKey, Valid: true}
 	}
 	err := s.db.QueryRowContext(ctx, `
-		INSERT INTO chore_logs (household_id, user_id, chore_id, completed_at, note, indicators, slot_hour, log_date, volume_ml, indicator_volumes, rating, title, idempotency_key, duration_seconds, subject)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id, created_at
-	`, log.HouseholdID, log.UserID, log.ChoreID, log.CompletedAt, log.Note, string(indJSON), ptrToNullInt64(log.SlotHour), logDate, ptrToNullInt64(log.VolumeML), nullStr(indVolJSON), ptrToNullInt64(log.Rating), title, idemKey, ptrToNullInt64(log.DurationSeconds), nullStrPtr(log.Subject)).Scan(&log.ID, &log.CreatedAt)
+		INSERT INTO chore_logs (household_id, user_id, chore_id, completed_at, note, indicators, slot_hour, log_date, volume_ml, indicator_volumes, rating, title, idempotency_key, duration_seconds, subject, idempotency_actor_id, idempotency_hash)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id, created_at
+	`, log.HouseholdID, log.UserID, log.ChoreID, log.CompletedAt, log.Note, string(indJSON), ptrToNullInt64(log.SlotHour), logDate, ptrToNullInt64(log.VolumeML), nullStr(indVolJSON), ptrToNullInt64(log.Rating), title, idemKey, ptrToNullInt64(log.DurationSeconds), nullStrPtr(log.Subject), log.IdempotencyActorID, log.IdempotencyHash).Scan(&log.ID, &log.CreatedAt)
 	return log, err
 }
 
@@ -112,10 +114,10 @@ func (s *PostgresStore) FindLogByIdempotencyKey(ctx context.Context, householdID
 	var durationSec sql.NullInt64
 	var subjectSQL sql.NullString
 	err := s.db.QueryRowContext(ctx, `
-		SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date, volume_ml, indicator_volumes::text, rating, COALESCE(title,''), duration_seconds, subject
+		SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date, volume_ml, indicator_volumes::text, rating, COALESCE(title,''), duration_seconds, subject, COALESCE(idempotency_actor_id,0), COALESCE(idempotency_hash,'')
 		FROM chore_logs WHERE household_id = $1 AND idempotency_key = $2
 		LIMIT 1
-	`, householdID, key).Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML, &indVolJSON, &rating, &title, &durationSec, &subjectSQL)
+	`, householdID, key).Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML, &indVolJSON, &rating, &title, &durationSec, &subjectSQL, &l.IdempotencyActorID, &l.IdempotencyHash)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -186,24 +188,45 @@ func (s *PostgresStore) GetLog(ctx context.Context, id int64) (ChoreLog, error) 
 	return l, err
 }
 
-func (s *PostgresStore) UpdateLog(ctx context.Context, log ChoreLog) error {
-	indJSON, _ := json.Marshal(nilToEmptyLog(log.Indicators))
-	var indVolJSON string
-	if len(log.IndicatorVolumes) > 0 {
-		b, _ := json.Marshal(log.IndicatorVolumes)
-		indVolJSON = string(b)
+func (s *PostgresStore) UpdateLog(ctx context.Context, entry ChoreLog, masks ...LogFields) error {
+	fields := fieldsOrAll(masks)
+	indicators, _ := json.Marshal(nilToEmptyLog(entry.Indicators))
+	var indicatorVolumes any
+	if len(entry.IndicatorVolumes) > 0 {
+		b, _ := json.Marshal(entry.IndicatorVolumes)
+		indicatorVolumes = string(b)
 	}
-	var logDate *string
-	if log.LogDate != nil {
-		logDate = log.LogDate
+	columns := []struct {
+		field, column string
+		value         any
+	}{
+		{"note", "note", entry.Note}, {"title", "title", entry.Title}, {"indicators", "indicators", string(indicators)},
+		{"indicatorVolumes", "indicator_volumes", indicatorVolumes}, {"volumeML", "volume_ml", entry.VolumeML},
+		{"rating", "rating", entry.Rating}, {"durationSeconds", "duration_seconds", entry.DurationSeconds},
+		{"subject", "subject", entry.Subject}, {"userId", "user_id", entry.UserID}, {"completedAt", "completed_at", entry.CompletedAt.UTC()},
+		{"hour", "slot_hour", entry.SlotHour}, {"date", "log_date", entry.LogDate},
 	}
-	var titleSQL *string
-	if log.Title != nil {
-		titleSQL = log.Title
+	var sets []string
+	args := []any{entry.ID, entry.HouseholdID}
+	for _, column := range columns {
+		if fields.includes(column.field) {
+			args = append(args, column.value)
+			sets = append(sets, fmt.Sprintf("%s=$%d", column.column, len(args)))
+		}
 	}
-	_, err := s.db.ExecContext(ctx,
-		`UPDATE chore_logs SET note=$1, indicators=$2, volume_ml=$3, user_id=$4, completed_at=$5, slot_hour=$6, log_date=$7, indicator_volumes=$8, rating=$9, title=$10, duration_seconds=$11, subject=$12 WHERE id=$13`,
-		log.Note, string(indJSON), ptrToNullInt64(log.VolumeML), log.UserID, log.CompletedAt.UTC(), log.SlotHour, logDate, nullStr(indVolJSON), ptrToNullInt64(log.Rating), titleSQL, ptrToNullInt64(log.DurationSeconds), nullStrPtr(log.Subject), log.ID)
+	if len(sets) == 0 {
+		return nil
+	}
+	// Only constants above form identifiers. Independent-field edits merge in
+	// PostgreSQL itself, rather than replacing a stale read of the whole row.
+	result, err := s.db.ExecContext(ctx, "UPDATE chore_logs SET "+strings.Join(sets, ",")+" WHERE id=$1 AND household_id=$2", args...)
+	if err != nil {
+		return err
+	}
+	n, err := result.RowsAffected()
+	if err == nil && n == 0 {
+		return ErrNotFound
+	}
 	return err
 }
 
@@ -263,87 +286,18 @@ func (s *PostgresStore) ListLogsRange(ctx context.Context, householdID int64, st
 	return s.queryLogs(ctx, householdID, start.Format("2006-01-02"), end.Format("2006-01-02"))
 }
 
-func (s *PostgresStore) LatestPerChore(ctx context.Context, householdID int64) (map[int64]ChoreLog, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT DISTINCT ON (chore_id)
-			id, household_id, user_id, chore_id, completed_at,
-			COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at,
-			log_date, volume_ml, indicator_volumes::text, rating, COALESCE(title,''), duration_seconds, subject
-		FROM chore_logs
-		WHERE household_id = $1
-		ORDER BY chore_id, completed_at DESC, id DESC
-	`, householdID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	result := map[int64]ChoreLog{}
-	for rows.Next() {
-		var l ChoreLog
-		var indJSON string
-		var indVolJSON sql.NullString
-		var slotHour sql.NullInt64
-		var logDate sql.NullString
-		var volumeML sql.NullInt64
-		var rating sql.NullInt64
-		var title sql.NullString
-		var durationSec sql.NullInt64
-		var subjectSQL sql.NullString
-		if err := rows.Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML, &indVolJSON, &rating, &title, &durationSec, &subjectSQL); err != nil {
-			return nil, err
-		}
-		_ = json.Unmarshal([]byte(indJSON), &l.Indicators)
-		if l.Indicators == nil {
-			l.Indicators = []string{}
-		}
-		l.SlotHour = nullIntToPtr(slotHour)
-		if logDate.Valid {
-			l.LogDate = &logDate.String
-		}
-		l.VolumeML = nullIntToPtr(volumeML)
-		l.Rating = nullIntToPtr(rating)
-		l.DurationSeconds = nullIntToPtr(durationSec)
-		if subjectSQL.Valid {
-			l.Subject = &subjectSQL.String
-		}
-		if title.Valid {
-			l.Title = &title.String
-		}
-		if indVolJSON.Valid && indVolJSON.String != "" {
-			_ = json.Unmarshal([]byte(indVolJSON.String), &l.IndicatorVolumes)
-		}
-		result[l.ChoreID] = l
-	}
-	return result, rows.Err()
-}
+const logColumns = `id, household_id, user_id, chore_id, completed_at,
+ COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at,
+ log_date, volume_ml, indicator_volumes::text, rating, COALESCE(title,''), duration_seconds, subject`
 
-func (s *PostgresStore) queryLogs(ctx context.Context, householdID int64, dateStart, dateEnd string) ([]ChoreLog, error) {
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, household_id, user_id, chore_id, completed_at,
-		       COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at,
-		       log_date, volume_ml, indicator_volumes::text, rating, COALESCE(title,''), duration_seconds, subject
-		FROM chore_logs
-		WHERE household_id = $1
-		  AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) >= $2::date
-		  AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) < $3::date
-		ORDER BY completed_at
-	`, householdID, dateStart, dateEnd)
-	if err != nil {
-		return nil, err
-	}
+func scanLogRows(rows *sql.Rows) ([]ChoreLog, error) {
 	defer rows.Close()
-	var logs []ChoreLog
+	logs := []ChoreLog{}
 	for rows.Next() {
 		var l ChoreLog
 		var indJSON string
-		var indVolJSON sql.NullString
-		var slotHour sql.NullInt64
-		var logDate sql.NullString
-		var volumeML sql.NullInt64
-		var rating sql.NullInt64
-		var title sql.NullString
-		var durationSec sql.NullInt64
-		var subjectSQL sql.NullString
+		var indVolJSON, logDate, title, subjectSQL sql.NullString
+		var slotHour, volumeML, rating, durationSec sql.NullInt64
 		if err := rows.Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML, &indVolJSON, &rating, &title, &durationSec, &subjectSQL); err != nil {
 			return nil, err
 		}
@@ -372,24 +326,63 @@ func (s *PostgresStore) queryLogs(ctx context.Context, householdID int64, dateSt
 	return logs, rows.Err()
 }
 
+func (s *PostgresStore) LatestPerChore(ctx context.Context, householdID int64) (map[int64]ChoreLog, error) {
+	access, accessArgs := readAccessSQL(ctx, householdID, "c.id", "c.household_id", 2)
+	// One index lookup per authorized chore instead of sorting every historical
+	// log. The higher ID wins when completion times are equal.
+	rows, err := s.db.QueryContext(ctx, `SELECT latest.* FROM chores c
+ CROSS JOIN LATERAL (SELECT `+logColumns+` FROM chore_logs
+ WHERE household_id = $1 AND chore_id = c.id
+ ORDER BY completed_at DESC, id DESC LIMIT 1) latest
+ WHERE c.household_id = $1`+access, append([]any{householdID}, accessArgs...)...)
+	if err != nil {
+		return nil, err
+	}
+	logs, err := scanLogRows(rows)
+	if err != nil {
+		return nil, err
+	}
+	result := map[int64]ChoreLog{}
+	for _, l := range logs {
+		result[l.ChoreID] = l
+	}
+	return result, nil
+}
+
+func (s *PostgresStore) queryLogs(ctx context.Context, householdID int64, dateStart, dateEnd string) ([]ChoreLog, error) {
+	access, accessArgs := readAccessSQL(ctx, householdID, "chore_logs.chore_id", "chore_logs.household_id", 4)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+logColumns+` FROM chore_logs
+ WHERE household_id = $1
+ AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) >= $2::date
+ AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) < $3::date`+access+`
+ ORDER BY completed_at, id`+readlimit.SQL(ctx), append([]any{householdID, dateStart, dateEnd}, accessArgs...)...)
+	if err != nil {
+		return nil, err
+	}
+	logs, err := scanLogRows(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := readlimit.Check(ctx, len(logs)); err != nil {
+		return nil, err
+	}
+	return logs, nil
+}
+
 func (s *PostgresStore) HistoryLogs(ctx context.Context, householdID int64, start, end time.Time) ([]ChoreLog, bool, error) {
-	dateStart := start.Format("2006-01-02")
-	dateEnd := end.Format("2006-01-02")
-	logs, err := s.queryLogs(ctx, householdID, dateStart, dateEnd)
+	logs, err := s.queryLogs(ctx, householdID, start.Format(time.DateOnly), end.Format(time.DateOnly))
 	if err != nil {
 		return nil, false, err
 	}
 	for i, j := 0, len(logs)-1; i < j; i, j = i+1, j-1 {
 		logs[i], logs[j] = logs[j], logs[i]
 	}
-
+	access, accessArgs := readAccessSQL(ctx, householdID, "chore_logs.chore_id", "chore_logs.household_id", 3)
 	var hasMore bool
-	err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM chore_logs WHERE household_id = $1 AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) < $2::date)`, householdID, dateStart).Scan(&hasMore)
+	err = s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM chore_logs WHERE household_id = $1
+ AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) < $2::date`+access+`)`, append([]any{householdID, start.Format(time.DateOnly)}, accessArgs...)...).Scan(&hasMore)
 	if err != nil {
-		hasMore = false
-	}
-	if logs == nil {
-		logs = []ChoreLog{}
+		return nil, false, err
 	}
 	return logs, hasMore, nil
 }
@@ -400,62 +393,14 @@ func (s *PostgresStore) SearchHistoryLogs(ctx context.Context, householdID int64
 	}
 	// Escape LIKE wildcards so user input is matched literally.
 	esc := strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(query)
-	like := "%" + esc + "%"
-	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, household_id, user_id, chore_id, completed_at,
-		       COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at,
-		       log_date, volume_ml, indicator_volumes::text, rating, COALESCE(title,''), duration_seconds, subject
-		FROM chore_logs
-		WHERE household_id = $1
-		  AND (note ILIKE $2 ESCAPE '\' OR title ILIKE $2 ESCAPE '\')
-		ORDER BY completed_at DESC
-		LIMIT $3
-	`, householdID, like, limit)
+	access, accessArgs := readAccessSQL(ctx, householdID, "chore_logs.chore_id", "chore_logs.household_id", 4)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+logColumns+` FROM chore_logs
+ WHERE household_id = $1 AND (note ILIKE $2 ESCAPE '\' OR title ILIKE $2 ESCAPE '\')`+access+`
+ ORDER BY completed_at DESC, id DESC LIMIT $3`, append([]any{householdID, "%" + esc + "%", limit}, accessArgs...)...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	var logs []ChoreLog
-	for rows.Next() {
-		var l ChoreLog
-		var indJSON string
-		var indVolJSON sql.NullString
-		var slotHour sql.NullInt64
-		var logDate sql.NullString
-		var volumeML sql.NullInt64
-		var rating sql.NullInt64
-		var title sql.NullString
-		var durationSec sql.NullInt64
-		var subjectSQL sql.NullString
-		if err := rows.Scan(&l.ID, &l.HouseholdID, &l.UserID, &l.ChoreID, &l.CompletedAt, &l.Note, &indJSON, &slotHour, &l.CreatedAt, &logDate, &volumeML, &indVolJSON, &rating, &title, &durationSec, &subjectSQL); err != nil {
-			return nil, err
-		}
-		_ = json.Unmarshal([]byte(indJSON), &l.Indicators)
-		if l.Indicators == nil {
-			l.Indicators = []string{}
-		}
-		l.SlotHour = nullIntToPtr(slotHour)
-		if logDate.Valid {
-			l.LogDate = &logDate.String
-		}
-		l.VolumeML = nullIntToPtr(volumeML)
-		l.Rating = nullIntToPtr(rating)
-		l.DurationSeconds = nullIntToPtr(durationSec)
-		if subjectSQL.Valid {
-			l.Subject = &subjectSQL.String
-		}
-		if title.Valid {
-			l.Title = &title.String
-		}
-		if indVolJSON.Valid && indVolJSON.String != "" {
-			_ = json.Unmarshal([]byte(indVolJSON.String), &l.IndicatorVolumes)
-		}
-		logs = append(logs, l)
-	}
-	if logs == nil {
-		logs = []ChoreLog{}
-	}
-	return logs, rows.Err()
+	return scanLogRows(rows)
 }
 
 func nilToEmptyLog(s []string) []string {

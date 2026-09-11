@@ -3,17 +3,9 @@ import SwiftUI
 struct ActivityView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var environment: AppEnvironment
-    @State private var historyLogs: [ChoreLog] = []
-    @State private var historyHasMore = false
-    @State private var historyBefore: String?
-    // Additive chore filter: empty = show all activity, otherwise show only the
-    // selected chores. Matches the PWA activity filter.
+    @StateObject private var model: ActivityModel
     @State private var choreFilter: Set<Int> = []
     @State private var showingFilter = false
-    // Flat text search across note/title (PWA `?q=`). Non-nil results mean
-    // search mode: pending rows, the chore filter, and pagination are hidden.
-    @State private var searchText = ""
-    @State private var searchResults: [ChoreLog]?
 
     private let activityStore: ActivityStore
     private let logStore: LogStore
@@ -21,10 +13,11 @@ struct ActivityView: View {
     init(activityStore: ActivityStore, logStore: LogStore) {
         self.activityStore = activityStore
         self.logStore = logStore
+        _model = StateObject(wrappedValue: ActivityModel(store: activityStore))
     }
 
     private var isSearching: Bool {
-        !searchText.trimmingCharacters(in: .whitespaces).isEmpty
+        !model.query.trimmingCharacters(in: .whitespaces).isEmpty
     }
 
     var body: some View {
@@ -33,8 +26,7 @@ struct ActivityView: View {
             // sub-views were removed there for low usage / visual noise).
             HistoryListView(
                 activityStore: activityStore, logStore: logStore,
-                logs: $historyLogs, hasMore: $historyHasMore, before: $historyBefore,
-                choreFilter: $choreFilter, searchResults: $searchResults
+                model: model, choreFilter: $choreFilter
             )
             .navigationTitle("Activity")
             .toolbar {
@@ -55,48 +47,20 @@ struct ActivityView: View {
                     }
                 }
             }
-            .searchable(text: $searchText, prompt: "Search notes & titles")
+            .searchable(text: Binding(get: { model.query }, set: { model.selectQuery($0) }), prompt: "Search notes & titles")
             .sheet(isPresented: $showingFilter) {
                 ChoreFilterSheet(chores: state.chores, selected: $choreFilter)
             }
         }
-        .task {
-            await loadHistory()
+        .task(id: state.currentTab.title + ":" + model.query) {
+            model.configure(state: state)
+            if state.currentTab == .activity { await model.search() }
         }
-        .task(id: searchText) {
-            await runSearch()
+        .onChange(of: state.todayLogs) { _, _ in
+            if state.currentTab == .activity { Task { await model.refresh() } }
         }
     }
 
-    private func loadHistory() async {
-        guard historyLogs.isEmpty else { return }
-        do {
-            async let history = activityStore.loadHistory()
-            async let notes = activityStore.loadDayNotes()
-            let data = try await history
-            historyLogs = data.logs
-            historyHasMore = data.hasMore
-            historyBefore = data.start
-            state.dayNotes = (try? await notes) ?? state.dayNotes
-        } catch {}
-    }
-
-    /// Debounced search against `/api/logs/history?q=` (PWA debounces its
-    /// input the same way). Clearing the text leaves search mode.
-    private func runSearch() async {
-        let q = searchText.trimmingCharacters(in: .whitespaces)
-        guard !q.isEmpty else {
-            searchResults = nil
-            return
-        }
-        try? await Task.sleep(nanoseconds: 300_000_000)
-        guard !Task.isCancelled else { return }
-        do {
-            let data = try await activityStore.searchHistory(query: q)
-            guard !Task.isCancelled else { return }
-            searchResults = data.logs
-        } catch {}
-    }
 }
 
 // MARK: - History List View
@@ -104,27 +68,30 @@ struct ActivityView: View {
 struct HistoryListView: View {
     let activityStore: ActivityStore
     let logStore: LogStore
-    @Binding var logs: [ChoreLog]
-    @Binding var hasMore: Bool
-    @Binding var before: String?
+    @ObservedObject var model: ActivityModel
     @Binding var choreFilter: Set<Int>
-    @Binding var searchResults: [ChoreLog]?
     @EnvironmentObject var state: AppState
 
-    @State private var isLoadingMore = false
     @State private var selectedLog: ChoreLog?
     @State private var selectedChore: Chore?
     @State private var editingNoteDate: DayNoteTarget?
     @State private var deletingLog: ChoreLog?
 
-    private var isSearching: Bool { searchResults != nil }
+    private var isSearching: Bool { !model.query.trimmingCharacters(in: .whitespaces).isEmpty }
 
     var body: some View {
         List {
-            if let message = emptyMessage {
+            if model.isLoading { ProgressView("Loading Activity") }
+            if let errorMessage = model.errorMessage {
+                VStack {
+                    Text(errorMessage)
+                    Button("Retry") { Task { await refresh() } }
+                }
+            }
+            if !model.isLoading && model.errorMessage == nil, let message = emptyMessage {
                 ContentUnavailableView {
                     Label(
-                        isSearching ? "No results" : "No activity yet",
+                        isSearching ? "No results" : model.hasMore ? "No activity in this range" : "No activity yet",
                         systemImage: isSearching ? "magnifyingglass" : "waveform"
                     )
                 } description: {
@@ -144,10 +111,10 @@ struct HistoryListView: View {
                 }
             }
 
-            if hasMore && !isSearching {
+            if model.hasMore && !isSearching {
                 HStack {
                     Spacer()
-                    if isLoadingMore {
+                    if model.isLoadingMore {
                         ProgressView()
                     } else {
                         Button("Load more") {
@@ -168,7 +135,7 @@ struct HistoryListView: View {
         .refreshable {
             await refresh()
         }
-        .sheet(item: $selectedLog) { log in
+        .sheet(item: $selectedLog, onDismiss: { Task { await refresh() } }) { log in
             if let chore = selectedChore {
                 LogSheet(state: state, chore: chore, log: log, logStore: logStore)
             }
@@ -203,11 +170,12 @@ struct HistoryListView: View {
             return "No activity matches your search."
         }
         if !choreFilter.isEmpty {
-            return hasMore
+            return model.hasMore
                 ? "No matching activity in this time range. Load more to look further back."
                 : "No activity matches the selected chores."
         }
-        return logs.isEmpty ? "No completed chores yet." : nil
+        if model.hasMore { return "No activity in this time range. Load more to look further back." }
+        return model.logs.isEmpty ? "No completed chores yet." : nil
     }
 
     /// Offline-queued logs synthesized as rows (negative ids) so they show
@@ -233,10 +201,10 @@ struct HistoryListView: View {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
         let source: [ChoreLog]
-        if let results = searchResults {
+        if let results = model.searchResults {
             source = results
         } else {
-            source = filterLogsByChores(pendingRows() + logs, selected: choreFilter)
+            source = filterLogsByChores(pendingRows() + model.logs, selected: choreFilter)
         }
         var groups: [String: [ChoreLog]] = [:]
         for log in source {
@@ -346,10 +314,10 @@ struct HistoryListView: View {
                         }
                         let volKeys = Set(log.indicatorVolumes?.keys.map { $0 } ?? [])
                         if volKeys.isEmpty, let volume = log.volumeML {
-                            Text("· \(VolumeUnits.formatVolume(volume, unit: unit))")
+                            Text("· \(formatChoreAmount(volume, chore: chore, volumeUnit: unit))")
                         }
                         let volParts = (log.indicatorVolumes ?? [:]).sorted(by: { $0.key < $1.key }).map { k, v in
-                            "\(k.split(separator: " ").first ?? "") \(VolumeUnits.formatVolume(v, unit: unit))"
+                            "\(k.split(separator: " ").first ?? "") \(formatChoreAmount(v, chore: chore, volumeUnit: unit))"
                         }
                         if !volParts.isEmpty {
                             Text("· \(volParts.joined(separator: " "))")
@@ -386,39 +354,22 @@ struct HistoryListView: View {
         }
     }
 
-    private func loadMore() async {
-        guard let before = before, hasMore, !isLoadingMore, !isSearching else { return }
-        isLoadingMore = true
-        do {
-            let data = try await activityStore.loadMoreHistory(before: before)
-            logs.append(contentsOf: data.logs)
-            hasMore = data.hasMore
-            self.before = data.start
-        } catch {}
-        isLoadingMore = false
-    }
-
-    /// Pull-to-refresh: refetch the first history window and the day notes.
-    private func refresh() async {
-        do {
-            async let history = activityStore.loadHistory()
-            async let notes = activityStore.loadDayNotes()
-            let data = try await history
-            logs = data.logs
-            hasMore = data.hasMore
-            before = data.start
-            state.dayNotes = (try? await notes) ?? state.dayNotes
-        } catch {}
-    }
+    private func loadMore() async { await model.loadMore() }
+    private func refresh() async { await model.refresh() }
 
     private func deleteLog(_ log: ChoreLog) async {
+        let owner = state.revision
         do {
             let _: StatusResponse = try await logStore.deleteLog(logId: log.id)
-            logs.removeAll { $0.id == log.id }
-            searchResults?.removeAll { $0.id == log.id }
-            state.todayLogs.removeAll { $0.id == log.id }
-        } catch {}
+            guard state.revision == owner else { return }
+            model.confirmDeletion(log.id)
+            await model.refresh()
+        } catch {
+            guard state.revision == owner else { return }
+            model.errorMessage = "Could not remove this log. Retry when connected."
+        }
     }
+
 }
 
 // MARK: - Day Note Sheet
@@ -472,10 +423,12 @@ struct DayNoteSheet: View {
     }
 
     private func save() async {
+        let owner = state.revision
         isSaving = true
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             _ = try await activityStore.setDayNote(date: date, note: trimmed)
+            guard state.revision == owner else { return }
             if trimmed.isEmpty {
                 state.dayNotes.removeValue(forKey: date)
             } else {

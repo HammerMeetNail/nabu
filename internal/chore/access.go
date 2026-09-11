@@ -22,18 +22,18 @@ func (s *Service) CanView(ctx context.Context, userID, householdID int64, c Chor
 	if c.HouseholdID != householdID {
 		return false, nil
 	}
-	if c.Visibility != VisibilityAdmins {
-		return true, nil
-	}
 	if s.memberships == nil {
-		// No membership reader configured (e.g. some tests / single-user mode):
-		// treat as admin-capable so existing tests continue to pass. Private
-		// tasks are invisible only when membership is wired.
+		if c.Visibility == VisibilityAdmins {
+			return false, ErrNotAdmin
+		}
 		return true, nil
 	}
 	role, err := s.memberships.GetMembershipForHousehold(ctx, userID, householdID)
 	if err != nil {
 		return false, err
+	}
+	if c.Visibility != VisibilityAdmins {
+		return role == "member" || role == roleOwner || role == roleAdmin, nil
 	}
 	return role == roleOwner || role == roleAdmin, nil
 }
@@ -82,13 +82,18 @@ func (s *Service) ListVisible(ctx context.Context, userID, householdID int64) ([
 	if err != nil {
 		return nil, err
 	}
-	var visible []Chore
-	for _, c := range all {
-		ok, err := s.CanView(ctx, userID, householdID, c)
+	// Resolve permissions once even when the collection is empty or contains
+	// only shared chores. A failed permission lookup is never an empty success.
+	role := "member"
+	if s.memberships != nil {
+		role, err = s.memberships.GetMembershipForHousehold(ctx, userID, householdID)
 		if err != nil {
 			return nil, err
 		}
-		if ok {
+	}
+	var visible []Chore
+	for _, c := range all {
+		if c.HouseholdID == householdID && (c.Visibility != VisibilityAdmins || role == roleOwner || role == roleAdmin) {
 			visible = append(visible, c)
 		}
 	}

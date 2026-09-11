@@ -253,7 +253,7 @@ func TestPushSubscribeStoreErrorHidesInternals(t *testing.T) {
 	handler := NewPushHandler(push.NewPostgresStore(failingDB(t)))
 
 	req := withUser(httptest.NewRequest(http.MethodPost, "/api/push/subscribe", strings.NewReader(
-		`{"subscription":{"endpoint":"https://fcm.googleapis.com/push/abc","keys":{"p256dh":"AAAA","auth":"BBBB"}}}`,
+		`{"bindingId":"12345678-1234-1234-1234-123456789abc","subscription":{"endpoint":"https://fcm.googleapis.com/push/abc","keys":{"p256dh":"AAAA","auth":"BBBB"}}}`,
 	)), authService, sessionID)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -271,15 +271,15 @@ func TestHouseholdCreateStoreErrorHidesInternals(t *testing.T) {
 	authService.SetAuditLogger(nil)
 	_, session := quickRegister(authService, "alice@example.com")
 
-	handler := NewHouseholdHandler(household.NewService(household.NewPostgresStore(failingDB(t)), authService))
+	handler := NewHouseholdHandler(household.NewService(household.NewPostgresStore(failingDB(t)), nil))
 
 	req := withUser(httptest.NewRequest(http.MethodPost, "/api/household", strings.NewReader(`{"name":"My Home"}`)), authService, session.ID)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
 	handler.Create(rec, req)
 
-	if rec.Code != http.StatusConflict {
-		t.Fatalf("status = %d, want 409 (body=%s)", rec.Code, rec.Body.String())
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500 (body=%s)", rec.Code, rec.Body.String())
 	}
 	if !strings.Contains(rec.Body.String(), "could not create household") {
 		t.Fatalf("body = %s, want static message", rec.Body.String())

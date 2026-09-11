@@ -48,7 +48,7 @@ func (h *AccountHandler) DeleteMe(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusConflict, transfer.Error())
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "account deletion failed")
+		writeServerError(w, "account deletion failed", err)
 		return
 	}
 

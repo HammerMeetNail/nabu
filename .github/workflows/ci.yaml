@@ -15,7 +15,6 @@ on:
         default: false
 
 env:
-  GO_VERSION: "1.25"
   REGISTRY: quay.io
   IMAGE_NAME: nabu/nabu
 
@@ -132,11 +131,17 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
           cache: true
       - uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.6.2
+          version: v2.13.2
+      - name: Verify release compiler alignment
+        run: bash scripts/check-toolchain.sh
+      - name: Scan source with the release compiler
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
+          govulncheck ./...
 
   test-go:
     name: Go Tests
@@ -161,12 +166,13 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
           cache: true
       - run: go mod download
       - run: go test -v -race -timeout 600s -coverprofile=coverage.out ./...
         env:
           DATABASE_URL: postgres://nabu:nabu@localhost:5432/nabu?sslmode=disable
+          TEST_DATABASE_URL: postgres://nabu:nabu@localhost:5432/nabu?sslmode=disable
       - uses: codecov/codecov-action@v7
         with:
           files: coverage.out
@@ -188,7 +194,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: JS tests
-        run: node --test web/static/js/tests/runner.js
+        run: node --test web/static/js/tests/runner.js tests/ops/*.test.js
 
   ios:
     name: iOS Unit Tests
@@ -247,7 +253,7 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v6
         with:
-          go-version: ${{ env.GO_VERSION }}
+          go-version-file: go.mod
           cache: true
       - uses: actions/setup-node@v6
         with:
@@ -327,6 +333,18 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
 
+      - name: Scan this architecture's release image
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          version: v0.74.0
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
+          format: "table"
+          exit-code: "1"
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+
       - name: Export digest
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
@@ -393,7 +411,7 @@ jobs:
       - name: Get manifest digest
         id: digest
         run: |
-          DIGEST=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest --format '{{json .Manifest.Digest}}' | tr -d '"')
+          DIGEST=$(docker buildx imagetools inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${GITHUB_REF_NAME#v} --format '{{json .Manifest.Digest}}' | tr -d '"')
           echo "digest=$DIGEST" >> $GITHUB_OUTPUT
 
       - name: Determine image tag
@@ -409,7 +427,8 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          version: v0.74.0
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}
           format: "table"
           exit-code: "1"
           ignore-unfixed: true
@@ -535,16 +554,29 @@ jobs:
           fi
 
           # Copy compose file and scripts to server
-          scp compose.server.deploy.yaml ssh.yearofbingo.com:/opt/nabu/compose.yaml
-          scp scripts/backup.sh scripts/restore.sh scripts/verify-backup.sh scripts/notify-email.sh ssh.yearofbingo.com:/opt/nabu/scripts/
+          scp compose.server.deploy.yaml ssh.yearofbingo.com:/opt/nabu/compose.next.yaml
+          scp scripts/backup.sh scripts/restore.sh scripts/notify-email.sh scripts/recovery.py scripts/recovery-status.py scripts/recovery-job.sh ssh.yearofbingo.com:/opt/nabu/scripts/
+          scp scripts/verify-backup.sh ssh.yearofbingo.com:/opt/nabu/scripts/verify-backup.next.sh
+          scp scripts/wait-ready.sh scripts/deploy-local.sh ssh.yearofbingo.com:/opt/nabu/scripts/
 
           # Deploy
           ssh ssh.yearofbingo.com << EOF
+            set -euo pipefail
             cd /opt/nabu
 
             chmod 0755 scripts/*.sh
+            # Recovery settings and WAL image adoption are maintained separately
+            # in /etc/nabu; deployments never replace that configuration.
+            # Preserve the existing scheduled verifier until its replacement has
+            # explicit config, a fresh verified restore, and working monitoring.
+            if systemctl is-active --quiet nabu-recovery-check.timer && scripts/verify-backup.next.sh --check-config; then
+              mv scripts/verify-backup.next.sh scripts/verify-backup.sh
+            else
+              echo "Recovery verifier adoption pending; existing scheduled verifier retained. See docs/recovery-runbook.md."
+            fi
 
             # Write .env with all secrets
+            if [ -f .env ]; then cp .env .env.previous; chmod 600 .env.previous; fi
             cat > .env << 'ENVFILE'
           DB_PASSWORD=${DB_PASSWORD}
           SMTP_PASS=${SMTP_PASS}
@@ -580,8 +612,6 @@ jobs:
           RCLONECONF
             chmod 600 ~/.config/rclone/rclone-nabu.conf
 
-            # Pull new image and restart
-            podman-compose pull
-            podman-compose down || true
-            podman-compose up -d
+            # Bound readiness and roll back the application on failure.
+            scripts/deploy-local.sh
           EOF

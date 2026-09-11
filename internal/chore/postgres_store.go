@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"github.com/HammerMeetNail/nabu/internal/readlimit"
 )
 
 type PostgresStore struct {
@@ -56,7 +57,7 @@ func (s *PostgresStore) GetChore(ctx context.Context, id int64) (Chore, error) {
 }
 
 func (s *PostgresStore) ListChores(ctx context.Context, householdID int64) ([]Chore, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, COALESCE(predefined_key,''), created_by, created_at, indicator_labels, has_volume_ml, COALESCE(indicator_defaults,'[]'), follow_up_enabled, last_follow_up_minutes, has_rating, COALESCE(metric_type,'none'), COALESCE(metric_unit,''), COALESCE(subjects,'[]'), COALESCE(visibility,'household') FROM chores WHERE household_id = $1 ORDER BY sort_order`, householdID)
+	rows, err := s.db.QueryContext(ctx, `SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, COALESCE(predefined_key,''), created_by, created_at, indicator_labels, has_volume_ml, COALESCE(indicator_defaults,'[]'), follow_up_enabled, last_follow_up_minutes, has_rating, COALESCE(metric_type,'none'), COALESCE(metric_unit,''), COALESCE(subjects,'[]'), COALESCE(visibility,'household') FROM chores WHERE household_id = $1 ORDER BY sort_order`+readlimit.SQL(ctx), householdID)
 	if err != nil {
 		return nil, err
 	}
@@ -85,6 +86,9 @@ func (s *PostgresStore) ListChores(ctx context.Context, householdID int64) ([]Ch
 		c.NormalizeVisibility()
 		c.NormalizeMetric()
 		chores = append(chores, c)
+	}
+	if err := readlimit.Check(ctx, len(chores)); err != nil {
+		return nil, err
 	}
 	return chores, rows.Err()
 }

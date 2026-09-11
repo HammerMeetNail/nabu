@@ -11,9 +11,12 @@ final class LogDataLoader {
     }
 
     func loadTodayData() async {
+        let api = self.api.scoped()
+        let owner = state.beginOperation("loadTodayData")
         let date = todayISO()
         do {
             let data: TodayResponse = try await api.get("/api/logs/today", query: [URLQueryItem(name: "date", value: date)])
+            guard state.owns(owner) else { return }
             state.todayLogs = data.logs
         } catch {
             // Silent failure
@@ -21,8 +24,11 @@ final class LogDataLoader {
     }
 
     func loadLatestLogsData() async {
+        let api = self.api.scoped()
+        let owner = state.beginOperation("loadLatestLogsData")
         do {
             let data: LatestLogsResponse = try await api.get("/api/logs/latest-per-chore")
+            guard state.owns(owner) else { return }
             var dict: [Int: ChoreLog] = [:]
             for (key, log) in data.latestLogs {
                 if let choreId = Int(key) {
@@ -39,8 +45,11 @@ final class LogDataLoader {
     }
 
     private func todayISO() -> String {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withFullDate]
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: Date())
     }
 }

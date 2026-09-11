@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+
+	"github.com/HammerMeetNail/nabu/internal/diagnostics"
 	"strconv"
 	"strings"
 	"time"
@@ -18,15 +20,21 @@ import (
 const tickInterval = 30 * time.Second
 
 type Scheduler struct {
-	store      Store
-	schedStore schedule.Store
-	schedSvc   *schedule.Service
-	notifStore notification.Store
-	choreStore chore.Store
-	hhStore    household.Store
-	userPrefs  userprefs.Store
-	pushSender notification.PushSender
-	leader     LeaderLock
+	store                        Store
+	schedStore                   schedule.Store
+	schedSvc                     *schedule.Service
+	notifStore                   notification.Store
+	choreStore                   chore.Store
+	hhStore                      household.Store
+	userPrefs                    userprefs.Store
+	pushSender                   notification.PushSender
+	leader                       LeaderLock
+	now                          func() time.Time
+	cursor                       candidateCursor
+	queryCount                   func() uint64
+	observe                      func(TickReport)
+	tickTimeout                  time.Duration
+	maxCandidates, maxDeliveries int
 }
 
 // SetLeaderLock configures an optional single-runner guard. When set, the
@@ -65,8 +73,10 @@ func (s *Scheduler) Start(ctx context.Context) {
 	defer ticker.Stop()
 	if s.leader != nil {
 		defer func() {
-			if err := s.leader.Release(context.Background()); err != nil {
-				log.Printf("reminder: leader release error: %v", err)
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			if err := s.leader.Release(cleanupCtx); err != nil {
+				log.Printf("reminder: leader release failed")
 			}
 		}()
 	}
@@ -83,13 +93,16 @@ func (s *Scheduler) Start(ctx context.Context) {
 				continue
 			}
 			if err := s.tick(ctx); err != nil {
-				log.Printf("reminder: tick error: %v", err)
+				log.Printf("reminder: tick failed class=%s correlation_id=%s", diagnostics.ErrorClass(err), diagnostics.RequestID())
 			}
 
 			purgeCounter++
 			if purgeCounter >= 20 { // purge roughly every 10 minutes
-				if n, err := s.store.PurgeOldReminders(ctx); err != nil {
-					log.Printf("reminder: purge error: %v", err)
+				purgeCtx, purgeCancel := context.WithTimeout(ctx, 5*time.Second)
+				n, err := s.store.PurgeOldReminders(purgeCtx)
+				purgeCancel()
+				if err != nil {
+					log.Printf("reminder: purge failed class=%s correlation_id=%s", diagnostics.ErrorClass(err), diagnostics.RequestID())
 				} else if n > 0 {
 					log.Printf("reminder: purged %d old reminders", n)
 				}
@@ -107,9 +120,11 @@ func (s *Scheduler) acquireLeadership(ctx context.Context, wasLeader *bool) bool
 	if s.leader == nil {
 		return true
 	}
-	ok, err := s.leader.TryAcquire(ctx)
+	acquireCtx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	ok, err := s.leader.TryAcquire(acquireCtx)
 	if err != nil {
-		log.Printf("reminder: leader acquire error: %v", err)
+		log.Printf("reminder: leader acquire failed class=%s correlation_id=%s", diagnostics.ErrorClass(err), diagnostics.RequestID())
 		ok = false
 	}
 	if ok && !*wasLeader {
@@ -121,130 +136,14 @@ func (s *Scheduler) acquireLeadership(ctx context.Context, wasLeader *bool) bool
 	return ok
 }
 
-func (s *Scheduler) tick(ctx context.Context) error {
-	now := time.Now().UTC()
-
-	schedules, err := s.schedStore.ListActiveWithTime(ctx)
-	if err != nil {
-		return fmt.Errorf("list active schedules: %w", err)
-	}
-
-	activeToday := 0
-	sent := 0
-
-	for _, sch := range schedules {
-		if !s.schedSvc.IsActiveForDay(sch, now) {
-			continue
-		}
-
-		activeToday++
-
-		ch, err := s.choreStore.GetChore(ctx, sch.ChoreID)
-		if err != nil {
-			log.Printf("reminder: get chore %d: %v", sch.ChoreID, err)
-			continue
-		}
-
-		users := s.eligibleUsers(ctx, sch, ch)
-		if len(users) == 0 {
-			continue
-		}
-
-		log.Printf("reminder: checking schedule=%d chore=%d time=%q users=%v",
-			sch.ID, sch.ChoreID, sch.SpecificTime, users)
-
-		for _, userID := range users {
-			leadMin := s.getLeadMinutes(ctx, userID, sch.ChoreID)
-			loc := s.userLocation(ctx, userID)
-			userNow := now.In(loc)
-			userToday := userNow.Format("2006-01-02")
-
-			remindAt := computeRemindTime(userNow, sch.SpecificTime, leadMin)
-
-			if userNow.Before(remindAt) {
-				log.Printf("reminder: skip schedule=%d chore=%d user=%d now=%s remindAt=%s tz=%s (not yet)",
-					sch.ID, sch.ChoreID, userID,
-					userNow.Format("15:04"), remindAt.Format("15:04"), loc.String())
-				continue
-			}
-
-			schedTime := computeScheduleTime(userNow, sch.SpecificTime)
-			maxLate := schedTime.Add(time.Duration(leadMin+5) * time.Minute)
-			if userNow.After(maxLate) {
-				log.Printf("reminder: skip schedule=%d chore=%d user=%d now=%s sched=%s (too late)",
-					sch.ID, sch.ChoreID, userID,
-					userNow.Format("15:04"), schedTime.Format("15:04"))
-				continue
-			}
-
-			if inQuiet, _ := s.isInQuietHours(ctx, userID, userNow); inQuiet {
-				continue
-			}
-
-			alreadySent, err := s.store.HasReminder(ctx, sch.ID, userID, userToday)
-			if err != nil {
-				log.Printf("reminder: check dedup: %v", err)
-				continue
-			}
-			if alreadySent {
-				continue
-			}
-
-			if _, err := s.notifStore.GetReminderPreferences(ctx, userID); err != nil {
-				continue
-			}
-
-			// Re-check private visibility immediately before send (role may have changed since eligibleUsers)
-			if ch.Visibility == chore.VisibilityAdmins {
-				role, err := s.hhStore.GetMembershipForHousehold(ctx, userID, sch.HouseholdID)
-				if err != nil || (role != household.RoleOwner && role != household.RoleAdmin) {
-					continue
-				}
-			}
-
-			title := fmt.Sprintf("%s %s", ch.Icon, ch.Name)
-			body := fmt.Sprintf("Due at %s", formatTime(sch.SpecificTime))
-
-			// Prefer the data-carrying variant so the notification can offer a
-			// "Log now" action deep-linking to the chore's log sheet.
-			var pushErr error
-			if ds, ok := s.pushSender.(interface {
-				SendPushToUserWithData(ctx context.Context, userID int64, title, body string, data map[string]any) error
-			}); ok {
-				pushErr = ds.SendPushToUserWithData(ctx, userID, title, body, reminderPushData(sch.ChoreID))
-			} else {
-				pushErr = s.pushSender.SendPushToUser(ctx, userID, title, body)
-			}
-			if pushErr != nil {
-				log.Printf("reminder: push to %d: %v", userID, pushErr)
-				continue
-			}
-			sent++
-
-			log.Printf("reminder: sent to user %d chore=%d", userID, ch.ID)
-
-			if err := s.store.RecordReminder(ctx, sch.ID, userID, userToday); err != nil {
-				log.Printf("reminder: record: %v", err)
-			}
-		}
-	}
-
-	log.Printf("reminder: tick done active=%d sent=%d (total schedules=%d)", activeToday, sent, len(schedules))
-
-	return nil
-}
-
 func (s *Scheduler) eligibleUsers(ctx context.Context, sch schedule.ChoreSchedule, c chore.Chore) []int64 {
 	isPrivate := c.Visibility == chore.VisibilityAdmins
 	// For private chores, verify assigned user is still admin
 	if sch.AssignedUserID != nil {
 		uid := *sch.AssignedUserID
-		// If private, check assigned user is admin/owner
-		if isPrivate {
-			role, err := s.hhStore.GetMembershipForHousehold(ctx, uid, sch.HouseholdID)
-			if err != nil || (role != household.RoleOwner && role != household.RoleAdmin) {
-				return nil
-			}
+		role, err := s.hhStore.GetMembershipForHousehold(ctx, uid, sch.HouseholdID)
+		if err != nil || (isPrivate && role != household.RoleOwner && role != household.RoleAdmin) {
+			return nil
 		}
 		if s.userHasScheduleReminderEnabled(ctx, uid) {
 			return []int64{uid}
@@ -254,7 +153,7 @@ func (s *Scheduler) eligibleUsers(ctx context.Context, sch schedule.ChoreSchedul
 
 	members, err := s.hhStore.GetMembers(ctx, sch.HouseholdID)
 	if err != nil {
-		log.Printf("reminder: get members for household %d: %v", sch.HouseholdID, err)
+		log.Printf("reminder: membership read failed class=%s correlation_id=%s", diagnostics.ErrorClass(err), diagnostics.RequestID())
 		return nil
 	}
 
@@ -296,26 +195,6 @@ func (s *Scheduler) userHasScheduleReminderEnabled(ctx context.Context, userID i
 	return false
 }
 
-func (s *Scheduler) userLocation(ctx context.Context, userID int64) *time.Location {
-	prefs, err := s.notifStore.GetReminderPreferences(ctx, userID)
-	if err == nil && prefs.Timezone != "" && prefs.Timezone != "UTC" {
-		loc, err := time.LoadLocation(prefs.Timezone)
-		if err == nil {
-			return loc
-		}
-	}
-
-	up, err := s.userPrefs.Get(ctx, userID)
-	if err == nil && up.Timezone != "" {
-		loc, err := time.LoadLocation(up.Timezone)
-		if err == nil {
-			return loc
-		}
-	}
-
-	return time.UTC
-}
-
 func (s *Scheduler) getLeadMinutes(ctx context.Context, userID, choreID int64) int {
 	pref, err := s.store.GetChoreReminderPref(ctx, userID, choreID)
 	if err == nil && pref.Enabled {
@@ -326,26 +205,6 @@ func (s *Scheduler) getLeadMinutes(ctx context.Context, userID, choreID int64) i
 		return notifPrefs.DefaultReminderLeadMinutes
 	}
 	return 10
-}
-
-func (s *Scheduler) isInQuietHours(ctx context.Context, userID int64, now time.Time) (bool, error) {
-	prefs, err := s.notifStore.GetReminderPreferences(ctx, userID)
-	if err != nil {
-		return false, err
-	}
-	if prefs.QuietHoursStart == "" || prefs.QuietHoursEnd == "" {
-		return false, nil
-	}
-
-	loc := time.UTC
-	if prefs.Timezone != "" {
-		if tz, err := time.LoadLocation(prefs.Timezone); err == nil {
-			loc = tz
-		}
-	}
-
-	localNow := now.In(loc)
-	return isBetween(localNow, prefs.QuietHoursStart, prefs.QuietHoursEnd), nil
 }
 
 func isBetween(t time.Time, start, end string) bool {
@@ -380,6 +239,9 @@ func parseHM(s string) (int, int, error) {
 	m, err := strconv.Atoi(parts[1])
 	if err != nil {
 		return 0, 0, err
+	}
+	if h < 0 || h > 23 || m < 0 || m > 59 {
+		return 0, 0, fmt.Errorf("invalid time")
 	}
 	return h, m, nil
 }
@@ -430,4 +292,23 @@ func formatTime(specificTime string) string {
 	}
 
 	return fmt.Sprintf("%d:%02d %s", hour, m, ampm)
+}
+
+func (s *Scheduler) dueDate(sch schedule.ChoreSchedule, now time.Time, leadMinutes int) (time.Time, bool) {
+	if _, _, err := parseHM(sch.SpecificTime); err != nil {
+		return time.Time{}, false
+	}
+	// A lead window can begin the prior evening; the late window can end the
+	// following morning. Test each candidate's own local recurrence date.
+	for _, offset := range []int{-1, 0, 1} {
+		date := now.AddDate(0, 0, offset)
+		if !s.schedSvc.IsActiveForDay(sch, date) {
+			continue
+		}
+		scheduled := computeScheduleTime(date, sch.SpecificTime)
+		if !now.Before(scheduled.Add(-time.Duration(leadMinutes)*time.Minute)) && !now.After(scheduled.Add(time.Duration(leadMinutes+5)*time.Minute)) {
+			return date, true
+		}
+	}
+	return time.Time{}, false
 }

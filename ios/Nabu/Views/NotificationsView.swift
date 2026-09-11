@@ -3,90 +3,57 @@ import SwiftUI
 struct NotificationsView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var environment: AppEnvironment
-    @State private var notifications: [AppNotification] = []
+    @State private var loader: NotificationDataLoader?
 
     var body: some View {
         NavigationStack {
-            Group {
-                if notifications.isEmpty {
-                    ContentUnavailableView {
-                        Label("No notifications", systemImage: "bell")
-                    } description: {
-                        Text("You're all caught up!")
-                    }
-                } else {
-                    List {
-                        ForEach(notifications) { notif in
-                            NotificationRow(notification: notif,
-                                            onMarkRead: { Task { await markRead(notif) } },
-                                            onDelete: { Task { await deleteNotification(notif) } })
-                        }
-                    }
-                    .listStyle(.plain)
-                    .refreshable {
-                        await loadNotifications()
-                    }
+            List {
+                if let error = state.notificationError {
+                    Text(error).foregroundStyle(.red).accessibilityIdentifier("notification-error")
                 }
+                if state.notificationLoading { ProgressView("Loading notifications…") }
+                if state.notifications.isEmpty && !state.notificationLoading {
+                    ContentUnavailableView("No notifications", systemImage: "bell")
+                }
+                ForEach(state.notifications) { notification in
+                    NotificationRow(notification: notification,
+                                    onMarkRead: { Task { await loader?.mutate(.read(notification.id)) } },
+                                    onDelete: { Task { await loader?.mutate(.delete(notification.id)) } })
+                    .disabled(state.notificationMutating)
+                }
+                if state.notificationCursor != nil {
+                    Button(state.notificationLoadingMore ? "Loading…" : state.notificationErrorIsAppend ? "Retry loading older notifications" : "Load older notifications") {
+                        Task { await loader?.loadNotifData(append: true) }
+                    }
+                    .disabled(state.notificationLoading || state.notificationLoadingMore || state.notificationMutating)
+                    .accessibilityIdentifier("notifications-load-more")
+                }
+                Text("Notifications stay here until you delete them.").font(.footnote).foregroundStyle(.secondary)
             }
+            .listStyle(.plain)
+            .refreshable { await loader?.loadNotifData() }
             .navigationTitle("Notifications")
             .toolbar {
-                if !notifications.isEmpty {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Mark All Read") {
-                            Task { await markAllRead() }
-                        }
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    Button("Refresh") { Task { await loader?.loadNotifData() } }
+                        .disabled(state.notificationLoading || state.notificationMutating)
+                        .accessibilityLabel("Refresh notifications")
+                    if state.unreadNotifications > 0 {
+                        Button("Mark All Read") { Task { await loader?.mutate(.all) } }
+                            .disabled(state.notificationMutating)
                     }
                 }
             }
         }
         .task {
-            await loadNotifications()
+            state.notificationPanelOpen = true
+            // Freeze this screen's API identity; shared AppState operations also
+            // fence reads from the background loader and any older screen.
+            let current = NotificationDataLoader(api: environment.apiClient.scoped(), state: state)
+            loader = current
+            await current.loadNotifData()
         }
-    }
-
-    private func loadNotifications() async {
-        do {
-            let data: NotificationsResponse = try await environment.apiClient.get("/api/notifications")
-            notifications = data.notifications
-            state.notifications = data.notifications
-            state.unreadNotifications = data.unreadCount
-        } catch {}
-    }
-
-    private func markRead(_ notif: AppNotification) async {
-        do {
-            let _: StatusResponse = try await environment.apiClient.postEmpty("/api/notifications/\(notif.id)/read")
-            if let idx = notifications.firstIndex(where: { $0.id == notif.id }) {
-                notifications[idx] = AppNotification(
-                    id: notif.id, userId: notif.userId, type: notif.type,
-                    title: notif.title, body: notif.body,
-                    isRead: true, createdAt: notif.createdAt
-                )
-            }
-            state.unreadNotifications = max(0, state.unreadNotifications - 1)
-        } catch {}
-    }
-
-    private func markAllRead() async {
-        do {
-            let _: StatusResponse = try await environment.apiClient.postEmpty("/api/notifications/read-all")
-            notifications = notifications.map {
-                AppNotification(id: $0.id, userId: $0.userId, type: $0.type,
-                                title: $0.title, body: $0.body,
-                                isRead: true, createdAt: $0.createdAt)
-            }
-            state.unreadNotifications = 0
-        } catch {}
-    }
-
-    private func deleteNotification(_ notif: AppNotification) async {
-        do {
-            let _: StatusResponse = try await environment.apiClient.delete("/api/notifications/\(notif.id)")
-            notifications.removeAll { $0.id == notif.id }
-            if !notif.isRead {
-                state.unreadNotifications = max(0, state.unreadNotifications - 1)
-            }
-        } catch {}
+        .onDisappear { state.notificationPanelOpen = false }
     }
 }
 
@@ -123,6 +90,8 @@ struct NotificationRow: View {
                         .font(.caption)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Mark notification read")
+                .accessibilityIdentifier("notification-mark-read-\(notification.id)")
             }
         }
         .swipeActions(edge: .trailing) {

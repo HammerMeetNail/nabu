@@ -10,10 +10,12 @@ import Security
 final class SignInWithAppleCoordinator: ObservableObject {
     @Published var errorMessage: String?
     private(set) var currentNonce: String?
+    private var requestOwner: ClientIdentity.Snapshot?
 
     /// Configures an authorization request; called from the button's
     /// `onRequest` closure.
-    func prepare(_ request: ASAuthorizationAppleIDRequest) {
+    func prepare(_ request: ASAuthorizationAppleIDRequest, api: APIClient) {
+        requestOwner = api.identity.snapshot
         let nonce = Self.randomNonce()
         currentNonce = nonce
         request.requestedScopes = [.email]
@@ -24,6 +26,8 @@ final class SignInWithAppleCoordinator: ObservableObject {
     /// user, or nil (with `errorMessage` set unless the user just cancelled).
     func handle(_ result: Result<ASAuthorization, Error>, api: APIClient) async -> User? {
         errorMessage = nil
+        guard let owner = requestOwner, api.identity.isCurrent(owner) else { return nil }
+        requestOwner = nil
         switch result {
         case .failure(let error):
             if let authError = error as? ASAuthorizationError, authError.code == .canceled {

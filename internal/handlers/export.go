@@ -14,6 +14,7 @@ import (
 	"github.com/HammerMeetNail/nabu/internal/household"
 	logsvc "github.com/HammerMeetNail/nabu/internal/log"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
+	"github.com/HammerMeetNail/nabu/internal/readlimit"
 	"github.com/HammerMeetNail/nabu/internal/schedule"
 )
 
@@ -130,11 +131,13 @@ var householdExportColumns = []string{
 // supported database date range gives the export an effectively unbounded
 // window without inventing a product-specific cutoff such as 2000-01-01.
 var householdExportStart = time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC)
-var householdExportEnd = time.Date(9999, time.December, 31, 0, 0, 0, 0, time.UTC)
+var householdExportEnd = time.Date(10000, time.January, 1, 0, 0, 0, 0, time.UTC)
 
 // Data returns the active household's shared data as one CSV representation.
 // GET /api/household/data
 func (h *ExportHandler) Data(w http.ResponseWriter, r *http.Request) {
+	r, cancel := exportContext(r)
+	defer cancel()
 	user, ok := middleware.CurrentUser(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "not authenticated")
@@ -147,47 +150,73 @@ func (h *ExportHandler) Data(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusForbidden, "admin access required")
 			return
 		}
-		writeError(w, http.StatusUnauthorized, "no household")
+		if errors.Is(err, household.ErrNotMember) || errors.Is(err, household.ErrNotFound) {
+			writeError(w, http.StatusUnauthorized, "no household")
+		} else {
+			exportError(w, err)
+		}
 		return
 	}
 
+	// The shared gate reserved the household from the authenticated request.
+	// An intervening switch must not move this job to another gate key.
+	if user.HouseholdID == nil || hid != *user.HouseholdID {
+		writeError(w, http.StatusForbidden, "household access changed; try again")
+		return
+	}
+	start, end, err := exportRange(r, householdExportStart, householdExportEnd)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	r = r.WithContext(readlimit.Remaining(r.Context(), 1))
 	// Load every dataset before sending response headers. A failed lookup must
 	// not produce a partial file that looks like a successful export.
 	hh, err := h.householdStore.GetHousehold(r.Context(), hid)
 	if err != nil {
-		writeServerError(w, "failed to export household data", err)
+		exportError(w, err)
 		return
 	}
 	members, err := h.householdStore.GetMembers(r.Context(), hid)
 	if err != nil {
-		writeServerError(w, "failed to export household data", err)
+		exportError(w, err)
 		return
 	}
+	r = r.WithContext(readlimit.Remaining(r.Context(), len(members)))
 	invites, err := h.householdStore.GetInvites(r.Context(), hid)
 	if err != nil {
-		writeServerError(w, "failed to export household data", err)
+		exportError(w, err)
 		return
 	}
+	r = r.WithContext(readlimit.Remaining(r.Context(), len(invites)))
 	chores, err := h.choreStore.ListChores(r.Context(), hid)
 	if err != nil {
-		writeServerError(w, "failed to export household data", err)
+		exportError(w, err)
 		return
 	}
-	logs, err := h.logService.GetLogsInRange(r.Context(), hid, householdExportStart, householdExportEnd)
+	r = r.WithContext(readlimit.Remaining(r.Context(), len(chores)))
+	visible := make(map[int64]struct{}, len(chores))
+	for _, c := range chores {
+		visible[c.ID] = struct{}{}
+	}
+	readCtx := logsvc.WithReadAccess(r.Context(), hid, user.ID, visible)
+	logs, err := h.logService.GetLogsInRange(readCtx, hid, start, end)
 	if err != nil {
-		writeServerError(w, "failed to export household data", err)
+		exportError(w, err)
 		return
 	}
+	r = r.WithContext(readlimit.Remaining(r.Context(), len(logs)))
 	schedules, err := h.scheduleStore.ListByHousehold(r.Context(), hid)
 	if err != nil {
-		writeServerError(w, "failed to export household data", err)
+		exportError(w, err)
 		return
 	}
+	r = r.WithContext(readlimit.Remaining(r.Context(), len(schedules)))
 	var dayNotes []daynote.DayNote
 	if h.dayNoteService != nil {
-		dayNotes, err = h.dayNoteService.ListRange(r.Context(), hid, householdExportStart, householdExportEnd)
+		dayNotes, err = h.dayNoteService.ListRange(r.Context(), hid, start, end)
 		if err != nil {
-			writeServerError(w, "failed to export household data", err)
+			exportError(w, err)
 			return
 		}
 	}
@@ -204,11 +233,10 @@ func (h *ExportHandler) Data(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(dayNotes, func(i, j int) bool { return dayNotes[i].Date < dayNotes[j].Date })
 	sort.Slice(invites, func(i, j int) bool { return invites[i].ID < invites[j].ID })
 
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="nabu-household-data.csv"`)
-	w.Header().Set("Cache-Control", "no-store")
-	cw := csv.NewWriter(w)
+	buffer := &exportBuffer{ctx: r.Context()}
+	cw := csv.NewWriter(buffer)
 	if err := cw.Write(householdExportColumns); err != nil {
+		exportError(w, err)
 		return
 	}
 
@@ -339,6 +367,20 @@ func (h *ExportHandler) Data(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cw.Flush()
+	if err := cw.Error(); err != nil {
+		exportError(w, err)
+		return
+	}
+	current, err := h.householdService.GetAdminHouseholdID(r.Context(), user.ID)
+	if err != nil && !errors.Is(err, household.ErrNotMember) && !errors.Is(err, household.ErrNotFound) && !errors.Is(err, household.ErrNotAuthorized) {
+		exportError(w, err)
+		return
+	}
+	if err != nil || current != hid {
+		writeError(w, http.StatusForbidden, "household access changed; try again")
+		return
+	}
+	sendExport(w, r, buffer, "nabu-household-data.csv")
 }
 
 func formatInt64(id int64) string {

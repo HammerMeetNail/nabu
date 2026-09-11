@@ -143,7 +143,9 @@ describe("Auth Views", () => {
 
   it("renders verify email view", async () => {
     const { renderVerifyEmailView } = await import("../auth.js");
-    const html = renderVerifyEmailView(true);
+    assert.ok(!renderVerifyEmailView("pending").includes("Email Verified"));
+    assert.ok(!renderVerifyEmailView("error").includes("Email Verified"));
+    const html = renderVerifyEmailView("success");
     assert.ok(html.includes("Email Verified"));
   });
 });
@@ -275,7 +277,7 @@ describe("Calendar: isActiveForDayJS", () => {
       isActive: true,
       frequencyType: "every_n_days",
       intervalDays: 3,
-      createdAt: "2026-04-01T00:00:00Z",
+      createdAt: new Date("2026-04-01T00:00:00").toISOString(),
     };
     assert.equal(isActiveForDayJS(sch, "2026-04-01"), true);
     assert.equal(isActiveForDayJS(sch, "2026-04-02"), false);
@@ -696,23 +698,27 @@ describe("Duration timer (Phase 5.2)", () => {
       removeItem: (k) => { delete store[k]; },
     };
     const { saveTimer, loadTimer } = await import("../timer.js");
-    saveTimer({ choreId: 7, choreName: "Nap", choreIcon: "😴", startedAt: 123 });
-    const t = loadTimer();
+    const origin = {userId:1, householdId:2};
+    saveTimer({ choreId: 7, choreName: "Nap", choreIcon: "😴", startedAt: 123 }, origin);
+    assert.equal(loadTimer({userId:1,householdId:3}), null);
+    assert.equal(loadTimer({userId:2,householdId:2}), null);
+    const t = loadTimer(origin);
     assert.equal(t.choreId, 7);
     assert.equal(t.choreName, "Nap");
-    saveTimer(null);
-    assert.equal(loadTimer(), null);
+    saveTimer(null, origin);
+    assert.equal(loadTimer(origin), null);
     delete globalThis.localStorage;
   });
 
   it("loadTimer rejects a corrupt value", async () => {
-    const store = { nabu_active_timer: "{not json" };
+    const store = { "nabu_timer:1:2": "{not json", nabu_active_timer: JSON.stringify({choreId:4,startedAt:10}) };
     globalThis.localStorage = {
       getItem: (k) => (k in store ? store[k] : null),
       setItem: () => {}, removeItem: () => {},
     };
     const { loadTimer } = await import("../timer.js");
-    assert.equal(loadTimer(), null);
+    assert.equal(loadTimer({userId:1,householdId:2}), null);
+    assert.ok(store.nabu_active_timer, "unscoped legacy timer retained without adopting it");
     delete globalThis.localStorage;
   });
 });
@@ -1070,5 +1076,255 @@ describe("Hide notification badge preference", () => {
     state.hideNotificationBadge = false;
     await saveHideNotificationBadge(state, true);
     assert.equal(state.hideNotificationBadge, false);
+  });
+});
+
+describe("Calendar dates remain separate from instants", () => {
+  it("advances inclusive ranges across month, year and leap-day boundaries", async () => {
+    const { shiftDateStr } = await import("../utils.js");
+    assert.equal(shiftDateStr("2026-09-10", 1), "2026-09-11");
+    assert.equal(shiftDateStr("2026-12-31", 1), "2027-01-01");
+    assert.equal(shiftDateStr("2028-02-28", 1), "2028-02-29");
+    assert.equal(shiftDateStr("2026-03-09", -2), "2026-03-07");
+  });
+});
+
+describe("Browser ownership lock", () => {
+  it("refuses identity changes when a browser cannot hold an origin lock", async () => {
+    const { withBrowserLock } = await import("../device-store.js");
+    let ran = false;
+    await assert.rejects(withBrowserLock("nabu-identity", () => { ran = true; }), /Update your browser/);
+    assert.equal(ran, false);
+  });
+});
+
+describe('Scoped chart loading and metric rendering', () => {
+  it('rejects a late chart response after the period changes', async () => {
+    const {createAppState} = await import('../state.js');
+    const {loadStatsResource} = await import('../stats-data.js');
+    const state = createAppState();
+    let oldResolve;
+    const old = new Promise(resolve => {oldResolve = resolve;});
+    globalThis.fetch = async path => {
+      if (path.endsWith('period=week')) await old;
+      return new Response(JSON.stringify({breakdown:[{category:path.endsWith('period=week') ? 'old' : 'new'}]}), {headers:{'Content-Type':'application/json'}});
+    };
+    const pending = loadStatsResource(state,'categories');
+    try {
+      state.stats.categoriesPeriod = 'month';
+      await loadStatsResource(state,'categories');
+      assert.equal(state.stats.categoriesBreakdown[0].category,'new');
+    } finally {oldResolve(); await pending;}
+    assert.equal(state.stats.categoriesBreakdown[0].category,'new');
+    assert.equal(state.stats.loading.categories,false);
+  });
+  it('does not publish a deleted widget or a pre-reset request', async () => {
+    const {createAppState,resetAuthedState} = await import('../state.js');
+    const {loadStatsResource} = await import('../stats-data.js');
+    for (const reset of [false,true]) {
+      const state = createAppState();
+      state.stats.widgets=[{id:'one',type:'total',choreIds:[1],period:'week'}];
+      state.chores=[{id:1}];
+      let release; const gate=new Promise(resolve=>{release=resolve;});
+      globalThis.fetch=async()=>{await gate;return new Response(JSON.stringify({summary:{count:9}}),{headers:{'Content-Type':'application/json'}});};
+      const pending=loadStatsResource(state,'widget','one');
+      if(reset) resetAuthedState(state);else state.stats.widgets=[];
+      release();await pending;
+      assert.equal(state.stats.widgetData?.one,undefined);
+    }
+  });
+  it('skips hidden sections and shares overlapping identical reads', async () => {
+    const {createAppState} = await import('../state.js');
+    const {STATS_SECTIONS} = await import('../stats.js');
+    const {loadStatsPage,loadStatsResource} = await import('../stats-data.js');
+    const state=createAppState();state.stats.sectionHidden=[...STATS_SECTIONS];
+    const paths=[];
+    globalThis.fetch=async path=>{paths.push(path);return new Response(JSON.stringify({overview:{}}),{headers:{'Content-Type':'application/json'}});};
+    await Promise.all([loadStatsPage(state),loadStatsResource(state,'overview')]);
+    assert.deepEqual(paths,['/api/stats/overview']);
+  });
+  it('renders generic units as text, labels datetime and escapes the concrete baby heading sink', async () => {
+    const {renderLogSheet} = await import('../schedule.js');
+    const {renderBabyCareSection} = await import('../stats.js');
+    const chore={id:1,name:'Flour',icon:'📝',hasVolumeML:true,metricType:'amount',metricUnit:'g',indicatorLabels:[]};
+    const html=renderLogSheet(chore,null,'2026-09-10',[],null,null,{showWhen:true,recentVolumes:[37]});
+    assert.ok(html.includes('Amount (g)'));assert.ok(html.includes('37 g'));assert.ok(!html.includes('37 mL'));
+    assert.ok(html.includes('for="log-when"'));
+    const rendered=renderBabyCareSection({stats:{babyTimeSeries:{feedBaby:{choreIcon:'<img src=x onerror=alert(1)>',choreName:'Feed Baby',periods:[]}}}});
+    assert.ok(!rendered.includes('<img'));assert.ok(rendered.includes('&lt;img'));
+  });
+});
+
+describe('Chart loading cleanup',()=>{
+  it('loads every server-supported widget and shares identical child reads',async()=>{
+    const {createAppState}=await import('../state.js');
+    const {loadStatsWidgets}=await import('../stats-data.js');
+    const state=createAppState();state.chores=[{id:42}];
+    state.stats.widgets=Array.from({length:20},(_,index)=>({id:`w${index}`,type:'total',choreIds:[42],period:'week'}));
+    let calls=0;
+    globalThis.fetch=async()=>{calls++;return new Response(JSON.stringify({summary:{count:7}}),{headers:{'Content-Type':'application/json'}});};
+    await loadStatsWidgets(state);
+    assert.equal(Object.keys(state.stats.widgetData).length,20);
+    assert.ok(state.stats.widgets.every(widget=>state.stats.widgetData[widget.id]?.[0]?.summary.count===7));
+    assert.equal(calls,1);
+  });
+  it('finishes superseded keyed loads and hidden or deleted initial widgets',async()=>{
+    const {createAppState}=await import('../state.js');
+    const {loadStatsResource,loadStatsPage}=await import('../stats-data.js');
+    const state=createAppState();
+    let release;const gate=new Promise(resolve=>{release=resolve;});
+    globalThis.fetch=async path=>{
+      if(path.includes('period=week')) await gate;
+      return new Response(JSON.stringify({leaderboard:[],summary:{count:1},overview:{}}),{headers:{'Content-Type':'application/json'}});
+    };
+    const first=loadStatsResource(state,'leaderboard');
+    state.stats.leaderboardPeriod='day';await loadStatsResource(state,'leaderboard');
+    release();await first;
+    assert.equal(state.stats.loading['leaderboard:week'],false);
+    assert.equal(state.stats.loading['leaderboard:day'],false);
+    let releaseWidget;const widgetGate=new Promise(resolve=>{releaseWidget=resolve;});
+    globalThis.fetch=async path=>{
+      if(path.includes('/summary')) await widgetGate;
+      return new Response(JSON.stringify({summary:{count:1},overview:{}}),{headers:{'Content-Type':'application/json'}});
+    };
+    state.stats.widgets=[{id:'new',type:'total',choreIds:[1],period:'week'}];
+    const widget=loadStatsResource(state,'widget','new');
+    state.stats.widgets=[];
+    state.stats.sectionHidden=['activity','busy-hours','chores','categories','top-chores','leaderboard','baby'];
+    await loadStatsPage(state);
+    assert.equal(state.stats.loading['widget:new'],false);
+    releaseWidget();await widget;
+    assert.equal(state.stats.widgetData.new,undefined);
+    assert.ok(Object.values(state.stats.loading).every(value=>!value));
+  });
+});
+
+describe('Activity request completion ownership',()=>{
+  it('keeps the older-page boundary when a local chore filter cancels an append',async()=>{
+    const {createAppState}=await import('../state.js');
+    const {loadActivity,setActivityChoreFilter}=await import('../activity-data.js');
+    const state=createAppState();
+    let release,entered=false,hold=true;
+    const gate=new Promise(resolve=>{release=resolve;});
+    const paths=[];
+    globalThis.fetch=async path=>{
+      paths.push(path);
+      if(path.includes('before=') && hold) {entered=true;await gate;}
+      const older=path.includes('before=');
+      return new Response(JSON.stringify({logs:[{id:older?2:1,choreId:older?2:1}],start:older?'2026-08-25':'2026-09-01',hasMore:!older}),{headers:{'Content-Type':'application/json'}});
+    };
+    await loadActivity(state);
+    const old=loadActivity(state,{append:true});assert.equal(entered,true);
+    try {
+      assert.equal(setActivityChoreFilter(state,[2]),false);
+      assert.equal(state._historyLoadingMore,false);
+      assert.equal(state.historyBefore,'2026-09-01');
+    } finally {release();await old;hold=false;}
+    assert.deepEqual(state.historyLogs.map(log=>log.id),[1]);
+    await loadActivity(state,{append:true});
+    assert.deepEqual(state.historyLogs.map(log=>log.id),[1,2]);
+    assert.equal(paths.at(-1),'/api/logs/history?before=2026-09-01');
+    assert.equal(state.historyHasMore,false);
+  });
+  it('awaits and rejects old searches and old identity generations',async()=>{
+    const {createAppState,resetAuthedState}=await import('../state.js');
+    const {loadActivity}=await import('../activity-data.js');
+    for(const changeIdentity of [false,true]) {
+      const state=createAppState();state.historySearch='first';
+      let release,entered=false;const gate=new Promise(resolve=>{release=resolve;});
+      globalThis.fetch=async path=>{
+        if(path.includes('q=first')) {entered=true;await gate;}
+        return new Response(JSON.stringify({logs:[{id:path.includes('q=first')?1:2,note:path}],hasMore:false}),{headers:{'Content-Type':'application/json'}});
+      };
+      const old=loadActivity(state);assert.equal(entered,true);
+      try {
+        if(changeIdentity) resetAuthedState(state);
+        state.historySearch='second';await loadActivity(state);
+        assert.deepEqual(state.historyLogs.map(log=>log.id),[2]);
+      } finally {release();await old;}
+      assert.deepEqual(state.historyLogs.map(log=>log.id),[2]);
+      assert.equal(state.historyLoading,false);assert.equal(state.historyError,null);
+    }
+  });
+  it('cannot append an old page after a filter replaces its query',async()=>{
+    const {createAppState}=await import('../state.js');const {loadActivity}=await import('../activity-data.js');
+    const state=createAppState();
+    let release,entered=false;const gate=new Promise(resolve=>{release=resolve;});
+    globalThis.fetch=async path=>{
+      if(path.includes('before=')) {entered=true;await gate;}
+      return new Response(JSON.stringify({logs:[{id:path.includes('before=')?99:path.includes('q=new')?2:1}],start:'2026-09-01',hasMore:true}),{headers:{'Content-Type':'application/json'}});
+    };
+    await loadActivity(state);const old=loadActivity(state,{append:true});assert.equal(entered,true);
+    try {state.historySearch='new';await loadActivity(state);} finally {release();await old;}
+    assert.deepEqual(state.historyLogs.map(log=>log.id),[2]);assert.equal(state._historyLoadingMore,false);
+  });
+});
+
+
+describe("Empty Activity pagination", () => {
+  it("keeps older-page access when no logs are loaded yet", async () => {
+    const {renderHistoryView} = await import("../today.js");
+    const root = document.createElement("div");
+    root.innerHTML = renderHistoryView({historyLogs: [], historyHasMore: true});
+    assert.ok(root.querySelector('[data-action="load-more-history"]'));
+    assert.match(root.textContent, /look further back/);
+    assert.doesNotMatch(root.textContent, /No completed chores yet/);
+    root.innerHTML = renderHistoryView({historyLogs: [], historyHasMore: false});
+    assert.equal(root.querySelector('[data-action="load-more-history"]'), null);
+  });
+});
+
+describe('Notification feed ownership and recovery',()=>{
+  it('rejects old page results after refresh, mutation and identity reset',async()=>{
+    const {createAppState,resetAuthedState}=await import('../state.js');
+    const {loadNotificationPage,mutateNotification}=await import('../notification-data.js');
+    for(const action of ['refresh','delete','reset']) {
+      const state=createAppState();
+      let release;const gate=new Promise(resolve=>{release=resolve;});let reads=0,entered=false;
+      globalThis.fetch=async(path,options)=>{
+        if(options.method==='DELETE') return new Response('{"status":"ok"}',{headers:{'Content-Type':'application/json'}});
+        if(path.includes('cursor=')){entered=true;await gate;return new Response(JSON.stringify({notifications:[{id:60},{id:1}],nextCursor:'obsolete',unreadCount:3}),{headers:{'Content-Type':'application/json'}});}
+        return new Response(JSON.stringify({notifications:[{id:++reads===1?60:70,isRead:false}],nextCursor:reads===1?'first':'current',unreadCount:1}),{headers:{'Content-Type':'application/json'}});
+      };
+      await loadNotificationPage(state);const old=loadNotificationPage(state,{append:true});assert.equal(entered,true);
+      try {
+        if(action==='delete') await mutateNotification(state,'delete',60);
+        else if(action==='reset') resetAuthedState(state);
+        else await loadNotificationPage(state);
+      } finally {release();await old;}
+      assert.deepEqual(state.notifications.map(n=>n.id),action==='refresh'?[70]:[]);
+      assert.equal(state.notificationCursor,action==='refresh'?'current':action==='delete'?'first':null);
+      assert.equal(state.notificationLoadingMore,false);assert.equal(state.notificationError,null);
+    }
+  });
+  it('does not reuse an old first-page transport after a confirmed deletion',async()=>{
+    const {createAppState}=await import('../state.js');
+    const {loadNotificationPage,mutateNotification}=await import('../notification-data.js');
+    const state=createAppState();state.notifications=[{id:60,isRead:false}];
+    let release;const gate=new Promise(resolve=>{release=resolve;});let calls=0;
+    globalThis.fetch=async(_path,options)=>{
+      if(options.method==='DELETE') return new Response('{"status":"ok"}',{headers:{'Content-Type':'application/json'}});
+      if(++calls===1){await gate;return new Response('{"notifications":[{"id":60}],"unreadCount":1}',{headers:{'Content-Type':'application/json'}});}
+      return new Response('{"notifications":[],"unreadCount":0}',{headers:{'Content-Type':'application/json'}});
+    };
+    const old=loadNotificationPage(state);
+    try {await mutateNotification(state,'delete',60);await loadNotificationPage(state);assert.equal(calls,2);}
+    finally {release();await old;}
+    assert.deepEqual(state.notifications,[]);
+  });
+  it('preserves rows and cursor on errors; read pages still offer older access and escape metadata',async()=>{
+    const {createAppState}=await import('../state.js');
+    const {loadNotificationPage,mutateNotification}=await import('../notification-data.js');
+    const {renderNotificationPanel}=await import('../notifications.js');
+    const state=createAppState();state.notifications=[{id:60,title:'<img src=x onerror=alert(1)>',body:'<script>bad</script>',isRead:true}];state.notificationCursor='older';
+    globalThis.fetch=async()=>new Response('{"error":"Temporary failure"}',{status:500,headers:{'Content-Type':'application/json'}});
+    await loadNotificationPage(state,{append:true});
+    assert.equal(state.notifications.length,1);assert.equal(state.notificationCursor,'older');assert.equal(state.notificationError,'Temporary failure');
+    await mutateNotification(state,'delete',60);assert.equal(state.notifications.length,1);
+    const root=document.createElement('div');root.innerHTML=renderNotificationPanel(state.notifications,state);
+    assert.ok(root.querySelector('[data-action="more-notifications"]'));assert.equal(root.querySelector('img,script'),null);
+    globalThis.fetch=async()=>new Response('{"notifications":[{"id":1,"isRead":false}],"unreadCount":1}',{headers:{'Content-Type':'application/json'}});
+    await loadNotificationPage(state,{append:true});
+    assert.deepEqual(state.notifications.map(n=>n.id),[60,1]);assert.equal(state.notificationCursor,null);assert.equal(state.notificationError,null);
   });
 });

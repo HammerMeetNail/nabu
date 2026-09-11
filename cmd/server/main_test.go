@@ -1,16 +1,48 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/config"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+func TestStartupDiagnosticsDoNotPrintConnectionOrProviderValues(t *testing.T) {
+	for _, cause := range []error{
+		&pgconn.ConnectError{Config: &pgconn.Config{Host: "PRIVATE-HOST", User: "PRIVATE-USER", Database: "PRIVATE-DATABASE"}},
+		&pgconn.PgError{Code: "23503", Message: "PRIVATE-EMAIL@example.invalid", Detail: "PRIVATE-HOUSEHOLD"},
+	} {
+		var output bytes.Buffer
+		reportStartupError(log.New(&output, "", 0), fmt.Errorf("build server: %w", cause))
+		if strings.Contains(output.String(), "PRIVATE") || !strings.Contains(output.String(), "operation=server error_class=") || !strings.Contains(output.String(), "request_id=") {
+			t.Fatal("unsafe or missing startup diagnostic")
+		}
+	}
+}
+
+func TestStartupConfigDiagnosticsIdentifyTheRuleWithoutItsValue(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("APP_BASE_URL", "https://PRIVATE-USER:PRIVATE-PASSWORD@example.invalid")
+	_, err := config.Load()
+	if err == nil {
+		t.Fatal("invalid origin accepted")
+	}
+	var output bytes.Buffer
+	reportStartupError(log.New(&output, "", 0), fmt.Errorf("load config: %w", err))
+	if strings.Contains(output.String(), "PRIVATE") || !strings.Contains(output.String(), "APP_BASE_URL") || !strings.Contains(output.String(), "error_class=configuration") {
+		t.Fatal("configuration diagnostic omitted the rule or exposed the value")
+	}
+}
 
 func TestNewHTTPServerTimeouts(t *testing.T) {
 	srv := newHTTPServer(":8080", http.NewServeMux())
@@ -27,8 +59,8 @@ func TestNewHTTPServerTimeouts(t *testing.T) {
 	if srv.MaxHeaderBytes != 1<<20 {
 		t.Errorf("MaxHeaderBytes = %d, want 1<<20", srv.MaxHeaderBytes)
 	}
-	if srv.WriteTimeout != 0 {
-		t.Errorf("WriteTimeout = %s, want 0 (streaming CSV export)", srv.WriteTimeout)
+	if srv.WriteTimeout != 30*time.Second {
+		t.Errorf("WriteTimeout = %s, want 30s (bounded exports)", srv.WriteTimeout)
 	}
 	if srv.Addr != ":8080" {
 		t.Errorf("Addr = %q, want :8080", srv.Addr)

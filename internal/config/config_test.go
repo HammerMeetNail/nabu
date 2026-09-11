@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestLoadDefaults(t *testing.T) {
 	t.Setenv("PORT", "")
@@ -126,5 +129,61 @@ func TestLoad_RateLimitAuthMaxFromEnv(t *testing.T) {
 	}
 	if cfg.RateLimitAuthMax != 50 {
 		t.Errorf("RateLimitAuthMax = %d, want 50", cfg.RateLimitAuthMax)
+	}
+}
+
+func TestLoadRejectsInvalidDeploymentConfig(t *testing.T) {
+	for _, tc := range []struct{ key, value, want string }{
+		{"PORT", "0", "PORT"}, {"PORT", "65536", "PORT"}, {"PORT", "bad", "PORT"},
+		{"SERVER_SECURE", "tru", "SERVER_SECURE"},
+		{"APP_BASE_URL", "javascript:alert(1)", "APP_BASE_URL"},
+		{"APP_BASE_URL", "https://secret:token@example.com", "APP_BASE_URL"},
+		{"APP_BASE_URL", "https://example.com/path", "APP_BASE_URL"},
+		{"APP_BASE_URL", "https://example.com?token=SECRET", "APP_BASE_URL"},
+		{"APP_BASE_URL", "https://example.com#SECRET", "APP_BASE_URL"},
+		{"APP_BASE_URL", "https://example.com:99999", "APP_BASE_URL"},
+		{"TRUSTED_PROXY_CIDRS", "127.0.0.1,bad-SECRET", "TRUSTED_PROXY_CIDRS"},
+		{"TRUSTED_PROXY_CIDRS", "::/0", "TRUSTED_PROXY_CIDRS"},
+		{"RATE_LIMIT_AUTH_MAX", "0", "RATE_LIMIT_AUTH_MAX"},
+		{"RATE_LIMIT_GLOBAL_MAX", "typo-SECRET", "RATE_LIMIT_GLOBAL_MAX"},
+		{"RATE_LIMIT_JOIN_MAX", "-1", "RATE_LIMIT_JOIN_MAX"},
+		{"RATE_LIMIT_MAX_CLIENTS", "1000001", "RATE_LIMIT_MAX_CLIENTS"},
+		{"DB_MAX_OPEN_CONNS", "1", "DB_MAX_OPEN_CONNS"},
+		{"DB_MAX_OPEN_CONNS", "9", "DB_MAX_OPEN_CONNS"},
+		{"DB_MAX_OPEN_CONNS", "101", "DB_MAX_OPEN_CONNS"},
+		{"DB_MAX_IDLE_CONNS", "26", "DB_MAX_IDLE_CONNS"},
+		{"DB_MAX_IDLE_CONNS", "-1", "DB_MAX_IDLE_CONNS"},
+	} {
+		t.Run(tc.key+"/"+tc.value, func(t *testing.T) {
+			t.Setenv("APP_ENV", "development")
+			t.Setenv(tc.key, tc.value)
+			_, err := Load()
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Load error = %v", err)
+			}
+			if strings.Contains(err.Error(), "SECRET") {
+				t.Fatal("configuration value leaked in error")
+			}
+		})
+	}
+}
+
+func TestProductionRequiresSecureURLCookiesAndProxyTrust(t *testing.T) {
+	for _, tc := range []struct{ key, value string }{
+		{"APP_BASE_URL", "http://example.com"},
+		{"SERVER_SECURE", "false"},
+		{"TRUSTED_PROXY_CIDRS", ""},
+	} {
+		t.Run(tc.key, func(t *testing.T) {
+			t.Setenv("APP_ENV", "production")
+			t.Setenv("DATABASE_URL", "postgres://localhost/nabu")
+			t.Setenv("APP_BASE_URL", "https://example.com")
+			t.Setenv("SERVER_SECURE", "true")
+			t.Setenv("TRUSTED_PROXY_CIDRS", "127.0.0.1,::1")
+			t.Setenv(tc.key, tc.value)
+			if _, err := Load(); err == nil {
+				t.Fatal("unsafe production configuration accepted")
+			}
+		})
 	}
 }

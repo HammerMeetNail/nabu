@@ -40,7 +40,8 @@ export function renderScheduleTab(state) {
       <div class="empty-state">
         <div class="empty-state-icon">📅</div>
         <div class="empty-state-title">No scheduled chores</div>
-        <p>Tap the Calendar tab and add chores to time slots to create schedules.</p>
+        <p>Choose a chore and set when it repeats.</p>
+        <button type="button" class="btn btn-primary" data-action="open-pick-chore-sheet" data-date="${todayISO(0)}">Schedule a chore</button>
       </div></div>`;
   }
 
@@ -84,6 +85,7 @@ export function renderScheduleTab(state) {
         <div class="empty-state-icon">📅</div>
         <div class="empty-state-title">Nothing upcoming</div>
         <p>No active schedules for the next ${UPCOMING_DAYS} days.</p>
+        <button type="button" class="btn btn-primary" data-action="open-pick-chore-sheet" data-date="${todayISO(0)}">Schedule a chore</button>
       </div></div>`;
   }
 
@@ -93,7 +95,7 @@ export function renderScheduleTab(state) {
       const timeStr = fmtTime(r.sch.specificTime);
       const doneClass = r.isToday && r.isDone ? "sch-row--done" : "";
       const summarySuffix = r.sch.recurrenceEnd
-        ? ` until ${new Date(r.sch.recurrenceEnd).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+        ? ` until ${new Date(String(r.sch.recurrenceEnd).slice(0, 10) + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
         : "";
       const slotTime = r.sch.specificTime || "";
       const slotHour = slotTime ? slotTime.split(':')[0] : "";

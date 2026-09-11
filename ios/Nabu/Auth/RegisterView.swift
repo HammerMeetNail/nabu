@@ -50,6 +50,13 @@ struct RegisterView: View {
                                 .multilineTextAlignment(.center)
                         }
 
+                        if let notice = auth.registrationNotice {
+                            Text(notice)
+                                .font(.callout)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+
                         // Create Account (primary)
                         Button(action: performRegister) {
                             if auth.isLoading {
@@ -70,7 +77,7 @@ struct RegisterView: View {
                         // requires it at least as prominent as other
                         // third-party sign-in options, hence above Google.
                         SignInWithAppleButton(.signUp) { request in
-                            appleAuth.prepare(request)
+                            appleAuth.prepare(request, api: auth.api)
                         } onCompletion: { result in
                             performAppleSignIn(result)
                         }

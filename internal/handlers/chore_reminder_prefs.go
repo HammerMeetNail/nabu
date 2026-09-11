@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"net/http"
 	"strconv"
 
@@ -33,35 +32,6 @@ func (h *ChoreReminderPrefsHandler) WithHouseholdStore(hs household.Store) *Chor
 	return h
 }
 
-func (h *ChoreReminderPrefsHandler) visibleChoreIDs(userID, householdID int64, ctx context.Context) map[int64]struct{} {
-	if h.choreStore == nil {
-		return nil
-	}
-	chores, err := h.choreStore.ListChores(ctx, householdID)
-	if err != nil {
-		return nil
-	}
-	visible := make(map[int64]struct{}, len(chores))
-	for _, c := range chores {
-		if c.Visibility == chore.VisibilityAdmins {
-			if h.householdStore == nil {
-				continue
-			}
-			role, err := h.householdStore.GetMembershipForHousehold(ctx, userID, householdID)
-			if err != nil {
-				continue
-			}
-			if role != household.RoleOwner && role != household.RoleAdmin {
-				continue
-			}
-		}
-		if c.HouseholdID == householdID {
-			visible[c.ID] = struct{}{}
-		}
-	}
-	return visible
-}
-
 func (h *ChoreReminderPrefsHandler) List(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.CurrentUser(r.Context())
 	if !ok {
@@ -78,21 +48,24 @@ func (h *ChoreReminderPrefsHandler) List(w http.ResponseWriter, r *http.Request)
 	if prefs == nil {
 		prefs = []reminder.ChoreReminderPref{}
 	}
-	// Filter to visible chores.
-	if h.choreStore != nil && user.HouseholdID != nil {
-		visible := h.visibleChoreIDs(user.ID, *user.HouseholdID, r.Context())
-		if visible != nil {
-			var filtered []reminder.ChoreReminderPref
-			for _, p := range prefs {
-				if _, ok := visible[p.ChoreID]; ok {
-					filtered = append(filtered, p)
-				}
+	// Resolve authorization before returning even chore IDs or enabled flags.
+	if h.choreStore != nil {
+		visible := map[int64]struct{}{}
+		if user.HouseholdID != nil {
+			var err error
+			visible, err = chore.NewService(h.choreStore).WithMemberships(h.householdStore).VisibleChoreIDs(r.Context(), user.ID, *user.HouseholdID)
+			if err != nil {
+				writeServerError(w, "failed to verify chore access", err)
+				return
 			}
-			if filtered == nil {
-				filtered = []reminder.ChoreReminderPref{}
-			}
-			prefs = filtered
 		}
+		filtered := []reminder.ChoreReminderPref{}
+		for _, p := range prefs {
+			if _, ok := visible[p.ChoreID]; ok {
+				filtered = append(filtered, p)
+			}
+		}
+		prefs = filtered
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -125,15 +98,16 @@ func (h *ChoreReminderPrefsHandler) Update(w http.ResponseWriter, r *http.Reques
 			writeError(w, http.StatusForbidden, "chore does not belong to your household")
 			return
 		}
-		if c.Visibility == chore.VisibilityAdmins {
-			if h.householdStore != nil {
-				role, err := h.householdStore.GetMembershipForHousehold(r.Context(), user.ID, *user.HouseholdID)
-				if err != nil || (role != household.RoleOwner && role != household.RoleAdmin) {
-					writeError(w, http.StatusNotFound, "chore not found")
-					return
-				}
-			}
+		allowed, err := chore.NewService(h.choreStore).WithMemberships(h.householdStore).CanView(r.Context(), user.ID, *user.HouseholdID, c)
+		if err != nil {
+			writeServerError(w, "failed to verify chore access", err)
+			return
 		}
+		if !allowed {
+			writeError(w, http.StatusNotFound, "chore not found")
+			return
+		}
+
 	}
 
 	var req struct {

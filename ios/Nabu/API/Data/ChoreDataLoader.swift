@@ -11,12 +11,15 @@ final class ChoreDataLoader {
     }
 
     func loadChoreData() async {
+        let api = self.api.scoped()
+        let owner = state.beginOperation("loadChoreData")
         do {
             let data: ChoresResponse = try await api.get("/api/chores")
+            guard state.owns(owner) else { return }
             NSLog("[Nabu] ChoreDataLoader OK: \(data.chores.count) chores")
             state.chores = data.chores
         } catch {
-            NSLog("[Nabu] ChoreDataLoader ERROR: \(error.localizedDescription)")
+            NSLog("[Nabu] Request failed")
         }
     }
 }

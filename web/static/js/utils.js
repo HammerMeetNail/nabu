@@ -73,3 +73,11 @@ export function volumeOptions(unit, selectedML = null) {
   }
   return opts;
 }
+
+// Arithmetic on a YYYY-MM-DD value, separate from a local/UTC instant.
+export function shiftDateStr(isoDate, days) {
+  const date = new Date(`${isoDate}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return "";
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/HammerMeetNail/nabu/internal/diagnostics"
 	"io"
 	"log"
 	"net/http"
@@ -67,27 +68,44 @@ func (c *Client) SendPushToUserWithData(ctx context.Context, userID int64, title
 	}
 	devices, err := c.store.DevicesForUser(ctx, userID)
 	if err != nil {
-		log.Printf("apns: devices for user %d: %v", userID, err)
+		log.Printf("apns: devices user=%d error_class=%s", userID, diagnostics.ErrorClass(err))
 		return err
 	}
 	if len(devices) == 0 {
 		return nil
 	}
 
-	payload, err := c.buildPayload(title, body, data)
+	fields := make(map[string]any, len(data)+1)
+	for k, v := range data {
+		fields[k] = v
+	}
+	fields["userId"] = userID
+	payload, err := c.buildPayload(title, body, fields)
 	if err != nil {
 		return err
 	}
 
 	for _, device := range devices {
-		c.sendToDevice(ctx, device, payload)
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		deliveryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		stale := false
+		err := c.store.WithDevice(deliveryCtx, device, func() error { stale = c.sendToDevice(deliveryCtx, device, payload); return nil })
+		cancel()
+		if err != nil {
+			log.Printf("apns: delivery user=%d error_class=%s", userID, diagnostics.ErrorClass(err))
+		}
+		if stale {
+			_ = c.store.DeleteDeviceIfCurrent(ctx, device)
+		}
 	}
 	return nil
 }
 
 func (c *Client) buildPayload(title, body string, data map[string]any) ([]byte, error) {
 	aps := map[string]any{
-		"alert": map[string]string{"title": title, "body": body},
+		"alert": map[string]string{"title": "Nabu", "body": "Open Nabu to check your household updates."},
 		"sound": "default",
 	}
 	fields := map[string]any{}
@@ -107,18 +125,18 @@ func (c *Client) buildPayload(title, body string, data map[string]any) ([]byte, 
 	return json.Marshal(fields)
 }
 
-func (c *Client) sendToDevice(ctx context.Context, device Device, payload []byte) {
+func (c *Client) sendToDevice(ctx context.Context, device Device, payload []byte) bool {
 	token, err := c.signer.Token()
 	if err != nil {
-		log.Printf("apns: provider token: %v", err)
-		return
+		log.Printf("apns: provider token error_class=%s", diagnostics.ErrorClass(err))
+		return false
 	}
 
 	url := c.host(device.Environment) + "/3/device/" + device.Token
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
-		log.Printf("apns: create request: %v", err)
-		return
+		log.Printf("apns: create request error_class=%s", diagnostics.ErrorClass(err))
+		return false
 	}
 	req.Header.Set("Authorization", "bearer "+token)
 	req.Header.Set("apns-topic", c.topic)
@@ -128,14 +146,14 @@ func (c *Client) sendToDevice(ctx context.Context, device Device, payload []byte
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		log.Printf("apns: send to user %d device %s…: %v", device.UserID, safePrefix(device.Token), err)
-		return
+		log.Printf("apns: send user=%d error_class=%s", device.UserID, diagnostics.ErrorClass(err))
+		return false
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusOK {
-		log.Printf("apns: sent to user %d device %s… status=200", device.UserID, safePrefix(device.Token))
-		return
+		log.Printf("apns: sent user=%d status=200", device.UserID)
+		return false
 	}
 
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
@@ -143,21 +161,9 @@ func (c *Client) sendToDevice(ctx context.Context, device Device, payload []byte
 		Reason string `json:"reason"`
 	}
 	_ = json.Unmarshal(respBody, &apnsErr)
-	log.Printf("apns: send to user %d device %s… status=%d reason=%q",
-		device.UserID, safePrefix(device.Token), resp.StatusCode, apnsErr.Reason)
+	log.Printf("apns: send user=%d status=%d", device.UserID, resp.StatusCode)
 
 	// 410 Unregistered means the token is gone for good; BadDeviceToken means
 	// it was never valid for this environment. Both are terminal — prune.
-	if resp.StatusCode == http.StatusGone || apnsErr.Reason == "BadDeviceToken" || apnsErr.Reason == "Unregistered" {
-		if err := c.store.DeleteToken(ctx, device.Token); err != nil {
-			log.Printf("apns: prune token %s…: %v", safePrefix(device.Token), err)
-		}
-	}
-}
-
-func safePrefix(token string) string {
-	if len(token) <= 8 {
-		return token
-	}
-	return token[:8]
+	return resp.StatusCode == http.StatusGone || apnsErr.Reason == "BadDeviceToken" || apnsErr.Reason == "Unregistered"
 }

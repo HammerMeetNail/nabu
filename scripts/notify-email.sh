@@ -72,7 +72,7 @@ notify_email() {
     local payload
     payload="{\"from\":\"$(json_escape "$EMAIL_FROM_ADDRESS")\",\"to\":${to_json},\"subject\":\"$(json_escape "$subject")\",\"text\":\"$(json_escape "$body")\"}"
 
-    curl -fsS https://api.resend.com/emails \
+    curl -fsS --connect-timeout 5 --max-time 10 https://api.resend.com/emails \
         -H "Authorization: Bearer ${RESEND_API_KEY}" \
         -H "Content-Type: application/json" \
         -d "$payload" \

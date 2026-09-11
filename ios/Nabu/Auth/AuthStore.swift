@@ -5,6 +5,7 @@ final class AuthStore: ObservableObject {
     private(set) var api: APIClient
     @Published var isLoading = false
     @Published var errorMessage: String?
+    @Published var registrationNotice: String?
 
     init(api: APIClient) {
         self.api = api
@@ -19,7 +20,7 @@ final class AuthStore: ObservableObject {
     func loadSession() async -> User? {
         do {
             let response: UserResponse = try await api.get("/api/me")
-            return response.user
+            return api.identity.managed ? api.identity.snapshot.user : response.user
         } catch {
             return nil
         }
@@ -35,7 +36,7 @@ final class AuthStore: ObservableObject {
         do {
             let req = LoginRequest(email: email, password: password)
             let response: UserResponse = try await api.post("/api/auth/login", body: req)
-            return response.user
+            return api.identity.managed ? api.identity.snapshot.user : response.user
         } catch let error as APIError {
             errorMessage = error.errorDescription ?? "Login failed"
             return nil
@@ -48,12 +49,16 @@ final class AuthStore: ObservableObject {
     func register(email: String, password: String) async -> User? {
         isLoading = true
         errorMessage = nil
+        registrationNotice = nil
         defer { isLoading = false }
 
         do {
             let req = RegisterRequest(email: email, password: password)
             let response: UserResponse = try await api.post("/api/auth/register", body: req)
-            return response.user
+            if response.user == nil {
+                registrationNotice = "If this email is new, check your inbox. You can also sign in or request a magic link."
+            }
+            return api.identity.managed ? api.identity.snapshot.user : response.user
         } catch let error as APIError {
             errorMessage = error.errorDescription ?? "Registration failed"
             return nil
@@ -63,14 +68,19 @@ final class AuthStore: ObservableObject {
         }
     }
 
-    func logout() async {
-        // Remove this device's APNs token first — the unregister endpoint
-        // needs the session that logout is about to destroy.
-        await PushRegistrationController.shared.unregisterForLogout()
+    @discardableResult
+    func logout() async -> Bool {
         do {
+            // The server revokes the session and all of its delivery bindings
+            // atomically. Local cookies remain available until it confirms.
             let _: StatusResponse = try await api.postEmpty("/api/auth/logout")
-        } catch {}
-        api.cookieStore.clearAll()
+            api.cookieStore.clearAll()
+            PushRegistrationController.shared.didConfirmLogout()
+            return true
+        } catch {
+            errorMessage = "Sign-out is unfinished. Your data is hidden; retry to revoke this session."
+            return false
+        }
     }
 
     // MARK: - Magic Link
@@ -115,7 +125,7 @@ final class AuthStore: ObservableObject {
         do {
             let req = ResetPasswordRequest(token: token, password: password)
             let response: UserResponse = try await api.post("/api/auth/password/reset", body: req)
-            return response.user
+            return api.identity.managed ? api.identity.snapshot.user : response.user
         } catch let error as APIError {
             errorMessage = error.errorDescription ?? "Password reset failed"
             return nil
@@ -125,21 +135,21 @@ final class AuthStore: ObservableObject {
         }
     }
 
-    func changePassword(current: String, new: String) async -> Bool {
+    func changePassword(current: String, new: String) async -> User? {
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
 
         do {
             let req = ChangePasswordRequest(currentPassword: current, newPassword: new)
-            let _: UserResponse = try await api.post("/api/auth/password", body: req)
-            return true
+            let response: UserResponse = try await api.post("/api/auth/password", body: req)
+            return api.identity.managed ? api.identity.snapshot.user : response.user
         } catch let error as APIError {
             errorMessage = error.errorDescription ?? "Password change failed"
-            return false
+            return nil
         } catch {
             errorMessage = "Password change failed"
-            return false
+            return nil
         }
     }
 }

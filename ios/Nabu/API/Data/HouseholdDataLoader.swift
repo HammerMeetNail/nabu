@@ -11,11 +11,14 @@ final class HouseholdDataLoader {
     }
 
     func loadHouseholdData() async {
+        let api = self.api.scoped()
+        let owner = state.beginOperation("loadHouseholdData")
         do {
             let (data, listData) = try await (
                 api.get("/api/household") as HouseholdResponse,
                 api.get("/api/households") as HouseholdsResponse
             )
+            guard state.owns(owner) else { return }
             state.household = data.household
             state.members = data.members
             state.historicalMembers = data.historicalMembers
@@ -28,8 +31,10 @@ final class HouseholdDataLoader {
     }
 
     func createHousehold(name: String, initials: String) async throws {
+        let api = self.api.scoped()
         let body = CreateHouseholdRequest(name: name, initials: initials)
         let resp: HouseholdResponse = try await api.post("/api/household", body: body)
+        guard api.identity.snapshot.user?.householdId == resp.household.id else { throw APIError.contextChanged }
         state.household = resp.household
         state.members = resp.members
         state.historicalMembers = resp.historicalMembers
@@ -38,8 +43,10 @@ final class HouseholdDataLoader {
     }
 
     func joinHousehold(inviteCode: String) async throws {
+        let api = self.api.scoped()
         let body = JoinHouseholdRequest(inviteCode: inviteCode)
         let resp: HouseholdResponse = try await api.post("/api/household/join", body: body)
+        guard api.identity.snapshot.user?.householdId == resp.household.id else { throw APIError.contextChanged }
         state.household = resp.household
         state.members = resp.members
         state.historicalMembers = resp.historicalMembers

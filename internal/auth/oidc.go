@@ -25,6 +25,10 @@ type OIDCProvider interface {
 	ExchangeCode(ctx context.Context, code, expectedNonce string) (OIDCIdentity, error)
 }
 
+const oauthTimeout = 10 * time.Second
+
+var oauthHTTPClient = &http.Client{Timeout: oauthTimeout}
+
 type OIDCIdentity struct {
 	Subject       string
 	Email         string
@@ -64,9 +68,11 @@ func (p *GoogleOIDCProvider) AuthCodeURL(state, nonce string) string {
 }
 
 func (p *GoogleOIDCProvider) ExchangeCode(ctx context.Context, code, expectedNonce string) (OIDCIdentity, error) {
+	ctx, cancel := context.WithTimeout(ctx, oauthTimeout)
+	defer cancel()
 	client := p.httpClient
 	if client == nil {
-		client = http.DefaultClient
+		client = oauthHTTPClient
 	}
 
 	tokenData, err := p.exchangeForm(ctx, client, code)
@@ -256,13 +262,15 @@ func (p *GoogleOIDCProvider) getJWK(ctx context.Context, kid string) (*rsa.Publi
 }
 
 func (p *GoogleOIDCProvider) refreshJWKS(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, oauthTimeout)
+	defer cancel()
 	jwksURL := p.JWKsURL
 	if jwksURL == "" {
 		jwksURL = "https://www.googleapis.com/oauth2/v3/certs"
 	}
 	client := p.httpClient
 	if client == nil {
-		client = http.DefaultClient
+		client = oauthHTTPClient
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURL, nil)

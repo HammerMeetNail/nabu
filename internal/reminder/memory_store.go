@@ -3,14 +3,17 @@ package reminder
 import (
 	"context"
 	"fmt"
+	"github.com/HammerMeetNail/nabu/internal/lifecycle"
 	"sync"
 	"time"
 )
 
 type MemoryStore struct {
-	mu    sync.RWMutex
-	prefs map[string]ChoreReminderPref
-	sent  map[string]bool
+	deleted      lifecycle.Tombstones
+	removedPrefs map[string]bool
+	mu           sync.RWMutex
+	prefs        map[string]ChoreReminderPref
+	sent         map[string]bool
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -53,6 +56,14 @@ func (s *MemoryStore) GetChoreReminderPref(_ context.Context, userID, choreID in
 func (s *MemoryStore) UpdateChoreReminderPref(_ context.Context, prefs ChoreReminderPref) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.removedPrefs[remKey(prefs.UserID, prefs.ChoreID)] {
+		return lifecycle.ErrDeleted
+	}
+
+	if err := s.deleted.Check(prefs.UserID, 0, prefs.ChoreID, 0, 0); err != nil {
+		return err
+	}
+
 	s.prefs[remKey(prefs.UserID, prefs.ChoreID)] = prefs
 	return nil
 }
@@ -66,6 +77,10 @@ func (s *MemoryStore) HasReminder(_ context.Context, scheduleID, userID int64, s
 func (s *MemoryStore) RecordReminder(_ context.Context, scheduleID, userID int64, scheduledDate string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.deleted.Check(userID, 0, 0, scheduleID, 0); err != nil {
+		return err
+	}
+
 	s.sent[sentKey(scheduleID, userID, scheduledDate)] = true
 	return nil
 }
@@ -96,4 +111,46 @@ func splitReminderKey(key string) []string {
 	}
 	parts = append(parts, key[start:])
 	return parts
+}
+
+func (s *MemoryStore) CleanupAccount(d *lifecycle.Deletion) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for key, p := range s.prefs {
+		if p.UserID == d.UserID || d.Chores[p.ChoreID] {
+			delete(s.prefs, key)
+		}
+	}
+	for key := range s.sent {
+		parts := splitReminderKey(key)
+		if len(parts) != 3 {
+			continue
+		}
+		var scheduleID, userID int64
+		_, _ = fmt.Sscan(parts[0], &scheduleID)
+		_, _ = fmt.Sscan(parts[1], &userID)
+		if userID == d.UserID || d.Schedules[scheduleID] {
+			delete(s.sent, key)
+		}
+	}
+
+	s.deleted.Mark(d)
+}
+
+func (s *MemoryStore) MembershipChanged(userID int64, choreIDs []int64, member bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.removedPrefs == nil {
+		s.removedPrefs = map[string]bool{}
+	}
+	for _, choreID := range choreIDs {
+		key := remKey(userID, choreID)
+		if member {
+			delete(s.removedPrefs, key)
+		} else {
+			delete(s.prefs, key)
+			s.removedPrefs[key] = true
+		}
+	}
 }

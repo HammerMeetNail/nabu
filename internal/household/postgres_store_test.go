@@ -19,6 +19,8 @@ func TestPostgresHouseholdStore_CreateHousehold(t *testing.T) {
 	}
 	defer db.Close()
 	store := NewPostgresStore(db)
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`SELECT pg_advisory_xact_lock($1)`)).WithArgs(lifecycleLockKey).WillReturnResult(sqlmock.NewResult(0, 1))
 
 	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO households (name, initials, invite_code) VALUES ($1, $2, $3) RETURNING id, name, initials, invite_code, created_at`)).
 		WithArgs("My Home", "", sqlmock.AnyArg()).
@@ -31,6 +33,7 @@ func TestPostgresHouseholdStore_CreateHousehold(t *testing.T) {
 		WithArgs(int64(1), int64(1)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
+	mock.ExpectCommit()
 	hh, err := store.CreateHousehold(context.Background(), "My Home", "", 1)
 	if err != nil {
 		t.Fatalf("CreateHousehold: %v", err)
@@ -107,6 +110,8 @@ func TestPostgresHouseholdStore_AddMember(t *testing.T) {
 	}
 	defer db.Close()
 	store := NewPostgresStore(db)
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`SELECT pg_advisory_xact_lock($1)`)).WithArgs(lifecycleLockKey).WillReturnResult(sqlmock.NewResult(0, 1))
 
 	// AddMember(ctx, householdID=1, userID=2, role="member")
 	// First exec: INSERT INTO user_households (user_id=$2, household_id=$1, role=$3)
@@ -118,6 +123,7 @@ func TestPostgresHouseholdStore_AddMember(t *testing.T) {
 		WithArgs(int64(1), "member", int64(2)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
+	mock.ExpectCommit()
 	err = store.AddMember(context.Background(), 1, 2, "member")
 	if err != nil {
 		t.Fatalf("AddMember: %v", err)
@@ -131,6 +137,11 @@ func TestPostgresHouseholdStore_RemoveMember(t *testing.T) {
 	}
 	defer db.Close()
 	store := NewPostgresStore(db)
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`SELECT pg_advisory_xact_lock($1)`)).WithArgs(lifecycleLockKey).WillReturnResult(sqlmock.NewResult(0, 1))
+
+	mock.ExpectExec("SELECT pg_advisory_xact_lock").WithArgs(int64(-1)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectQuery("SELECT id FROM chores").WithArgs(int64(1)).WillReturnRows(sqlmock.NewRows([]string{"id"}))
 
 	// RemoveMember(ctx, householdID=1, userID=2)
 	// First exec: DELETE FROM user_households WHERE user_id=$1 AND household_id=$2
@@ -143,6 +154,11 @@ func TestPostgresHouseholdStore_RemoveMember(t *testing.T) {
 		WithArgs(int64(2), int64(1)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
+	mock.ExpectExec(`UPDATE chore_schedules SET assigned_to_user_id`).WithArgs(int64(1), int64(2)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`DELETE FROM chore_reminder_prefs`).WithArgs(int64(2), int64(1)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`UPDATE households SET invite_code`).WithArgs(sqlmock.AnyArg(), int64(1)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(`DELETE FROM invites WHERE household_id`).WithArgs(int64(1)).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
 	err = store.RemoveMember(context.Background(), 1, 2)
 	if err != nil {
 		t.Fatalf("RemoveMember: %v", err)
@@ -156,6 +172,8 @@ func TestPostgresHouseholdStore_UseInvite_ConsumesUnderCap(t *testing.T) {
 	}
 	defer db.Close()
 	store := NewPostgresStore(db)
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`SELECT pg_advisory_xact_lock($1)`)).WithArgs(lifecycleLockKey).WillReturnResult(sqlmock.NewResult(0, 1))
 
 	mock.ExpectExec(regexp.QuoteMeta(`UPDATE invites SET used_count = used_count + 1
 		WHERE code = $1
@@ -164,6 +182,7 @@ func TestPostgresHouseholdStore_UseInvite_ConsumesUnderCap(t *testing.T) {
 		WithArgs("CODE123456").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
+	mock.ExpectCommit()
 	err = store.UseInvite(context.Background(), "CODE123456")
 	if err != nil {
 		t.Fatalf("UseInvite: %v", err)
@@ -180,6 +199,8 @@ func TestPostgresHouseholdStore_UseInvite_RejectsAtCap(t *testing.T) {
 	}
 	defer db.Close()
 	store := NewPostgresStore(db)
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`SELECT pg_advisory_xact_lock($1)`)).WithArgs(lifecycleLockKey).WillReturnResult(sqlmock.NewResult(0, 1))
 
 	// 0 rows affected → code unknown, exhausted, or expired; same sentinel
 	// either way so callers cannot distinguish.
@@ -190,6 +211,7 @@ func TestPostgresHouseholdStore_UseInvite_RejectsAtCap(t *testing.T) {
 		WithArgs("CODE123456").
 		WillReturnResult(sqlmock.NewResult(0, 0))
 
+	mock.ExpectRollback()
 	err = store.UseInvite(context.Background(), "CODE123456")
 	if err != ErrInviteNotFound {
 		t.Fatalf("err = %v, want ErrInviteNotFound", err)
@@ -206,6 +228,8 @@ func TestPostgresHouseholdStore_UseInvite_RejectsExpired(t *testing.T) {
 	}
 	defer db.Close()
 	store := NewPostgresStore(db)
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`SELECT pg_advisory_xact_lock($1)`)).WithArgs(lifecycleLockKey).WillReturnResult(sqlmock.NewResult(0, 1))
 
 	// Expired rows also match 0 rows affected → ErrInviteNotFound.
 	mock.ExpectExec(regexp.QuoteMeta(`UPDATE invites SET used_count = used_count + 1
@@ -215,6 +239,7 @@ func TestPostgresHouseholdStore_UseInvite_RejectsExpired(t *testing.T) {
 		WithArgs("CODE123456").
 		WillReturnResult(sqlmock.NewResult(0, 0))
 
+	mock.ExpectRollback()
 	err = store.UseInvite(context.Background(), "CODE123456")
 	if err != ErrInviteNotFound {
 		t.Fatalf("err = %v, want ErrInviteNotFound", err)
@@ -231,9 +256,13 @@ func TestPostgresHouseholdStore_UpdateMemberRole(t *testing.T) {
 	}
 	defer db.Close()
 	store := NewPostgresStore(db)
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`SELECT pg_advisory_xact_lock($1)`)).WithArgs(lifecycleLockKey).WillReturnResult(sqlmock.NewResult(0, 1))
 
 	// UpdateMemberRole(ctx, householdID=1, userID=2, role="admin")
 	// First exec: UPDATE user_households SET role=$1 WHERE user_id=$2 AND household_id=$3
+	mock.ExpectExec("SELECT pg_advisory_xact_lock").WithArgs(int64(-1)).WillReturnResult(sqlmock.NewResult(0, 1))
+
 	mock.ExpectExec(regexp.QuoteMeta(`UPDATE user_households SET role = $1 WHERE user_id = $2 AND household_id = $3`)).
 		WithArgs("admin", int64(2), int64(1)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
@@ -242,6 +271,7 @@ func TestPostgresHouseholdStore_UpdateMemberRole(t *testing.T) {
 		WithArgs("admin", int64(2), int64(1)).
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
+	mock.ExpectCommit()
 	err = store.UpdateMemberRole(context.Background(), 1, 2, "admin")
 	if err != nil {
 		t.Fatalf("UpdateMemberRole: %v", err)
@@ -261,10 +291,13 @@ func TestJoinHousehold_ExhaustedInvite_Postgres(t *testing.T) {
 	store := NewPostgresStore(db)
 	svc := NewService(store, nil)
 
+	mock.ExpectBegin()
+	mock.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
+
 	const code = "EXHAUSTED1"
 
 	// Lookup succeeds but the code is already at max_uses.
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, code, created_by, max_uses, used_count, COALESCE(expires_at, 'epoch'::timestamptz), created_at
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, code, created_by, max_uses, used_count, expires_at, created_at
 		FROM invites WHERE code = $1`)).
 		WithArgs(code).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "code", "created_by", "max_uses", "used_count", "expires_at", "created_at"}).
@@ -292,6 +325,8 @@ func TestJoinHousehold_ExhaustedInvite_Postgres(t *testing.T) {
 		WithArgs(code).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 
+	mock.ExpectRollback()
+
 	_, err = svc.JoinHousehold(context.Background(), 2, code)
 	if err != ErrInviteNotFound {
 		t.Fatalf("JoinHousehold: err = %v, want ErrInviteNotFound", err)
@@ -313,9 +348,12 @@ func TestJoinHousehold_ViaOneTimeInvite_Postgres(t *testing.T) {
 	store := NewPostgresStore(db)
 	svc := NewService(store, nil)
 
+	mock.ExpectBegin()
+	mock.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
+
 	const code = "CODE123456"
 
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, code, created_by, max_uses, used_count, COALESCE(expires_at, 'epoch'::timestamptz), created_at
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, code, created_by, max_uses, used_count, expires_at, created_at
 		FROM invites WHERE code = $1`)).
 		WithArgs(code).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "code", "created_by", "max_uses", "used_count", "expires_at", "created_at"}).
@@ -353,6 +391,8 @@ func TestJoinHousehold_ViaOneTimeInvite_Postgres(t *testing.T) {
 		WithArgs(int64(1)).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "name", "initials", "invite_code", "created_at"}).
 			AddRow(1, "Test", "", "PERMANENT1", testTime))
+
+	mock.ExpectCommit()
 
 	hh, err := svc.JoinHousehold(context.Background(), 2, code)
 	if err != nil {

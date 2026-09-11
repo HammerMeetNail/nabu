@@ -141,6 +141,22 @@ test.describe('Schedule Tab', () => {
     await page.click('[data-nav="schedule"]');
     await page.waitForSelector('.schedule-view', { timeout: 5000 });
     await expect(page.locator('.empty-state-title')).toContainText('No scheduled chores');
+    const create=page.locator('.empty-state').getByRole('button',{name:'Schedule a chore',exact:true});
+    await expect(create).toBeVisible();
+    await expect(page.locator('.empty-state')).not.toContainText('Calendar tab');
+    await create.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.bottom-sheet')).toHaveCount(0);
+    await expect(create).toBeFocused();
+    await create.click();
+    await page.locator('.sheet-chore-item').first().click();
+    await page.locator('[data-action="save-configure-schedule"]').click();
+    await expect(page.locator('.bottom-sheet')).toHaveCount(0);
+    await expect(page.locator('.sch-row').first()).toBeVisible();
+    await page.reload();
+    await page.click('[data-nav="schedule"]');
+    await expect(page.locator('.sch-row').first()).toBeVisible();
   });
 
   test('edit button opens the edit-schedule sheet', async ({ page }) => {

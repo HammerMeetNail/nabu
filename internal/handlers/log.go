@@ -20,11 +20,15 @@ import (
 )
 
 type LogHandler struct {
-	service        *log.Service
-	notifService   *notification.Service // optional; nil disables notifications
-	choreStore     chore.Store
-	householdStore household.Store
-	scheduleStore  schedule.Store
+	service            *log.Service
+	notifService       *notification.Service // optional; nil disables notifications
+	deliveryChores     chore.Store
+	deliveryHouseholds household.Store
+	choreStore         chore.Store
+	householdStore     household.Store
+	scheduleStore      schedule.Store
+	dispatch           func(func())
+	background         context.Context
 }
 
 // backdateFollowUpTolerance is the grace period used to decide whether a log
@@ -44,15 +48,21 @@ type LogHandler struct {
 const backdateFollowUpTolerance = 6 * time.Hour
 
 func NewLogHandler(service *log.Service) *LogHandler {
-	return &LogHandler{service: service}
+	return &LogHandler{service: service, background: context.Background(), dispatch: func(f func()) { f() }}
+}
+
+func (h *LogHandler) SetBackground(ctx context.Context, dispatch func(func())) {
+	h.background, h.dispatch = ctx, dispatch
 }
 
 // WithNotification attaches the services required to fan out chore-logged
 // notifications to other household members after a successful log creation.
 func (h *LogHandler) WithNotification(ns *notification.Service, cs chore.Store, hs household.Store) *LogHandler {
 	h.notifService = ns
-	h.choreStore = cs
-	h.householdStore = hs
+	h.deliveryChores, h.deliveryHouseholds = cs, hs
+	if h.choreStore == nil {
+		h.WithChoreStore(cs, hs)
+	}
 	return h
 }
 
@@ -66,6 +76,7 @@ func (h *LogHandler) WithScheduleStore(ss schedule.Store) *LogHandler {
 // WithChoreStore attaches the chore and household stores for visibility checks.
 func (h *LogHandler) WithChoreStore(cs chore.Store, hs household.Store) *LogHandler {
 	h.choreStore = cs
+	h.service.WithAccess(cs, hs)
 	h.householdStore = hs
 	return h
 }
@@ -74,29 +85,7 @@ func (h *LogHandler) visibleChoreIDs(ctx context.Context, userID, householdID in
 	if h.choreStore == nil {
 		return nil, nil
 	}
-	chores, err := h.choreStore.ListChores(ctx, householdID)
-	if err != nil {
-		return nil, err
-	}
-	visible := make(map[int64]struct{}, len(chores))
-	for _, c := range chores {
-		if c.Visibility == chore.VisibilityAdmins {
-			if h.householdStore == nil {
-				continue
-			}
-			role, err := h.householdStore.GetMembershipForHousehold(ctx, userID, householdID)
-			if err != nil {
-				continue
-			}
-			if role != household.RoleOwner && role != household.RoleAdmin {
-				continue
-			}
-		}
-		if c.HouseholdID == householdID {
-			visible[c.ID] = struct{}{}
-		}
-	}
-	return visible, nil
+	return chore.NewService(h.choreStore).WithMemberships(h.householdStore).VisibleChoreIDs(ctx, userID, householdID)
 }
 
 func (h *LogHandler) canViewChore(ctx context.Context, userID, householdID, choreID int64) (chore.Chore, bool) {
@@ -160,15 +149,16 @@ func (h *LogHandler) fanOutNotification(householdID, loggerID, actorID, choreID 
 	if h.notifService == nil {
 		return
 	}
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(h.background, 20*time.Second)
+	defer cancel()
 
-	c, err := h.choreStore.GetChore(ctx, choreID)
+	c, err := h.deliveryChores.GetChore(ctx, choreID)
 	if err != nil {
 		return
 	}
 	// For Admins-only tasks, only notify other admins/owners.
 	isPrivate := c.Visibility == chore.VisibilityAdmins
-	members, err := h.householdStore.GetMembers(ctx, householdID)
+	members, err := h.deliveryHouseholds.GetMembers(ctx, householdID)
 	if err != nil {
 		return
 	}
@@ -188,7 +178,7 @@ func (h *LogHandler) fanOutNotification(householdID, loggerID, actorID, choreID 
 	for i, m := range members {
 		mi[i] = notification.MemberInfo{UserID: m.UserID, DisplayName: m.DisplayName}
 	}
-	h.notifService.NotifyChoreLogged(ctx, mi, loggerID, actorID, c.Name, c.Icon)
+	h.notifService.NotifyChoreLogged(ctx, mi, loggerID, actorID, c.Name, c.Icon, notification.Scope{HouseholdID: householdID, ChoreID: choreID})
 }
 
 func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -298,7 +288,23 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "idempotencyKey too long")
 		return
 	}
-	entry, _, err := h.service.LogChoreIdempotent(r.Context(), *user.HouseholdID, logUserID, req.ChoreID, req.Title, req.Note, req.Indicators, req.IndicatorVolumes, logDate, req.Hour, logCompletedAt, req.VolumeML, req.Rating, req.DurationSeconds, req.Subject, idemKey)
+	if req.FollowUpMinutes < 0 || req.FollowUpMinutes > 7*24*60 {
+		writeError(w, http.StatusBadRequest, "invalid follow-up interval")
+		return
+	}
+	if req.FollowUpTime != "" {
+		if _, err := time.Parse("2006-01-02T15:04", req.FollowUpTime); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid followUpTime format")
+			return
+		}
+	}
+	entry, created, err := h.service.LogChoreIdempotent(r.Context(), log.CreateInput{
+		HouseholdID: *user.HouseholdID, ActorID: user.ID, UserID: logUserID, ChoreID: req.ChoreID,
+		Title: req.Title, Note: req.Note, Indicators: req.Indicators, IndicatorVolumes: req.IndicatorVolumes,
+		Date: logDate, SlotHour: req.Hour, CompletedAt: logCompletedAt, VolumeML: req.VolumeML,
+		Rating: req.Rating, DurationSeconds: req.DurationSeconds, Subject: req.Subject,
+		IdempotencyKey: idemKey, FollowUpMinutes: req.FollowUpMinutes, FollowUpTime: req.FollowUpTime,
+	})
 	if err != nil {
 		// Validation failures are the caller's fault: 400 with the clear
 		// message. Everything else gets a static 409 so store errors (e.g.
@@ -308,79 +314,51 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
+		if errors.Is(err, log.ErrNotFound) {
+			writeError(w, http.StatusNotFound, "chore not found")
+			return
+		}
 		writeError(w, http.StatusConflict, "could not create log")
 		return
 	}
 
+	applied := created
 	if h.scheduleStore != nil {
-		// A follow-up schedule represents a forward-looking reminder ("do
-		// this chore again at time X"). Only a log that records a fresh,
-		// current completion should clear/replace an existing follow-up —
-		// the user just did the chore, so the reminder is satisfied and a
-		// new one (if any) takes its place.
-		//
-		// A backdated log records a historical event; it must NOT disrupt an
-		// existing future follow-up. Even if the backdated log itself
-		// specifies a follow-up, that follow-up would be anchored to a past
-		// time and is irrelevant, so we leave the existing follow-up intact
-		// (and keep the single-follow-up-per-chore invariant). The chore's
-		// lastFollowUpMinutes (the "last used" pre-fill) is left untouched
-		// for the same reason — a historical entry shouldn't wipe the
-		// user's preferred follow-up duration.
-		//
-		// Backdate detection uses the completedAt timestamp against the
-		// current wall clock. Both are absolute UTC timestamps, which
-		// avoids the timezone ambiguity inherent in comparing calendar
-		// dates across client and server timezones.
-		backdated := false
-		if logCompletedAt != nil {
-			backdated = logCompletedAt.Before(time.Now().Add(-backdateFollowUpTolerance))
+		effects := schedule.LogEffects{
+			LogID: entry.ID, HouseholdID: *user.HouseholdID, ChoreID: req.ChoreID,
+			UpdateFollowUp:      logCompletedAt == nil || !logCompletedAt.Before(entry.CreatedAt.Add(-backdateFollowUpTolerance)),
+			LastFollowUpMinutes: req.FollowUpMinutes,
 		}
-
-		if !backdated {
-			if err := h.scheduleStore.DeleteFollowUpSchedulesByChore(r.Context(), req.ChoreID); err != nil {
-				writeServerError(w, "failed to create log", err)
-				return
+		if effects.UpdateFollowUp && req.FollowUpMinutes > 0 && req.FollowUpTime != "" {
+			t, _ := time.Parse("2006-01-02T15:04", req.FollowUpTime) // validated before the log is saved
+			effects.FollowUp = &schedule.ChoreSchedule{
+				HouseholdID: *user.HouseholdID, ChoreID: req.ChoreID, FrequencyType: "once",
+				TimePeriod: schedule.PeriodAnytime, SpecificTime: t.Format("15:04"),
+				StartDate: &schedule.DateOnly{Time: t}, IsActive: true, IsFollowUp: true,
 			}
-			if req.FollowUpMinutes > 0 && req.FollowUpTime != "" {
-				t, err := time.Parse("2006-01-02T15:04", req.FollowUpTime)
-				if err != nil {
-					writeError(w, http.StatusBadRequest, "invalid followUpTime format")
-					return
-				}
-				specificTime := t.Format("15:04")
-				startDate := schedule.DateOnly{Time: t.Truncate(24 * time.Hour)}
-				_, err = h.scheduleStore.Create(r.Context(), schedule.ChoreSchedule{
-					HouseholdID:   *user.HouseholdID,
-					ChoreID:       req.ChoreID,
-					FrequencyType: "once",
-					TimePeriod:    schedule.PeriodAnytime,
-					SpecificTime:  specificTime,
-					StartDate:     &startDate,
-					IsActive:      true,
-					IsFollowUp:    true,
-				})
-				if err != nil {
-					writeServerError(w, "failed to create log", err)
-					return
-				}
-			}
-			if h.choreStore != nil {
-				c, err := h.choreStore.GetChore(r.Context(), req.ChoreID)
-				if err == nil && c.HouseholdID == *user.HouseholdID {
-					c.LastFollowUpMinutes = req.FollowUpMinutes
-					_ = h.choreStore.UpdateChore(r.Context(), c)
-				}
+		}
+		applied, err = h.scheduleStore.ApplyLogEffects(r.Context(), effects)
+		if err != nil {
+			writeServerError(w, "log saved; retry to finish its follow-up", err)
+			return
+		}
+		// Postgres updates this preference in the effect transaction. Memory
+		// mode keeps its separate chore store synchronized after application.
+		if _, memory := h.scheduleStore.(*schedule.MemoryStore); memory && applied && effects.UpdateFollowUp && h.choreStore != nil {
+			c, err := h.choreStore.GetChore(r.Context(), req.ChoreID)
+			if err == nil && c.HouseholdID == *user.HouseholdID {
+				c.LastFollowUpMinutes = req.FollowUpMinutes
+				_ = h.choreStore.UpdateChore(r.Context(), c)
 			}
 		}
 	}
 
 	// Fire-and-forget: notify other household members.
-	if h.notifService != nil {
+	if applied && h.notifService != nil {
 		hhID := *user.HouseholdID
 		loggerID := logUserID
 		choreID := req.ChoreID
-		go h.fanOutNotification(hhID, loggerID, user.ID, choreID)
+		h.dispatch(func() { h.fanOutNotification(hhID, loggerID, user.ID, choreID) })
 	}
 
 	writeJSON(w, http.StatusCreated, map[string]any{"log": entry})
@@ -414,8 +392,18 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Hour             *int           `json:"hour"`            // optional: new slot hour
 		Date             string         `json:"date"`            // optional: new log date
 	}
-	if err := readJSON(r, &req); err != nil {
+	rawFields, err := readPatchJSON(r, &req)
+	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	fields := log.LogFields{}
+	for name := range rawFields {
+		fields[name] = true
+	}
+	if fields["userId"] && req.UserID == nil || fields["completedAt"] && req.CompletedAt == "" {
+		writeError(w, http.StatusBadRequest, "userId and completedAt cannot be null or empty")
 		return
 	}
 
@@ -485,7 +473,7 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 		logCompletedAt = &t
 	}
 
-	if err := h.service.UpdateLog(r.Context(), id, *user.HouseholdID, req.Title, req.Note, req.Indicators, req.IndicatorVolumes, req.VolumeML, userID, logCompletedAt, req.Hour, logDate, req.Rating, req.DurationSeconds, req.Subject); err != nil {
+	if err := h.service.UpdateLog(r.Context(), id, *user.HouseholdID, req.Title, req.Note, req.Indicators, req.IndicatorVolumes, req.VolumeML, userID, logCompletedAt, req.Hour, logDate, req.Rating, req.DurationSeconds, req.Subject, log.Patch{ActorID: user.ID, Fields: fields}); err != nil {
 		if errors.Is(err, log.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "log not found")
 			return
@@ -541,6 +529,15 @@ func (h *LogHandler) Today(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "no household")
 		return
 	}
+	visible, err := h.visibleChoreIDs(r.Context(), user.ID, *user.HouseholdID)
+	if err != nil {
+		writeServerError(w, "failed to verify chore access", err)
+		return
+	}
+	readCtx := r.Context()
+	if h.choreStore != nil {
+		readCtx = log.WithReadAccess(readCtx, *user.HouseholdID, user.ID, visible)
+	}
 
 	dateStr := r.URL.Query().Get("date")
 	date := today()
@@ -551,7 +548,7 @@ func (h *LogHandler) Today(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logs, err := h.service.GetDayLogs(r.Context(), *user.HouseholdID, date)
+	logs, err := h.service.GetDayLogs(readCtx, *user.HouseholdID, date)
 	if err != nil {
 		writeServerError(w, "failed to load today's logs", err)
 		return
@@ -560,9 +557,7 @@ func (h *LogHandler) Today(w http.ResponseWriter, r *http.Request) {
 		logs = []log.ChoreLog{}
 	}
 	// Filter by visible chores before summary.
-	if visible, err := h.visibleChoreIDs(r.Context(), user.ID, *user.HouseholdID); err == nil {
-		logs = filterLogsByVisible(logs, visible)
-	}
+	logs = filterLogsByVisible(logs, visible)
 
 	summary := h.service.DailySummaryFromLogs(date, logs)
 
@@ -579,6 +574,15 @@ func (h *LogHandler) Week(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "no household")
 		return
 	}
+	visible, err := h.visibleChoreIDs(r.Context(), user.ID, *user.HouseholdID)
+	if err != nil {
+		writeServerError(w, "failed to verify chore access", err)
+		return
+	}
+	readCtx := r.Context()
+	if h.choreStore != nil {
+		readCtx = log.WithReadAccess(readCtx, *user.HouseholdID, user.ID, visible)
+	}
 
 	startStr := r.URL.Query().Get("start")
 	start := today()
@@ -589,14 +593,12 @@ func (h *LogHandler) Week(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logs, err := h.service.GetWeekLogs(r.Context(), *user.HouseholdID, start)
+	logs, err := h.service.GetWeekLogs(readCtx, *user.HouseholdID, start)
 	if err != nil {
 		writeServerError(w, "failed to load week logs", err)
 		return
 	}
-	if visible, err := h.visibleChoreIDs(r.Context(), user.ID, *user.HouseholdID); err == nil {
-		logs = filterLogsByVisible(logs, visible)
-	}
+	logs = filterLogsByVisible(logs, visible)
 
 	writeJSON(w, http.StatusOK, map[string]any{"logs": logs})
 }
@@ -606,6 +608,15 @@ func (h *LogHandler) Month(w http.ResponseWriter, r *http.Request) {
 	if user.HouseholdID == nil {
 		writeError(w, http.StatusUnauthorized, "no household")
 		return
+	}
+	visible, err := h.visibleChoreIDs(r.Context(), user.ID, *user.HouseholdID)
+	if err != nil {
+		writeServerError(w, "failed to verify chore access", err)
+		return
+	}
+	readCtx := r.Context()
+	if h.choreStore != nil {
+		readCtx = log.WithReadAccess(readCtx, *user.HouseholdID, user.ID, visible)
 	}
 
 	yearStr := r.URL.Query().Get("year")
@@ -620,14 +631,12 @@ func (h *LogHandler) Month(w http.ResponseWriter, r *http.Request) {
 		month = m
 	}
 
-	logs, err := h.service.GetMonthLogs(r.Context(), *user.HouseholdID, year, time.Month(month))
+	logs, err := h.service.GetMonthLogs(readCtx, *user.HouseholdID, year, time.Month(month))
 	if err != nil {
 		writeServerError(w, "failed to load month logs", err)
 		return
 	}
-	if visible, err := h.visibleChoreIDs(r.Context(), user.ID, *user.HouseholdID); err == nil {
-		logs = filterLogsByVisible(logs, visible)
-	}
+	logs = filterLogsByVisible(logs, visible)
 
 	writeJSON(w, http.StatusOK, map[string]any{"logs": logs})
 }
@@ -638,6 +647,15 @@ func (h *LogHandler) History(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "no household")
 		return
 	}
+	visible, err := h.visibleChoreIDs(r.Context(), user.ID, *user.HouseholdID)
+	if err != nil {
+		writeServerError(w, "failed to verify chore access", err)
+		return
+	}
+	readCtx := r.Context()
+	if h.choreStore != nil {
+		readCtx = log.WithReadAccess(readCtx, *user.HouseholdID, user.ID, visible)
+	}
 
 	// Text search across note/title spans all history and bypasses the
 	// windowed pagination — search results are a flat, capped, newest-first
@@ -646,14 +664,12 @@ func (h *LogHandler) History(w http.ResponseWriter, r *http.Request) {
 		if len(q) > 100 {
 			q = q[:100]
 		}
-		logs, err := h.service.SearchHistoryLogs(r.Context(), *user.HouseholdID, q, 100)
+		logs, err := h.service.SearchHistoryLogs(readCtx, *user.HouseholdID, q, 100)
 		if err != nil {
 			writeServerError(w, "failed to search history", err)
 			return
 		}
-		if visible, err := h.visibleChoreIDs(r.Context(), user.ID, *user.HouseholdID); err == nil {
-			logs = filterLogsByVisible(logs, visible)
-		}
+		logs = filterLogsByVisible(logs, visible)
 		writeJSON(w, http.StatusOK, map[string]any{
 			"logs":    logs,
 			"hasMore": false,
@@ -679,20 +695,12 @@ func (h *LogHandler) History(w http.ResponseWriter, r *http.Request) {
 	}
 	start := end.AddDate(0, 0, -7)
 
-	logs, hasMore, err := h.service.GetHistoryLogs(r.Context(), *user.HouseholdID, start, end)
+	logs, hasMore, err := h.service.GetHistoryLogs(readCtx, *user.HouseholdID, start, end)
 	if err != nil {
 		writeServerError(w, "failed to load history", err)
 		return
 	}
-	if visible, err := h.visibleChoreIDs(r.Context(), user.ID, *user.HouseholdID); err == nil {
-		logs = filterLogsByVisible(logs, visible)
-		// Do not leak hidden existence via hasMore. If the window contained only hidden logs,
-		// hasMore must not reveal them. Suppress hasMore when no visible logs remain, truncating
-		// pagination safely (next fetch will continue backwards).
-		if len(logs) == 0 && hasMore {
-			hasMore = false
-		}
-	}
+	logs = filterLogsByVisible(logs, visible)
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"logs":    logs,
@@ -726,11 +734,23 @@ func csvSafe(s string) string {
 // chore). GET /api/logs/export?start=YYYY-MM-DD&end=YYYY-MM-DD&choreId=N.
 // Useful for pediatrician visits and spreadsheets.
 func (h *LogHandler) Export(w http.ResponseWriter, r *http.Request) {
+	r, cancel := exportContext(r)
+	defer cancel()
 	user, _ := middleware.CurrentUser(r.Context())
 	if user.HouseholdID == nil {
 		writeError(w, http.StatusUnauthorized, "no household")
 		return
 	}
+	visible, err := h.visibleChoreIDs(r.Context(), user.ID, *user.HouseholdID)
+	if err != nil {
+		exportError(w, err)
+		return
+	}
+	readCtx := r.Context()
+	if h.choreStore != nil {
+		readCtx = log.WithReadAccess(readCtx, *user.HouseholdID, user.ID, visible)
+	}
+
 	hid := *user.HouseholdID
 
 	parseDay := func(s string) (time.Time, bool) {
@@ -758,7 +778,7 @@ func (h *LogHandler) Export(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	if start.After(end) {
+	if !start.Before(end) {
 		writeError(w, http.StatusBadRequest, "start must be before end")
 		return
 	}
@@ -778,35 +798,43 @@ func (h *LogHandler) Export(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		filterChoreID = id
+		if h.choreStore != nil {
+			readCtx = log.WithReadAccess(readCtx, hid, user.ID, map[int64]struct{}{id: {}})
+		}
 	}
 
-	logs, err := h.service.GetLogsInRange(r.Context(), hid, start, end)
+	logs, err := h.service.GetLogsInRange(readCtx, hid, start, end)
 	if err != nil {
-		writeServerError(w, "failed to export logs", err)
+		exportError(w, err)
 		return
 	}
-	if visible, err := h.visibleChoreIDs(r.Context(), user.ID, hid); err == nil {
-		logs = filterLogsByVisible(logs, visible)
-	}
+	logs = filterLogsByVisible(logs, visible)
 
 	// Build id→name lookups for chores and members (only visible chores).
 	choreNames := map[int64]string{}
 	if h.choreStore != nil {
-		if chores, err := h.choreStore.ListChores(r.Context(), hid); err == nil {
-			visible, _ := h.visibleChoreIDs(r.Context(), user.ID, hid)
-			for _, c := range chores {
-				if visible != nil {
-					if _, ok := visible[c.ID]; !ok {
-						continue
-					}
+		chores, err := h.choreStore.ListChores(r.Context(), hid)
+		if err != nil {
+			exportError(w, err)
+			return
+		}
+		for _, c := range chores {
+			if visible != nil {
+				if _, ok := visible[c.ID]; !ok {
+					continue
 				}
-				choreNames[c.ID] = c.Name
 			}
+			choreNames[c.ID] = c.Name
 		}
 	}
 	memberNames := map[int64]string{}
 	if h.householdStore != nil {
-		if members, err := h.householdStore.GetMembers(r.Context(), hid); err == nil {
+		members, err := h.householdStore.GetMembers(r.Context(), hid)
+		if err != nil {
+			exportError(w, err)
+			return
+		}
+		{
 			for _, m := range members {
 				name := m.DisplayName
 				if name == "" {
@@ -817,9 +845,8 @@ func (h *LogHandler) Export(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", "attachment; filename=\"nabu-logs.csv\"")
-	cw := csv.NewWriter(w)
+	buffer := &exportBuffer{ctx: r.Context()}
+	cw := csv.NewWriter(buffer)
 	_ = cw.Write([]string{"date", "time", "chore", "member", "title", "note", "volume_ml", "indicators", "indicator_volumes", "rating", "duration_seconds", "subject"})
 	for _, l := range logs {
 		if filterChoreID != 0 && l.ChoreID != filterChoreID {
@@ -871,6 +898,29 @@ func (h *LogHandler) Export(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	cw.Flush()
+	if err := cw.Error(); err != nil {
+		exportError(w, err)
+		return
+	}
+	// Metadata is fetched after the log query. Recheck access after every read
+	// so a visibility change cannot expose a newly private chore name.
+	if h.choreStore != nil {
+		current, err := h.visibleChoreIDs(r.Context(), user.ID, hid)
+		if err != nil {
+			exportError(w, err)
+			return
+		}
+		for _, entry := range logs {
+			if filterChoreID != 0 && entry.ChoreID != filterChoreID {
+				continue
+			}
+			if _, ok := current[entry.ChoreID]; !ok {
+				writeError(w, http.StatusForbidden, "chore access changed; try again")
+				return
+			}
+		}
+	}
+	sendExport(w, r, buffer, "nabu-logs.csv")
 }
 
 func (h *LogHandler) LatestPerChore(w http.ResponseWriter, r *http.Request) {
@@ -879,12 +929,22 @@ func (h *LogHandler) LatestPerChore(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "no household")
 		return
 	}
-	result, err := h.service.LatestPerChore(r.Context(), *user.HouseholdID)
+	visible, err := h.visibleChoreIDs(r.Context(), user.ID, *user.HouseholdID)
+	if err != nil {
+		writeServerError(w, "failed to verify chore access", err)
+		return
+	}
+	readCtx := r.Context()
+	if h.choreStore != nil {
+		readCtx = log.WithReadAccess(readCtx, *user.HouseholdID, user.ID, visible)
+	}
+
+	result, err := h.service.LatestPerChore(readCtx, *user.HouseholdID)
 	if err != nil {
 		writeServerError(w, "failed to load latest logs", err)
 		return
 	}
-	if visible, err := h.visibleChoreIDs(r.Context(), user.ID, *user.HouseholdID); err == nil && visible != nil {
+	if visible != nil {
 		for cid := range result {
 			if _, ok := visible[cid]; !ok {
 				delete(result, cid)

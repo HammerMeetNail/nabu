@@ -199,6 +199,22 @@ final class RequestEncodingTests: XCTestCase {
         XCTAssertNil(dict["volume_ml"])
     }
 
+    func testNullableLogMetricsDistinguishOmissionFromClear() throws {
+        let clear = UpdateLogRequest(note: nil, indicators: nil, volumeML: .some(nil),
+            userId: nil, completedAt: nil, hour: nil, date: nil, indicatorVolumes: [:],
+            rating: .some(nil), title: .some(nil), durationSeconds: .some(nil), subject: .some(nil))
+        let encoded = json(try apiEncoder.encode(clear))
+        for key in ["volumeML", "rating", "title", "durationSeconds", "subject"] {
+            XCTAssertTrue(encoded[key] is NSNull, key)
+        }
+        XCTAssertEqual((encoded["indicatorVolumes"] as? [String: Int])?.count, 0)
+        let omit = UpdateLogRequest(note: "only note", indicators: nil, volumeML: nil,
+            userId: nil, completedAt: nil, hour: nil, date: nil, indicatorVolumes: nil)
+        let omitted = json(try apiEncoder.encode(omit))
+        XCTAssertEqual(omitted.count, 1)
+        XCTAssertEqual(omitted["note"] as? String, "only note")
+    }
+
     // MARK: - Preferences
 
     func testPatchUserPreferencesPartial() throws {

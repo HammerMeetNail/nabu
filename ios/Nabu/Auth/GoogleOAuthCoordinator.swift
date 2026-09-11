@@ -32,7 +32,12 @@ final class GoogleOAuthCoordinator: NSObject, ObservableObject {
             return nil
         }
 
-        return await withCheckedContinuation { continuation in
+        let api = APIClient(baseURL: baseURL, identity: ClientIdentity.shared(for: baseURL))
+        let ticket: UUID
+        do { ticket = try api.identity.beginTransition() }
+        catch { errorMessage = "Finish the current account change first."; return nil }
+        await api.identity.publish()
+        let succeeded: Bool = await withCheckedContinuation { continuation in
             let session = ASWebAuthenticationSession(
                 url: loginURL,
                 callbackURLScheme: "nabu"
@@ -41,38 +46,42 @@ final class GoogleOAuthCoordinator: NSObject, ObservableObject {
                     if error.code != .canceledLogin {
                         self.errorMessage = "Google sign-in failed"
                     }
-                    continuation.resume(returning: nil)
+                    continuation.resume(returning: false)
                     return
                 }
 
                 guard callbackURL != nil else {
                     self.errorMessage = "Google sign-in failed"
-                    continuation.resume(returning: nil)
+                    continuation.resume(returning: false)
                     return
                 }
 
                 // Copy session cookie from ASWebAuthenticationSession's cookie store
                 // to HTTPCookieStorage so URLSession can use it.
                 WKWebsiteDataStore.default().httpCookieStore.getAllCookies { cookies in
-                    for cookie in cookies {
-                        HTTPCookieStorage.shared.setCookie(cookie)
-                    }
                     Task { @MainActor in
-                        let api = APIClient(baseURL: self.baseURL)
-                        do {
-                            let response: UserResponse = try await api.get("/api/me")
-                            continuation.resume(returning: response.user)
-                        } catch {
-                            self.errorMessage = "Failed to load account"
-                            continuation.resume(returning: nil)
+                        guard api.identity.ownsTransition(ticket) else { continuation.resume(returning: false); return }
+                        let host = self.baseURL.host ?? ""
+                        for cookie in cookies where ["nabu_session", "nabu_csrf"].contains(cookie.name) {
+                            let domain = cookie.domain.hasPrefix(".") ? String(cookie.domain.dropFirst()) : cookie.domain
+                            guard host == domain || host.hasSuffix("." + domain) else { continue }
+                            HTTPCookieStorage.shared.setCookie(cookie)
                         }
+                        continuation.resume(returning: true)
                     }
                 }
             }
 
             session.presentationContextProvider = self
             session.prefersEphemeralWebBrowserSession = false
-            session.start()
+            if !session.start() { continuation.resume(returning: false) }
+        }
+        do {
+            let user = try await api.confirmTransition(ticket)
+            return succeeded ? user : nil
+        } catch {
+            errorMessage = "Could not confirm your session. Retry when connected."
+            return nil
         }
     }
 }

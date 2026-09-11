@@ -52,7 +52,7 @@ func TestLogService_LogChoreIdempotent(t *testing.T) {
 	ctx := context.Background()
 
 	// First call with a key creates the log.
-	l1, created1, err := svc.LogChoreIdempotent(ctx, 1, 10, 100, nil, "feed", nil, nil, nil, nil, nil, nil, nil, nil, nil, "key-abc")
+	l1, created1, err := svc.LogChoreIdempotent(ctx, chorelog.CreateInput{ActorID: 10, HouseholdID: 1, UserID: 10, ChoreID: 100, Note: "feed", IdempotencyKey: "key-abc"})
 	if err != nil {
 		t.Fatalf("LogChoreIdempotent: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestLogService_LogChoreIdempotent(t *testing.T) {
 	}
 
 	// Replay with the same key returns the SAME log and does not create a new one.
-	l2, created2, err := svc.LogChoreIdempotent(ctx, 1, 10, 100, nil, "feed", nil, nil, nil, nil, nil, nil, nil, nil, nil, "key-abc")
+	l2, created2, err := svc.LogChoreIdempotent(ctx, chorelog.CreateInput{ActorID: 10, HouseholdID: 1, UserID: 10, ChoreID: 100, Note: "feed", IdempotencyKey: "key-abc"})
 	if err != nil {
 		t.Fatalf("LogChoreIdempotent replay: %v", err)
 	}
@@ -73,7 +73,7 @@ func TestLogService_LogChoreIdempotent(t *testing.T) {
 	}
 
 	// A different key creates a distinct log.
-	l3, created3, err := svc.LogChoreIdempotent(ctx, 1, 10, 100, nil, "feed", nil, nil, nil, nil, nil, nil, nil, nil, nil, "key-xyz")
+	l3, created3, err := svc.LogChoreIdempotent(ctx, chorelog.CreateInput{ActorID: 10, HouseholdID: 1, UserID: 10, ChoreID: 100, Note: "feed", IdempotencyKey: "key-xyz"})
 	if err != nil {
 		t.Fatalf("LogChoreIdempotent: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestLogService_LogChoreIdempotent(t *testing.T) {
 	}
 
 	// The same key in a DIFFERENT household must not collide.
-	l4, created4, err := svc.LogChoreIdempotent(ctx, 2, 20, 200, nil, "feed", nil, nil, nil, nil, nil, nil, nil, nil, nil, "key-abc")
+	l4, created4, err := svc.LogChoreIdempotent(ctx, chorelog.CreateInput{ActorID: 20, HouseholdID: 2, UserID: 20, ChoreID: 200, Note: "feed", IdempotencyKey: "key-abc"})
 	if err != nil {
 		t.Fatalf("LogChoreIdempotent: %v", err)
 	}
@@ -91,8 +91,8 @@ func TestLogService_LogChoreIdempotent(t *testing.T) {
 	}
 
 	// Empty key always creates.
-	_, createdA, _ := svc.LogChoreIdempotent(ctx, 1, 10, 100, nil, "x", nil, nil, nil, nil, nil, nil, nil, nil, nil, "")
-	_, createdB, _ := svc.LogChoreIdempotent(ctx, 1, 10, 100, nil, "x", nil, nil, nil, nil, nil, nil, nil, nil, nil, "")
+	_, createdA, _ := svc.LogChoreIdempotent(ctx, chorelog.CreateInput{ActorID: 10, HouseholdID: 1, UserID: 10, ChoreID: 100, Note: "x"})
+	_, createdB, _ := svc.LogChoreIdempotent(ctx, chorelog.CreateInput{ActorID: 10, HouseholdID: 1, UserID: 10, ChoreID: 100, Note: "x"})
 	if !createdA || !createdB {
 		t.Fatal("empty key must always create")
 	}

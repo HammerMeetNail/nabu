@@ -2,6 +2,8 @@ package notification
 
 import (
 	"context"
+	"github.com/HammerMeetNail/nabu/internal/lifecycle"
+	"sort"
 	"sync"
 	"time"
 )
@@ -30,6 +32,7 @@ type ReminderPreference struct {
 type Store interface {
 	CreateNotification(ctx context.Context, n Notification) (Notification, error)
 	ListNotifications(ctx context.Context, userID int64, limit, offset int) ([]Notification, error)
+	ListNotificationsBefore(ctx context.Context, userID int64, before *Cursor, limit int) ([]Notification, error)
 	GetUnreadCount(ctx context.Context, userID int64) (int, error)
 	MarkRead(ctx context.Context, id, userID int64) error
 	MarkAllRead(ctx context.Context, userID int64) error
@@ -44,10 +47,11 @@ type Store interface {
 // guarded by mu to avoid a data race (a concurrent map write is a fatal panic
 // in Go).
 type MemoryStore struct {
-	mu     sync.Mutex
-	notifs []Notification
-	idSeq  int64
-	prefs  map[int64]ReminderPreference
+	deleted lifecycle.Tombstones
+	mu      sync.Mutex
+	notifs  []Notification
+	idSeq   int64
+	prefs   map[int64]ReminderPreference
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -59,6 +63,10 @@ func NewMemoryStore() *MemoryStore {
 func (s *MemoryStore) CreateNotification(_ context.Context, n Notification) (Notification, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.deleted.Check(n.UserID, 0, 0, 0, 0); err != nil {
+		return Notification{}, err
+	}
+
 	s.idSeq++
 	n.ID = s.idSeq
 	n.CreatedAt = time.Now().UTC()
@@ -74,6 +82,18 @@ func (s *MemoryStore) ListNotifications(_ context.Context, userID int64, limit, 
 		if n.UserID == userID {
 			result = append(result, n)
 		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].CreatedAt.Equal(result[j].CreatedAt) {
+			return result[i].ID > result[j].ID
+		}
+		return result[i].CreatedAt.After(result[j].CreatedAt)
+	})
+	if offset < 0 {
+		offset = 0
+	}
+	if limit < 0 {
+		limit = 0
 	}
 	start := offset
 	if start > len(result) {
@@ -149,6 +169,55 @@ func (s *MemoryStore) GetReminderPreferences(_ context.Context, userID int64) (R
 func (s *MemoryStore) UpdateReminderPreferences(_ context.Context, prefs ReminderPreference) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.deleted.Check(prefs.UserID, 0, 0, 0, 0); err != nil {
+		return err
+	}
+
 	s.prefs[prefs.UserID] = prefs
 	return nil
+}
+
+func (s *MemoryStore) CleanupAccount(d *lifecycle.Deletion) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	kept := s.notifs[:0]
+	for _, n := range s.notifs {
+		if n.UserID != d.UserID {
+			kept = append(kept, n)
+		}
+	}
+	s.notifs = kept
+	delete(s.prefs, d.UserID)
+
+	s.deleted.Mark(d)
+}
+
+func (s *MemoryStore) ListNotificationsBefore(ctx context.Context, userID int64, before *Cursor, limit int) ([]Notification, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	result := []Notification{}
+	for _, n := range s.notifs {
+		if n.UserID != userID {
+			continue
+		}
+		if before != nil && (n.CreatedAt.After(before.At) || (n.CreatedAt.Equal(before.At) && n.ID >= before.ID)) {
+			continue
+		}
+		result = append(result, n)
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].CreatedAt.Equal(result[j].CreatedAt) {
+			return result[i].ID > result[j].ID
+		}
+		return result[i].CreatedAt.After(result[j].CreatedAt)
+	})
+	limit = max(0, min(limit, PageSize+1))
+	if len(result) > limit {
+		result = result[:limit]
+	}
+	return result, nil
 }

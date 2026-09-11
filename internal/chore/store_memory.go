@@ -3,6 +3,8 @@ package chore
 import (
 	"context"
 	"errors"
+	"github.com/HammerMeetNail/nabu/internal/lifecycle"
+	"github.com/HammerMeetNail/nabu/internal/readlimit"
 	"sort"
 	"sync"
 	"time"
@@ -14,9 +16,10 @@ var (
 )
 
 type MemoryStore struct {
-	mu     sync.RWMutex
-	idSeq  int64
-	chores map[int64]Chore
+	deleted lifecycle.Tombstones
+	mu      sync.RWMutex
+	idSeq   int64
+	chores  map[int64]Chore
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -33,6 +36,9 @@ func (s *MemoryStore) nextID() int64 {
 func (s *MemoryStore) CreateChore(_ context.Context, chore Chore) (Chore, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.deleted.Check(lifecycle.UserID(chore.CreatedBy), chore.HouseholdID, 0, 0, 0); err != nil {
+		return Chore{}, err
+	}
 
 	for _, existing := range s.chores {
 		if existing.HouseholdID == chore.HouseholdID && existing.Name == chore.Name {
@@ -58,13 +64,16 @@ func (s *MemoryStore) GetChore(_ context.Context, id int64) (Chore, error) {
 	return chore, nil
 }
 
-func (s *MemoryStore) ListChores(_ context.Context, householdID int64) ([]Chore, error) {
+func (s *MemoryStore) ListChores(ctx context.Context, householdID int64) ([]Chore, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var result []Chore
 	for _, c := range s.chores {
 		if c.HouseholdID == householdID {
 			result = append(result, c)
+			if err := readlimit.Check(ctx, len(result)); err != nil {
+				return nil, err
+			}
 		}
 	}
 	sortChores(result)
@@ -120,6 +129,10 @@ func (s *MemoryStore) ReorderChores(_ context.Context, householdID int64, choreI
 func (s *MemoryStore) SeedPredefinedChores(_ context.Context, householdID int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.deleted.Check(0, householdID, 0, 0, 0); err != nil {
+		return err
+	}
+
 	for _, pc := range PredefinedChores {
 		exists := false
 		for id, existing := range s.chores {
@@ -169,4 +182,21 @@ func sortChores(chores []Chore) {
 		}
 		return chores[i].Name < chores[j].Name
 	})
+}
+
+func (s *MemoryStore) CleanupAccount(d *lifecycle.Deletion) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for id, c := range s.chores {
+		if d.Households[c.HouseholdID] {
+			d.Chores[id] = true
+			delete(s.chores, id)
+		} else if c.CreatedBy != nil && *c.CreatedBy == d.UserID {
+			c.CreatedBy = nil
+			s.chores[id] = c
+		}
+	}
+
+	s.deleted.Mark(d)
 }

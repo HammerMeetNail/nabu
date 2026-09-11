@@ -47,6 +47,7 @@ func (l StdLogger) Log(_ context.Context, event string, attrs map[string]string)
 // taking an explicit actor parameter (and without any service depending on the
 // HTTP middleware package).
 type Actor struct {
+	AuthVersion int64
 	UserID      int64
 	HouseholdID int64 // 0 when the user has no active household
 	Role        string
@@ -103,9 +104,8 @@ type RecordedEvent struct {
 	Attrs map[string]string
 }
 
-// Recorder is an in-memory audit.Logger intended for tests. It is safe for
-// concurrent use. Services under test can take a Recorder via SetAuditLogger
-// and tests assert on Events().
+// Recorder buffers audit events for test assertions or emission after a
+// transaction commits. It is safe for concurrent use.
 type Recorder struct {
 	mu     sync.Mutex
 	events []RecordedEvent

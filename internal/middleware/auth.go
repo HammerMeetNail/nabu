@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/HammerMeetNail/nabu/internal/audit"
@@ -29,25 +30,40 @@ func Session(authService *auth.Service, cookieName string) func(http.Handler) ht
 				next.ServeHTTP(w, r)
 				return
 			}
-		user, err := authService.Authenticate(r.Context(), cookie.Value)
-		if err != nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-		ctx := context.WithValue(r.Context(), userContextKey, user)
-		// Stash the authenticated user as an audit.Actor so downstream
-		// service-layer audit calls can attribute events to a principal
-		// without each service depending on the HTTP middleware package.
-		var hhID int64
-		if user.HouseholdID != nil {
-			hhID = *user.HouseholdID
-		}
-		ctx = audit.WithActor(ctx, audit.Actor{
-			UserID:      user.ID,
-			HouseholdID: hhID,
-			Role:        user.Role,
-		})
-		next.ServeHTTP(w, r.WithContext(ctx))
+			user, err := authService.Authenticate(r.Context(), cookie.Value)
+			if err != nil {
+				next.ServeHTTP(w, r)
+				return
+			}
+			// Optional origin headers bind delayed/offline client work to the
+			// identity that authored it. A cookie changed by another tab must
+			// never attribute that work to the new account or household.
+			householdID := int64(0)
+			if user.HouseholdID != nil {
+				householdID = *user.HouseholdID
+			}
+			for header, actual := range map[string]int64{"X-Nabu-User-ID": user.ID, "X-Nabu-Household-ID": householdID} {
+				if expected := r.Header.Get(header); expected != "" && expected != strconv.FormatInt(actual, 10) {
+					w.Header().Set("X-Nabu-Context-Changed", "true")
+					http.Error(w, "account or household changed; reload before retrying", http.StatusConflict)
+					return
+				}
+			}
+			ctx := context.WithValue(r.Context(), userContextKey, user)
+			// Stash the authenticated user as an audit.Actor so downstream
+			// service-layer audit calls can attribute events to a principal
+			// without each service depending on the HTTP middleware package.
+			var hhID int64
+			if user.HouseholdID != nil {
+				hhID = *user.HouseholdID
+			}
+			ctx = audit.WithActor(ctx, audit.Actor{
+				UserID:      user.ID,
+				AuthVersion: user.AuthVersion,
+				HouseholdID: hhID,
+				Role:        user.Role,
+			})
+			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

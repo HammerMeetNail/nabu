@@ -1,0 +1,33 @@
+# Install as /etc/nabu/pgbackrest.conf, mode 0600, readable by the database
+# container's postgres UID. Keep it outside the deploy-managed /opt/nabu/.env.
+# Replace every placeholder; use a dedicated bucket/prefix and scoped credentials.
+[global]
+repo1-type=s3
+repo1-path=/nabu
+repo1-s3-bucket=REPLACE_WITH_DEDICATED_BUCKET
+repo1-s3-endpoint=REPLACE_WITH_ACCOUNT.r2.cloudflarestorage.com
+repo1-s3-region=auto
+repo1-s3-uri-style=path
+repo1-s3-key=REPLACE_WITH_WRITE_KEY
+repo1-s3-key-secret=REPLACE_WITH_WRITE_SECRET
+repo1-storage-verify-tls=y
+repo1-cipher-type=aes-256-cbc
+repo1-cipher-pass=REPLACE_WITH_RANDOM_SECRET_STORED_IN_OFFSITE_PASSWORD_MANAGER
+repo1-retention-full-type=time
+repo1-retention-full=35
+repo1-retention-diff=7
+compress-type=zst
+repo1-bundle=y
+process-max=2
+start-fast=y
+archive-async=n
+archive-timeout=120
+io-timeout=60
+protocol-timeout=120
+log-level-console=off
+log-level-file=off
+
+[nabu]
+pg1-path=/var/lib/postgresql/data
+pg1-socket-path=/var/run/postgresql
+pg1-user=nabu

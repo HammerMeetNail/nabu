@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/household"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
@@ -16,10 +17,16 @@ type HouseholdHandler struct {
 	service        *household.Service
 	notifService   *notification.Service
 	householdStore household.Store
+	background     context.Context
+	dispatch       func(func())
 }
 
 func NewHouseholdHandler(service *household.Service) *HouseholdHandler {
-	return &HouseholdHandler{service: service}
+	return &HouseholdHandler{service: service, background: context.Background(), dispatch: func(f func()) { f() }}
+}
+
+func (h *HouseholdHandler) SetBackground(ctx context.Context, dispatch func(func())) {
+	h.background, h.dispatch = ctx, dispatch
 }
 
 func (h *HouseholdHandler) WithNotification(notifService *notification.Service, householdStore household.Store) {
@@ -36,7 +43,7 @@ func (h *HouseholdHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	hh, members, err := h.service.GetHousehold(r.Context(), user.ID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "no household found")
+		writeHouseholdError(w, r, err)
 		return
 	}
 	historicalMembers, err := h.service.GetHistoricalMembers(r.Context(), user.ID)
@@ -45,7 +52,11 @@ func (h *HouseholdHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	invites, _ := h.service.GetInvites(r.Context(), user.ID)
+	invites, inviteErr := h.service.GetInvites(r.Context(), user.ID)
+	if inviteErr != nil && !errors.Is(inviteErr, household.ErrNotAuthorized) && !errors.Is(inviteErr, household.ErrNotFound) {
+		writeHouseholdError(w, r, inviteErr)
+		return
+	}
 	if invites == nil {
 		invites = []household.Invite{}
 	}
@@ -83,7 +94,7 @@ func (h *HouseholdHandler) Create(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeError(w, http.StatusConflict, "could not create household")
+		writeError(w, http.StatusInternalServerError, "could not create household")
 		return
 	}
 
@@ -111,7 +122,7 @@ func (h *HouseholdHandler) Update(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeError(w, http.StatusForbidden, err.Error())
+		writeHouseholdError(w, r, err)
 		return
 	}
 
@@ -127,7 +138,7 @@ func (h *HouseholdHandler) CreateInvite(w http.ResponseWriter, r *http.Request) 
 
 	invite, err := h.service.CreateInvite(r.Context(), user.ID)
 	if err != nil {
-		writeError(w, http.StatusForbidden, err.Error())
+		writeHouseholdError(w, r, err)
 		return
 	}
 
@@ -143,7 +154,7 @@ func (h *HouseholdHandler) ListInvites(w http.ResponseWriter, r *http.Request) {
 
 	invites, err := h.service.GetInvites(r.Context(), user.ID)
 	if err != nil {
-		writeError(w, http.StatusNotFound, err.Error())
+		writeHouseholdError(w, r, err)
 		return
 	}
 
@@ -165,7 +176,7 @@ func (h *HouseholdHandler) DeleteInvite(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := h.service.DeleteInvite(r.Context(), user.ID, id); err != nil {
-		writeError(w, http.StatusForbidden, err.Error())
+		writeHouseholdError(w, r, err)
 		return
 	}
 
@@ -205,8 +216,10 @@ func (h *HouseholdHandler) Join(w http.ResponseWriter, r *http.Request) {
 			joinerName = user.Email
 		}
 		householdName := hh.Name
-		go func() {
-			members, err := h.householdStore.GetMembers(context.Background(), hhID)
+		h.dispatch(func() {
+			ctx, cancel := context.WithTimeout(h.background, 20*time.Second)
+			defer cancel()
+			members, err := h.householdStore.GetMembers(ctx, hhID)
 			if err != nil {
 				return
 			}
@@ -214,8 +227,8 @@ func (h *HouseholdHandler) Join(w http.ResponseWriter, r *http.Request) {
 			for i, m := range members {
 				mi[i] = notification.MemberInfo{UserID: m.UserID, DisplayName: m.DisplayName}
 			}
-			h.notifService.NotifyHouseholdJoined(context.Background(), mi, joinerID, joinerName, householdName)
-		}()
+			h.notifService.NotifyHouseholdJoined(ctx, mi, joinerID, joinerName, householdName, notification.Scope{HouseholdID: hhID})
+		})
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"household": hh})
@@ -264,7 +277,7 @@ func (h *HouseholdHandler) Activate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.SwitchHousehold(r.Context(), user.ID, householdID); err != nil {
-		writeError(w, http.StatusForbidden, err.Error())
+		writeHouseholdError(w, r, err)
 		return
 	}
 
@@ -294,7 +307,7 @@ func (h *HouseholdHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Reque
 	}
 
 	if err := h.service.UpdateMemberRole(r.Context(), user.ID, targetUserID, req.Role); err != nil {
-		writeError(w, http.StatusForbidden, err.Error())
+		writeHouseholdError(w, r, err)
 		return
 	}
 
@@ -316,7 +329,7 @@ func (h *HouseholdHandler) RemoveMember(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := h.service.RemoveMember(r.Context(), user.ID, targetUserID); err != nil {
-		writeError(w, http.StatusForbidden, err.Error())
+		writeHouseholdError(w, r, err)
 		return
 	}
 
@@ -331,7 +344,7 @@ func (h *HouseholdHandler) Leave(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.LeaveHousehold(r.Context(), user.ID); err != nil {
-		writeError(w, http.StatusForbidden, err.Error())
+		writeHouseholdError(w, r, err)
 		return
 	}
 
@@ -354,7 +367,7 @@ func (h *HouseholdHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.service.TransferOwnership(r.Context(), user.ID, req.NewOwnerID); err != nil {
-		writeError(w, http.StatusForbidden, err.Error())
+		writeHouseholdError(w, r, err)
 		return
 	}
 
@@ -363,4 +376,25 @@ func (h *HouseholdHandler) Transfer(w http.ResponseWriter, r *http.Request) {
 
 func extractID(path, prefix string) string {
 	return strings.TrimPrefix(path, prefix)
+}
+
+func writeHouseholdError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, household.ErrInvalidInput):
+		writeError(w, http.StatusBadRequest, err.Error())
+	case errors.Is(err, household.ErrNotAuthorized), errors.Is(err, household.ErrNotMember):
+		writeError(w, http.StatusForbidden, "not authorized for this household")
+	case errors.Is(err, household.ErrLastOwner):
+		writeError(w, http.StatusForbidden, "transfer ownership before leaving or removing the last owner")
+	case errors.Is(err, household.ErrNotFound):
+		status := http.StatusForbidden
+		if r.Method == http.MethodGet {
+			status = http.StatusNotFound
+		}
+		writeError(w, status, "no household found")
+	case errors.Is(err, household.ErrInviteNotFound), errors.Is(err, household.ErrInviteExpired):
+		writeError(w, http.StatusNotFound, "invite not found")
+	default:
+		writeError(w, http.StatusInternalServerError, "could not update household; please try again")
+	}
 }

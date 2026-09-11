@@ -165,7 +165,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
-        [.banner, .list, .sound]
+        guard let owner = await PushRegistrationController.shared.confirmedOwner(notification.request.content.userInfo),
+              await PushRegistrationController.shared.isCurrent(owner) else { return [] }
+        return [.banner, .list, .sound]
     }
 
     func userNotificationCenter(
@@ -173,6 +175,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse
     ) async {
         let userInfo = response.notification.request.content.userInfo
+        guard let owner = await PushRegistrationController.shared.confirmedOwner(userInfo) else { return }
         let choreId = (userInfo["choreId"] as? NSNumber)?.intValue
 
         switch response.actionIdentifier {
@@ -181,17 +184,21 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             // CSRF-exempt and session-authenticated, exactly like the PWA
             // service worker's snooze fetch.
             guard let choreId else { return }
-            let api = APIClient(baseURL: AppEnvironment.resolveBaseURL())
-            let body = ReminderSnoozeRequest(choreId: choreId, minutes: 30)
-            let _: StatusResponse? = try? await api.post("/api/reminders/snooze", body: body)
+            await PushRegistrationController.shared.snooze(choreID: choreId, owner: owner)
         case NotificationIdentifiers.logNowAction:
             // Deep-links to the pre-filled log sheet — parity with the PWA's
             // `/?quicklog=chore:<id>`.
             guard let choreId else { return }
-            routeQuickLog(.chore(id: choreId))
+            await routeNotificationQuickLog(choreID: choreId, owner: owner)
         default:
             // A plain body tap just opens/focuses the app.
             break
         }
+    }
+
+    @MainActor
+    private func routeNotificationQuickLog(choreID: Int, owner: ClientIdentity.Snapshot) {
+        guard PushRegistrationController.shared.isCurrent(owner) else { return }
+        routeQuickLog(.chore(id: choreID))
     }
 }

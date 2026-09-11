@@ -141,10 +141,10 @@ test.describe('Feed Baby volume picker', () => {
     expect(log).toBeDefined();
     expect(log.indicatorVolumes['🍼 formula']).toBe(120);
 
-    // Open sheet again: volume should default to empty (not cached — new behavior)
+    // Saving and reloading use the same latest-log prefill.
     await card.click();
     await expect(page.locator(formulaVol)).toBeVisible({ timeout: 3000 });
-    await expect(page.locator(formulaVol)).toHaveValue('');
+    await expect(page.locator(formulaVol)).toHaveValue('120');
   });
 
   test('home log sheet pre-populates from latest log on reload', async ({ page }) => {
@@ -167,7 +167,7 @@ test.describe('Feed Baby volume picker', () => {
   });
 
   test('home log sheet volume defaults to empty when not set on prior log', async ({ page }) => {
-    const { feedBaby } = await setupWithChores(page);
+    const { feedBaby, csrf } = await setupWithChores(page);
 
     const card = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
 
@@ -179,10 +179,22 @@ test.describe('Feed Baby volume picker', () => {
 
     await card.click();
     await expect(page.locator(formulaVol)).toBeVisible({ timeout: 3000 });
+    await expect(page.locator(formulaVol)).toHaveValue('45');
+    await page.getByRole('button',{name:'Cancel',exact:true}).click();
+    // Legacy/API records can lack an amount; the Feed Baby UI requires one.
+    const saved = await page.request.post('/api/logs', {
+      headers: {'X-CSRF-Token': csrf},
+      data: {choreId: feedBaby.id, indicators: ['🍼 formula'], completedAt: new Date().toISOString()},
+    });
+    expect(saved.ok()).toBeTruthy();
+    expect((await saved.json()).log.indicatorVolumes ?? null).toBeNull();
+    await page.reload();
+    await expect(page.locator('.home-grid')).toBeVisible();
+    await card.click();
     await expect(page.locator(formulaVol)).toHaveValue('');
   });
 
-  test('home log sheet volume does not pre-fill when previous food type differs from defaults', async ({ page }) => {
+  test('home log sheet echoes the previous food type without prefilling unrelated types', async ({ page }) => {
     const { feedBaby } = await setupWithChores(page);
 
     const card = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
@@ -197,13 +209,19 @@ test.describe('Feed Baby volume picker', () => {
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
-    // Open again: formula is default-on (breast not selected), so formula volume should be empty
+    // Reopen with the latest type and amount, as after a full reload.
     await card.click();
-    await expect(page.locator(formulaVol)).toBeVisible({ timeout: 3000 });
+    await expect(page.locator(breastVol)).toBeVisible({ timeout: 3000 });
+    await expect(page.locator(breastVol)).toHaveValue('95');
+    await expect(page.locator(formulaVol)).toBeHidden();
     await expect(page.locator(formulaVol)).toHaveValue('');
-    // Formula should be selected, breast should not
+    await expect(page.locator('.log-chip').nth(0)).not.toHaveClass(/log-chip--on/);
+    await expect(page.locator('.log-chip').nth(1)).toHaveClass(/log-chip--on/);
+    // Selecting another type must not copy the breast amount into it.
+    await page.locator('.log-chip').nth(0).click();
     await expect(page.locator('.log-chip').nth(0)).toHaveClass(/log-chip--on/);
-    await expect(page.locator('.log-chip').nth(1)).not.toHaveClass(/log-chip--on/);
+    await expect(page.locator(formulaVol)).toBeVisible();
+    await expect(page.locator(formulaVol)).toHaveValue('');
   });
 
   test('reopening after reload echoes the previous feed type and volume', async ({ page }) => {

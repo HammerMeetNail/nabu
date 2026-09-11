@@ -202,9 +202,9 @@ final class ScheduleTests: XCTestCase {
                                 isActive: true,
                                 isFollowUp: false, assignedUserId: nil,
                                 createdAt: createdAt, updatedAt: Date())
-        XCTAssertTrue(isActiveForDay(sch, "2026-04-01"))
-        XCTAssertFalse(isActiveForDay(sch, "2026-04-02"))
-        XCTAssertTrue(isActiveForDay(sch, "2026-04-04"))
+        XCTAssertTrue(isActiveForDay(sch, "2026-04-01", timeZone: TimeZone(secondsFromGMT: 0)!))
+        XCTAssertFalse(isActiveForDay(sch, "2026-04-02", timeZone: TimeZone(secondsFromGMT: 0)!))
+        XCTAssertTrue(isActiveForDay(sch, "2026-04-04", timeZone: TimeZone(secondsFromGMT: 0)!))
     }
 
     func testMonthlyByDateSchedule() {
@@ -302,5 +302,24 @@ final class ScheduleTests: XCTestCase {
                                 isFollowUp: false, assignedUserId: nil,
                                 createdAt: Date(), updatedAt: Date())
         XCTAssertFalse(isActiveForDay(sch, "2026-04-30"))
+    }
+
+    func testInclusiveEndAndLocalOriginAcrossTimezones() {
+        let formatter = ISO8601DateFormatter()
+        let end = formatter.date(from: "2026-09-10T00:00:00Z")!
+        let created = formatter.date(from: "2026-09-09T00:30:00Z")!
+        let sch = ChoreSchedule(id: 1, householdId: 1, choreId: 1,
+                                frequencyType: "every_n_days", timePeriod: "anytime",
+                                specificTime: nil, timesOfDay: [], daysOfWeek: [], intervalDays: 2,
+                                dayOfMonth: 0, monthWeekday: nil, monthOfYear: 0,
+                                recurrenceEnd: end, startDate: nil, targetCount: 0,
+                                isActive: true, isFollowUp: false, assignedUserId: nil,
+                                createdAt: created, updatedAt: created)
+        let newYork = TimeZone(identifier: "America/New_York")!
+        let tokyo = TimeZone(identifier: "Asia/Tokyo")!
+        XCTAssertTrue(isActiveForDay(sch, "2026-09-10", timeZone: newYork))
+        XCTAssertFalse(isActiveForDay(sch, "2026-09-09", timeZone: newYork))
+        XCTAssertTrue(isActiveForDay(sch, "2026-09-09", timeZone: tokyo))
+        XCTAssertFalse(isActiveForDay(sch, "2026-09-11", timeZone: tokyo))
     }
 }

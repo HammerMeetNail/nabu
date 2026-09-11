@@ -15,7 +15,7 @@ final class AppEnvironment: ObservableObject {
 
     init() {
         baseURL = AppEnvironment.resolveBaseURL()
-        apiClient = APIClient(baseURL: baseURL)
+        apiClient = APIClient(baseURL: baseURL, identity: ClientIdentity.shared(for: baseURL))
     }
 
     /// The server base URL from launch arguments / env, falling back to
@@ -54,6 +54,9 @@ final class AppEnvironment: ObservableObject {
         if TestHooks.seedHomeForUITest {
             seedHomeForUITestState(state)
         }
+        if TestHooks.seedHomeForUITest { apiClient.identity.accept(state.user) }
+        apiClient.identity.observer = { [weak state] snapshot in state?.adopt(snapshot) }
+        if !TestHooks.seedHomeForUITest { state.adopt(apiClient.identity.snapshot) }
     }
 
     private func seedHomeForUITestState(_ state: AppState) {
@@ -64,6 +67,9 @@ final class AppEnvironment: ObservableObject {
             displayName: "UI Tester", avatarColor: "#2E86AB",
             emailVerified: true, role: "owner", createdAt: now
         )
+        if ProcessInfo.processInfo.arguments.contains("-passwordlessAccount") {
+            state.user?.hasPassword = false
+        }
         state.household = Household(
             id: 1, name: "Test Home", initials: "TH",
             inviteCode: nil, createdAt: now
@@ -144,9 +150,24 @@ final class AppEnvironment: ObservableObject {
         ]
 
         state.currentTab = .home
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-reviewScenario") {
+            state.chores.append(Chore(id: 6, householdId: 1, name: "Weigh flour", icon: "⚖️",
+                color: "#6080AA", sortOrder: 5, category: "cooking", isPredefined: false,
+                predefinedKey: nil, createdBy: 1, createdAt: now, indicatorLabels: [],
+                indicatorDefaults: [], hasVolumeML: true, metricType: "amount", metricUnit: "g"))
+        }
+#endif
     }
 
     private func configureMockAPI() {
+#if DEBUG
+        if let scenario = launchArgumentValue(for: "-reviewScenario", in: ProcessInfo.processInfo.arguments) {
+            let responses = ReviewUITestResponses(scenario: scenario)
+            apiClient.mockAsyncHandler = { request in try await responses.respond(to: request) }
+            return
+        }
+#endif
         apiClient.mockHandler = { request in
             guard let url = request.url else { return nil }
             let path = url.path
@@ -186,12 +207,12 @@ final class AppEnvironment: ObservableObject {
 
         if let body = request.httpBody,
            let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] {
-            choreId = json["chore_id"] as? Int ?? 1
+            choreId = json["choreId"] as? Int ?? 1
             note = json["note"] as? String ?? ""
             indicators = json["indicators"] as? [String] ?? []
-            volumeML = json["volume_ml"] as? Int
+            volumeML = json["volumeML"] as? Int
             slotHour = json["hour"] as? Int
-            userId = json["user_id"] as? Int ?? 1
+            userId = json["userId"] as? Int ?? 1
         }
 
         let log = ChoreLog(
@@ -268,7 +289,7 @@ final class AppEnvironment: ObservableObject {
     }
 
     private func configureAPIClient() {
-        apiClient = APIClient(baseURL: baseURL)
+        apiClient = APIClient(baseURL: baseURL, identity: ClientIdentity.shared(for: baseURL))
     }
 
     private func launchArgumentValue(for key: String, in arguments: [String]) -> String? {
@@ -279,3 +300,93 @@ final class AppEnvironment: ObservableObject {
         return arguments[index + 1]
     }
 }
+
+#if DEBUG
+/// Deterministic responses for screen tests. Every path is handled locally;
+/// unknown fixture requests fail visibly instead of reaching a real server.
+@MainActor
+final class ReviewUITestResponses {
+    let scenario: String
+    private var attempts: [String: Int] = [:]
+    private var lastLog: ChoreLog?
+    private var deletedNotices: Set<Int> = []
+    private var readNotices: Set<Int> = []
+
+    init(scenario: String) { self.scenario = scenario }
+
+    func respond(to request: URLRequest) async throws -> (Data, URLResponse) {
+        let url = request.url!
+        let path = url.path
+        let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let key = (request.httpMethod ?? "GET") + " " + url.absoluteString
+        attempts[key, default: 0] += 1
+        let attempt = attempts[key]!
+        func json<T: Encodable>(_ body: T, status: Int = 200) throws -> (Data, URLResponse) {
+            (try apiEncoder.encode(body), HTTPURLResponse(url: url, statusCode: status,
+                httpVersion: nil, headerFields: ["Content-Type": "application/json"])!)
+        }
+        func failed(_ message: String, status: Int = 500) throws -> (Data, URLResponse) {
+            try json(["error": message], status: status)
+        }
+        if path == "/api/logs/recent-amounts" {
+            return try json(RecentAmountsResponse(amounts: [120,90,60]))
+        }
+        if path == "/api/logs", request.httpMethod == "POST" {
+            if scenario == "amount", attempt == 1 { return try failed("Could not save. Please retry.") }
+            guard let response = AppEnvironment.mockCreateLog(request),
+                  let log = try? apiDecoder.decode(LogResponse.self, from: response.0).log else {
+                return try failed("Invalid test log")
+            }
+            lastLog = log
+            return response
+        }
+        if path == "/api/logs/latest-per-chore" {
+            return try json(LatestLogsResponse(latestLogs: lastLog.map { [String($0.choreId): $0] } ?? [:]))
+        }
+        if path == "/api/logs/today" { return AppEnvironment.mockToday(request)! }
+        if path == "/api/logs/history" {
+            if scenario == "activity", attempt == 1, query.isEmpty { return try failed("Could not load Activity. Retry.") }
+            let log = lastLog ?? ChoreLog(id: 51, householdId: 1, userId: 1, choreId: 1,
+                completedAt: Date(), note: "Needle result", indicators: [], slotHour: 12, createdAt: Date(),
+                volumeML: nil, indicatorVolumes: nil)
+            let term = query.first(where: { $0.name == "q" })?.value ?? ""
+            let rows = term.isEmpty || log.note.localizedCaseInsensitiveContains(term) ? [log] : []
+            return try json(HistoryResponse(logs: rows, hasMore: false, start: nil, end: nil))
+        }
+        if path == "/api/notifications", request.httpMethod == "GET" {
+            let older = query.contains(where: { $0.name == "cursor" })
+            if older, attempt == 1 { return try failed("Could not load older notifications.") }
+            let ids = older ? [3,4] : [1,2]
+            let rows = ids.filter { !deletedNotices.contains($0) }.map { id in
+                AppNotification(id: id, userId: 1, type: "chore_logged",
+                    title: id < 3 ? "Read notice \(id)" : "Older notice \(id)", body: "Synthetic history",
+                    isRead: id < 3 || readNotices.contains(id), createdAt: Date(timeIntervalSince1970: 1_783_036_800))
+            }
+            let unread = [3,4].filter { !deletedNotices.contains($0) && !readNotices.contains($0) }.count
+            return try json(NotificationsResponse(notifications: rows, unreadCount: unread,
+                                                  nextCursor: older ? nil : "older-fixture"))
+        }
+        if path.hasPrefix("/api/notifications/") {
+            if path == "/api/notifications/read-all" { readNotices.formUnion([3,4]) }
+            if let id = Int(path.split(separator: "/").dropFirst(2).first ?? "") {
+                if request.httpMethod == "DELETE" { deletedNotices.insert(id) }
+                else { readNotices.insert(id) }
+            }
+            return try json(StatusResponse(status: "ok"))
+        }
+        if path == "/api/logs/export" || path == "/api/household/data" {
+            if attempt == 1 { return try failed("Choose a smaller date range.", status: 413) }
+            if attempt == 2 {
+                // The screen must cancel this request. Core tests separately
+                // cover transports which deliver a response after cancellation.
+                try await Task.sleep(nanoseconds: 30_000_000_000)
+            }
+            return (Data("Date,Chore,Note\n2026-09-10,Task,Synthetic export\n".utf8),
+                    HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil,
+                        headerFields: ["Content-Type": "text/csv"])!)
+        }
+        if path == "/api/schedules" { return try json(SchedulesResponse(schedules: [])) }
+        return try failed("Unhandled UI fixture request")
+    }
+}
+#endif

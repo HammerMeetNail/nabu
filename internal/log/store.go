@@ -28,7 +28,9 @@ type ChoreLog struct {
 	Subject *string `json:"subject,omitempty"`
 	// IdempotencyKey is a client-generated token used to de-duplicate offline
 	// log replays. Never returned to clients. Empty means "no key".
-	IdempotencyKey string `json:"-"`
+	IdempotencyKey     string `json:"-"`
+	IdempotencyActorID int64  `json:"-"`
+	IdempotencyHash    string `json:"-"`
 }
 
 type DailySummary struct {
@@ -42,7 +44,7 @@ type DailySummary struct {
 type Store interface {
 	CreateLog(ctx context.Context, log ChoreLog) (ChoreLog, error)
 	GetLog(ctx context.Context, id int64) (ChoreLog, error)
-	UpdateLog(ctx context.Context, log ChoreLog) error
+	UpdateLog(ctx context.Context, log ChoreLog, fields ...LogFields) error
 	DeleteLog(ctx context.Context, id int64) error
 	FindLog(ctx context.Context, householdID, choreID int64, date time.Time) (*ChoreLog, error)
 	ListLogs(ctx context.Context, householdID int64, date time.Time) ([]ChoreLog, error)
@@ -52,6 +54,7 @@ type Store interface {
 	// LatestPerChore returns the most recent log for each chore in the household.
 	// Keys are chore IDs; chores with no logs are absent from the map.
 	LatestPerChore(ctx context.Context, householdID int64) (map[int64]ChoreLog, error)
+	RecentAmounts(ctx context.Context, householdID, choreID int64) ([]int, error)
 	// HistoryLogs returns logs between start and end (exclusive), ordered
 	// newest-first, and whether older logs exist before start.
 	HistoryLogs(ctx context.Context, householdID int64, start, end time.Time) (logs []ChoreLog, hasMore bool, err error)
