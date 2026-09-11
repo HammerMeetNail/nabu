@@ -2735,6 +2735,10 @@ details[open] .chore-stat-chevron {
   gap: 8px;
 }
 
+.indicator-row .log-chip:not(.log-chip--on) ~ .indicator-amount-unit {
+  display: none;
+}
+
 .indicator-row .log-chip {
   min-height: 36px;
   padding: 4px 14px;

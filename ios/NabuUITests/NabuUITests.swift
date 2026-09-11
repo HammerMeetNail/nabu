@@ -261,6 +261,8 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         let amount = app.textFields["amount-input"]
         reveal(amount, in: app)
         XCTAssertEqual(amount.value as? String, "12")
+        XCTAssertEqual(app.staticTexts["amount-unit"].label, "reps")
+        XCTAssertTrue(app.staticTexts["amount-unit"].isHittable)
         XCTAssertFalse(app.buttons["volume-picker"].exists)
         try captureReviewScreen(app, named: "count-large-text")
         let save = app.buttons["save-log-button"]

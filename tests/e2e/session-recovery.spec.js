@@ -193,10 +193,37 @@ test('a context mismatch during foreground confirmation fences the old account i
 });
 
 test('an active page hides data when foreground identity storage cannot be read',async({page})=>{
+  // History can render before bootstrap finishes registering foreground
+  // recovery. Wait for the listener before injecting its storage failure.
+  await page.addInitScript(() => {
+    const addEventListener = document.addEventListener;
+    document.addEventListener = function(type, listener, options) {
+      addEventListener.call(this, type, listener, options);
+      if (type === 'visibilitychange') window.foregroundRecoveryReady = true;
+    };
+    const fetch = window.fetch;
+    window.fetch = async function(input, options) {
+      const response = await fetch.call(this, input, options);
+      const url = input instanceof Request ? input.url : input;
+      if (window.foregroundRecoveryReady && new URL(url, location.href).pathname === '/api/me') {
+        window.foregroundBootstrapResponseReceived = true;
+      }
+      return response;
+    };
+  });
   const {chore}=await fixture(page);
   await postLog(page,chore,{note:'Private foreground history'});
   await page.goto('/activity');
   await expect(page.locator('.hist-row')).toContainText('Private foreground history');
+  // Bootstrap starts a queue session check after registering the listener.
+  // Let its response arrive, then drain its identity lock so our foreground
+  // event cannot reuse an already-running check that read storage earlier.
+  await page.waitForFunction(() => window.foregroundBootstrapResponseReceived === true && !document.hidden);
+  await page.evaluate(async () => {
+    const suffix = new URL(document.querySelector('script[src*="/static/js/app.js"]').src).search;
+    const {withBrowserLock} = await import(`/static/js/device-store.js${suffix}`);
+    await withBrowserLock('nabu-identity', () => {});
+  });
   await page.evaluate(()=>{
     window.originalIdentityOpen=IDBFactory.prototype.open;
     IDBFactory.prototype.open=function(name,...args){if(name==='nabu-device') throw new Error('authority unavailable');return window.originalIdentityOpen.call(this,name,...args);};

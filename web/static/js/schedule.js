@@ -408,7 +408,8 @@ function renderIndicatorVolumeRow(label, on, selectedML = null, unit = "ml", cho
     </select>` : `<input type="number" min="0" max="100000" step="1" inputmode="numeric"
       class="indicator-volume-select text-input" data-indicator="${escapeHTML(label)}"
       aria-label="${escapeHTML(label)} amount${chore.metricUnit ? ` (${escapeHTML(chore.metricUnit)})` : ''}"
-      value="${selectedML ?? ''}" ${on ? '' : 'style="display:none"'}>`}
+      value="${selectedML ?? ''}" ${on ? '' : 'style="display:none"'}>
+      <span class="indicator-amount-unit">${escapeHTML(chore.metricUnit || '')}</span>`}
   </div>`;
 }
 

@@ -6,6 +6,15 @@ import XCTest
 /// identical labels for the same canonical mL values.
 final class VolumeUnitsTests: XCTestCase {
 
+    func testCustomAmountUnitsIgnoreLiquidVolumePreference() {
+        let chore = Chore(id: 1, householdId: 1, name: "Cat meds", icon: "💊",
+                          color: "#A78BFA", sortOrder: 0, category: "", isPredefined: false,
+                          predefinedKey: nil, createdBy: nil, createdAt: Date(),
+                          indicatorLabels: [], indicatorDefaults: [], hasVolumeML: true, metricType: "amount", metricUnit: "mg")
+        XCTAssertEqual(formatChoreAmount(25, chore: chore, volumeUnit: "ml"), "25 mg")
+        XCTAssertEqual(formatChoreAmount(25, chore: chore, volumeUnit: "oz"), "25 mg")
+    }
+
     // MARK: - Conversion
 
     func testOzToMlMatchesJS() {

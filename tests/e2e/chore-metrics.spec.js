@@ -72,3 +72,46 @@ test.describe('Chore metrics (Phase 3)', () => {
     await expect(page.locator('.stats-page')).toContainText('Meds');
   });
 });
+
+for (const withIndicators of [true, false]) {
+  test(`custom amount units survive activity editing (${withIndicators ? 'per option' : 'plain'})`, async ({ page }) => {
+    const { csrf } = await setup(page);
+    const headers = { 'X-CSRF-Token': csrf };
+    const response = await page.request.post('/api/chores', {
+      headers, data: { name: 'Cat meds', icon: '💊', color: '#A78BFA',
+        metricType: 'amount', metricUnit: 'mg', indicatorLabels: withIndicators ? ['Morning'] : [] },
+    });
+    expect(response.ok()).toBeTruthy();
+    const { chore } = await response.json();
+    await page.reload();
+    await page.click(`.home-chore-card[data-home-chore-id="${chore.id}"]`);
+    const input = page.locator(withIndicators ? '.indicator-volume-select' : '#log-volume');
+    if (withIndicators) await page.click('[data-action="toggle-indicator"]');
+    await input.fill('25');
+    await page.click('[data-action="save-log"]');
+    await expect(input).toHaveCount(0);
+    await page.click('[data-nav="activity"]');
+    const row = page.locator(`.hist-row[data-chore-id="${chore.id}"]`);
+    await expect(row).toContainText('25 mg');
+    await expect(row).not.toContainText('mL');
+    await row.click();
+    await expect(input).toHaveValue('25');
+    const unitLabel = page.locator(withIndicators ? '.indicator-amount-unit' : 'label[for="log-volume"]');
+    await expect(unitLabel).toBeVisible();
+    await expect(unitLabel).toContainText('mg');
+    await input.fill('30');
+    await page.click('[data-action="close-sheet"].sheet-cancel-btn');
+    await expect(row).toContainText('25 mg');
+    await row.click();
+    await expect(input).toHaveValue('25');
+    await input.fill('30');
+    await page.click('[data-action="save-log"]');
+    await expect(input).toHaveCount(0);
+    await page.reload();
+    await page.click('[data-nav="activity"]');
+    await expect(row).toContainText('30 mg');
+    await row.click();
+    await expect(input).toHaveValue('30');
+    await expect(unitLabel).toBeVisible();
+  });
+}

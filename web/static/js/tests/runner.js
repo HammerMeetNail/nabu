@@ -1412,3 +1412,30 @@ describe('Notification feed ownership and recovery',()=>{
     assert.deepEqual(state.notifications.map(n=>n.id),[60,1]);assert.equal(state.notificationCursor,null);assert.equal(state.notificationError,null);
   });
 });
+
+describe("Activity amount units", () => {
+  it("uses each chore's unit for plain and per-indicator amounts, with escaping", async () => {
+    const { renderHistoryView } = await import("../today.js");
+    for (const [unit, preference, expected] of [['mg', 'ml', '25 mg'], ['g', 'oz', '25 g'], ['mL', 'ml', '25 mL'], ['mL', 'oz', '0.8 oz'], ['<mg>', 'ml', '25 &lt;mg&gt;']]) {
+      for (const perIndicator of [true, false]) {
+        const html = renderHistoryView({
+          volumeUnit: preference,
+          chores: [{ id: 1, name: 'Meds', icon: '💊', color: '#112233', hasVolumeML: true, metricType: 'amount', metricUnit: unit }],
+          historyLogs: [{ id: 1, choreId: 1, completedAt: '2026-07-02T10:00:00Z', volumeML: 25,
+            indicatorVolumes: perIndicator ? { Morning: 25 } : {} }],
+        });
+        assert.ok(html.includes(expected), `${unit}/${preference}/${perIndicator}: ${expected}`);
+        assert.ok(!html.includes('<mg>'));
+      }
+    }
+  });
+
+  it("retains an edited indicator amount and visibly labels its custom unit", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const html = renderLogSheet({ id: 1, name: 'Meds', icon: '💊', hasVolumeML: true,
+      metricUnit: 'mg', indicatorLabels: ['Morning'] },
+      { id: 2, indicators: ['Morning'], indicatorVolumes: { Morning: 25 } }, '2026-07-02', [], 1);
+    assert.ok(html.includes('value="25"'));
+    assert.ok(html.includes('<span class="indicator-amount-unit">mg</span>'));
+  });
+});

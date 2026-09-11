@@ -260,10 +260,15 @@ struct LogSheet: View {
             .pickerStyle(.menu)
             .accessibilityIdentifier("volume-picker")
         } else {
-            TextField(amountLabel, value: selection, format: .number)
-                .keyboardType(.numberPad)
-                .accessibilityLabel(amountLabel)
-                .accessibilityIdentifier("amount-input")
+            HStack {
+                TextField(amountLabel, value: selection, format: .number)
+                    .keyboardType(.numberPad)
+                    .accessibilityLabel(amountLabel)
+                    .accessibilityIdentifier("amount-input")
+                Text(chore.metricUnit)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("amount-unit")
+            }
         }
     }
 

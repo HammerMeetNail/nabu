@@ -1,5 +1,6 @@
 import { apiFetch } from "./api.js";
-import { escapeHTML, formatVolume } from "./utils.js";
+import { escapeHTML } from "./utils.js";
+import { formatAmount } from "./metrics.js";
 import { loadSchedulesForDate } from "./schedule.js";
 import { submitLog } from "./offline-queue.js";
 import { contextSnapshot, sameOrigin, ContextChangedError } from "./browser-context.js";
@@ -260,6 +261,7 @@ export function renderHistoryView(state) {
       .filter(label => !volKeys.has(label))
       .map(label => escapeHTML(label.split(' ')[0]));
     rawDayGroups[rawDayGroups.length - 1].rows.push({
+      chore: chore || { hasVolumeML: true },
       icon: chore?.icon || '',
       name: chore?.name || `Chore #${l.choreId}`,
       color: chore?.color || '#999',
@@ -361,10 +363,10 @@ export function renderHistoryView(state) {
       const rows = g.rows.map(r => {
         const indicatorVolParts = Object.entries(r.indicatorVolumes || {}).map(([label, ml]) => {
           const icon = escapeHTML(label.split(' ')[0]);
-          return `${icon} ${formatVolume(ml, volumeUnit)}`;
+          return `${icon} ${escapeHTML(formatAmount(ml, r.chore, volumeUnit))}`;
         });
         const indicatorVolStr = indicatorVolParts.length > 0 ? ` · ${indicatorVolParts.join(' ')}` : '';
-        const legacyVolumeStr = !indicatorVolParts.length && r.volumeML != null ? ` · ${formatVolume(r.volumeML, volumeUnit)}` : '';
+        const legacyVolumeStr = !indicatorVolParts.length && r.volumeML != null ? ` · ${escapeHTML(formatAmount(r.volumeML, r.chore, volumeUnit))}` : '';
         const indicatorIconsStr = r.indicatorIcons.length ? ` · ${r.indicatorIcons.join(' ')}` : '';
         const ratingStr = r.rating != null ? ` · ${renderStarRatingDisplay(r.rating)}` : '';
         const subjectStr = r.subject ? ` · <span class="hist-subject">${escapeHTML(r.subject)}</span>` : '';
