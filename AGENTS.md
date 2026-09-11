@@ -209,6 +209,16 @@ Production test account: `verify@yearofbingo.com` / `test123456` (household and 
 
 **After pushing a `v*` tag, watch the pipeline to completion and verify production** (don't wait to be asked; a cheaper subagent may be delegated to it). The full runbook — `gh run watch`, transient-vs-real failure triage, and the production verification commands (`/health`, versioned imports, `no-store`/`BYPASS` cache headers) — lives in **`docs/deploy-runbook.md`**.
 
+## UI acceptance and verification
+
+**A UI fix is complete only when the reported layout has been reproduced, corrected, and visually verified in the target browser. When deployment is part of the task, verify the same screen in production after deployment. A report of "no change" reopens verification.**
+
+1. Establish the exact screen or navigation path, browser/device, and relevant activity configuration. Ask for a screenshot or missing context early when needed.
+2. Reproduce the issue using an authorized test account before editing. Include existing/custom configurations as well as fresh defaults, and identify the affected create/edit render paths.
+3. Compare before/after renders in the target browser at the relevant screen size. Chromium checks alone do not establish iOS Safari behavior. Capture visual evidence of the corrected form.
+4. Run focused visual and behavioral regressions during iteration, then the required full pre-push/release checks once the layout is verified.
+5. After an authorized deployment, open the same production form and verify its layout and relevant interactions. Passing tests, current asset versions, and a successful deployment do not replace this check. If the user still reports the issue, reproduce their screen and reassess the diagnosis before another deployment.
+
 ## E2E tests
 
 **Every new feature and every bug fix must include a Playwright E2E test.**  Do not skip this step; do not wait for the user to ask.
