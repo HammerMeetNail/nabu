@@ -879,7 +879,24 @@ function renderSettingsView() {
   return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div></div>`;
 }
 
-function loadAllStatsData() { return loadStatsPage(state); }
+function loadAllStatsData() {
+  const scope = captureScope(state, 'stats-page-render');
+  let frame = null;
+  const renderCurrentStats = () => {
+    if (scope.current() && state.currentRoute === '/stats') render(document.querySelector('#app'));
+  };
+  const pending = loadStatsPage(state, () => {
+    // A burst of chart responses should cause at most one full DOM morph per
+    // frame. Old households, refreshes and tabs must not repaint this page.
+    if (frame !== null || !scope.current() || state.currentRoute !== '/stats') return;
+    frame = requestAnimationFrame(() => { frame = null; renderCurrentStats(); });
+  });
+  renderCurrentStats();
+  return pending.finally(() => {
+    if (frame !== null) cancelAnimationFrame(frame);
+    renderCurrentStats();
+  });
+}
 function loadWidgetData() { return loadStatsWidgets(state); }
 
 function refreshStatsResource(section, id = null) {
@@ -922,7 +939,7 @@ function countTodayLogs() {
 
 function renderStatsPageView() {
   try {
-    if (state.stats && (state.stats.overview || state.stats.errors?.overview)) {
+    if (state.stats) {
       const page = renderStatsPage(state);
       if (state.activeSheet === "widget-wizard") {
         return `<div class="sheet-overlay-wrapper">
@@ -1697,7 +1714,7 @@ export async function init() {
       if (state.currentRoute === "/stats") {
         state.stats = state.stats || {};
         state.stats.todayCount = countTodayLogs();
-        loadAllStatsData().then(owned(() => render(app)));
+        loadAllStatsData();
         return;
       }
       if (state.currentRoute === "/schedule") {

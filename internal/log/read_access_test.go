@@ -49,6 +49,16 @@ func TestPostgresReadAccessPrecedesLimitAndRechecksMembership(t *testing.T) {
 	if err != nil || len(latest) != 1 || latest[10].ID != 2 {
 		t.Fatalf("latest: %+v err=%v", latest, err)
 	}
+	statsQuery := chorelog.StatsQuery{CandidateStart: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC), CandidateEnd: time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)}
+	logs, err = s.StatsLogs(scoped, 1, statsQuery)
+	if err != nil || len(logs) != 2 {
+		t.Fatalf("stats: count=%d err=%v", len(logs), err)
+	}
+	for _, l := range logs {
+		if l.ChoreID != 10 || l.Note != "" || l.Title != nil {
+			t.Fatalf("stats read unrelated data: %+v", l)
+		}
+	}
 	for _, change := range []string{`UPDATE chores SET visibility='admins' WHERE id=10`, `DELETE FROM user_households WHERE user_id=1`} {
 		if _, err := db.ExecContext(ctx, change); err != nil {
 			t.Fatal(err)
@@ -69,11 +79,23 @@ func TestPostgresReadAccessPrecedesLimitAndRechecksMembership(t *testing.T) {
 		if err != nil || len(rows) != 0 {
 			t.Fatalf("stale scope aggregate: count=%d err=%v", len(rows), err)
 		}
+		logs, err = s.StatsLogs(scoped, 1, statsQuery)
+		if err != nil || len(logs) != 0 {
+			t.Fatalf("stale scope stats: count=%d err=%v", len(logs), err)
+		}
+		// Exercise membership loss independently of the prior visibility change.
+		if _, err := db.ExecContext(ctx, `UPDATE chores SET visibility='household' WHERE id=10`); err != nil {
+			t.Fatal(err)
+		}
 
 	}
 	logs, err = s.SearchHistoryLogs(scoped, 2, "needle", 100)
 	if err != nil || len(logs) != 0 {
 		t.Fatalf("scope used for wrong household: %v", err)
+	}
+	logs, err = s.StatsLogs(scoped, 2, statsQuery)
+	if err != nil || len(logs) != 0 {
+		t.Fatalf("stats scope used for wrong household: %v", err)
 	}
 }
 

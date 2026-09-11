@@ -15,6 +15,7 @@ const (
 	GroupLocalDate
 	GroupWeekSplit
 	GroupMemberTotals
+	GroupLocalHour
 )
 
 // AggregateQuery preserves two distinct filters: the store's canonical date
@@ -32,7 +33,7 @@ type AggregateQuery struct {
 type AggregateRow struct {
 	UserID, ChoreID          int64
 	Category, Date           string
-	Weekday                  int
+	Weekday, Hour            int
 	Count, TotalML, Duration int
 }
 
@@ -41,6 +42,18 @@ type AggregateRow struct {
 func (s *PostgresStore) Aggregate(ctx context.Context, householdID int64, q AggregateQuery) ([]AggregateRow, error) {
 	args := []any{householdID, q.CandidateStart, q.CandidateEnd}
 	access, accessArgs := readAccessSQL(ctx, householdID, "l.chore_id", "l.household_id", 4)
+	prefix := ""
+	if _, scoped := ctx.Value(readAccessKey{}).(readAccess); scoped {
+		// Resolve live permissions once per chore. With unknown date parameters,
+		// a cached generic plan can estimate one log and otherwise rescan the
+		// membership join for every activity (hundreds of thousands of lookups).
+		// Materialization bounds that work without caching permissions between
+		// requests or changing the existing authorization predicate.
+		permission, values := readAccessSQL(ctx, householdID, "stats_chore.id", "stats_chore.household_id", 4)
+		prefix = `WITH stats_visible_chores AS MATERIALIZED (
+ SELECT stats_chore.id FROM chores stats_chore WHERE stats_chore.household_id=$1` + permission + `) `
+		access, accessArgs = " AND l.chore_id IN (SELECT id FROM stats_visible_chores)", values
+	}
 	args = append(args, accessArgs...)
 	where := `l.household_id=$1 AND COALESCE(l.log_date,(l.completed_at AT TIME ZONE 'UTC')::date) >= $2::date
 	 AND COALESCE(l.log_date,(l.completed_at AT TIME ZONE 'UTC')::date) < $3::date` + access
@@ -57,7 +70,7 @@ func (s *PostgresStore) Aggregate(ctx context.Context, householdID int64, q Aggr
 	if q.ChoreID > 0 {
 		where += " AND l.chore_id = " + add(q.ChoreID)
 	}
-	user, chore, category, date, weekday := "0", "0", "''", "''", "0"
+	user, chore, category, date, weekday, hour := "0", "0", "''", "''", "0", "0"
 	join, group, metrics := "", "", "0,0"
 	switch q.Group {
 	case GroupUser, GroupMemberTotals:
@@ -68,8 +81,12 @@ func (s *PostgresStore) Aggregate(ctx context.Context, householdID int64, q Aggr
 		category = "COALESCE(NULLIF(c.category,''),'custom')"
 		join, group = " JOIN chores c ON c.id=l.chore_id AND c.household_id=l.household_id", category
 	case GroupLocalDate:
-		date = "to_char(l.completed_at AT TIME ZONE " + add(q.TimeZone) + ",'YYYY-MM-DD')"
-		group = date
+		// Format once per output day, not once per activity before grouping.
+		group = "(l.completed_at AT TIME ZONE " + add(q.TimeZone) + ")::date"
+		date = "to_char(" + group + ",'YYYY-MM-DD')"
+	case GroupLocalHour:
+		hour = "EXTRACT(HOUR FROM l.completed_at AT TIME ZONE " + add(q.TimeZone) + ")::int"
+		group = hour
 	case GroupWeekSplit:
 		user, category = "l.user_id", "COALESCE(NULLIF(c.category,''),'custom')"
 		weekday = "EXTRACT(DOW FROM l.completed_at AT TIME ZONE " + add(q.TimeZone) + ")::int"
@@ -86,7 +103,7 @@ func (s *PostgresStore) Aggregate(ctx context.Context, householdID int64, q Aggr
 		       WHERE value ~ '^-?[0-9]{1,18}$') ELSE GREATEST(COALESCE(l.volume_ml,0),0) END),0),
 		 COALESCE(SUM(l.duration_seconds),0)`
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT "+user+","+chore+","+category+","+date+","+weekday+",COUNT(*),"+metrics+
+	rows, err := s.db.QueryContext(ctx, prefix+"SELECT "+user+","+chore+","+category+","+date+","+weekday+","+hour+",COUNT(*),"+metrics+
 		" FROM chore_logs l"+join+" WHERE "+where+" GROUP BY "+group, args...)
 	if err != nil {
 		return nil, err
@@ -95,7 +112,7 @@ func (s *PostgresStore) Aggregate(ctx context.Context, householdID int64, q Aggr
 	out := []AggregateRow{}
 	for rows.Next() {
 		var row AggregateRow
-		if err := rows.Scan(&row.UserID, &row.ChoreID, &row.Category, &row.Date, &row.Weekday, &row.Count, &row.TotalML, &row.Duration); err != nil {
+		if err := rows.Scan(&row.UserID, &row.ChoreID, &row.Category, &row.Date, &row.Weekday, &row.Hour, &row.Count, &row.TotalML, &row.Duration); err != nil {
 			return nil, err
 		}
 		out = append(out, row)

@@ -337,8 +337,7 @@ export function renderStatsPage(state) {
     </div>` : "",
   };
 
-  const body = order
-    .map(k => {
+  const renderSection = k => {
       if (sections[k] != null) return sections[k];
       if (isChoreSectionKey(k)) {
         const id = parseInt(k.slice("chore:".length), 10);
@@ -352,9 +351,11 @@ export function renderStatsPage(state) {
         return renderWidgetSection(w, state);
       }
       return "";
-    })
-    .filter(html => html && html.trim().length > 0)
-    .join("\n");
+    };
+  // Keep each section in its own stable position while requests complete.
+  // morph.js matches by position: inserting/removing a loading message or an
+  // empty section must not turn a focused Categories control into Chores.
+  const body = order.map(k => `<div data-stats-section="${escapeHTML(k)}">${renderSection(k)}</div>`).join('\n');
 
   return `<div class="stats-page">
     <div class="stats-header-row">
@@ -369,10 +370,12 @@ export function renderStatsPage(state) {
         </svg>
       </button>
     </div>
-    ${state.stats?.customizeOpen ? renderCustomizePanel(state) : ""}
-    ${Object.values(stats.errors || {}).some(Boolean) ? '<p role="status" class="form-error">Some charts could not be refreshed. <button type="button" class="btn btn-sm" data-action="retry-stats">Retry charts</button></p>' : ''}
-    ${Object.values(stats.loading || {}).some(Boolean) ? '<p role="status" class="text-secondary">Loading charts…</p>' : ''}
-    ${body}
+    <div class="stats-customization">${state.stats?.customizeOpen ? renderCustomizePanel(state) : ""}</div>
+    <div class="stats-load-status">
+      ${Object.values(stats.errors || {}).some(Boolean) ? '<p role="status" class="form-error">Some charts could not be refreshed. <button type="button" class="btn btn-sm" data-action="retry-stats">Retry charts</button></p>' : ''}
+      ${Object.values(stats.loading || {}).some(Boolean) ? '<p role="status" class="text-secondary">Loading charts…</p>' : ''}
+    </div>
+    <div class="stats-sections">${body}</div>
   </div>`;
 }
 

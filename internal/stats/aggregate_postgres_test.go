@@ -18,7 +18,11 @@ type aggregateChores struct{ store chore.Store }
 
 func (a aggregateChores) GetChore(ctx context.Context, id int64) (ChoreInfo, error) {
 	c, err := a.store.GetChore(ctx, id)
-	return ChoreInfo{ID: c.ID, HouseholdID: c.HouseholdID, Name: c.Name, Icon: c.Icon, Category: c.Category, MetricType: c.MetricType, MetricUnit: c.MetricUnit, Visibility: c.Visibility}, err
+	return aggregateChoreInfo(c), err
+}
+
+func aggregateChoreInfo(c chore.Chore) ChoreInfo {
+	return ChoreInfo{ID: c.ID, HouseholdID: c.HouseholdID, Name: c.Name, Icon: c.Icon, Category: c.Category, MetricType: c.MetricType, MetricUnit: c.MetricUnit, Visibility: c.Visibility, HasVolumeML: c.HasVolumeML, IndicatorLabels: c.IndicatorLabels}
 }
 func (a aggregateChores) ListChores(ctx context.Context, id int64) ([]ChoreInfo, error) {
 	cs, err := a.store.ListChores(ctx, id)
@@ -27,11 +31,7 @@ func (a aggregateChores) ListChores(ctx context.Context, id int64) ([]ChoreInfo,
 	}
 	out := []ChoreInfo{}
 	for _, c := range cs {
-		info, err := a.GetChore(ctx, c.ID)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, info)
+		out = append(out, aggregateChoreInfo(c))
 	}
 	return out, nil
 }
@@ -111,10 +111,40 @@ func TestPostgresAggregatesMatchAuthorizedMemorySemantics(t *testing.T) {
 	// Overview's original year-candidate bound excludes this later canonical date
 	// even though the completion time belongs to the current week.
 	add(chorelog.ChoreLog{HouseholdID: 1, UserID: 1, ChoreID: 11, CompletedAt: midday, LogDate: strp(now.AddDate(0, 0, 10).Format(time.DateOnly))})
+	// Recent completion with an older canonical date is still a time-series
+	// candidate; a canonical date outside the legacy year window is not.
+	add(chorelog.ChoreLog{HouseholdID: 1, UserID: 2, ChoreID: 10, CompletedAt: midday, LogDate: strp(now.AddDate(0, -3, 0).Format(time.DateOnly)), Indicators: []string{"a", "b"}, IndicatorVolumes: map[string]int{"a": 30, "b": 50}})
+	add(chorelog.ChoreLog{HouseholdID: 1, UserID: 2, ChoreID: 10, CompletedAt: midday, LogDate: strp(now.AddDate(-2, 0, 0).Format(time.DateOnly)), VolumeML: intp(999)})
 	for _, loc := range []*time.Location{time.UTC, ny, paris} {
 		t.Run(loc.String(), func(t *testing.T) {
 			for _, start := range []time.Time{time.Date(2026, 3, 8, 0, 0, 0, 0, loc), time.Date(2026, 11, 1, 0, 0, 0, 0, loc)} {
 				end := start.AddDate(0, 0, 1)
+				gotHeat, err := sqlSvc.GetHeatmap(viewer, 1, start, end, loc)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wantHeat, err := memorySvc.GetHeatmap(viewer, 1, start, end, loc)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !reflect.DeepEqual(gotHeat, wantHeat) {
+					t.Fatalf("heatmap %s: got=%+v want=%+v", start, gotHeat, wantHeat)
+				}
+				for _, author := range []*int64{nil, ptrInt64(0), ptrInt64(2)} {
+					for _, id := range []*int64{nil, ptrInt64(10), ptrInt64(11)} {
+						got, err := sqlSvc.GetBusyHours(viewer, 1, start, end, loc, id, author)
+						if err != nil {
+							t.Fatal(err)
+						}
+						want, err := memorySvc.GetBusyHours(viewer, 1, start, end, loc, id, author)
+						if err != nil {
+							t.Fatal(err)
+						}
+						if !reflect.DeepEqual(got, want) {
+							t.Fatalf("busy hours %s: got=%+v want=%+v", start, got, want)
+						}
+					}
+				}
 				got, err := sqlSvc.getLeaderboard(viewer, 1, start, end, loc)
 				if err != nil {
 					t.Fatal(err)
@@ -141,6 +171,52 @@ func TestPostgresAggregatesMatchAuthorizedMemorySemantics(t *testing.T) {
 				if !reflect.DeepEqual(gc, wc) {
 					t.Fatalf("categories: got=%+v want=%+v", gc, wc)
 				}
+			}
+			for _, period := range []string{"daily", "weekly", "monthly", "all"} {
+				for _, id := range []int64{10, 11} {
+					got, err := sqlSvc.GetChoreTimeSeries(viewer, 1, id, period, loc)
+					if err != nil {
+						t.Fatal(err)
+					}
+					want, err := memorySvc.GetChoreTimeSeries(viewer, 1, id, period, loc)
+					if err != nil {
+						t.Fatal(err)
+					}
+					sortLeaderboard(got.ByMember)
+					sortLeaderboard(want.ByMember)
+					if !reflect.DeepEqual(got, want) {
+						t.Fatalf("time series %d/%s: got=%+v want=%+v", id, period, got, want)
+					}
+					if id == 10 && period == "daily" {
+						last := got.Periods[len(got.Periods)-1]
+						if last.Count != 7 || last.TotalML != 680 || last.TotalDuration != 360 {
+							t.Fatalf("today lost canonical-date or metric semantics: %+v", last)
+						}
+					}
+				}
+			}
+			start, end := midday.AddDate(0, -1, 0), midday.AddDate(0, 0, 1)
+			gotStats, err := sqlSvc.GetChoreStats(viewer, 1, loc, &start, &end)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantStats, err := memorySvc.GetChoreStats(viewer, 1, loc, &start, &end)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(gotStats, wantStats) {
+				t.Fatalf("chore stats: got=%+v want=%+v", gotStats, wantStats)
+			}
+			gotGaps, err := sqlSvc.GetFeedingGaps(viewer, 1, ptrInt64(10), start, end, loc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantGaps, err := memorySvc.GetFeedingGaps(viewer, 1, ptrInt64(10), start, end, loc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(gotGaps, wantGaps) {
+				t.Fatalf("gaps: got=%+v want=%+v", gotGaps, wantGaps)
 			}
 			for _, period := range []string{"day", "week", "month", "all"} {
 				for _, author := range []int64{0, 1, 2} {
@@ -226,3 +302,5 @@ func TestPostgresAggregatesMatchAuthorizedMemorySemantics(t *testing.T) {
 		}
 	}
 }
+
+func ptrInt64(n int64) *int64 { return &n }

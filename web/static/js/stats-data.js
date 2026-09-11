@@ -108,7 +108,9 @@ export function loadStatsResource(state, section, id = null) {
   return Promise.resolve();
 }
 
-export function loadStatsPage(state) {
+export function loadStatsPage(state, onProgress = () => {}) {
+  const scope = captureScope(state, 'stats:page');
+  const progress = scope.guard(onProgress);
   state.stats.topChoresUserId ||= state.user?.id || 0;
   for (const key of Object.keys(state.stats.loading || {})) {
     const section = key.startsWith('leaderboard:') ? 'leaderboard' : key.startsWith('top-chores:') ? 'top-chores'
@@ -117,16 +119,17 @@ export function loadStatsPage(state) {
     if (deleted || !visible(state,section)) {state.stats.loading[key] = false; delete state.stats.errors?.[key];}
   }
   const sections = ['overview','activity','busy-hours','chores','categories','top-chores','leaderboard'];
-  const tasks = sections.map(section => loadStatsResource(state,section));
-  tasks.push(loadStatsResource(state,'baby','feed'),loadStatsResource(state,'baby','change'),loadStatsResource(state,'gaps'));
-  tasks.push(loadChoreAnalytics(state),loadStatsWidgets(state));
+  const load = (section,id = null) => loadStatsResource(state,section,id).then(progress);
+  const tasks = sections.map(section => load(section));
+  tasks.push(load('baby','feed'),load('baby','change'),load('gaps'));
+  tasks.push(loadChoreAnalytics(state,progress),loadStatsWidgets(state,progress));
   return Promise.all(tasks);
 }
-export function loadChoreAnalytics(state) {
+export function loadChoreAnalytics(state, onProgress = () => {}) {
   return Promise.all(state.chores.filter(choreHasAnalytics).filter(c => visible(state,`chore:${c.id}`)).slice(0,15)
-    .map(c => loadStatsResource(state,'chore',c.id)));
+    .map(c => loadStatsResource(state,'chore',c.id).then(onProgress)));
 }
-export function loadStatsWidgets(state) {
+export function loadStatsWidgets(state, onProgress = () => {}) {
   for (const id of Object.keys(state.stats.widgetData || {})) {
     if (!(state.stats.widgets || []).some(w => w.id === id)) {
       delete state.stats.widgetData[id];
@@ -137,5 +140,5 @@ export function loadStatsWidgets(state) {
   // The server caps saved widgets at 20. Every visible saved card needs data;
   // the separate per-chore analytics cap must not hide the final five widgets.
   return Promise.all((state.stats.widgets || []).filter(w => visible(state,`widget:${w.id}`))
-    .map(w => loadStatsResource(state,'widget',w.id)));
+    .map(w => loadStatsResource(state,'widget',w.id).then(onProgress)));
 }

@@ -395,14 +395,26 @@ func streaksFromDays(daySet map[string]bool, start, now time.Time) StreakInfo {
 }
 
 func (s *Service) GetHeatmap(ctx context.Context, householdID int64, start, end time.Time, loc *time.Location) ([]HeatmapCell, error) {
-	logs, err := s.fetchLogsInRange(ctx, householdID, start, end, loc)
-	if err != nil {
-		return nil, err
-	}
 	dayCount := map[string]int{}
-	for _, l := range logs {
-		if logInRange(l, start, end, loc) {
-			dayCount[l.CompletedAt.In(loc).Format("2006-01-02")]++
+	if _, ok := s.logStore.(aggregateReader); ok && aggregateTimeZone(loc) != "" {
+		q := aggregateWindow(start, end, false, log.GroupLocalDate)
+		q.TimeZone = aggregateTimeZone(loc)
+		rows, err := s.readAggregate(ctx, householdID, q)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range rows {
+			dayCount[row.Date] = row.Count
+		}
+	} else {
+		logs, err := s.fetchLogsInRange(ctx, householdID, start, end, loc)
+		if err != nil {
+			return nil, err
+		}
+		for _, l := range logs {
+			if logInRange(l, start, end, loc) {
+				dayCount[l.CompletedAt.In(loc).Format("2006-01-02")]++
+			}
 		}
 	}
 	var cells []HeatmapCell
@@ -456,6 +468,28 @@ func (s *Service) GetBusyHours(ctx context.Context, householdID int64, start, en
 		} else if !ok {
 			return nil, fmt.Errorf("chore not found")
 		}
+	}
+	if _, ok := s.logStore.(aggregateReader); ok && aggregateTimeZone(loc) != "" {
+		q := aggregateWindow(start, end, false, log.GroupLocalHour)
+		q.TimeZone = aggregateTimeZone(loc)
+		if choreID != nil {
+			q.ChoreID = *choreID
+		}
+		if userID != nil {
+			q.UserID, q.MatchUser = *userID, true
+		}
+		rows, err := s.readAggregate(ctx, householdID, q)
+		if err != nil {
+			return nil, err
+		}
+		hours := make([]BusyHour, 24)
+		for h := range hours {
+			hours[h].Hour = h
+		}
+		for _, row := range rows {
+			hours[row.Hour].Count = row.Count
+		}
+		return hours, nil
 	}
 	logs, err := s.fetchLogsInRange(ctx, householdID, start, end, loc)
 	if err != nil {
@@ -934,11 +968,6 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 		logFetchEnd = today.AddDate(0, 0, 1)
 	}
 
-	logs, err := s.fetchLogsInRange(ctx, householdID, logFetchStart, logFetchEnd, loc)
-	if err != nil {
-		return nil, err
-	}
-
 	var countStart, countEnd time.Time
 	switch period {
 	case "weekly":
@@ -953,6 +982,24 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 	default:
 		countStart = today
 		countEnd = today.AddDate(0, 0, 1)
+	}
+
+	// Only this chore's displayed buckets and member totals need metrics. Keep
+	// the legacy canonical date candidates so mismatched log_date values retain
+	// their meaning; completion bounds provide the selective index seek.
+	readStart, readEnd := buckets[0].start, buckets[len(buckets)-1].end
+	if countStart.Before(readStart) {
+		readStart = countStart
+	}
+	if countEnd.After(readEnd) {
+		readEnd = countEnd
+	}
+	logs, err := s.fetchStatsLogs(ctx, householdID, log.StatsQuery{
+		CandidateStart: logFetchStart.Add(-48 * time.Hour), CandidateEnd: logFetchEnd.Add(48 * time.Hour),
+		Start: &readStart, End: &readEnd, ChoreID: choreID,
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	byMember := map[int64]int{}
@@ -1110,7 +1157,10 @@ func (s *Service) GetFeedingGaps(ctx context.Context, householdID int64, choreID
 		return nil, nil
 	}
 
-	logs, err := s.fetchLogsInRange(ctx, householdID, start, end, loc)
+	logs, err := s.fetchStatsLogs(ctx, householdID, log.StatsQuery{
+		CandidateStart: start.Add(-48 * time.Hour), CandidateEnd: end.Add(48 * time.Hour),
+		Start: &start, End: &end, ChoreID: feedBabyID,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -1123,6 +1173,9 @@ func (s *Service) GetFeedingGaps(ctx context.Context, householdID int64, choreID
 	}
 
 	sort.Slice(feedLogs, func(i, j int) bool {
+		if feedLogs[i].CompletedAt.Equal(feedLogs[j].CompletedAt) {
+			return feedLogs[i].ID < feedLogs[j].ID
+		}
 		return feedLogs[i].CompletedAt.Before(feedLogs[j].CompletedAt)
 	})
 
@@ -1263,18 +1316,40 @@ func (s *Service) GetChoreSummary(ctx context.Context, householdID, choreID int6
 // offsets, so that the caller can filter by local date in Go. It also filters
 // to the viewer's visible chores when a viewer is present in ctx.
 func (s *Service) fetchLogsInRange(ctx context.Context, householdID int64, start, end time.Time, loc *time.Location) ([]log.ChoreLog, error) {
-	bufStart := start.Add(-48 * time.Hour)
-	bufEnd := end.Add(48 * time.Hour)
+	return s.fetchStatsLogs(ctx, householdID, log.StatsQuery{CandidateStart: start.Add(-48 * time.Hour), CandidateEnd: end.Add(48 * time.Hour)})
+}
+
+type statsLogReader interface {
+	StatsLogs(context.Context, int64, log.StatsQuery) ([]log.ChoreLog, error)
+}
+
+func (s *Service) fetchStatsLogs(ctx context.Context, householdID int64, q log.StatsQuery) ([]log.ChoreLog, error) {
 	readCtx, visible, err := s.readContext(ctx, householdID)
 	if err != nil {
 		return nil, err
 	}
-	logs, err := s.logStore.ListLogsRange(readCtx, householdID, bufStart, bufEnd)
+	if reader, ok := s.logStore.(statsLogReader); ok {
+		return reader.StatsLogs(readCtx, householdID, q)
+	}
+	logs, err := s.logStore.ListLogsRange(readCtx, householdID, q.CandidateStart, q.CandidateEnd)
 	if err != nil {
 		return nil, err
 	}
 	logs = filterLogs(logs, visible)
-	return logs, nil
+	filtered := logs[:0]
+	for _, l := range logs {
+		if q.ChoreID != 0 && l.ChoreID != q.ChoreID {
+			continue
+		}
+		if q.Start != nil && l.CompletedAt.Before(*q.Start) {
+			continue
+		}
+		if q.End != nil && !l.CompletedAt.Before(*q.End) {
+			continue
+		}
+		filtered = append(filtered, l)
+	}
+	return filtered, nil
 }
 
 func (s *Service) visibleChoresForContext(ctx context.Context, householdID int64) ([]ChoreInfo, error) {

@@ -1189,6 +1189,57 @@ describe('Scoped chart loading and metric rendering', () => {
 });
 
 describe('Chart loading cleanup',()=>{
+  it('preserves chart control identity as loading, errors and empty sections change',async()=>{
+    const {renderStatsPage}=await import('../stats.js');
+    const {morphInnerHTML}=await import('../morph.js');
+    const {createAppState}=await import('../state.js');
+    const state=createAppState();
+    state.stats.loading={overview:true};
+    state.stats.errors={activity:'Retry'};
+    // A custom layout puts a previously empty recap ahead of Categories.
+    state.stats.sectionOrder=['recap','categories','chores'];
+    const root=document.createElement('div');document.body.appendChild(root);
+    try {
+      morphInnerHTML(root,renderStatsPage(state));
+      const selector='[data-action="stats-period"][data-section="categories"][data-period="month"]';
+      const button=root.querySelector(selector);button.focus();
+      state.stats.overview={recap:{totalChores:5}};
+      state.stats.loading.overview=false;state.stats.errors={};
+      morphInnerHTML(root,renderStatsPage(state));
+      assert.equal(root.querySelector(selector),button);
+      assert.equal(document.activeElement,button);
+      assert.equal(button.dataset.section,'categories');
+    } finally {root.remove();}
+  });
+  it('publishes page progress while a chart is pending and suppresses superseded page callbacks',async()=>{
+    const {createAppState}=await import('../state.js');
+    const {loadStatsPage}=await import('../stats-data.js');
+    const state=createAppState();
+    state.stats.sectionHidden=['activity','busy-hours','chores','top-chores','leaderboard','baby'];
+    let release, ready;
+    const gate=new Promise(resolve=>{release=resolve;});
+    const progressed=new Promise(resolve=>{ready=resolve;});
+    globalThis.fetch=async path=>{
+      if(path.includes('breakdown?period=week')) await gate;
+      return new Response(JSON.stringify(path.includes('/overview') ? {overview:{recap:{totalChores:42}}} : {breakdown:[]}),{headers:{'Content-Type':'application/json'}});
+    };
+    let updates=0;
+    const pending=loadStatsPage(state,()=>{
+      updates++;
+      if(state.stats.overview) ready();
+    });
+    try {
+      await progressed;
+      assert.equal(state.stats.loading.categories,true);
+      assert.equal(state.stats.overview.recap.totalChores,42);
+      state.stats.categoriesPeriod='month';
+      await loadStatsPage(state);
+      const before=updates;
+      release();await pending;
+      assert.equal(updates,before);
+      assert.equal(state.stats.loading.categories,false);
+    } finally {release();await pending;}
+  });
   it('loads every server-supported widget and shares identical child reads',async()=>{
     const {createAppState}=await import('../state.js');
     const {loadStatsWidgets}=await import('../stats-data.js');

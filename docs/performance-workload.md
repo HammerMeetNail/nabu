@@ -128,3 +128,63 @@ inserts rose from about 25 ms to 28–30 ms with both indexes, and total notific
 indexes occupied about 34.4 MiB. Migration 049 adds the measured indexes, with
 bounded startup locks and an invalid-prebuild check; see the deploy runbook for
 optional concurrent prebuilding on large databases. No production index was built.
+
+## Stats navigation with four months of activity
+
+`TestLocalStatsWorkload` grows an isolated household through 6,000, 24,000 and
+60,000 activities across 120 days, four authors and 25 chores (one private).
+Entries include long notes, indicators, per-indicator amounts and duration.
+It compares the original full-log reader with the optimized Stats readers and
+requires identical results at each size. No production data is used.
+
+```sh
+TEST_DATABASE_URL='postgres://nabu:nabu@localhost:5432/nabu?sslmode=disable' \
+  NABU_PERF=1 NABU_PERF_ENFORCE=1 \
+  NABU_PERF_REPORT=/tmp/nabu-stats-workload.json \
+  go test -timeout 240s ./internal/stats -run '^TestLocalStatsWorkload$' -count=1 -v
+```
+
+On a macOS host with Go 1.26.8 (darwin/amd64) and PostgreSQL 17 in a Podman VM
+with six CPUs and 16 GiB, the 60,000-activity run measured 20 warmed calls:
+
+| Stats service read | Original median | Optimized median | Optimized p95 | Original / optimized Go allocation |
+| --- | ---: | ---: | ---: | ---: |
+| Daily chore time series | 348.2 ms | 4.6 ms | 5.1 ms | 236.4 MB / 0.54 MB |
+| Three-month heatmap | 281.3 ms | 22.7 ms | 24.1 ms | 187.6 MB / 0.15 MB |
+
+The original daily chart hydrates all visible household activity over a year for
+each chore. The optimized reader uses the existing household/chore/completion
+index to read only metrics for that chore's displayed buckets and member totals
+(280 rows in the final fixture). It preserves the separate, widened canonical
+date window, so older `log_date` values do not silently drop recent completions.
+Heatmap and busy-hour counts are grouped in PostgreSQL. Remaining detailed Stats
+reads omit notes, titles and other unrelated fields, and feeding-gap reads select
+only the requested chore and completion interval.
+
+Reports include allocations, query count, pool waits, and `EXPLAIN ANALYZE EXECUTE`
+of the actual warmed prepared statement. A fresh EXPLAIN can conceal a slow
+generic plan: the unmaterialized aggregate performed roughly 600,000 membership
+lookups at 60,000 activities. Materializing the live permitted-chore set once per
+aggregate query bounds permission work independently of activity count. It does
+not cache permissions between requests. The fixture deliberately leaves metadata
+tables unanalyzed to exercise this adverse planning case. SQL/memory differential
+tests cover DST, exact end bounds, mismatched canonical dates, metric replacement,
+member attribution, visibility changes and independently revoked membership.
+
+Optimized workload reads must allocate at most 2 MiB and use at most five queries
+(including service metadata/permission reads). `NABU_PERF_ENFORCE=1` additionally
+checks p95 <=250 ms. These local service timings exclude HTTP middleware, network
+latency, concurrent navigation, and browser rendering; they are not production
+latency or capacity guarantees. The PWA regression `stats-performance.spec.js`
+holds an overview or time-series response open and verifies that the page and
+ready charts render, customization works, and navigation remains usable. Stable
+section containers also preserve a focused control's identity as loading messages
+disappear and previously empty sections fill in.
+
+A separate local Chromium navigation comparison used 60,000 activities, four
+authors, 25 amount chores and the same 22 Stats requests before and after. Six
+reload-and-navigate samples were collected, discarding the first as warm-up. At a
+390×844 viewport, median navigation-to-page DOM dropped from 1,184.5 ms to 4.3 ms;
+the first populated chore card appeared at 58.8 ms and all charts completed at
+88.5 ms. This is a local synthetic DOM timing, with service workers blocked and
+no CPU/network throttling; it does not measure production or a mobile device.
