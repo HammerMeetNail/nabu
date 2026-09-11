@@ -33,6 +33,36 @@ async function setupWithChores(page) {
 }
 
 test.describe('SW Update Reload', () => {
+  test('first reload uses current styles when the worker cached a previous release', async ({ page }) => {
+    await page.goto('/login');
+    await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+    await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
+
+    // The previous release cached this unversioned URL. Keep its real CSS
+    // and mark it so we can detect which stylesheet the browser applies.
+    await page.evaluate(async () => {
+      const name = (await caches.keys()).find(key => key.startsWith('nabu-static-'));
+      if (!name) throw new Error('The application service worker cache is missing');
+      const cache = await caches.open(name);
+      const previous = await cache.match('/static/css/app.css');
+      if (!previous) throw new Error('The precached application stylesheet is missing');
+      const css = await previous.text();
+      await cache.put('/static/css/app.css', new Response(
+        `${css}\n:root { --nabu-stylesheet-release: previous; }`,
+        { headers: { 'Content-Type': 'text/css' } },
+      ));
+    });
+
+    const stylesheet = page.waitForResponse(response =>
+      new URL(response.url()).pathname === '/static/css/app.css');
+    await page.reload();
+    expect((await stylesheet).fromServiceWorker()).toBe(true);
+    await expect(page.locator('#login-form')).toBeVisible();
+    expect(await page.locator(':root').evaluate(element =>
+      getComputedStyle(element).getPropertyValue('--nabu-stylesheet-release').trim(),
+    )).toBe('');
+  });
+
   test('page renders home grid after initial reload', async ({ page }) => {
     await setupWithChores(page);
     await expect(page.locator('.home-grid')).toBeVisible();

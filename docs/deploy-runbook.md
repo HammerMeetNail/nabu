@@ -55,6 +55,12 @@ curl -sI https://nabu-app.com/static/js/app.js | grep -i cache
 curl -s https://nabu-app.com/login | grep 'app.js'
 # Expected: src="/static/js/app.js?v=0.1.X"
 
+# Confirm the stylesheet URL in the shell carries the same release version.
+# An unversioned URL can reuse old service-worker CSS on the first reload,
+# even when the server and CDN return current assets with no-store headers.
+curl -s https://nabu-app.com/login | grep 'app.css'
+# Expected: href="/static/css/app.css?v=0.1.X"
+
 # Confirm the anonymous root serves the server-rendered marketing page with a
 # canonical URL pointing at the root
 curl -s https://nabu-app.com/ | grep 'rel="canonical"'
