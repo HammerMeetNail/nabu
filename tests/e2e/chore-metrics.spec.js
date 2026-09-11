@@ -43,6 +43,9 @@ test.describe('Chore metrics (Phase 3)', () => {
     await expect(page.locator('.chore-metric-unit-row')).toBeHidden();
     await page.selectOption('#chore-metric-type', 'amount');
     await expect(page.locator('.chore-metric-unit-row')).toBeVisible();
+    for (const unit of ['mcg', 'mg', 'g', 'mL', 'L', 'drops', 'tablets', 'capsules', 'puffs', 'units']) {
+      await expect(page.locator(`#chore-metric-unit-list option[value="${unit}"]`)).toHaveCount(1);
+    }
     await page.fill('#chore-metric-unit', 'g');
     await page.click('[data-action="save-chore"]');
 
@@ -87,7 +90,7 @@ for (const withIndicators of [true, false]) {
     await page.click(`.home-chore-card[data-home-chore-id="${chore.id}"]`);
     const input = page.locator(withIndicators ? '.indicator-volume-select' : '#log-volume');
     if (withIndicators) await page.click('[data-action="toggle-indicator"]');
-    await input.selectOption('25');
+    await input.fill('25');
     await page.click('[data-action="save-log"]');
     await expect(input).toHaveCount(0);
     await page.click('[data-nav="activity"]');
@@ -99,12 +102,12 @@ for (const withIndicators of [true, false]) {
     const unitLabel = page.locator('#log-metric-unit');
     await expect(unitLabel).toBeVisible();
     await expect(unitLabel).toHaveValue('mg');
-    await input.selectOption('30');
+    await input.fill('30');
     await page.click('[data-action="close-sheet"].sheet-cancel-btn');
     await expect(row).toContainText('25 mg');
     await row.click();
     await expect(input).toHaveValue('25');
-    await input.selectOption('30');
+    await input.fill('30');
     await page.click('[data-action="save-log"]');
     await expect(input).toHaveCount(0);
     await page.reload();

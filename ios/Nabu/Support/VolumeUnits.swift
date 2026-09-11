@@ -79,7 +79,17 @@ func formatChoreAmount(_ value: Int, chore: Chore?, volumeUnit: String, metricUn
 
 
 enum AmountUnits {
-    static let common = ["mL", "oz", "mg", "g", "kg", "lb", "tsp", "tbsp", "drops", "tablets", "units", "min"]
+    static let common = ["mcg", "mg", "g", "mL", "L", "drops", "tablets", "capsules", "puffs", "units", "oz", "kg", "lb", "tsp", "tbsp", "min"]
     static func options(_ selected: String) -> [String] { common.contains(selected) || selected.isEmpty ? common : common + [selected] }
-    static func amounts(_ selected: Int?) -> [Int] { Array(Set(Array(0...200) + [250, 500, 750, 1000] + [selected].compactMap { $0 })).sorted() }
+    static func inputText(_ value: Int?, unit: String) -> String {
+        guard let value else { return "" }
+        if unit.lowercased() == "oz" { return String((VolumeUnits.mlToOz(value) * 1000).rounded() / 1000) }
+        return String(value)
+    }
+    static func storedAmount(_ text: String, unit: String) -> Int? {
+        guard let number = Double(text.replacingOccurrences(of: ",", with: ".")), number.isFinite, number >= 0, number <= 100000 else { return nil }
+        if unit.lowercased() == "oz" { return VolumeUnits.ozToMl(number) }
+        guard number.rounded() == number else { return nil }
+        return Int(number)
+    }
 }

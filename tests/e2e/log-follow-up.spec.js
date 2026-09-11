@@ -81,7 +81,7 @@ test.describe('Log follow-up scheduling', () => {
     // Set volume
     const volumeSelect = page.locator('.indicator-volume-select').first();
     if (await volumeSelect.isVisible()) {
-      await volumeSelect.selectOption({ index: 1 });
+      await volumeSelect.fill('5');
     }
 
     // Save the log
@@ -122,7 +122,7 @@ test.describe('Log follow-up scheduling', () => {
     }
     const volSel2 = page.locator('.indicator-volume-select').first();
     if (await volSel2.isVisible()) {
-      await volSel2.selectOption({ index: 1 });
+      await volSel2.fill('5');
     }
 
     // Save with followUpMinutes = 0
@@ -166,7 +166,7 @@ test.describe('Log follow-up scheduling', () => {
     if (!isChipOn) await chip.click();
     const volSel = page.locator('.indicator-volume-select').first();
     if (await volSel.isVisible()) {
-      await volSel.selectOption({ index: 1 });
+      await volSel.fill('5');
     }
 
     await page.click('[data-action="save-log"]');

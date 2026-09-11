@@ -13,7 +13,9 @@ struct LogSheet: View {
     @State private var submissionKey = UUID().uuidString
     @State private var submissionStarted = false
     @State private var recentAmounts: [Int] = []
-    @State private var customAmounts: Set<String> = []
+    @FocusState private var focusedAmount: String?
+    @State private var amountText = ""
+    @State private var indicatorAmountTexts: [String: String] = [:]
     @State private var durationSeconds: Int?
     @State private var didInitialize = false
     @State private var title = ""
@@ -33,7 +35,7 @@ struct LogSheet: View {
     private var isEditing: Bool { log != nil }
     private var volumeUnit: String { selectedUnit.lowercased() == "oz" ? "oz" : "ml" }
     private var isVolume: Bool { chore.hasVolumeML && ["", "ml", "oz"].contains(selectedUnit.lowercased()) }
-    private var amountLabel: String { isVolume ? "Volume" : "Amount (\(selectedUnit))" }
+    private var amountLabel: String { "Amount" }
 
     var body: some View {
         NavigationStack {
@@ -84,10 +86,7 @@ struct LogSheet: View {
                                 .buttonStyle(.plain)
 
                                 if isOn {
-                                    volumePicker(selection: Binding(
-                                        get: { indicatorVolumes[label] ?? nil as Int? },
-                                        set: { indicatorVolumes[label] = $0 }
-                                    ), id: label)
+                                    volumePicker(id: label)
                                     .frame(maxWidth: 140)
                                 } else {
                                     Spacer().frame(width: 140)
@@ -104,7 +103,7 @@ struct LogSheet: View {
                 // Volume-only chores (no indicators, but hasVolumeML)
                 if chore.hasVolumeML && !hasIndicators {
                     Section(amountLabel) {
-                        volumePicker(selection: $volumeML)
+                        volumePicker()
                     }
                 }
 
@@ -227,9 +226,17 @@ struct LogSheet: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("\(chore.icon) \(chore.name)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    if focusedAmount != nil {
+                        Spacer()
+                        Button("Done") { focusedAmount = nil }
+                            .accessibilityIdentifier("amount-keyboard-done")
+                    }
+                }
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
@@ -255,11 +262,20 @@ struct LogSheet: View {
 
     private var recentVolumeValues: [Int] { recentAmounts }
 
-    private func volumePicker(selection: Binding<Int?>, id: String = "plain") -> some View {
-        LogAmountPicker(value: selection, unit: selectedUnit, isVolume: isVolume, custom: Binding(
-            get: { customAmounts.contains(id) },
-            set: { if $0 { customAmounts.insert(id) } else { customAmounts.remove(id) } }
+    private func volumePicker(id: String = "plain") -> some View {
+        TextField("Amount", text: Binding(
+            get: { hasIndicators ? (indicatorAmountTexts[id] ?? "") : amountText },
+            set: { if hasIndicators { indicatorAmountTexts[id] = $0 } else { amountText = $0 } }
         ))
+        .keyboardType(.decimalPad)
+        .focused($focusedAmount, equals: id)
+        .accessibilityLabel("Amount")
+        .accessibilityIdentifier(hasIndicators ? "indicator-amount-input" : "amount-input")
+    }
+
+    private func loadAmountTexts() {
+        amountText = AmountUnits.inputText(volumeML, unit: selectedUnit)
+        indicatorAmountTexts = indicatorVolumes.mapValues { AmountUnits.inputText($0, unit: selectedUnit) }
     }
 
     private var subjectChips: some View {
@@ -313,6 +329,12 @@ struct LogSheet: View {
         )
         indicatorVolumes = selection.indicatorVolumes
         volumeML = selection.volumeML
+        let text = AmountUnits.inputText(ml, unit: selectedUnit)
+        if hasIndicators {
+            for label in selectedIndicators { indicatorAmountTexts[label] = text }
+        } else {
+            amountText = text
+        }
     }
 
     private func startTimer() {
@@ -349,7 +371,6 @@ struct LogSheet: View {
     private func toggleIndicator(_ label: String) {
         if let idx = selectedIndicators.firstIndex(of: label) {
             selectedIndicators.remove(at: idx)
-            indicatorVolumes.removeValue(forKey: label)
         } else {
             selectedIndicators.append(label)
         }
@@ -393,10 +414,18 @@ struct LogSheet: View {
             followUpHours = (totalMins % 1440) / 60
             followUpMins = ((totalMins % 60) / 5) * 5
         }
+        loadAmountTexts()
     }
 
     private func saveLog() {
         guard !isSaving else { return }
+        let texts = hasIndicators ? selectedIndicators.map { indicatorAmountTexts[$0] ?? "" } : [amountText]
+        guard texts.allSatisfy({ $0.isEmpty || AmountUnits.storedAmount($0, unit: selectedUnit) != nil }) else {
+            errorMessage = "Enter a valid amount."
+            return
+        }
+        let volumeML = AmountUnits.storedAmount(amountText, unit: selectedUnit)
+        let indicatorVolumes = indicatorAmountTexts.filter { selectedIndicators.contains($0.key) }.compactMapValues { AmountUnits.storedAmount($0, unit: selectedUnit) }
         let amounts = Array(indicatorVolumes.values) + [volumeML].compactMap { $0 }
         guard amounts.allSatisfy({ (0...100000).contains($0) }), durationSeconds.map({ (0...86400).contains($0) }) ?? true else {
             errorMessage = "Amount must be 0–100000; duration must be 0–86400 seconds."
@@ -549,46 +578,5 @@ struct StarRatingView: View {
         .accessibilityElement()
         .accessibilityLabel("Rating")
         .accessibilityValue(String(format: "%.1f stars", Double(rating) / 10))
-    }
-}
-
-
-private struct LogAmountPicker: View {
-    @Binding var value: Int?
-    let unit: String
-    let isVolume: Bool
-    @Binding var custom: Bool
-    var body: some View {
-        VStack(alignment: .leading) {
-            Picker("Amount", selection: Binding<Int?>(get: { custom ? -1 : value }, set: { next in
-                custom = next == -1
-                if !custom { value = next }
-            })) {
-                Text("--").tag(Int?.none)
-                Text("Other amount…").tag(Optional(-1))
-                if isVolume {
-                    ForEach(VolumeUnits.volumeOptions(unit: unit.lowercased(), selectedML: value), id: \.ml) { option in
-                        Text(option.label).tag(Optional(option.ml))
-                    }
-                } else {
-                    ForEach(AmountUnits.amounts(value), id: \.self) { amount in
-                        Text("\(amount) \(unit)").tag(Optional(amount))
-                    }
-                }
-            }
-            .pickerStyle(.menu)
-            .accessibilityIdentifier(isVolume ? "volume-picker" : "amount-picker")
-            if !custom {
-                Button("Other amount…") { custom = true }
-                    .font(.subheadline).accessibilityIdentifier("custom-amount-button")
-            }
-            if custom {
-                HStack {
-                    TextField("Amount", value: $value, format: .number)
-                        .keyboardType(.numberPad).accessibilityIdentifier("amount-input")
-                    Text(isVolume ? "mL" : unit).accessibilityIdentifier("amount-unit")
-                }
-            }
-        }
     }
 }

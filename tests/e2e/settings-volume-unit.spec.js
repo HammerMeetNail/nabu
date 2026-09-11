@@ -33,7 +33,7 @@ async function setupWithChores(page) {
 }
 
 test.describe("Volume unit preference", () => {
-  test("toggling to oz persists and relabels the Feed Baby volume picker", async ({
+  test("toggling to oz persists and sets the separate Feed Baby unit selector", async ({
     page,
   }) => {
     const { feedBaby } = await setupWithChores(page);
@@ -66,18 +66,23 @@ test.describe("Volume unit preference", () => {
       page.locator("[data-action=\"set-volume-unit\"][data-unit=\"oz\"]")
     ).toHaveClass(/segmented-btn--active/);
 
-    // The Feed Baby log sheet volume picker now shows oz-labeled options,
-    // while option values remain canonical mL.
+    // The Feed Baby amount uses oz for entry and canonical mL for storage.
     await page.click("a[data-nav=\"today\"]");
     await page.waitForSelector(".home-grid", { timeout: 10000 });
     const feedCard = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
     await feedCard.click();
     const sheet = page.locator(".bottom-sheet");
     await expect(sheet).toBeVisible({ timeout: 5000 });
-    // Formula is default-on, so its volume select is already visible.
+    // Formula is default-on, so its amount input is already visible.
     const select = sheet.locator(".indicator-volume-select").first();
     await expect(select).toBeVisible();
-    // At least one option is labeled in oz.
-    await expect(select.locator("option", { hasText: "oz" }).first()).toHaveCount(1);
+    // The amount and unit are separate controls.
+    await expect(select).toHaveAttribute("type", "number");
+    await expect(sheet.locator("#log-metric-unit")).toHaveValue("oz");
+    await select.fill("4");
+    await page.locator('[data-action="save-log"]').click();
+    await expect(sheet).toHaveCount(0);
+    const history=await (await page.request.get("/api/logs/history")).json();
+    expect(history.logs.find(log=>log.choreId===feedBaby.id).indicatorVolumes["🍼 formula"]).toBe(118);
   });
 });

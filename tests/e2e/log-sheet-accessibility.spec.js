@@ -10,7 +10,7 @@ test('a log sheet contains keyboard focus, preserves edits and returns focus on 
   await expect.poll(()=>page.evaluate(()=>!!document.activeElement.closest('.bottom-sheet'))).toBe(true);
   await expect(page.getByLabel('When',{exact:true})).toBeVisible();
   await page.locator('#log-note').fill('Do not replace this draft');
-  await page.locator('#log-volume').selectOption('73');
+  await page.locator('#log-volume').fill('73');
   await page.locator('#log-when').fill('2026-09-08T18:23');
   await page.getByRole('button',{name:'Cancel',exact:true}).focus();
   await page.keyboard.press('Tab');
@@ -49,9 +49,9 @@ for(const unit of ['g','count']) {
     const {chore}=await fixture(page,{metricUnit:unit});
     await page.setViewportSize({width:320,height:740});
     await page.locator(`[data-home-chore-id="${chore.id}"]`).click();
-    await expect(page.getByLabel(`Amount (${unit})`,{exact:true})).toBeVisible();
+    await expect(page.getByLabel('Amount',{exact:true})).toBeVisible();
     await expect(page.locator('#log-metric-unit')).toHaveValue(unit);
-    await page.locator('#log-volume').selectOption('37');
+    await page.locator('#log-volume').fill('37');
     const dims=await page.locator('#log-when').evaluate(el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right,width:el.getBoundingClientRect().width}));
     expect(dims.left).toBeGreaterThanOrEqual(0);expect(dims.right).toBeLessThanOrEqual(320);expect(dims.width).toBeGreaterThan(240);
     await page.locator('[data-action="save-log"]').click();
@@ -105,7 +105,7 @@ test('log controls remain usable at 200 percent page zoom',async({page})=>{
   await page.addStyleTag({content:'html { zoom: 2; }'});
   await page.locator(`[data-home-chore-id="${chore.id}"]`).click();
   await page.getByLabel('When',{exact:true}).fill('2026-09-08T18:23');
-  await page.getByLabel('Amount (g)',{exact:true}).selectOption('37');
+  await page.getByLabel('Amount',{exact:true}).fill('37');
   const bounds=await page.getByLabel('When',{exact:true}).evaluate(el=>({left:el.getBoundingClientRect().left,right:el.getBoundingClientRect().right}));
   expect(bounds.left).toBeGreaterThanOrEqual(0);
   expect(bounds.right).toBeLessThanOrEqual(640);

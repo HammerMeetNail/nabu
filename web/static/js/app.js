@@ -1,11 +1,10 @@
-import { renderAmountOptions } from './schedule.js';
 import { createAppState, resetAuthedState } from "./state.js";
 import { bootstrapIdentity, checkIdentity, changeIdentity, contextSnapshot, contextIsCurrent, resultIsCurrent, ContextChangedError, sameOrigin, storedIdentity, onExternalIdentityChange, clearBrowserIdentity } from "./browser-context.js";
 import { loadActivity, prepareActivity, setActivityChoreFilter } from "./activity-data.js";
 import { captureScope } from "./request-scope.js";
 import { loadStatsPage, loadStatsResource, loadStatsWidgets } from "./stats-data.js";
 import { loadRecentAmounts } from './recent-amounts.js';
-import { formatAmount, entryMetric, entryVolumeUnit } from './metrics.js';
+import { formatAmount, entryMetric, entryVolumeUnit, amountInputValue, storedAmount, amountInputMax } from './metrics.js';
 import { newKey } from "./device-store.js";
 import { morphInnerHTML } from "./morph.js";
 import { createSheetController } from "./sheets.js";
@@ -1789,8 +1788,7 @@ export async function init() {
       if (volumeSelect) {
         const on = actionEl.classList.contains("log-chip--on");
         volumeSelect.style.display = on ? "" : "none";
-        const custom = row.querySelector('.custom-amount-input');
-        if (custom) { custom.hidden = !on || volumeSelect.value !== 'custom'; custom.disabled = custom.hidden; }
+        volumeSelect.disabled = !on;
       }
       return;
     }
@@ -2169,14 +2167,14 @@ export async function init() {
         const indicatorVolumes = {};
         document.querySelectorAll('.indicator-volume-select').forEach(select => {
           const indicator = select.dataset.indicator;
-          const val = select.value === 'custom' ? select.parentElement.querySelector('.custom-amount-input')?.value : select.value;
+          const val = select.value;
           if (indicator && val !== "" && indicators.includes(indicator)) {
-            indicatorVolumes[indicator] = parseInt(val, 10);
+            indicatorVolumes[indicator] = storedAmount(val, document.querySelector('#log-metric-unit')?.value);
           }
         });
         const volumeSelect = document.querySelector('#log-volume');
-        const volumeVal = volumeSelect?.value === 'custom' ? volumeSelect.parentElement.querySelector('.custom-amount-input')?.value : volumeSelect?.value;
-        const volumeML = volumeVal && volumeVal !== "" ? parseInt(volumeVal, 10) : null;
+        const volumeVal = volumeSelect?.value;
+        const volumeML = storedAmount(volumeVal, document.querySelector('#log-metric-unit')?.value);
         const durationInput = document.querySelector('#log-duration');
         const durationSeconds = durationInput?.value ? Number(durationInput.value) : null;
         const memberVal = document.querySelector('#log-member')?.value;
@@ -2717,13 +2715,7 @@ export async function init() {
         const plain = document.querySelector("#log-volume");
         const chore = {...state.chores.find(c => c.id === state.activeSheetData?.choreId), metricUnit:document.querySelector('#log-metric-unit')?.value};
         const setAmount = input => {
-          if (input.tagName === 'SELECT' && ![...input.options].some(o => o.value === String(ml))) {
-            const option = document.createElement('option'); option.value = String(ml);
-            option.textContent = formatAmount(ml,chore || {},chore.metricUnit?.toLowerCase() || state.volumeUnit); input.appendChild(option);
-          }
-          input.value = String(ml);
-          const custom = input.parentElement.querySelector('.custom-amount-input');
-          if (custom) { custom.hidden = true; custom.disabled = true; }
+          input.value = amountInputValue(ml, chore.metricUnit);
         };
         if (plain) setAmount(plain);
         // Fill only per-indicator volume selects whose type is already on.
@@ -3368,26 +3360,15 @@ export async function init() {
   // ── Frequency selector: show/hide weekday pill row ─────────────────────────
   // Uses "change" (not "click") because <select> fires "change" on selection.
   document.addEventListener("change", (e) => {
-    if (e.target.matches('#log-volume, .indicator-volume-select')) {
-      const custom = e.target.parentElement.querySelector('.custom-amount-input');
-      if (custom) { custom.hidden = e.target.value !== 'custom'; custom.disabled = custom.hidden; if (!custom.hidden) custom.focus(); }
-    }
     if (e.target.id === 'log-metric-unit') {
       const draft = state.activeSheetData, unit = e.target.value;
       draft.metricUnit = unit;
       const chore = {...state.chores.find(c => c.id === draft.choreId), metricUnit:unit};
       const sheet = e.target.closest('.bottom-sheet');
-      sheet.querySelectorAll('#log-volume, .indicator-volume-select').forEach(select => {
-        const selected = select.value;
-        select.innerHTML = renderAmountOptions(chore, selected && selected !== 'custom' ? Number(selected) : null, unit.toLowerCase());
-        select.value = selected;
+      sheet.querySelectorAll('#log-volume, .indicator-volume-select').forEach(input => {
+        input.step = unit.toLowerCase() === 'oz' ? 'any' : '1';
+        input.max = amountInputMax(unit);
       });
-      sheet.querySelectorAll('.custom-amount-input').forEach(input => {
-        const label = `Other amount (${['ml', 'oz'].includes(unit.toLowerCase()) ? 'mL' : unit})`;
-        input.setAttribute('aria-label', label); input.placeholder = label;
-      });
-      const label = sheet.querySelector('label[for="log-volume"]');
-      if (label) label.textContent = `Amount (${unit})`;
       draft.recentRequested = false;
       ensureSheetRecentAmounts(document.querySelector('#app'));
       return;

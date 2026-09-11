@@ -101,24 +101,28 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         XCTAssertEqual(app.buttons["log-unit-picker"].label, "Unit, g")
         app.buttons["log-unit-picker"].tap()
         app.buttons["mg"].tap()
-        app.buttons["amount-picker"].tap()
-        app.buttons["5 mg"].tap()
+        app.textFields["amount-input"].tap()
+        app.textFields["amount-input"].typeText("200")
+        app.buttons["log-unit-picker"].tap()
+        app.buttons["L"].tap()
+        XCTAssertEqual(app.textFields["amount-input"].value as? String, "200")
+        app.buttons["amount-keyboard-done"].tap()
         try captureReviewScreen(app, named: "medication-unit-selector")
         let save = app.buttons["save-log-button"]
         reveal(save, in: app)
         save.tap()
         XCTAssertTrue(save.waitForNonExistence(timeout: 5))
         app.tabBars.buttons["Activity"].tap()
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "5 mg")).firstMatch.waitForExistence(timeout: 5))
-        app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "5 mg")).firstMatch.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "200 L")).firstMatch.waitForExistence(timeout: 5))
+        app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "200 L")).firstMatch.tap()
         XCTAssertTrue(app.buttons["log-unit-picker"].waitForExistence(timeout: 5))
-        XCTAssertEqual(app.buttons["log-unit-picker"].label, "Unit, mg")
+        XCTAssertEqual(app.buttons["log-unit-picker"].label, "Unit, L")
         app.buttons["log-unit-picker"].tap()
         app.buttons["g"].tap()
         reveal(save, in: app)
         save.tap()
         XCTAssertTrue(save.waitForNonExistence(timeout: 5))
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "5 g")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "200 g")).firstMatch.waitForExistence(timeout: 5))
 
     }
 
@@ -129,12 +133,12 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         chore.tap()
         XCTAssertTrue(app.buttons["120 g"].waitForExistence(timeout: 5))
         app.buttons["120 g"].tap()
-        app.buttons["custom-amount-button"].tap()
         let amount = app.textFields["amount-input"]
         XCTAssertEqual(amount.value as? String, "120")
         try captureReviewScreen(app, named: "gram-recent")
         amount.tap()
         amount.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3) + "37")
+        app.buttons["amount-keyboard-done"].tap()
         let save = app.buttons["save-log-button"]
         reveal(save, in: app)
         save.tap()
@@ -299,13 +303,11 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         let recent = app.buttons["12 reps"]
         reveal(recent, in: app)
         recent.tap()
-        app.buttons["custom-amount-button"].tap()
         let amount = app.textFields["amount-input"]
         reveal(amount, in: app)
         XCTAssertEqual(amount.value as? String, "12")
-        XCTAssertEqual(app.staticTexts["amount-unit"].label, "reps")
-        XCTAssertTrue(app.staticTexts["amount-unit"].isHittable)
-        XCTAssertFalse(app.buttons["volume-picker"].exists)
+        XCTAssertEqual(app.buttons["log-unit-picker"].label, "Unit, reps")
+        XCTAssertFalse(app.textFields["indicator-amount-input"].exists)
         try captureReviewScreen(app, named: "count-large-text")
         let save = app.buttons["save-log-button"]
         reveal(save, in: app)
@@ -319,7 +321,6 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         for scenario in ["recent-empty", "recent-error"] {
             let app = launch(scenario)
             openChore("Weigh flour", in: app)
-            app.buttons["custom-amount-button"].tap()
             let input = app.textFields["amount-input"]
             reveal(input, in: app)
             XCTAssertTrue(input.isEnabled)
@@ -404,16 +405,17 @@ final class NabuReviewRecoveryUITests: XCTestCase {
     func testPreviousDayVolumePrefillExcludesUnselectedType() {
         let app = launch("midnight")
         openChore("Feed Baby", in: app)
-        let volumes = app.buttons.matching(identifier: "volume-picker")
+        let volumes = app.textFields.matching(identifier: "indicator-amount-input")
         XCTAssertEqual(volumes.count, 1)
-        XCTAssertTrue(volumes.firstMatch.label.contains("120"))
+        XCTAssertEqual(volumes.firstMatch.value as? String, "120")
+        reveal(app.buttons["Breast"], in: app)
         app.buttons["Breast"].tap()
         XCTAssertEqual(volumes.count, 2)
-        XCTAssertTrue(volumes.element(boundBy: 1).label.contains("--"))
+        XCTAssertEqual(volumes.element(boundBy: 1).value as? String, "Amount")
         app.buttons["Cancel"].tap()
         openChore("Feed Baby", in: app)
         XCTAssertEqual(volumes.count, 1)
-        XCTAssertTrue(volumes.firstMatch.label.contains("120"))
+        XCTAssertEqual(volumes.firstMatch.value as? String, "120")
     }
 
     func testRecurringSchedulePersistsThroughReloadAndEditor() throws {
@@ -772,12 +774,12 @@ final class NabuHomeLogSheetUITests: XCTestCase {
 
     func testVolumePickerForFeedBaby() throws {
         openLogSheet(forChore: "Feed Baby")
-        XCTAssertTrue(app.buttons["volume-picker"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.textFields["indicator-amount-input"].waitForExistence(timeout: 3))
     }
 
     func testNoVolumePickerForSimpleChore() throws {
         openLogSheet(forChore: "Feed Cats")
-        XCTAssertFalse(app.buttons["volume-picker"].exists)
+        XCTAssertFalse(app.textFields["indicator-amount-input"].exists)
     }
 
     // MARK: - Helpers
@@ -842,7 +844,7 @@ final class NabuHomeLogFlowUITests: XCTestCase {
     func testLogFeedBabySucceeds() throws {
         openLogSheet(forChore: "Feed Baby")
 
-        let volumeButton = app.buttons["volume-picker"]
+        let volumeButton = app.textFields["indicator-amount-input"]
         XCTAssertTrue(volumeButton.waitForExistence(timeout: 3))
         let recentAmount = app.buttons["120 mL"]
         for _ in 0..<8 {
@@ -851,7 +853,7 @@ final class NabuHomeLogFlowUITests: XCTestCase {
         }
         XCTAssertTrue(recentAmount.exists && recentAmount.isHittable)
         recentAmount.tap()
-        XCTAssertTrue(volumeButton.label.contains("120"))
+        XCTAssertEqual(volumeButton.value as? String, "120")
 
         saveLog()
 

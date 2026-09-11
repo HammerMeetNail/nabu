@@ -6,6 +6,17 @@ import XCTest
 /// identical labels for the same canonical mL values.
 final class VolumeUnitsTests: XCTestCase {
 
+    func testIndependentAmountTextAndStoredUnits() {
+        for unit in ["mcg", "mg", "g", "mL", "L", "drops", "tablets", "capsules", "puffs", "units"] {
+            XCTAssertEqual(AmountUnits.inputText(200, unit: unit), "200")
+            XCTAssertEqual(AmountUnits.storedAmount("200", unit: unit), 200)
+        }
+        XCTAssertEqual(AmountUnits.storedAmount("4", unit: "oz"), 118)
+        XCTAssertEqual(AmountUnits.storedAmount(AmountUnits.inputText(321, unit: "oz"), unit: "oz"), 321)
+        XCTAssertNil(AmountUnits.storedAmount("", unit: "mg"))
+        XCTAssertNil(AmountUnits.storedAmount("-1", unit: "mg"))
+    }
+
     func testCustomAmountUnitsIgnoreLiquidVolumePreference() {
         let chore = Chore(id: 1, householdId: 1, name: "Cat meds", icon: "💊",
                           color: "#A78BFA", sortOrder: 0, category: "", isPredefined: false,

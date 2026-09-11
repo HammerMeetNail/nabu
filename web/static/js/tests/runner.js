@@ -802,8 +802,8 @@ describe("Log sheet: prefill from latest log (type + volume)", () => {
     // Breast chip on with its volume; formula off.
     assert.match(html, /data-label="🤱 breast"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-label="🤱 breast"/);
     assert.match(html, /data-label="🍼 formula"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🍼 formula"/);
-    const breastSel = html.match(/data-indicator="🤱 breast"[\s\S]*?<\/select>/)?.[0] || "";
-    assert.ok(breastSel.includes('<option value="95" selected>95 mL</option>'), "breast volume preselected");
+    const breastSel = html.match(/data-indicator="🤱 breast"[^>]*>/)?.[0] || "";
+    assert.ok(breastSel.includes('value="95"'), "breast volume preselected");
   });
 
   it("does not prefill a volume for a type absent from the previous selection", async () => {
@@ -814,9 +814,9 @@ describe("Log sheet: prefill from latest log (type + volume)", () => {
       // Polluted cache: a stale breast volume the user never selected.
       cachedIndicatorVolumes: { "🍼 formula": 150, "🤱 breast": 150 },
     });
-    const breastSel = html.match(/data-indicator="🤱 breast"[\s\S]*?<\/select>/)?.[0] || "";
-    assert.ok(!breastSel.includes('value="150" selected'), "breast stale volume must not be preselected");
-    assert.match(breastSel, /<option value="" selected>--<\/option>/);
+    const breastSel = html.match(/data-indicator="🤱 breast"[^>]*>/)?.[0] || "";
+    assert.ok(!breastSel.includes('value="150"'), "breast stale volume must not be preselected");
+    assert.match(breastSel, /value=""/);
     // Breast chip must be off.
     assert.match(html, /data-label="🤱 breast"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🤱 breast"/);
   });
@@ -830,8 +830,8 @@ describe("Log sheet: prefill from latest log (type + volume)", () => {
     });
     assert.match(html, /data-label="🍼 formula"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-label="🍼 formula"/);
     assert.match(html, /data-label="🤱 breast"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🤱 breast"/);
-    const formulaSel = html.match(/data-indicator="🍼 formula"[\s\S]*?<\/select>/)?.[0] || "";
-    assert.ok(formulaSel.includes('<option value="" selected>--</option>'), "no volume when nothing cached");
+    const formulaSel = html.match(/data-indicator="🍼 formula"[^>]*>/)?.[0] || "";
+    assert.ok(formulaSel.includes('value=""'), "no volume when nothing cached");
   });
 
   it("never echoes the previous selection for plain chip chores (e.g. Laundry)", async () => {
@@ -1181,7 +1181,7 @@ describe('Scoped chart loading and metric rendering', () => {
     const {renderBabyCareSection} = await import('../stats.js');
     const chore={id:1,name:'Flour',icon:'📝',hasVolumeML:true,metricType:'amount',metricUnit:'g',indicatorLabels:[]};
     const html=renderLogSheet(chore,null,'2026-09-10',[],null,null,{showWhen:true,recentVolumes:[37]});
-    assert.ok(html.includes('Amount (g)'));assert.ok(html.includes('37 g'));assert.ok(!html.includes('37 mL'));
+    assert.ok(html.includes('for="log-volume" class="field-label">Amount</label>'));assert.ok(html.includes('37 g'));assert.ok(!html.includes('37 mL'));
     assert.ok(html.includes('for="log-when"'));
     const rendered=renderBabyCareSection({stats:{babyTimeSeries:{feedBaby:{choreIcon:'<img src=x onerror=alert(1)>',choreName:'Feed Baby',periods:[]}}}});
     assert.ok(!rendered.includes('<img'));assert.ok(rendered.includes('&lt;img'));
@@ -1437,6 +1437,23 @@ describe("Activity amount units", () => {
       { id: 2, indicators: ['Morning'], indicatorVolumes: { Morning: 25 } }, '2026-07-02', [], 1);
     assert.ok(html.includes('value="25"'));
     assert.ok(html.includes('<option value="mg" selected>mg</option>'));
-    assert.ok(html.includes('Other amount…'));
+    assert.ok(html.includes('type="number"'));
+    assert.ok(!html.includes('Other amount…'));
+  });
+});
+
+describe('Independent amount entry', () => {
+  it('keeps units separate and preserves canonical oz compatibility', async () => {
+    const {commonAmountUnits, amountInputValue, storedAmount, amountInputMax} = await import('../metrics.js');
+    for (const unit of ['mcg','mg','g','mL','L','drops','tablets','capsules','puffs','units']) {
+      assert.ok(commonAmountUnits.includes(unit));
+      assert.equal(amountInputValue(200,unit),'200');
+      assert.equal(storedAmount('200',unit),200);
+    }
+    assert.equal(storedAmount('4','oz'),118);
+    assert.equal(storedAmount(amountInputValue(321,'oz'),'oz'),321);
+    assert.equal(storedAmount(amountInputMax('oz'),'oz'),100000);
+    assert.ok(Number(amountInputValue(100000,'oz')) <= amountInputMax('oz'));
+    assert.equal(storedAmount('', 'mg'),null);
   });
 });

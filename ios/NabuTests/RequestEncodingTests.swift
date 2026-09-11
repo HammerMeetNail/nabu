@@ -24,7 +24,7 @@ final class RequestEncodingTests: XCTestCase {
         XCTAssertEqual(body["metricUnit"] as? String, "g")
         XCTAssertNil(body["volumeML"])
         XCTAssertTrue(AmountUnits.options("reps").contains("reps"))
-        for unit in ["mL", "mg", "g"] { XCTAssertTrue(AmountUnits.common.contains(unit)) }
+        for unit in ["mcg", "mg", "g", "mL", "L", "drops", "tablets", "capsules", "puffs", "units"] { XCTAssertTrue(AmountUnits.common.contains(unit)) }
     }
 
     // MARK: - Auth

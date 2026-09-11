@@ -66,7 +66,7 @@ test.describe('Feed Baby volume picker', () => {
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
     await expect(page.locator(formulaVol)).toBeVisible();
 
-    await page.selectOption(formulaVol, '120');
+    await page.fill(formulaVol, '120');
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
@@ -101,7 +101,7 @@ test.describe('Feed Baby volume picker', () => {
     await card.click();
     await expect(page.locator(formulaVol)).toBeVisible({ timeout: 3000 });
 
-    await page.selectOption(formulaVol, '85');
+    await page.fill(formulaVol, '85');
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
@@ -132,7 +132,7 @@ test.describe('Feed Baby volume picker', () => {
     await card.click();
     await expect(page.locator(formulaVol)).toBeVisible({ timeout: 3000 });
     await expect(page.locator(formulaVol)).toHaveValue('');
-    await page.selectOption(formulaVol, '120');
+    await page.fill(formulaVol, '120');
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
@@ -153,7 +153,7 @@ test.describe('Feed Baby volume picker', () => {
     const card = page.locator(`.home-chore-card[data-home-chore-id="${feedBaby.id}"]`);
     await card.click();
     await expect(page.locator(formulaVol)).toBeVisible({ timeout: 3000 });
-    await page.selectOption(formulaVol, '80');
+    await page.fill(formulaVol, '80');
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
@@ -173,7 +173,7 @@ test.describe('Feed Baby volume picker', () => {
 
     await card.click();
     await expect(page.locator(formulaVol)).toBeVisible({ timeout: 3000 });
-    await page.selectOption(formulaVol, '45');
+    await page.fill(formulaVol, '45');
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
@@ -205,7 +205,7 @@ test.describe('Feed Baby volume picker', () => {
     await page.locator('.log-chip').nth(0).click(); // toggle formula off
     await page.locator('.log-chip').nth(1).click(); // toggle breast on
     await expect(page.locator('.log-chip').nth(1)).toHaveClass(/log-chip--on/);
-    await page.selectOption(breastVol, '95');
+    await page.fill(breastVol, '95');
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
@@ -235,7 +235,7 @@ test.describe('Feed Baby volume picker', () => {
     await page.locator('.log-chip').nth(0).click(); // toggle formula off
     await page.locator('.log-chip').nth(1).click(); // toggle breast on
     await expect(page.locator(breastVol)).toBeVisible();
-    await page.selectOption(breastVol, '95');
+    await page.fill(breastVol, '95');
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
@@ -262,7 +262,7 @@ test.describe('Feed Baby volume picker', () => {
     // Log formula only, then reload so the latest log drives the new sheet.
     await card.click();
     await expect(page.locator(formulaVol)).toBeVisible({ timeout: 3000 });
-    await page.selectOption(formulaVol, '150');
+    await page.fill(formulaVol, '150');
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
@@ -341,14 +341,14 @@ test.describe('Feed Baby volume picker', () => {
     const pad = n => String(n).padStart(2, '0');
     const earlier = `${ago.getFullYear()}-${pad(ago.getMonth() + 1)}-${pad(ago.getDate())}T${pad(ago.getHours())}:${pad(ago.getMinutes())}`;
     await page.fill('#log-when', earlier);
-    await page.selectOption(formulaVol, '150');
+    await page.fill(formulaVol, '150');
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
     await expect(page.locator('#toast-container .toast')).not.toBeVisible({ timeout: 10000 });
 
     await card.click();
     await expect(page.locator(formulaVol)).toBeVisible({ timeout: 3000 });
-    await page.selectOption(formulaVol, '30');
+    await page.fill(formulaVol, '30');
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
@@ -426,12 +426,12 @@ test.describe('Feed Baby food type indicators', () => {
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
 
     // Formula is default-on; set its volume
-    await page.selectOption(formulaVol, '95');
+    await page.fill(formulaVol, '95');
 
     // Toggle breast on and set its volume too
     await page.locator('.log-chip').nth(1).click();
     await expect(page.locator(breastVol)).toBeVisible();
-    await page.selectOption(breastVol, '45');
+    await page.fill(breastVol, '45');
 
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
@@ -452,7 +452,7 @@ test.describe('Feed Baby food type indicators', () => {
     await tapFeedBaby(page);
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
 
-    await page.selectOption(formulaVol, '120');
+    await page.fill(formulaVol, '120');
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
@@ -471,10 +471,10 @@ test.describe('Feed Baby food type indicators', () => {
     // First log: formula + breast, both with volumes
     await tapFeedBaby(page);
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
-    await page.selectOption(formulaVol, '100');
+    await page.fill(formulaVol, '100');
     await page.locator('.log-chip').nth(1).click(); // toggle breast on
     await expect(page.locator(breastVol)).toBeVisible();
-    await page.selectOption(breastVol, '50');
+    await page.fill(breastVol, '50');
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
@@ -494,7 +494,7 @@ test.describe('Feed Baby food type indicators', () => {
     await page.locator('.log-chip').nth(1).click(); // toggle breast off
     await expect(page.locator(breastVol)).toBeHidden();
     // Only set formula volume; do not touch breast at all
-    await page.selectOption(formulaVol, '75');
+    await page.fill(formulaVol, '75');
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
@@ -531,8 +531,8 @@ test.describe('History indicator icons', () => {
     // Toggle breast chip and set volumes
     await page.locator('.log-chip').nth(1).click();
     await expect(page.locator(breastVol)).toBeVisible();
-    await page.selectOption(formulaVol, '80');
-    await page.selectOption(breastVol, '60');
+    await page.fill(formulaVol, '80');
+    await page.fill(breastVol, '60');
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
 
@@ -586,7 +586,7 @@ test.describe('History indicator icons', () => {
     await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
 
     await page.locator('.log-chip').nth(1).click();
-    await page.selectOption(formulaVol, '90');
+    await page.fill(formulaVol, '90');
 
     await page.click('[data-action="save-log"]');
     await expect(page.locator('#toast-container .toast')).toBeVisible({ timeout: 5000 });
