@@ -1,0 +1,10 @@
+[Unit]
+Description=Nabu Recovery freshness and archive check
+
+[Timer]
+OnBootSec=2min
+OnUnitInactiveSec=60s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

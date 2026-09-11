@@ -530,7 +530,7 @@ func (h *StatsHandler) ChoreSummary(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "chore not found")
 			return
 		}
-		writeError(w, http.StatusNotFound, "chore not found")
+		writeServerError(w, "failed to load chore summary", err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"summary": summary})

@@ -66,6 +66,7 @@ struct User: Codable, Identifiable, Equatable {
     let emailVerified: Bool
     let role: String
     let createdAt: Date
+    var hasPassword: Bool? = nil
 }
 
 // MARK: - Household
@@ -727,6 +728,7 @@ struct ScheduleForDateResponse: Codable {
 struct NotificationsResponse: Codable {
     let notifications: [AppNotification]
     let unreadCount: Int
+    var nextCursor: String? = nil
 }
 
 struct NotificationPrefsResponse: Codable {
@@ -809,3 +811,5 @@ struct DayNotesResponse: Codable {
 struct DayNoteResponse: Codable {
     let note: DayNote
 }
+
+struct RecentAmountsResponse: Codable { let amounts: [Int] }

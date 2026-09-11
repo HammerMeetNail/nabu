@@ -8,9 +8,11 @@ struct TimerChipView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var environment: AppEnvironment
     @State private var isLogging = false
+    @State private var errorMessage: String?
 
     var body: some View {
         if let timer = state.activeTimer {
+            VStack {
             Button {
                 stopAndLog(timer)
             } label: {
@@ -24,7 +26,7 @@ struct TimerChipView: View {
                         Text(DurationTimer.formatElapsed(DurationTimer.elapsedSeconds(timer, now: context.date)))
                             .font(.subheadline.monospacedDigit())
                     }
-                    Text("Stop & log")
+                    Text(timer.stoppedAt == nil ? "Stop & log" : "Retry save")
                         .font(.caption)
                         .fontWeight(.semibold)
                         .padding(.horizontal, 8)
@@ -42,18 +44,24 @@ struct TimerChipView: View {
             .buttonStyle(.plain)
             .disabled(isLogging)
             .accessibilityIdentifier("timer-chip")
-            .accessibilityLabel("Stop timer and log \(timer.choreName)")
+            .accessibilityLabel(timer.stoppedAt == nil ? "Stop timer and log \(timer.choreName)" : "Retry saving \(timer.choreName)")
+            if let errorMessage { Text(errorMessage).font(.caption).foregroundStyle(.red) }
+            }
         }
     }
 
     private func stopAndLog(_ timer: ActiveTimer) {
         guard !isLogging else { return }
+        let owner = state.revision
+        guard timer.origin == environment.apiClient.identity.snapshot.origin else { return }
+        var stopped = timer
+        if stopped.stoppedAt == nil { stopped.stoppedAt = Date() }
+        guard DurationTimer.save(stopped) else { errorMessage = APIError.saveNotDurable.errorDescription; return }
+        state.activeTimer = stopped
         isLogging = true
-        let durationSeconds = DurationTimer.elapsedSeconds(timer)
-        let completedAt = ISO8601DateFormatter().string(from: Date())
-        // Clear the timer immediately so a double-tap can't double-log.
-        state.activeTimer = nil
-        DurationTimer.save(nil)
+        errorMessage = nil
+        let durationSeconds = DurationTimer.elapsedSeconds(stopped)
+        let completedAt = ISO8601DateFormatter().string(from: stopped.stoppedAt!)
 
         let logStore = LogStore(api: environment.apiClient)
         let userId = state.user?.id
@@ -66,8 +74,15 @@ struct TimerChipView: View {
                     choreId: timer.choreId,
                     completedAt: completedAt,
                     userId: userId,
-                    durationSeconds: durationSeconds
+                    durationSeconds: durationSeconds,
+                    idempotencyKey: stopped.idempotencyKey
                 )
+                guard state.revision == owner else { return }
+                guard DurationTimer.save(nil, origin: stopped.origin) else {
+                    errorMessage = "Saved, but timer cleanup failed. Retry is safe."
+                    return
+                }
+                state.activeTimer = nil
                 switch outcome {
                 case .created(let response):
                     state.todayLogs.insert(response.log, at: 0)
@@ -78,11 +93,8 @@ struct TimerChipView: View {
                     state.pendingLogs.insert(row, at: 0)
                 }
             } catch {
-                // Server rejected the log — restore the timer so the elapsed
-                // time isn't silently lost.
-                let restored = timer
-                state.activeTimer = restored
-                DurationTimer.save(restored)
+                guard state.revision == owner else { return }
+                errorMessage = (error as? APIError)?.errorDescription ?? "Could not confirm the save. Retry is safe."
             }
         }
     }

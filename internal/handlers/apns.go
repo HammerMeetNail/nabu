@@ -63,6 +63,7 @@ func (h *APNsHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	err := h.store.RegisterDevice(r.Context(), apns.Device{
 		UserID:      user.ID,
+		SessionHash: user.SessionHash,
 		Token:       req.Token,
 		Environment: req.Environment,
 		BundleID:    req.BundleID,
@@ -97,7 +98,7 @@ func (h *APNsHandler) Unregister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.store.UnregisterDevice(r.Context(), user.ID, req.Token); err != nil {
+	if err := h.store.UnregisterDevice(r.Context(), user.ID, req.Token, user.SessionHash); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to unregister device")
 		return
 	}

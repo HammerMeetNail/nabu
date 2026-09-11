@@ -14,18 +14,21 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/account"
 	"github.com/HammerMeetNail/nabu/internal/apns"
 	"github.com/HammerMeetNail/nabu/internal/audit"
 	"github.com/HammerMeetNail/nabu/internal/auth"
+	"github.com/HammerMeetNail/nabu/internal/background"
 	"github.com/HammerMeetNail/nabu/internal/chore"
 	"github.com/HammerMeetNail/nabu/internal/config"
 	"github.com/HammerMeetNail/nabu/internal/database"
 	"github.com/HammerMeetNail/nabu/internal/daynote"
 	"github.com/HammerMeetNail/nabu/internal/handlers"
 	"github.com/HammerMeetNail/nabu/internal/household"
+	"github.com/HammerMeetNail/nabu/internal/lifecycle"
 	logsvc "github.com/HammerMeetNail/nabu/internal/log"
 	"github.com/HammerMeetNail/nabu/internal/mail"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
@@ -40,9 +43,11 @@ import (
 )
 
 type Server struct {
-	handler  http.Handler
-	cancel   context.CancelFunc
-	limiters []*middleware.RateLimiter
+	handler    http.Handler
+	cancel     context.CancelFunc
+	background *sync.WaitGroup
+	limiters   []*middleware.RateLimiter
+	deliveryDB *sql.DB
 }
 
 // Close releases background resources started by the server: it cancels the
@@ -52,8 +57,14 @@ func (s *Server) Close() error {
 	if s.cancel != nil {
 		s.cancel()
 	}
+	if s.background != nil {
+		s.background.Wait()
+	}
 	for _, l := range s.limiters {
 		l.Stop()
+	}
+	if s.deliveryDB != nil {
+		return s.deliveryDB.Close()
 	}
 	return nil
 }
@@ -63,6 +74,33 @@ func NewServer(cfg config.Config) http.Handler {
 }
 
 func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
+	srv, err := newServerWithDB(cfg, db, nil)
+	if err != nil {
+		panic("could not initialize database delivery pool")
+	}
+	return srv
+}
+
+func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.QueryMetrics) (http.Handler, error) {
+	if err := cfg.Validate(); err != nil {
+		panic(err) // construction error, before any workers are started
+	}
+	if cfg.IsProduction() && db == nil {
+		panic("production requires an open database")
+	}
+	var deliveryDB *sql.DB
+	var deliveryMetrics *database.QueryMetrics
+	if db != nil {
+		initCtx, initCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		var err error
+		deliveryDB, deliveryMetrics, err = database.ForkDeliveryPool(initCtx, db)
+		initCancel()
+		if err != nil {
+			return nil, err
+		}
+		db.SetMaxOpenConns(cfg.DBMaxOpenConns - database.DeliveryConnections)
+		db.SetMaxIdleConns(min(cfg.DBMaxIdleConns, cfg.DBMaxOpenConns-database.DeliveryConnections))
+	}
 	// Cancelable context so the reminder scheduler goroutine stops on shutdown
 	// (Server.Close calls cancel).
 	ctx, cancel := context.WithCancel(context.Background())
@@ -98,6 +136,8 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		pushStore = push.NewMemoryStore()
 		dayNoteStore = daynote.NewMemoryStore()
 		apnsStore = apns.NewMemoryStore()
+		pushStore.(*push.MemoryStore).BindSessions(authStore.(*auth.MemoryStore))
+		apnsStore.(*apns.MemoryStore).BindSessions(authStore.(*auth.MemoryStore))
 	}
 
 	authService := auth.NewService(authStore)
@@ -132,7 +172,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	logService := logsvc.NewService(logStore)
 	logService.SetAuditLogger(auditLog)
 	logHandler := handlers.NewLogHandler(logService).WithChoreStore(choreStore, householdStore)
-	notifService := notification.NewService(notifStore)
+	notifService := notification.NewService(notifStore).WithAuthorization(householdStore, choreStore)
 	notifHandler := handlers.NewNotificationHandler(notifService)
 	logHandler.WithNotification(notifService, choreStore, householdStore)
 	householdHandler.WithNotification(notifService, householdStore)
@@ -158,6 +198,25 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		reminderStore = reminder.NewMemoryStore()
 	}
 
+	if db == nil {
+		accountService.SetMemoryCleanup(func(userID int64, householdIDs []int64) {
+			d := lifecycle.NewDeletion(userID, householdIDs)
+			// Collect dependent IDs under each domain mutex, then clean dependents.
+			for _, store := range []any{choreStore, logStore, scheduleStore, reminderStore, notifStore, pushStore, apnsStore, userPrefsStore, dayNoteStore} {
+				store.(interface{ CleanupAccount(*lifecycle.Deletion) }).CleanupAccount(d)
+			}
+		})
+		householdStore.(*household.MemoryStore).SetMembershipCleanup(func(userID, householdID int64, member bool) {
+			chores, _ := choreStore.ListChores(context.Background(), householdID)
+			ids := make([]int64, 0, len(chores))
+			for _, ch := range chores {
+				ids = append(ids, ch.ID)
+			}
+			scheduleStore.(*schedule.MemoryStore).MembershipChanged(userID, householdID, member)
+			reminderStore.(*reminder.MemoryStore).MembershipChanged(userID, ids, member)
+		})
+	}
+
 	var vapidSigner *push.VAPIDSigner
 	if cfg.VAPIDPublicKey != "" && cfg.VAPIDPrivateKey != "" {
 		var err error
@@ -168,7 +227,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		}
 	}
 	pushService := push.NewService(pushStore, vapidSigner)
-	pushHandler := handlers.NewPushHandler(pushStore)
+	pushHandler := handlers.NewPushHandler(pushStore).WithChores(choreStore)
 	pushHandler.SetAuditLogger(auditLog)
 
 	// APNs sender for the native iOS app; a graceful no-op unless all four
@@ -191,17 +250,55 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		notifService.WithPushSender(pushFanout)
 	}
 
-	reminderSched := reminder.NewScheduler(
-		reminderStore, scheduleStore, scheduleService,
-		notifStore, choreStore, householdStore, userPrefsStore, pushFanout,
-	)
+	// Background tasks use their reserved pool for every nested store and
+	// provider lookup. HTTP push-test/registration requests retain the HTTP pool.
+	deliveryHouseholds, deliveryChores, deliveryNotifs := householdStore, choreStore, notifStore
+	deliveryReminders, deliverySchedules, deliveryPrefs := reminderStore, scheduleStore, userPrefsStore
+	deliveryPush := pushFanout
+	if deliveryDB != nil {
+		deliveryHouseholds = household.NewPostgresStore(deliveryDB)
+		deliveryChores = chore.NewPostgresStore(deliveryDB)
+		deliveryNotifs = notification.NewPostgresStore(deliveryDB)
+		deliveryReminders = reminder.NewPostgresStore(deliveryDB)
+		deliverySchedules = schedule.NewPostgresStore(deliveryDB)
+		deliveryPrefs = userprefs.NewPostgresStore(deliveryDB)
+		var channels []push.DataSender
+		if vapidSigner != nil {
+			channels = append(channels, push.NewService(push.NewPostgresStore(deliveryDB), vapidSigner))
+		}
+		if client := newAPNsClient(cfg, apns.NewPostgresStore(deliveryDB)); client != nil {
+			channels = append(channels, client)
+		}
+		deliveryPush = push.NewFanoutSender(channels...)
+	}
+	deliveryNotifications := notification.NewService(deliveryNotifs).WithAuthorization(deliveryHouseholds, deliveryChores)
+	if len(pushChannels) > 0 {
+		deliveryNotifications.WithPushSender(deliveryPush)
+	}
+	logHandler.WithNotification(deliveryNotifications, deliveryChores, deliveryHouseholds)
+	householdHandler.WithNotification(deliveryNotifications, deliveryHouseholds)
+	reminderSched := reminder.NewScheduler(deliveryReminders, deliverySchedules, scheduleService,
+		deliveryNotifs, deliveryChores, deliveryHouseholds, deliveryPrefs, deliveryPush)
 	// Guard the scheduler with a Postgres advisory lock so that running multiple
 	// app instances does not emit duplicate reminders (only the leader ticks).
 	// In-memory mode (db == nil) is single-instance, so no lock is needed.
 	if db != nil {
-		reminderSched.SetLeaderLock(reminder.NewPostgresAdvisoryLock(db, reminder.LeaderLockKey))
+		reminderSched.SetLeaderLock(reminder.NewPostgresAdvisoryLock(deliveryDB, reminder.LeaderLockKey))
+		reminderSched.SetQueryCounter(func() uint64 { return deliveryMetrics.Snapshot().Count })
 	}
-	go reminderSched.Start(ctx)
+	var backgroundWG sync.WaitGroup
+	if db != nil {
+		backgroundWG.Add(1)
+		go func() { defer backgroundWG.Done(); queryMetrics.MonitorPool(ctx, db, nil) }()
+		backgroundWG.Add(1)
+		go func() { defer backgroundWG.Done(); deliveryMetrics.MonitorPoolNamed(ctx, deliveryDB, nil, "delivery") }()
+	}
+	notificationWork := background.New(ctx, &backgroundWG, 2, 64)
+	logHandler.SetBackground(ctx, notificationWork.Submit)
+	householdHandler.SetBackground(ctx, notificationWork.Submit)
+	backgroundWG.Add(2)
+	go func() { defer backgroundWG.Done(); reminderSched.Start(ctx) }()
+	go func() { defer backgroundWG.Done(); authService.RunMailOutbox(ctx) }()
 
 	reminderHandler := handlers.NewChoreReminderPrefsHandler(reminderStore).WithChoreStore(choreStore).WithHouseholdStore(householdStore)
 	userPrefsService := userprefs.NewService(userPrefsStore)
@@ -216,9 +313,12 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	hasTrustedProxy := strings.TrimSpace(cfg.TrustedProxyCIDRs) != ""
 
 	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitAuthMax, time.Minute)
-	rateLimiter.SetTrustedProxies(cfg.TrustedProxyCIDRs)
+	rateLimiter.SetMaxClients(cfg.RateLimitMaxClients)
+	if err := rateLimiter.SetTrustedProxies(cfg.TrustedProxyCIDRs); err != nil {
+		panic("invalid trusted proxy configuration")
+	}
 
-	// Permissive global backstop covering all /api/ routes (per IP, per path).
+	// Aggregate per-IP backstop covering all /api/ routes.
 	// It is only constructed/wired when TRUSTED_PROXY_CIDRS is configured: a
 	// per-IP global limiter is only safe when the deployment can attribute a
 	// real client IP, which behind a reverse proxy/tunnel requires trusting it.
@@ -226,7 +326,10 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	var globalRateLimiter *middleware.RateLimiter
 	if hasTrustedProxy {
 		globalRateLimiter = middleware.NewRateLimiter(cfg.RateLimitGlobalMax, time.Minute)
-		globalRateLimiter.SetTrustedProxies(cfg.TrustedProxyCIDRs)
+		globalRateLimiter.SetMaxClients(cfg.RateLimitMaxClients)
+		if err := globalRateLimiter.SetTrustedProxies(cfg.TrustedProxyCIDRs); err != nil {
+			panic("invalid trusted proxy configuration")
+		}
 	}
 
 	// Tighter per-IP limiter on household joins: invite codes are self-serve
@@ -235,22 +338,17 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	// legitimate multi-code joins (several family members, one network)
 	// working while stopping brute-force sweeps.
 	joinLimiter := middleware.NewRateLimiter(cfg.RateLimitJoinMax, time.Minute)
-	joinLimiter.SetTrustedProxies(cfg.TrustedProxyCIDRs)
-
-	// Both rate limiting and audit-log IP attribution depend on
-	// TRUSTED_PROXY_CIDRS being set: behind a reverse proxy/tunnel, an empty
-	// value means every request appears to originate from the proxy's IP,
-	// collapsing per-client limits into one shared bucket and rendering audit
-	// IPs meaningless. Warn loudly so this isn't discovered the hard way.
-	if cfg.IsProduction() && !hasTrustedProxy {
-		log.Printf("warning: APP_ENV=production but TRUSTED_PROXY_CIDRS is empty; " +
-			"audit-log client IPs will be based on the proxy address and the global " +
-			"/api rate-limit backstop is disabled. Set TRUSTED_PROXY_CIDRS to your " +
-			"proxy/tunnel CIDR ranges.")
+	joinLimiter.SetMaxClients(cfg.RateLimitMaxClients)
+	if err := joinLimiter.SetTrustedProxies(cfg.TrustedProxyCIDRs); err != nil {
+		panic("invalid trusted proxy configuration")
 	}
 
 	mux.HandleFunc("/health", handlers.Health)
-	mux.HandleFunc("/ready", handlers.Ready)
+	var probe func(context.Context) error
+	if db != nil {
+		probe = db.PingContext
+	}
+	mux.HandleFunc("/ready", handlers.Readiness(probe))
 
 	mux.HandleFunc("/api/auth/register", method(http.MethodPost, authHandler.Register))
 	mux.HandleFunc("/api/auth/login", method(http.MethodPost, authHandler.Login))
@@ -292,7 +390,8 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
-	mux.HandleFunc("/api/household/data", method(http.MethodGet, middleware.RequireAuth(exportHandler.Data)))
+	exportGate := handlers.NewExportGate()
+	mux.HandleFunc("/api/household/data", method(http.MethodGet, middleware.RequireAuth(exportGate.Wrap(exportHandler.Data))))
 	mux.HandleFunc("/api/household/invites", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -373,8 +472,9 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	mux.HandleFunc("/api/logs/week", method(http.MethodGet, middleware.RequireAuth(logHandler.Week)))
 	mux.HandleFunc("/api/logs/month", method(http.MethodGet, middleware.RequireAuth(logHandler.Month)))
 	mux.HandleFunc("/api/logs/history", method(http.MethodGet, middleware.RequireAuth(logHandler.History)))
-	mux.HandleFunc("/api/logs/export", method(http.MethodGet, middleware.RequireAuth(logHandler.Export)))
+	mux.HandleFunc("/api/logs/export", method(http.MethodGet, middleware.RequireAuth(exportGate.Wrap(logHandler.Export))))
 	mux.HandleFunc("/api/logs/latest-per-chore", method(http.MethodGet, middleware.RequireAuth(logHandler.LatestPerChore)))
+	mux.HandleFunc("/api/logs/recent-amounts", method(http.MethodGet, middleware.RequireAuth(logHandler.RecentAmounts)))
 
 	mux.HandleFunc("/api/notifications", method(http.MethodGet, middleware.RequireAuth(notifHandler.List)))
 	mux.HandleFunc("/api/notifications/read-all", method(http.MethodPost, middleware.RequireAuth(notifHandler.MarkAllRead)))
@@ -409,6 +509,7 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 	mux.HandleFunc("/api/mobile/apns/unregister", method(http.MethodPost, middleware.RequireAuth(apnsHandler.Unregister)))
 
 	mux.HandleFunc("/api/push/subscribe", method(http.MethodPost, middleware.RequireAuth(pushHandler.Subscribe)))
+	mux.HandleFunc("/api/push/identity", method(http.MethodGet, middleware.RequireAuth(pushHandler.Identity)))
 	mux.HandleFunc("/api/push/unsubscribe", method(http.MethodPost, middleware.RequireAuth(pushHandler.Unsubscribe)))
 
 	mux.HandleFunc("/api/stats/leaderboard", method(http.MethodGet, middleware.RequireAuth(statsHandler.Leaderboard)))
@@ -568,10 +669,19 @@ func NewServerWithDB(cfg config.Config, db *sql.DB) http.Handler {
 		limiters = append(limiters, globalRateLimiter)
 	}
 
-	return &Server{handler: handler, cancel: cancel, limiters: limiters}
+	return &Server{handler: handler, cancel: cancel, limiters: limiters, background: &backgroundWG, deliveryDB: deliveryDB}, nil
 }
 
 func BuildServer(ctx context.Context, cfg config.Config) (http.Handler, io.Closer, error) {
+	return buildServer(ctx, cfg, database.OpenMeasured)
+}
+
+type databaseOpener func(string, database.PoolOptions) (*sql.DB, *database.QueryMetrics, error)
+
+func buildServer(ctx context.Context, cfg config.Config, open databaseOpener) (http.Handler, io.Closer, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, nil, err
+	}
 	if cfg.DatabaseURL == "" {
 		srv := NewServer(cfg)
 		// The *Server implements io.Closer (stops the scheduler + rate-limiter
@@ -579,7 +689,8 @@ func BuildServer(ctx context.Context, cfg config.Config) (http.Handler, io.Close
 		return srv, srv.(io.Closer), nil
 	}
 
-	db, err := database.Open(cfg.DatabaseURL)
+	httpConnections := cfg.DBMaxOpenConns - database.DeliveryConnections
+	db, queryMetrics, err := open(cfg.DatabaseURL, database.PoolOptions{MaxOpen: httpConnections, MaxIdle: min(cfg.DBMaxIdleConns, httpConnections)})
 	if err != nil {
 		return nil, nil, err
 	}
@@ -588,7 +699,11 @@ func BuildServer(ctx context.Context, cfg config.Config) (http.Handler, io.Close
 		return nil, nil, err
 	}
 
-	srv := NewServerWithDB(cfg, db)
+	srv, err := newServerWithDB(cfg, db, queryMetrics)
+	if err != nil {
+		_ = db.Close()
+		return nil, nil, err
+	}
 	return srv, multiCloser{srv.(io.Closer), db}, nil
 }
 

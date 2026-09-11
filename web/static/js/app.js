@@ -1,8 +1,18 @@
 import { createAppState, resetAuthedState } from "./state.js";
+import { bootstrapIdentity, checkIdentity, changeIdentity, contextSnapshot, contextIsCurrent, resultIsCurrent, ContextChangedError, sameOrigin, storedIdentity, onExternalIdentityChange, clearBrowserIdentity } from "./browser-context.js";
+import { loadActivity, prepareActivity, setActivityChoreFilter } from "./activity-data.js";
+import { captureScope } from "./request-scope.js";
+import { loadStatsPage, loadStatsResource, loadStatsWidgets } from "./stats-data.js";
+import { loadRecentAmounts } from './recent-amounts.js';
+import { formatAmount } from './metrics.js';
+import { newKey } from "./device-store.js";
 import { morphInnerHTML } from "./morph.js";
+import { createSheetController } from "./sheets.js";
 import { apiMe, apiFetch } from "./api.js";
-import { replayQueue, queuedCount } from "./offline-queue.js";
-import { escapeHTML, localDateStr, formatVolume } from "./utils.js";
+import { loadNotificationPage, mutateNotification } from "./notification-data.js";
+import { renderExports, downloadCSV } from "./exports.js";
+import { replayQueue, queuedLogs, discardQueuedLog } from "./offline-queue.js";
+import { escapeHTML, localDateStr, shiftDateStr, formatVolume } from "./utils.js";
 import {
   loadSession,
   handleLogin,
@@ -21,15 +31,15 @@ import {
   renderResetPasswordView,
 } from "./auth.js";
 import { loadHousehold, listHouseholds, activateHousehold, createHousehold, updateHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, transferOwnership, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
-import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, loadHistory, loadMoreHistory, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
+import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
 import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS, choreHasAnalytics, renderWidgetWizard, widgetGrain, loadChoreSummary, choreAnalyticsGrain } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
-import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet } from "./schedule.js";
+import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet, renderRecentAmounts } from "./schedule.js";
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone, saveVolumeUnit, saveStatsWidgets, saveHideNotificationBadge } from "./preferences.js";
-import { loadTimer, saveTimer, elapsedSeconds, formatElapsed } from "./timer.js";
+import { loadTimer, startTimer, stopTimer, clearFinishedTimer, elapsedSeconds, formatElapsed } from "./timer.js";
 import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeManageView, renderConfirmRemoveFromHomeSheet, refreshHomeCardTimes } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
-import { loadNotifications, markRead, markAllRead, deleteNotification, renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
+import { renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
 import { renderScheduleTab } from "./schedule-tab.js";
 import { renderProfileSheet } from "./profile.js";
 
@@ -81,7 +91,7 @@ function readSheetFreq(prefix, date) {
   }
   const endInput = document.querySelector(`#${prefix}-end-date`);
   if (endInput?.value) {
-    payload.recurrenceEnd = new Date(endInput.value + "T00:00:00").toISOString();
+    payload.recurrenceEnd = endInput.value + "T00:00:00Z";
   } else if (endInput) {
     payload.recurrenceEnd = null;
   }
@@ -89,6 +99,38 @@ function readSheetFreq(prefix, date) {
 }
 
 let state;
+let sheetController = null, renderedLogDraft = null;
+let notifPollTimer = null;
+let _lastHHRefresh = 0;
+let activeExport = null;
+function startNotifPoll() {
+    if (notifPollTimer) clearInterval(notifPollTimer);
+    notifPollTimer = null;
+    if (!state.user) return;
+    notifPollTimer = setInterval(() => {
+      if (!document.hidden && state.user && !sessionCheck) {
+        // Keep a reader's loaded pages stable; the open panel offers Refresh.
+        if (document.querySelector("#notif-panel-container")?.hidden !== false) void loadNotifData();
+        if (state.household) {
+          const hasJoinNotif = (state.notifications || []).some(n => n.type === 'household_joined');
+          const now = Date.now();
+          if (hasJoinNotif || now - _lastHHRefresh > 300000) {
+            _lastHHRefresh = now;
+            loadHouseholdData();
+          }
+        }
+      }
+    }, 30000);
+  }
+
+
+// Capture ownership when a continuation is attached, before its request settles.
+function owned(callback) { return captureScope(state).guard(callback); }
+async function withCurrentContext(promise, scope) {
+  const result = await promise;
+  if (!scope.current()) throw new ContextChangedError();
+  return result;
+}
 
 let lastSWUpdateCheck = 0;
 const SW_UPDATE_CHECK_MS = 60000;
@@ -103,6 +145,7 @@ function maybeCheckSWUpdate() {
 
 export function render(root) {
   maybeCheckSWUpdate();
+  sheetController?.beforeRender();
 
   const route = state.currentRoute || window.location.pathname || "/";
   // Effective route for tab highlighting: unknown/auth-only paths fall back to
@@ -111,17 +154,23 @@ export function render(root) {
   const tabRoute = knownTabRoutes.includes(route) ? route : "/";
   let html = "";
 
-  if (route.startsWith("/verify-email")) {
+  if (state.logoutPending) {
+    html = `<div class="auth-card" role="status"><h1>Sign-out is unfinished</h1><p>Your data is hidden on this device. Reconnect and retry to revoke the server session.</p><button class="btn btn-primary btn-block" data-action="retry-logout" ${state.logoutBusy ? "disabled" : ""}>${state.logoutBusy ? "Signing out…" : "Retry sign-out"}</button>${state.logoutError ? `<p class="form-error">${escapeHTML(state.logoutError)}</p>` : ""}</div>`;
+  } else if (state.sessionUnconfirmed) {
+    html = '<div class="auth-card" role="status"><h1>Check your session</h1><p>Reconnect to confirm your account before continuing.</p><button class="btn btn-primary" data-action="retry-session">Retry</button></div>';
+  } else if (state.transitioning) {
+    html = `<div class="auth-card" role="status">Loading your household…</div>`;
+  } else if (route.startsWith("/verify-email")) {
     const url = new URL(window.location.href);
     const token = url.searchParams.get("token");
     if (token) {
-      html = renderVerifyEmailView(true);
+      html = renderVerifyEmailView(state._emailVerificationStatus || "pending");
       if (!state._emailVerified) {
         state._emailVerified = true;
         verifyEmail(token);
       }
     } else {
-      html = renderVerifyEmailView(false);
+      html = renderVerifyEmailView("missing");
     }
   } else if (route.startsWith("/magic-login")) {
     const url = new URL(window.location.href);
@@ -191,6 +240,16 @@ export function render(root) {
     }
   }
 
+  if (state.user && !state.transitioning && state.pendingLogs?.length) html = renderPendingWork() + html;
+  html = `<div class="view-root">${html}</div>`;
+
+  // Keep a log's live form intact through unrelated data refreshes. Inputs,
+  // selected chips, focus and a frozen retry belong to this particular draft.
+  const draft = ["log", "home-log"].includes(state.activeSheet) ? state.activeSheetData : null;
+  const retainedSheet = draft && draft === renderedLogDraft ? root.querySelector('.bottom-sheet') : null;
+  const retainedFocus = retainedSheet?.contains(document.activeElement) ? document.activeElement : null;
+  if (retainedSheet) retainedSheet.replaceWith(retainedSheet.cloneNode(false));
+
   // Preserve the day-hour-grid-wrapper scroll position across re-renders.
   // morph.js reuses DOM nodes by position, but template whitespace differences
   // (e.g. when a sheet opens/closes) can cause it to destroy and recreate the
@@ -209,9 +268,15 @@ export function render(root) {
   } else {
     morphInnerHTML(root, html);
   }
+  if (retainedSheet) root.querySelector('.bottom-sheet')?.replaceWith(retainedSheet);
+  if (retainedFocus?.isConnected) retainedFocus.focus({preventScroll:true});
+  renderedLogDraft = draft;
   updateTabs(tabRoute);
   updateTopBar();
   renderTimerChip();
+  syncLogSaveControls(root);
+  sheetController?.afterRender(root);
+  ensureSheetRecentAmounts(root);
 
   // Auto-scroll the day-hour-grid-wrapper to show the current time when it is
   // first rendered (scrollTop === 0).  This prevents the grid from always
@@ -265,40 +330,21 @@ function observeHistorySentinel(root) {
   }
 }
 
-function loadMoreHistoryPage() {
-  if (state._historyLoadingMore || !state.historyBefore) return;
-  state._historyLoadingMore = true;
-  loadMoreHistory(state.historyBefore).then(data => {
-    state.historyLogs = [...(state.historyLogs || []), ...(data?.logs || [])];
-    state.historyHasMore = data?.hasMore || false;
-    state.historyBefore = data?.start || null;
-    state._historyLoadingMore = false;
-    render(document.querySelector("#app"));
-  }).catch(() => { state._historyLoadingMore = false; });
+async function loadMoreHistoryPage() {
+  const contextScope = captureScope(state);
+  const scope = captureScope(state);
+  await withCurrentContext(loadActivity(state,{append:true}), contextScope);
+  if (scope.current()) render(document.querySelector("#app"));
 }
 
 // Refetch the data backing the currently-active tab, then re-render. Used by
 // pull-to-refresh.
 async function refreshActiveTab() {
-  const route = state.currentRoute || window.location.pathname || "/";
-  try {
-    if (route === "/activity") {
-      const [data] = await Promise.all([loadHistory(state.historySearch), loadDayNotesData()]);
-      state.historyLogs = data?.logs || [];
-      state.historyHasMore = data?.hasMore || false;
-      state.historyBefore = data?.start || null;
-    } else if (route === "/stats") {
-      await Promise.all([loadStatsData(), loadAllStatsData()]);
-    } else if (route === "/schedule") {
-      state.schedules = await loadSchedules();
-      await loadTodayData();
-    } else if (route === "/settings") {
-      await loadHouseholdData();
-    } else {
-      await Promise.all([loadTodayData(), loadLatestLogsData(), loadNotifData()]);
-    }
-  } catch {}
-  render(document.querySelector("#app"));
+  const contextScope = captureScope(state);
+  const scope = captureScope(state);
+  if ((state.currentRoute || window.location.pathname) === "/settings") await withCurrentContext(loadHouseholdData(), contextScope);
+  else await withCurrentContext(reloadViewData(), contextScope);
+  if (scope.current()) render(document.querySelector("#app"));
 }
 
 function setupPullToRefresh() {
@@ -353,7 +399,7 @@ function setupPullToRefresh() {
     ptr.style.transform = "translateX(-50%) translateY(24px)";
     ptr.style.opacity = "1";
     ptr.classList.add("ptr-indicator--active");
-    refreshActiveTab().finally(() => { refreshing = false; reset(); });
+    refreshActiveTab().finally(owned(() => { refreshing = false; reset(); }));
   });
 }
 
@@ -368,7 +414,8 @@ function renderActivityView() {
     return `<div class="today-view"><h2>Activity</h2>
     <div class="empty-state"><div class="empty-state-icon">🏠</div>
     <div class="empty-state-title">No chores set up yet</div>
-    <p>Use the Home tab to add chores.</p></div></div>`;
+    <p>Use the Home tab to add chores.</p>
+    <button type="button" class="btn btn-primary" data-nav="home">Go to Home</button></div></div>`;
   }
   return renderHistoryView();
 }
@@ -659,7 +706,7 @@ function renderSettingsView() {
   const verificationSection = user && !user.emailVerified ? `
     <div class="card mt-3" style="border-left: 4px solid #F4A261;">
       <h3>Email Verification</h3>
-      <p class="text-secondary">Your email <strong>${escapeHTML(user.email)}</strong> is not verified.</p>
+      <p class="text-secondary">Your email <strong>${escapeHTML(user.email)}</strong> is not verified. A verification email is queued for delivery; you can request another below.</p>
       <button type="button" class="btn btn-sm btn-secondary mt-2" data-action="resend-verification">Resend verification email</button>
     </div>
   ` : "";
@@ -678,8 +725,8 @@ function renderSettingsView() {
         <label class="form-label" for="delete-account-input">Type DELETE to confirm</label>
         <input id="delete-account-input" type="text" autocomplete="off" autocapitalize="characters" placeholder="DELETE">
       </div>
-      <div id="delete-account-error" class="form-error hidden"></div>
-      <button type="button" class="btn btn-danger btn-sm mt-2" data-action="confirm-delete-account">Permanently delete my account</button>
+      <div id="delete-account-error" class="form-error${state.deleteAccountError ? '' : ' hidden'}" role="alert">${escapeHTML(state.deleteAccountError || '')}</div>
+      <button type="button" class="btn btn-danger btn-sm mt-2" data-action="confirm-delete-account"${state.deleteAccountBusy ? ' disabled' : ''}>${state.deleteAccountBusy ? 'Deleting…' : 'Permanently delete my account'}</button>
       <button type="button" class="btn btn-ghost btn-sm mt-2" data-action="cancel-delete-account">Cancel</button>
     </div>
   ` : `
@@ -688,12 +735,12 @@ function renderSettingsView() {
 
   const passwordSection = `
     <div class="card mt-3">
-      <h3>Change Password</h3>
+      <h3>${user?.hasPassword === false ? "Set Password" : "Change Password"}</h3>
       <form id="change-password-form" data-action="change-password">
-        <div class="form-group">
+        ${user?.hasPassword === false ? "" : `<div class="form-group">
           <label class="form-label" for="current-password">Current Password</label>
           <input id="current-password" type="password" name="currentPassword" required autocomplete="current-password">
-        </div>
+        </div>`}
         <div class="form-group">
           <label class="form-label" for="new-password">New Password</label>
           <input id="new-password" type="password" name="newPassword" required minlength="8" autocomplete="new-password">
@@ -801,23 +848,11 @@ function renderSettingsView() {
         <span class="toggle-slider"></span>
       </label>
     </div>
-    <div class="pref-row">
-      <label class="pref-label">
-        <span class="pref-title">Export logs</span>
-        <span class="pref-desc">Download all activity as a CSV spreadsheet</span>
-      </label>
-      <a class="btn btn-secondary btn-sm" href="/api/logs/export?start=2000-01-01" download="nabu-logs.csv">Export CSV</a>
-    </div>
   </div>`;
 
   const householdRole = state.members?.find(m => m.userId === user?.id)?.role || user?.role;
   const canExportHousehold = !!hh && (householdRole === "owner" || householdRole === "admin");
-  const exportCard = canExportHousehold ? `<div class="card mt-3" data-testid="household-export-section">
-    <h3>Export Data</h3>
-    <p class="text-secondary">Download your household's chores, activity, schedules, notes, and participants as a CSV.</p>
-    <a class="btn btn-secondary btn-sm" href="/api/household/data" download="nabu-household-data.csv">Export all data as CSV</a>
-    <p class="text-secondary mt-2" style="font-size:12px">Invite codes and account credentials are never included.</p>
-  </div>` : "";
+  const exportCard = renderExports(state, canExportHousehold);
 
   const activeId = state.activeHouseholdId || hh?.id;
   const yourHouseholdsCard = state.userHouseholds && state.userHouseholds.length > 1 ? `
@@ -844,265 +879,35 @@ function renderSettingsView() {
   return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div></div>`;
 }
 
-async function loadStatsData() {
-  try {
-    const data = await loadOverview();
-    if (data && data.overview) {
-      state.stats = state.stats || {};
-      state.stats.overview = {
-        leaderboard: data.overview.leaderboard || [],
-        streaks: data.overview.streaks || {},
-        breakdown: data.overview.breakdown || [],
-        recap: data.overview.recap || {},
-      };
-    }
-  } catch {}
-}
+function loadAllStatsData() { return loadStatsPage(state); }
+function loadWidgetData() { return loadStatsWidgets(state); }
 
-async function loadAllStatsData() {
-  state.stats = state.stats || {};
-
-  const uid = state.stats.topChoresUserId = state.stats.topChoresUserId || (state.user && state.user.id) || 0;
-  state.stats.leaderboardPeriod = state.stats.leaderboardPeriod || "week";
-  state.stats.topChoresPeriod = state.stats.topChoresPeriod || "month";
-  state.stats.categoriesPeriod = state.stats.categoriesPeriod || "week";
-  state.stats.choreStatsPeriod = state.stats.choreStatsPeriod || "month";
-  state.stats.leaderboardByPeriod = state.stats.leaderboardByPeriod || {};
-  state.stats.leaderboardRangeByPeriod = state.stats.leaderboardRangeByPeriod || {};
-  state.stats.topChoresByUserAndPeriod = state.stats.topChoresByUserAndPeriod || {};
-  const busyFilter = state.stats.busyHoursFilter || {};
-
-  await Promise.allSettled([
-    (async () => {
-      const overviewData = await loadOverview();
-      if (overviewData && overviewData.overview) {
-        state.stats.overview = {
-          leaderboard: overviewData.overview.leaderboard || [],
-          streaks: overviewData.overview.streaks || {},
-          breakdown: overviewData.overview.breakdown || [],
-          recap: overviewData.overview.recap || {},
-        };
-      }
-    })(),
-    (async () => {
-      const heatmapData = await loadHeatmap();
-      if (heatmapData && heatmapData.heatmap) {
-        state.stats.heatmap = heatmapData.heatmap;
-      }
-    })(),
-    (async () => {
-      const busyData = await loadBusyHours(busyFilter);
-      if (busyData && busyData.busyHours) {
-        state.stats.busyHours = busyData.busyHours;
-        state.stats.busyHoursStart = busyData.start;
-        state.stats.busyHoursEnd = busyData.end;
-      }
-    })(),
-    (async () => {
-      const csData = await loadChoreStats({ period: state.stats.choreStatsPeriod });
-      if (csData && csData.choreStats) {
-        state.stats.choreStats = csData.choreStats;
-        state.stats.choreStatsStart = csData.start;
-        state.stats.choreStatsEnd = csData.end;
-      }
-    })(),
-    (async () => {
-      const catData = await loadCategoryBreakdown(state.stats.categoriesPeriod);
-      if (catData && catData.breakdown) {
-        state.stats.categoriesBreakdown = catData.breakdown;
-      }
-    })(),
-    (async () => {
-      const period = state.stats.topChoresPeriod;
-      const cacheKey = `${uid}-${period}`;
-      const tcData = await loadTopChores(uid, period);
-      if (tcData && tcData.topChores) {
-        state.stats.topChoresByUserAndPeriod[cacheKey] = tcData.topChores;
-      }
-    })(),
-    (async () => {
-      const period = state.stats.leaderboardPeriod;
-      if (state.stats.leaderboardByPeriod[period]) return;
-      const lbData = await loadLeaderboard(period);
-      if (lbData && lbData.leaderboard) {
-        state.stats.leaderboardByPeriod[period] = lbData.leaderboard;
-        if (lbData.start || lbData.end) {
-          state.stats.leaderboardRangeByPeriod[period] = { start: lbData.start || "", end: lbData.end || "" };
-        }
-      }
-    })(),
-    loadBabyTimeSeries(),
-    loadChoreAnalyticsData(),
-    loadWidgetData(),
-  ]);
-}
-
-// loadWidgetData fetches the time-series each user-defined widget (Phase 4)
-// needs to render. Data maps onto the existing time-series endpoint; widgets
-// add no new query surface. Results are keyed by widget id.
-async function loadWidgetData() {
-  const hidden = new Set((state.stats && state.stats.sectionHidden) || []);
-  const widgets = (state.stats?.widgets || [])
-    .filter(w => !hidden.has(`widget:${w.id}`))
-    .slice(0, MAX_ANALYTICS_FETCHES);
-  if (widgets.length === 0) return;
-  state.stats.widgetData = state.stats.widgetData || {};
-  await Promise.allSettled(widgets.map(async (w) => {
-    // last-done reads from latest-per-chore already in state — no fetch.
-    if (w.type === "last-done") { state.stats.widgetData[w.id] = []; return; }
-    if (w.type === "timeseries") {
-      // A chart needs buckets: fetch the time-series at the period's grain.
-      const grain = widgetGrain(w);
-      const results = await Promise.allSettled(
-        (w.choreIds || []).map(async (cid) => {
-          const chore = (state.chores || []).find(c => c.id === cid);
-          const data = await loadChoreTimeSeries(cid, grain);
-          return { chore, ts: data?.timeSeries };
-        })
-      );
-      state.stats.widgetData[w.id] = results
-        .filter(r => r.status === "fulfilled" && r.value.ts)
-        .map(r => r.value);
-      return;
-    }
-    // total / member-split (and any other type) → period-scoped summary so the
-    // widget's period actually bounds the numbers (incl. true all-time).
-    const results = await Promise.allSettled(
-      (w.choreIds || []).map(async (cid) => {
-        const chore = (state.chores || []).find(c => c.id === cid);
-        const data = await loadChoreSummary(cid, w.period || "week");
-        return { chore, summary: data?.summary };
-      })
-    );
-    state.stats.widgetData[w.id] = results
-      .filter(r => r.status === "fulfilled" && r.value.summary)
-      .map(r => r.value);
-  }));
-}
-
-// MAX_ANALYTICS_FETCHES bounds the per-chore/per-widget time-series fan-out on
-// a single Stats open, so a household with many metric/indicator chores can't
-// trigger an unbounded burst of full-year-scan requests.
-const MAX_ANALYTICS_FETCHES = 15;
-
-// loadChoreAnalyticsData fetches daily time-series for chores that have a
-// generalized analytics section (a metric or indicators), powering the
-// per-chore `chore:<id>` stats sections (Phase 3). It skips sections the user
-// has hidden and caps the number of fetches to bound DB load.
-async function loadChoreAnalyticsData() {
-  const hidden = new Set((state.stats && state.stats.sectionHidden) || []);
-  const chores = (state.chores || [])
-    .filter(choreHasAnalytics)
-    .filter(c => !hidden.has(`chore:${c.id}`))
-    .slice(0, MAX_ANALYTICS_FETCHES);
-  if (chores.length === 0) return;
-  state.stats = state.stats || {};
-  state.stats.choreTimeSeries = state.stats.choreTimeSeries || {};
-  const periodById = state.stats.choreAnalyticsPeriod || {};
-  await Promise.allSettled(chores.map(async (c) => {
-    try {
-      const data = await loadChoreTimeSeries(c.id, choreAnalyticsGrain(periodById[c.id] || "day"));
-      if (data && data.timeSeries) {
-        state.stats.choreTimeSeries[c.id] = data.timeSeries;
-      }
-    } catch {}
-  }));
-}
-
-async function loadBabyTimeSeries() {
-  const chores = state.chores || [];
-  const feedBaby = chores.find(c => c.name === "Feed Baby");
-  const changeBaby = chores.find(c => c.name === "Change Baby");
-
-  if (!feedBaby && !changeBaby) return;
-
-  state.stats = state.stats || {};
-  state.stats.feedBabyPeriod = state.stats.feedBabyPeriod || "daily";
-  state.stats.changeBabyPeriod = state.stats.changeBabyPeriod || "daily";
-  state.stats.babyTimeSeries = state.stats.babyTimeSeries || {};
-
-  const tasks = [];
-
-  if (feedBaby) {
-    const feedPeriod = state.stats.feedBabyPeriod;
-    tasks.push((async () => {
-      try {
-        const data = await loadChoreTimeSeries(feedBaby.id, feedPeriod);
-        if (data && data.timeSeries) {
-          state.stats.babyTimeSeries.feedBaby = data.timeSeries;
-        }
-      } catch {}
-    })());
-    tasks.push((async () => {
-      try {
-        const now = new Date();
-        const endStr = now.toISOString().slice(0, 10);
-        const startDate = new Date(now);
-        startDate.setDate(startDate.getDate() - 7);
-        const startStr = startDate.toISOString().slice(0, 10);
-        state.stats.feedingGapsStart = state.stats.feedingGapsStart || startStr;
-        state.stats.feedingGapsEnd = state.stats.feedingGapsEnd || endStr;
-        const apiEnd = apiExclusiveEnd(state.stats.feedingGapsEnd);
-        const gapsData = await loadFeedingGaps(state.stats.feedingGapsStart, apiEnd);
-        if (gapsData && gapsData.feedingGaps) {
-          state.stats.feedingGaps = gapsData.feedingGaps;
-        }
-      } catch {}
-    })());
-  }
-  if (changeBaby) {
-    const changePeriod = state.stats.changeBabyPeriod;
-    tasks.push((async () => {
-      try {
-        const data = await loadChoreTimeSeries(changeBaby.id, changePeriod);
-        if (data && data.timeSeries) {
-          state.stats.babyTimeSeries.changeBaby = data.timeSeries;
-        }
-      } catch {}
-    })());
-  }
-
-  await Promise.allSettled(tasks);
+function refreshStatsResource(section, id = null) {
+  const scope = captureScope(state);
+  const pending = loadStatsResource(state, section, id);
+  render(document.querySelector('#app'));
+  return pending.then(scope.guard(() => render(document.querySelector('#app'))));
 }
 
 function apiExclusiveEnd(inclusiveEnd) {
-  const d = new Date(inclusiveEnd + "T00:00:00");
-  d.setDate(d.getDate() + 1);
-  return d.toISOString().slice(0, 10);
+  return shiftDateStr(inclusiveEnd, 1);
 }
 
-// recentVolumesForChore returns up to three distinct recent amounts (in
-// canonical mL) logged for the chore, most-recent-first, drawn from whatever
-// logs are already in state. Powers the Phase 5.3 recent-value chips.
-function recentVolumesForChore(choreId) {
-  const sources = [
-    ...(state.historyLogs || []),
-    ...(state.todayLogs || []),
-    ...(state.weekLogs || []),
-  ].filter(l => l.choreId === choreId);
-  const latest = state.latestLogs?.[choreId];
-  if (latest) sources.unshift(latest);
-  // Newest-first: sort by completedAt descending.
-  sources.sort((a, b) => new Date(b.completedAt || 0) - new Date(a.completedAt || 0));
-  const seen = new Set();
-  const out = [];
-  for (const l of sources) {
-    const vals = [];
-    if (l.volumeML != null) vals.push(l.volumeML);
-    if (l.indicatorVolumes) {
-      for (const v of Object.values(l.indicatorVolumes)) {
-        if (v != null && v > 0) vals.push(v);
-      }
-    }
-    for (const v of vals) {
-      if (v > 0 && !seen.has(v)) {
-        seen.add(v);
-        out.push(v);
-        if (out.length >= 3) return out;
-      }
-    }
-  }
-  return out;
+function recentVolumesForChore(choreId) { return state.recentAmounts?.[choreId] || []; }
+
+function ensureSheetRecentAmounts(root) {
+  const draft = state.activeSheetData;
+  if (!['log','home-log'].includes(state.activeSheet) || draft.recentRequested) return;
+  const chore = state.chores.find(c => c.id === draft.choreId);
+  if (!chore?.hasVolumeML) return;
+  draft.recentRequested = true;
+  const scope = captureScope(state);
+  loadRecentAmounts(state,chore.id).then(scope.guard(() => {
+    if (!['log','home-log'].includes(state.activeSheet) || state.activeSheetData !== draft) return;
+    const container = root.querySelector('.sheet-recent-volume-row');
+    if (container) container.innerHTML = renderRecentAmounts(chore,recentVolumesForChore(chore.id),state.volumeUnit);
+    syncLogSaveControls(root);
+  }));
 }
 
 function countTodayLogs() {
@@ -1117,7 +922,7 @@ function countTodayLogs() {
 
 function renderStatsPageView() {
   try {
-    if (state.stats && state.stats.overview) {
+    if (state.stats && (state.stats.overview || state.stats.errors?.overview)) {
       const page = renderStatsPage(state);
       if (state.activeSheet === "widget-wizard") {
         return `<div class="sheet-overlay-wrapper">
@@ -1135,9 +940,10 @@ function renderStatsPageView() {
 }
 
 async function loadLatestLogsData() {
+  const contextScope = captureScope(state, "latest-logs");
   if (!state.household) return;
   try {
-    const data = await loadLatestLogs();
+    const data = await withCurrentContext(loadLatestLogs(), contextScope);
     state.latestLogs = data?.latestLogs || {};
   } catch {}
 }
@@ -1145,54 +951,54 @@ async function loadLatestLogsData() {
 // loadDayNotesData fetches the household's per-day diary notes (Phase 5.4) and
 // indexes them by date for the Activity day headers.
 async function loadDayNotesData() {
+  const contextScope = captureScope(state, "day-notes");
   if (!state.household) return;
   try {
-    const { data } = await apiFetch("/api/day-notes");
+    const { data } = await withCurrentContext(apiFetch("/api/day-notes"), contextScope);
     const map = {};
     (data?.notes || []).forEach(n => { if (n.note) map[n.date] = n.note; });
     state.dayNotes = map;
   } catch {
+    if (!contextScope.current()) return;
     state.dayNotes = state.dayNotes || {};
   }
 }
 
-async function loadNotifData() {
+function renderNotifPanel() {
+  const container = document.querySelector("#notif-panel-container");
+  if (container && !container.hidden) container.innerHTML = renderNotificationPanel(state.notifications, state);
+}
+async function loadNotifData(options) {
   if (!state.user) return;
-  try {
-    const data = await loadNotifications();
-    state.notifications = data.notifications || [];
-    state.unreadNotifications = data.unreadCount || 0;
-  } catch {}
-
-  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-    try {
-      const mc = new MessageChannel();
-      const swResult = new Promise((resolve) => {
-        mc.port1.onmessage = (e) => resolve(e.data);
-        setTimeout(() => resolve(null), 1000);
-      });
-      navigator.serviceWorker.controller.postMessage("last-push", [mc.port2]);
-      const lastPush = await swResult;
-      if (lastPush && lastPush.time) {
-        window.__pushDiag = lastPush;
-      }
-    } catch {}
-  }
+  const pending = loadNotificationPage(state, options);
+  renderNotifPanel();
+  await pending;
+  updateTopBar();
+  renderNotifPanel();
+}
+async function updateNotification(action, id) {
+  const pending = mutateNotification(state, action, id);
+  renderNotifPanel();
+  await pending;
+  updateTopBar();
+  renderNotifPanel();
 }
 
 async function loadNotificationPrefs() {
+  const contextScope = captureScope(state);
   if (!state.user) return;
   try {
-    const data = await loadNotificationPreferences();
+    const data = await withCurrentContext(loadNotificationPreferences(), contextScope);
     state.notificationPrefs = data.preferences;
     state.availableNotificationTypes = data.availableTypes;
   } catch {}
 }
 
 async function loadChoreReminderPrefsData() {
+  const contextScope = captureScope(state);
   if (!state.user || !state.household) return;
   try {
-    state.choreReminderPrefs = await loadChoreReminderPrefs();
+    state.choreReminderPrefs = await withCurrentContext(loadChoreReminderPrefs(), contextScope);
   } catch {}
 }
 
@@ -1227,10 +1033,11 @@ function showToastWithUndo(message, logId) {
   undoBtn.style.cssText = "background:rgba(255,255,255,0.2);border:none;color:white;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;margin-left:auto;min-height:32px;";
   undoBtn.addEventListener("click", () => {
     toast.remove();
-    undoLog(logId).then(async () => {
-      await loadLatestLogsData();
+    undoLog(logId).then(owned(async () => {
+  const contextScope = captureScope(state);
+      await withCurrentContext(loadLatestLogsData(), contextScope);
       render(document.querySelector("#app"));
-    }).catch(() => showToast("Failed to undo", "error"));
+    })).catch(owned(() => showToast("Failed to undo", "error")));
   });
   toast.appendChild(label);
   toast.appendChild(undoBtn);
@@ -1274,10 +1081,11 @@ function showToastWithRestore(message, log) {
       (log.volumeML ?? null), log.userId ?? state.user?.id,
       log.indicatorVolumes || {}, 0, null,
       (log.rating ?? null), log.title ?? null,
-    ).then(async () => {
-      await Promise.all([reloadViewData(), loadLatestLogsData()]);
+    ).then(owned(async () => {
+  const contextScope = captureScope(state);
+      await withCurrentContext(Promise.all([reloadViewData(), loadLatestLogsData()]), contextScope);
       render(document.querySelector("#app"));
-    }).catch(() => showToast("Failed to restore log", "error"));
+    })).catch(owned(() => showToast("Failed to restore log", "error")));
   });
   toast.appendChild(label);
   toast.appendChild(btn);
@@ -1369,11 +1177,12 @@ function renderTimerChip() {
     chip.setAttribute("data-action", "stop-timer");
     document.body.appendChild(chip);
   }
+  chip.disabled = !!t.saving;
   const secs = elapsedSeconds(t);
   chip.innerHTML = `<span class="timer-chip-icon">${escapeHTML(t.choreIcon || "⏱")}</span>
     <span class="timer-chip-name">${escapeHTML(t.choreName || "Timer")}</span>
     <span class="timer-chip-time">${formatElapsed(secs)}</span>
-    <span class="timer-chip-stop">Stop &amp; log</span>`;
+    <span class="timer-chip-stop">${t.saving ? "Saving…" : t.stoppedAt ? "Retry log" : "Stop &amp; log"}</span>`;
   if (!_timerInterval) {
     _timerInterval = setInterval(() => {
       const el = document.querySelector("#timer-chip .timer-chip-time");
@@ -1381,6 +1190,7 @@ function renderTimerChip() {
       else if (!state.activeTimer && _timerInterval) { clearInterval(_timerInterval); _timerInterval = null; }
     }, 1000);
   }
+  sheetController?.syncBackground();
 }
 
 function closeNotifPanel() {
@@ -1427,197 +1237,311 @@ function hideError(containerId) {
   el.classList.add("hidden");
 }
 
-async function doLogin(form) {
-  hideError("#login-error");
-  requestNotificationPermission();
-  const email = form.querySelector("#login-email").value;
-  const password = form.querySelector("#login-password").value;
-  const { ok, data } = await handleLogin(email, password);
-  if (ok && data.user) {
-    state.user = data.user;
-    state.currentRoute = "/";
-    maybeSubscribePush().catch(() => {});
-    await reloadAfterAuth();
-    if (state._pendingInviteCode && !state.household) {
-      await doJoinWithCode(state._pendingInviteCode);
-      return;
-    }
-    const app = document.querySelector("#app");
-    if (app) render(app);
-  } else {
-    setError("#login-error", data.error || "Invalid email or password");
+function adoptUser(user, route = "/") {
+  const invite = state._pendingInviteCode;
+  activeExport?.controller.abort();
+  activeExport = null;
+  resetAuthedState(state);
+  state.user = user;
+  state.currentRoute = route;
+  if (invite) state._pendingInviteCode = invite;
+  document.querySelector("#toast-container")?.replaceChildren();
+  delete window.__pushDiag;
+  delete window.__pushError;
+  startNotifPoll();
+}
+
+let identityUIRevision = 0;
+let deleteAccountIntent = 0;
+let deleteAccountAttempt = null;
+let sessionCheck = null;
+async function confirmBrowserSession({ invalidate = false, expected = contextSnapshot() } = {}) {
+  if (!contextIsCurrent(expected) || state.logoutPending || state.transitioning) return false;
+  const route = state.currentRoute || window.location.pathname;
+  const hide = entry => {
+    entry.invalidated = true;
+    entry.invalidate?.();
+    entry.ticket = ++identityUIRevision;
+    entry.route = route;
+    closeAllPanels(); adoptUser(null,entry.route); state.sessionUnconfirmed = true;
+    render(document.querySelector("#app"));
+  };
+  if (sessionCheck?.revision === expected?.revision) {
+    if (invalidate && !sessionCheck.invalidated) hide(sessionCheck);
+    return sessionCheck.promise;
   }
+  const entry = { revision:expected?.revision, ticket:identityUIRevision, route, invalidated:false };
+  if (invalidate) hide(entry);
+  entry.promise = (async () => {
+    try {
+      const result = await checkIdentity(expected,{control:entry});
+      if (entry.ticket !== identityUIRevision) return false;
+      if (!resultIsCurrent(result)) {
+        if (result.identity?.revision === contextSnapshot()?.revision) {
+          closeAllPanels(); adoptUser(null,entry.route); state.sessionUnconfirmed = true;
+          render(document.querySelector("#app"));
+        }
+        return false;
+      }
+      if (result.identity.revision !== expected?.revision || entry.invalidated) {
+        await finishIdentity(result,entry.route,() => { state.logoutPending = result.logoutPending; });
+      } else state.user = result.user;
+      return !!result.user && resultIsCurrent(result);
+    } catch (err) {
+      if (entry.ticket === identityUIRevision && err.identity?.revision === contextSnapshot()?.revision) {
+        closeAllPanels(); adoptUser(null,entry.route); state.sessionUnconfirmed = true;
+        render(document.querySelector("#app"));
+      }
+      return false;
+    } finally { if (sessionCheck === entry) sessionCheck = null; }
+  })();
+  sessionCheck = entry;
+  return entry.promise;
+}
+async function finishIdentity(result, route = "/", afterAdopt = () => {}) {
+  if (!resultIsCurrent(result)) return false;
+  adoptUser(result.user, route);
+  afterAdopt();
+  const scope = captureScope(state);
+  await reloadAfterAuth();
+  if (!scope.current()) return false;
+  render(document.querySelector("#app"));
+  return true;
+}
+async function recoverIdentity(error, route = "/", afterAdopt = () => {}) {
+  if (!resultIsCurrent(error)) return;
+  adoptUser(error.confirmed ? error.user : null, route);
+  state.sessionUnconfirmed = !error.confirmed;
+  afterAdopt();
+  const scope = captureScope(state);
+  if (error.confirmed) await reloadAfterAuth();
+  if (scope.current()) render(document.querySelector("#app"));
+}
+async function doLogout() {
+  if (state.logoutBusy) return;
+  const ticket = ++identityUIRevision, app = document.querySelector("#app");
+  closeAllPanels(); state.logoutBusy = true;
+  try {
+    const result = await handleLogout(({durable}) => {
+      if (ticket !== identityUIRevision) return;
+      adoptUser(null); state.logoutPending = true; state.logoutBusy = true; state.logoutDurable = durable; render(app);
+    });
+    if (resultIsCurrent(result) && ticket === identityUIRevision) adoptUser(null);
+  } catch (err) {
+    const identity = contextSnapshot();
+    if (ticket !== identityUIRevision) return;
+    if (identity?.status === "logout-pending") {
+      adoptUser(null); state.logoutPending = true; state.logoutError = err.message;
+    } else showToast(err.message || "Could not finish signing out. Please retry.", "error");
+  }
+  if (ticket === identityUIRevision) { state.logoutBusy = false; render(app); }
+}
+async function doLogin(form) {
+  if (form.dataset.busy) return;
+  hideError("#login-error"); requestNotificationPermission();
+  form.dataset.busy = "true";
+  try {
+    const result = await handleLogin(form.querySelector("#login-email").value, form.querySelector("#login-password").value);
+    if (!resultIsCurrent(result)) return;
+    if (result.ok && result.user) {
+      if (!await finishIdentity(result)) return;
+      if (state._pendingInviteCode && !state.household) await doJoinWithCode(state._pendingInviteCode);
+    } else if (form.isConnected) setError("#login-error",result.data?.error || "Invalid email or password");
+  } catch (err) {
+    await recoverIdentity(err);
+    if (form.isConnected) setError("#login-error",err.message || "Could not sign in. Please retry.");
+  } finally { delete form.dataset.busy; }
 }
 
 async function reloadAfterAuth() {
-  try {
-    await Promise.all([loadHouseholdData(), loadPreferences(state)]);
-    await syncTimezone(state);
-    if (state.household) {
-      await Promise.all([
-        loadChoreData(),
-        loadTodayData(),
-        loadLatestLogsData(),
-        loadStatsData(),
-        loadNotifData(),
-      ]);
-    }
-  } catch {}
+  const contextScope = captureScope(state);
+  if (!state.user) return;
+  const scope = captureScope(state);
+  startNotifPoll();
+  maybeSubscribePush().catch(() => {});
+  state.activeTimer = loadTimer(scope.origin);
+  await withCurrentContext(Promise.all([loadHouseholdData(),loadPreferences(state),hydratePendingLogs()]), contextScope);
+  if (!scope.current()) return;
+  await withCurrentContext(syncTimezone(state), contextScope);
+  if (!scope.current() || !state.household) return;
+  await withCurrentContext(loadChoreData(), contextScope);
+  if (!scope.current()) return;
+  await withCurrentContext(Promise.all([loadLatestLogsData(),loadNotifData(),reloadViewData()]), contextScope);
 }
+
 
 async function doRegister(form) {
-  hideError("#register-error");
-  requestNotificationPermission();
-  const email = form.querySelector("#reg-email").value;
-  const password = form.querySelector("#reg-password").value;
-  const confirm = form.querySelector("#reg-confirm").value;
-  if (password !== confirm) {
-    setError("#register-error", "Passwords do not match");
-    return;
-  }
-  const { ok, data } = await handleRegister(email, password);
-  if (ok && data.user) {
-    state.user = data.user;
-    state.currentRoute = "/";
-    maybeSubscribePush().catch(() => {});
-    await reloadAfterAuth();
-    if (state._pendingInviteCode && !state.household) {
-      await doJoinWithCode(state._pendingInviteCode);
-      return;
+  if (form.dataset.busy) return;
+  hideError("#register-error"); hideError("#register-status");
+  const email = form.querySelector("#reg-email").value, password = form.querySelector("#reg-password").value;
+  if (password !== form.querySelector("#reg-confirm").value) { setError("#register-error","Passwords do not match"); return; }
+  requestNotificationPermission(); form.dataset.busy = "true";
+  try {
+    const result = await handleRegister(email,password);
+    if (!resultIsCurrent(result)) return;
+    if (result.ok && result.data?.user && result.user) {
+      if (!await finishIdentity(result)) return;
+      if (state._pendingInviteCode && !state.household) await doJoinWithCode(state._pendingInviteCode);
+    } else if (form.isConnected) {
+      if (result.ok) setError("#register-status","If this email is new, check your inbox. You can also sign in or request a magic link.");
+      else setError("#register-error",result.data?.error || "Registration failed");
     }
-    const app = document.querySelector("#app");
-    if (app) render(app);
-  } else {
-    setError("#register-error", data.error || "Registration failed");
-  }
+  } catch (err) {
+    await recoverIdentity(err);
+    if (form.isConnected) setError("#register-error","We couldn't confirm registration. Try again, or sign in if your account was created.");
+  } finally { delete form.dataset.busy; }
 }
-
 async function doMagicLinkRequest(form) {
-  const email = form.querySelector("#magic-email").value;
-  await handleMagicLinkRequest(email);
-  const el = document.querySelector("#magic-link-status");
-  if (el) {
-    el.textContent = "Check your email for the magic link!";
-    el.classList.add("form-error");
-    el.classList.remove("hidden");
-  }
-}
-
-async function doForgotPassword(form) {
-  const email = form.querySelector("#forgot-email").value;
-  await handleForgotPassword(email);
-  showToast("If an account exists, a reset link has been sent.", "info");
-}
-
-async function doResetPassword(form) {
-  hideError("#reset-error");
-  const token = form.querySelector("input[name='token']").value;
-  const password = form.querySelector("#reset-password").value;
-  const confirm = form.querySelector("#reset-confirm").value;
-  if (password !== confirm) {
-    setError("#reset-error", "Passwords do not match");
-    return;
-  }
-  const { ok, data } = await handleResetPassword(token, password);
-  if (ok && data.user) {
-    state.user = data.user;
-    state.currentRoute = "/";
-    const app = document.querySelector("#app");
-    if (app) render(app);
-  } else {
-    setError("#reset-error", data.error || "Password reset failed");
-  }
-}
-
-async function doChangePassword(form) {
-  hideError("#change-password-error");
-  const currentPassword = form.querySelector("#current-password").value;
-  const newPassword = form.querySelector("#new-password").value;
-  const confirmPassword = form.querySelector("#confirm-password").value;
-  if (newPassword !== confirmPassword) {
-    setError("#change-password-error", "New passwords do not match");
-    return;
-  }
-  if (newPassword.length < 8) {
-    setError("#change-password-error", "Password must be at least 8 characters");
-    return;
-  }
-  const { ok, data } = await handleChangePassword(currentPassword, newPassword);
-  if (ok && data.user) {
-    state.user = data.user;
-    form.reset();
-    showToast("Password updated", "success");
-  } else {
-    setError("#change-password-error", data.error || "Password change failed");
-  }
-}
-
-async function doResendVerification() {
-  const csrfToken = document.cookie.match(/(?:^|;\s*)nabu_csrf=([^;]*)/)?.[1] || "";
+  const contextScope = captureScope(state);
+  const scope = captureScope(state);
   try {
-    await fetch("/api/auth/email/verification/resend", {
-      method: "POST",
-      headers: { "X-CSRF-Token": csrfToken },
-    });
-    showToast("Verification email sent", "info");
+    await withCurrentContext(handleMagicLinkRequest(form.querySelector("#magic-email").value), contextScope);
+    if (scope.current() && form.isConnected) setError("#magic-link-status","Check your email for the magic link!");
   } catch {
-    showToast("Failed to resend verification email", "error");
-  }
+    if (!contextScope.current()) return; if (scope.current()) showToast("Could not request a link. Please retry.","error"); }
 }
-
+async function doForgotPassword(form) {
+  const contextScope = captureScope(state);
+  const scope = captureScope(state);
+  try {
+    await withCurrentContext(handleForgotPassword(form.querySelector("#forgot-email").value), contextScope);
+    if (scope.current()) showToast("If an account exists, a reset link has been sent.","info");
+  } catch {
+    if (!contextScope.current()) return; if (scope.current()) showToast("Could not request a link. Please retry.","error"); }
+}
+async function doResetPassword(form) {
+  if (form.dataset.busy) return;
+  hideError("#reset-error");
+  const password = form.querySelector("#reset-password").value;
+  if (password !== form.querySelector("#reset-confirm").value) { setError("#reset-error","Passwords do not match"); return; }
+  form.dataset.busy = "true";
+  try {
+    const result = await handleResetPassword(form.querySelector("input[name='token']").value,password);
+    if (!resultIsCurrent(result)) return;
+    if (result.ok && result.user) await finishIdentity(result);
+    else if (form.isConnected) setError("#reset-error",result.data?.error || "Password reset failed");
+  } catch (err) { await recoverIdentity(err); if (form.isConnected) setError("#reset-error",err.message || "Password reset failed"); }
+  finally { delete form.dataset.busy; }
+}
+async function doChangePassword(form) {
+  if (form.dataset.busy) return;
+  hideError("#change-password-error");
+  const password = form.querySelector("#new-password").value;
+  if (password !== form.querySelector("#confirm-password").value) { setError("#change-password-error","New passwords do not match"); return; }
+  if (password.length < 8) { setError("#change-password-error","Password must be at least 8 characters"); return; }
+  form.dataset.busy = "true";
+  try {
+    const result = await handleChangePassword(form.querySelector("#current-password")?.value || "",password);
+    if (!resultIsCurrent(result)) return;
+    if (result.ok && result.user) {
+      if (await finishIdentity(result,"/settings")) showToast("Password updated","success");
+    } else {
+      maybeSubscribePush().catch(() => {});
+      if (form.isConnected) setError("#change-password-error",result.data?.error || "Password change failed");
+    }
+  } catch (err) { await recoverIdentity(err,"/settings"); if (form.isConnected) setError("#change-password-error",err.message || "Password change failed"); }
+  finally { delete form.dataset.busy; }
+}
+async function doResendVerification() {
+  const contextScope = captureScope(state);
+  const scope = captureScope(state);
+  try {
+    const {response} = await withCurrentContext(apiFetch("/api/auth/email/verification/resend",{method:"POST"}), contextScope);
+    if (!response.ok) throw new Error("Verification request failed");
+    if (scope.current()) showToast("Verification email queued","info");
+  } catch {
+    if (!contextScope.current()) return; if (scope.current()) showToast("Failed to request verification email. Please try again.","error"); }
+}
 async function verifyEmail(token) {
-  const csrfToken = document.cookie.match(/(?:^|;\s*)nabu_csrf=([^;]*)/)?.[1] || "";
-  const res = await fetch(`/api/auth/email/verify?token=${encodeURIComponent(token)}`, {
-    headers: { "X-CSRF-Token": csrfToken },
-  });
-  if (res.ok) {
-    if (state.user) {
-      state.user.emailVerified = true;
-    }
-    try {
-      state.user = await loadSession();
-    } catch {}
+  const ticket = ++identityUIRevision;
+  try {
+    const result = await changeIdentity(async () => {
+      const response = await fetch(`/api/auth/email/verify?token=${encodeURIComponent(token)}`,{signal:AbortSignal.timeout(15000)});
+      if (!response.ok) throw new Error("Verification failed");
+      return {ok:true};
+    });
+    if (ticket !== identityUIRevision || !resultIsCurrent(result)) return;
+    if (!await finishIdentity(result,"/verify-email", () => {
+      state._emailVerified = true; state._emailVerificationStatus = "success";
+    })) return;
+  } catch (err) {
+    if (ticket !== identityUIRevision) return;
+    await recoverIdentity(err,"/verify-email", () => {
+      state._emailVerified = true; state._emailVerificationStatus = "error";
+    });
+  }
+  if (ticket === identityUIRevision) render(document.querySelector("#app"));
+}
+async function doJoinWithCode(code) {
+  state._pendingInviteCode = null;
+  await runHouseholdTransition(() => joinHousehold(code),{route:"/"});
+}
+async function consumeMagicLink(token) {
+  const ticket = ++identityUIRevision;
+  try {
+    const result = await changeIdentity(async () => {
+      const response = await fetch(`/api/auth/magic-link/consume?token=${encodeURIComponent(token)}`,{signal:AbortSignal.timeout(15000)});
+      if (!response.ok) throw new Error("Magic link is unavailable. Request a new link.");
+      return {ok:true};
+    });
+    if (ticket === identityUIRevision) await finishIdentity(result);
+  } catch (err) {
+    if (ticket !== identityUIRevision) return;
+    await recoverIdentity(err);
+    if (ticket === identityUIRevision) { state.currentRoute="/"; showToast(err.message,"error"); render(document.querySelector("#app")); }
   }
 }
-
-async function doJoinWithCode(code) {
-  try {
-    const data = await joinHousehold(code);
-    if (data.household) {
-      state._pendingInviteCode = null;
-      state.currentRoute = "/";
-      await Promise.all([loadHouseholdData(), loadChoreData(), loadTodayData()]);
-    }
-  } catch {}
-  state._joinAttempted = false;
+async function doDeleteAccount() {
+  if (deleteAccountAttempt) return;
+  const input = document.querySelector("#delete-account-input");
   const app = document.querySelector("#app");
-  if (app) render(app);
-}
-
-async function consumeMagicLink(token) {
+  if (input?.value.trim() !== "DELETE") {
+    state.deleteAccountError = "Type DELETE (in capitals) to confirm.";
+    render(app);
+    return;
+  }
+  const origin = contextSnapshot(), ticket = ++identityUIRevision;
+  const attempt = {intent:deleteAccountIntent};
+  deleteAccountAttempt = attempt;
+  state.deleteAccountBusy = true;
+  state.deleteAccountError = null;
+  render(app);
   try {
-    const csrfToken = document.cookie.match(/(?:^|;\s*)nabu_csrf=([^;]*)/)?.[1] || "";
-    const res = await fetch(`/api/auth/magic-link/consume?token=${encodeURIComponent(token)}`, {
-      headers: { "X-CSRF-Token": csrfToken },
+    const result = await changeIdentity(async origin => {
+      await apiFetch("/api/me",{method:"DELETE",body:JSON.stringify({confirm:"DELETE"}),origin,allowContextChange:true});
+      return {ok:true};
     });
-    const data = await res.json();
-    if (data.user) {
-      state.user = data.user;
-      state.currentRoute = "/";
-      const app = document.querySelector("#app");
-      if (app) render(app);
+    if (ticket !== identityUIRevision || !resultIsCurrent(result)) return;
+    if (await finishIdentity(result)) showToast("Your account has been deleted.","success");
+  } catch (err) {
+    if (ticket !== identityUIRevision) return;
+    await recoverIdentity(err,state.currentRoute || "/",() => {
+      if (attempt.intent !== deleteAccountIntent || !err.confirmed || !sameOrigin(origin,{userId:err.user?.id,householdId:err.user?.householdId || 0})) return;
+      state.deleteAccountOpen = true;
+      state.deleteAccountBusy = true;
+      state.deleteAccountError = err.status ? err.message : "Account deletion could not be confirmed. Please retry.";
+    });
+  } finally {
+    if (deleteAccountAttempt === attempt) deleteAccountAttempt = null;
+    if (ticket === identityUIRevision) {
+      state.deleteAccountBusy = false;
+      if (state.deleteAccountOpen) render(app);
     }
-  } catch {}
+  }
 }
 
 export async function init() {
   state = createAppState();
+  sheetController = createSheetController(() => {
+    state.activeSheet = null; state.activeSheetData = {};
+    render(document.querySelector('#app'));
+  });
 
   state.googleOAuthEnabled = document.body?.dataset?.googleOauthEnabled === "true";
   state.appleSignInEnabled = document.body?.dataset?.appleSigninEnabled === "true";
 
   // Restore an in-progress duration timer (Phase 5.2) so it survives reloads.
-  state.activeTimer = loadTimer();
+
 
   // Register the service worker and set up the controllerchange listener early,
   // before any async work, so the "App updated" toast fires reliably on every
@@ -1664,7 +1588,7 @@ export async function init() {
     // (rather than opening a new window). Open the pre-filled log sheet.
     navigator.serviceWorker.addEventListener("message", (event) => {
       const msg = event.data;
-      if (msg && msg.type === "quicklog" && msg.choreId && state.user) {
+      if (msg && msg.type === "quicklog" && msg.choreId && state.user && !sessionCheck && sameOrigin(msg, contextSnapshot())) {
         const chore = (state.chores || []).find(c => c.id === msg.choreId);
         if (chore) {
           state.currentRoute = "/";
@@ -1679,10 +1603,11 @@ export async function init() {
   }
 
   try {
-    state.user = await loadSession();
-  } catch {
-    state.user = null;
-  }
+    const identity = await bootstrapIdentity();
+    state.user = identity.user;
+    state.logoutPending = identity.logoutPending;
+    state.activeTimer = loadTimer(contextSnapshot());
+  } catch { state.user = null; state.sessionUnconfirmed = true; }
 
   if (state.user) {
     maybeSubscribePush().catch(() => {});
@@ -1690,6 +1615,26 @@ export async function init() {
 
   const app = document.querySelector("#app");
   if (!app) return;
+
+  window.addEventListener("nabu-session-invalid", event => {
+    if (!state.sessionUnconfirmed && contextIsCurrent(event.detail?.origin)) {
+      void confirmBrowserSession({invalidate:true,expected:event.detail.origin});
+    }
+  });
+
+  onExternalIdentityChange(async record => {
+    const ticket = ++identityUIRevision, route = state.currentRoute || window.location.pathname;
+    adoptUser(null,route);
+    state.logoutPending = record?.status === "logout-pending";
+    state.transitioning = record?.status === "changing";
+    state.sessionUnconfirmed = record?.status === "unconfirmed";
+    render(app);
+    if (record?.status !== "active") return;
+    try {
+      const result = await bootstrapIdentity();
+      if (ticket === identityUIRevision && resultIsCurrent(result)) await finishIdentity(result,route);
+    } catch { /* A newer identity event owns recovery. */ }
+  });
 
   let longPressTimer    = null;
   let longPressJustFired = false;
@@ -1721,47 +1666,48 @@ export async function init() {
 
     // data-nav SPA navigation: check first so it works without data-action
     if (navEl) {
+      if (deleteAccountAttempt) {
+        deleteAccountIntent++;
+        state.deleteAccountOpen = false;
+        state.deleteAccountError = null;
+      }
       closeAllPanels();
       state.currentRoute = `/${navEl.dataset.nav}`;
       if (state.currentRoute === "/settings") {
         state._loadedHousehold = true;
         render(app);
-        Promise.all([loadNotificationPrefs(), loadChoreReminderPrefsData()]).then(() => render(app));
+        Promise.all([loadNotificationPrefs(), loadChoreReminderPrefsData()]).then(owned(() => render(app)));
         return;
       }
       if (state.currentRoute === "/activity") {
         if (state.activityView === "history") {
-          Promise.all([loadHistory(), loadDayNotesData()]).then(([data]) => {
-            state.historyLogs = data?.logs || [];
-            state.historyHasMore = data?.hasMore || false;
-            state.historyBefore = data?.start || null;
-            render(app);
-          }).catch(() => render(app));
+          loadActivityPage().catch(() => {});
         } else {
           render(app);
           (state.calendarView === "week" ? loadWeekData() : loadTodayData())
-            .then(() => render(app));
+            .then(owned(() => render(app)));
         }
         return;
       }
       if (state.currentRoute === "/today") {
         state.homeView = "log";
-        loadLatestLogsData().then(() => render(app));
+        loadLatestLogsData().then(owned(() => render(app)));
         return;
       }
       if (state.currentRoute === "/stats") {
         state.stats = state.stats || {};
         state.stats.todayCount = countTodayLogs();
-        loadAllStatsData().then(() => render(app));
+        loadAllStatsData().then(owned(() => render(app)));
         return;
       }
       if (state.currentRoute === "/schedule") {
         render(app);
-        Promise.all([loadChoreData(), loadSchedules()]).then(async ([, schedules]) => {
+        Promise.all([loadChoreData(), loadSchedules()]).then(owned(async ([, schedules]) => {
+  const contextScope = captureScope(state);
           state.schedules = schedules;
-          await loadTodayData();
+          await withCurrentContext(loadTodayData(), contextScope);
           render(app);
-        });
+        }));
         return;
       }
       render(app);
@@ -1770,6 +1716,39 @@ export async function init() {
 
     const action = actionEl?.dataset?.action;
     if (!action) return;
+
+    if (action === "export-csv") {
+      if (state.exportBusy) return;
+      const scope = captureScope(state, "export");
+      const ticket = {scope, controller:new AbortController()};
+      activeExport = ticket;
+      state.exportBusy = true;
+      state.exportError = null;
+      state.exportStatus = null;
+      const range = {...(state.exportRange || {})};
+      render(app);
+      downloadCSV(actionEl.dataset.kind, range, scope.origin, ticket.controller.signal)
+        .then(() => { if (scope.current()) state.exportStatus = "Export ready."; })
+        .catch(err => {
+          if (scope.current() && !ticket.controller.signal.aborted) state.exportError = err.name === "TimeoutError"
+            ? "Export took too long. Choose a smaller date range and retry." : err.message;
+        })
+        .finally(() => {
+          if (activeExport === ticket) activeExport = null;
+          if (scope.current()) { state.exportBusy = false; render(app); }
+        });
+      return;
+    }
+    if (action === "cancel-export") {
+      activeExport?.controller.abort();
+      activeExport = null;
+      captureScope(state, "export");
+      state.exportBusy = false;
+      state.exportError = null;
+      state.exportStatus = "Export canceled.";
+      render(app);
+      return;
+    }
 
     // ── Weekday pill: toggle on/off ─────────────────────────────────────────
     if (action === "toggle-day") {
@@ -1817,6 +1796,7 @@ export async function init() {
       return;
     }
 
+    const actionScope = captureScope(state);
     switch (action) {
       case "google-signin":
       case "apple-signin": {
@@ -1824,11 +1804,11 @@ export async function init() {
           ? "/api/auth/apple/web/login"
           : "/api/auth/google/login";
         if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-          Notification.requestPermission().then(() => {
+          Notification.requestPermission().then(owned(() => {
             window.location.href = oauthURL;
-          }).catch(() => {
+          })).catch(owned(() => {
             window.location.href = oauthURL;
-          });
+          }));
         } else {
           window.location.href = oauthURL;
         }
@@ -1849,14 +1829,42 @@ export async function init() {
         render(app);
         break;
       }
-      case "logout":
+      case "discard-log-draft": {
         e.preventDefault();
-        closeAllPanels();
-        handleLogout().then(() => {
-          resetAuthedState(state);
-          state.currentRoute = "/";
-          render(app);
-        });
+        const draft = state.activeSheetData;
+        if (draft.saving || !draft.submission?.body) break;
+        if (!confirm("Discard the saved copy and edit a new entry? This will not undo a log the server already received.")) break;
+        const discard = draft.savedDurably
+          ? discardQueuedLog(draft.submission.idempotencyKey, actionScope.origin) : Promise.resolve();
+        discard.then(actionScope.guard(() => {
+          if (state.activeSheetData !== draft) return;
+          draft.submission = {}; draft.saveError = null; draft.savedDurably = false;
+          syncLogSaveControls(app);
+        })).catch(actionScope.guard(err => showToast(err.message, "error")));
+        break;
+      }
+      case "retry-pending-log":
+        e.preventDefault();
+        void flushOfflineQueue(actionEl.dataset.key);
+        break;
+      case "discard-pending-log":
+        e.preventDefault();
+        if (confirm("Discard this saved copy? This will not undo a log the server already received.")) {
+          discardQueuedLog(actionEl.dataset.key, actionScope.origin).then(actionScope.guard(async () => {
+  const contextScope = captureScope(state);
+            await withCurrentContext(hydratePendingLogs(), contextScope);
+            if (actionScope.current()) render(app);
+          })).catch(actionScope.guard(err => showToast(err.message, "error")));
+        }
+        break;
+      case "retry-session":
+        e.preventDefault();
+        bootstrapIdentity().then(result => finishIdentity(result)).catch(() => showToast("Could not check your session. Please retry.","error"));
+        break;
+      case "logout":
+      case "retry-logout":
+        e.preventDefault();
+        void doLogout();
         break;
       case "resend-verification":
         e.preventDefault();
@@ -1864,118 +1872,44 @@ export async function init() {
         break;
       case "open-delete-account":
         e.preventDefault();
+        deleteAccountIntent++;
         state.deleteAccountOpen = true;
+        state.deleteAccountBusy = !!deleteAccountAttempt;
+        state.deleteAccountError = null;
         render(app);
         break;
       case "cancel-delete-account":
         e.preventDefault();
+        deleteAccountIntent++;
         state.deleteAccountOpen = false;
+        state.deleteAccountError = null;
         render(app);
         break;
-      case "confirm-delete-account": {
+      case "confirm-delete-account":
         e.preventDefault();
-        const input = document.querySelector("#delete-account-input");
-        const errEl = document.querySelector("#delete-account-error");
-        const typed = (input?.value || "").trim();
-        if (typed !== "DELETE") {
-          if (errEl) {
-            errEl.textContent = 'Type DELETE (in capitals) to confirm.';
-            errEl.classList.remove("hidden");
-          }
-          break;
-        }
-        apiFetch("/api/me", {
-          method: "DELETE",
-          body: JSON.stringify({ confirm: "DELETE" }),
-        }).then(({ response, data }) => {
-          if (!response.ok) {
-            // 409 = sole owner of a multi-member household; surface the
-            // server's transfer-ownership guidance verbatim.
-            if (errEl) {
-              errEl.textContent = data?.error || "Account deletion failed.";
-              errEl.classList.remove("hidden");
-            }
-            return;
-          }
-          // Account (and session) are gone — land on the login screen.
-          state.deleteAccountOpen = false;
-          resetAuthedState(state);
-          state.currentRoute = "/";
-          render(app);
-          showToast("Your account has been deleted.", "success");
-        }).catch(() => {
-          if (errEl) {
-            errEl.textContent = "Account deletion failed. Please try again.";
-            errEl.classList.remove("hidden");
-          }
-        });
+        void doDeleteAccount();
         break;
-      }
+
       case "open-notifications": {
         e.preventDefault();
         clearAppBadge();
-        loadNotifData().then(() => {
-          const container = document.querySelector("#notif-panel-container");
-          if (container) {
-            container.hidden = false;
-            container.innerHTML = renderNotificationPanel(state.notifications);
-          }
-        });
-        // Show panel immediately with current state while loading
         const container = document.querySelector("#notif-panel-container");
-        if (container) {
-          container.hidden = false;
-          container.innerHTML = renderNotificationPanel(state.notifications);
-        }
+        if (container) { container.hidden = false; renderNotifPanel(); }
+        void loadNotifData();
         break;
       }
-      case "close-notifications": {
-        e.preventDefault();
-        const container = document.querySelector("#notif-panel-container");
-        if (container) {
-          container.hidden = true;
-          container.innerHTML = "";
-        }
-        break;
-      }
-      case "mark-all-read": {
-        e.preventDefault();
-        clearAppBadge();
-        markAllRead().then(() => loadNotifData()).then(() => {
-          state.unreadNotifications = 0;
-          updateTopBar();
-          const container = document.querySelector("#notif-panel-container");
-          if (container) {
-            container.hidden = true;
-            container.innerHTML = "";
-          }
-        });
-        break;
-      }
-      case "dismiss-notification": {
-        e.preventDefault();
-        const nid = parseInt(actionEl.dataset.notifId, 10);
-        deleteNotification(nid).then(() => loadNotifData()).then(() => {
-          updateTopBar();
-          const container = document.querySelector("#notif-panel-container");
-          if (container && !container.hidden) {
-            container.innerHTML = renderNotificationPanel(state.notifications);
-          }
-        });
-        break;
-      }
-      case "mark-notif-read": {
-        e.preventDefault();
-        const nid = parseInt(actionEl.dataset.notifId, 10);
-        markRead(nid).then(() => loadNotifData()).then(() => {
-          updateTopBar();
-          const container = document.querySelector("#notif-panel-container");
-          if (container && !container.hidden) {
-            container.innerHTML = renderNotificationPanel(state.notifications);
-          }
-        });
-        break;
-      }
+      case "close-notifications":
+        e.preventDefault(); closeNotifPanel(); break;
+      case "refresh-notifications":
+        e.preventDefault(); void loadNotifData(); break;
+      case "more-notifications":
+        e.preventDefault(); void loadNotifData({append:true}); break;
+      case "mark-all-read":
+        e.preventDefault(); clearAppBadge(); void updateNotification("all"); break;
+      case "dismiss-notification":
+        e.preventDefault(); void updateNotification("delete", Number(actionEl.dataset.notifId)); break;
+      case "mark-notif-read":
+        e.preventDefault(); void updateNotification("read", Number(actionEl.dataset.notifId)); break;
       case "open-profile": {
         e.preventDefault();
         closeNotifPanel();
@@ -1997,49 +1931,45 @@ export async function init() {
         state._loadedHousehold = true;
         state.currentRoute = "/settings";
         render(app);
-        Promise.all([loadNotificationPrefs(), loadChoreReminderPrefsData()]).then(() => render(app));
+        Promise.all([loadNotificationPrefs(), loadChoreReminderPrefsData()]).then(owned(() => render(app)));
         break;
       }
       case "create-invite":
         e.preventDefault();
-        createInvite().then((data) => {
+        createInvite().then(owned((data) => {
           if (data.invite) {
             const url = `${window.location.origin}/join?code=${data.invite.code}`;
             state.invites = [...(state.invites || []), data.invite];
             navigator.clipboard.writeText(url).then(
-              () => showToast("Invite link copied to clipboard!", "info"),
-              () => showToast("Invite link: " + url, "info")
+              owned(() => showToast("Invite link copied to clipboard!", "info")),
+              owned(() => showToast("Invite link: " + url, "info"))
             );
             render(app);
           }
-        });
+        }));
         break;
       case "copy-invite-link": {
         e.preventDefault();
         const code = actionEl.dataset.code;
         const url = `${window.location.origin}/join?code=${code}`;
         navigator.clipboard.writeText(url).then(
-          () => showToast("Invite link copied!", "info"),
-          () => showToast(`Link: ${url}`, "info")
+          owned(() => showToast("Invite link copied!", "info")),
+          owned(() => showToast(`Link: ${url}`, "info"))
         );
         break;
       }
       case "delete-invite":
         e.preventDefault();
-        deleteInvite(parseInt(actionEl.dataset.inviteId)).then(async () => {
-          await loadHouseholdData();
+        deleteInvite(parseInt(actionEl.dataset.inviteId)).then(owned(async () => {
+  const contextScope = captureScope(state);
+          await withCurrentContext(loadHouseholdData(), contextScope);
           render(app);
-        });
+        }));
         break;
       case "leave-household":
         e.preventDefault();
-        // eslint-disable-next-line no-alert
         if (!confirm("Are you sure you want to leave this household? All your data will remain with the household.")) break;
-        leaveHousehold().then(() => {
-          state.household = null;
-          state.chores = [];
-          render(app);
-        });
+        void runHouseholdTransition(() => leaveHousehold());
         break;
       case "toggle-edit-household": {
         e.preventDefault();
@@ -2051,21 +1981,7 @@ export async function init() {
         e.preventDefault();
         const hhId = parseInt(actionEl.dataset.householdId, 10);
         if (!hhId || hhId === state.activeHouseholdId) { closeProfilePanel(); break; }
-        activateHousehold(hhId).then(async (data) => {
-          if (data && data.error) { showToast(data.error, "error"); return; }
-          state.household = null;
-          state.members = [];
-          state.invites = [];
-          state.chores = [];
-          state.schedules = [];
-          state.todayLogs = [];
-          await Promise.all([loadHouseholdData(), loadChoreData(), loadTodayData(), loadLatestLogsData(), loadStatsData()]);
-          updateTopBar();
-          closeProfilePanel();
-          render(app);
-          const hhName = state.household?.name || "household";
-          showToast(`Switched to ${hhName}`, "info");
-        }).catch(() => showToast("Failed to switch household", "error"));
+        void runHouseholdTransition(() => activateHousehold(hhId));
         break;
       }
       case "remove-member": {
@@ -2075,29 +1991,31 @@ export async function init() {
         const name = member ? (member.displayName || member.email) : "this member";
         // eslint-disable-next-line no-alert
         if (!confirm(`Remove ${name} from this household?`)) break;
-        removeMember(userId).then(async (data) => {
+        removeMember(userId).then(owned(async (data) => {
+  const contextScope = captureScope(state);
           if (data.status === "removed") {
-            await loadHouseholdData();
+            await withCurrentContext(loadHouseholdData(), contextScope);
             render(app);
             showToast(`${name} removed`, "info");
           } else {
             showToast(data.error || "Failed to remove member", "error");
           }
-        }).catch(() => showToast("Failed to remove member", "error"));
+        })).catch(owned(() => showToast("Failed to remove member", "error")));
         break;
       }
       case "update-member-role": {
         e.preventDefault();
         const userId = parseInt(actionEl.dataset.userId, 10);
         const newRole = actionEl.value;
-        updateMemberRole(userId, newRole).then(async (data) => {
+        updateMemberRole(userId, newRole).then(owned(async (data) => {
+  const contextScope = captureScope(state);
           if (data.status === "updated") {
-            await loadHouseholdData();
+            await withCurrentContext(loadHouseholdData(), contextScope);
             render(app);
           } else {
             showToast(data.error || "Failed to update role", "error");
           }
-        }).catch(() => showToast("Failed to update role", "error"));
+        })).catch(owned(() => showToast("Failed to update role", "error")));
         break;
       }
       case "transfer-ownership": {
@@ -2106,15 +2024,16 @@ export async function init() {
         const member = (state.members || []).find(m => m.userId === userId);
         const name = member ? (member.displayName || member.email) : "this member";
         if (!confirm(`Transfer ownership to ${name}?`)) break;
-        transferOwnership(userId).then(async (data) => {
+        transferOwnership(userId).then(owned(async (data) => {
+  const contextScope = captureScope(state);
           if (data.status === "transferred") {
-            await loadHouseholdData();
+            await withCurrentContext(loadHouseholdData(), contextScope);
             render(app);
             showToast(`Ownership transferred to ${name}`, "info");
           } else {
             showToast(data.error || "Failed to transfer ownership", "error");
           }
-        }).catch(() => showToast("Failed to transfer ownership", "error"));
+        })).catch(owned(() => showToast("Failed to transfer ownership", "error")));
         break;
       }
       case "log-chore": {
@@ -2122,10 +2041,11 @@ export async function init() {
         const choreId = parseInt(actionEl.dataset.choreId, 10);
         const slotEl = actionEl.closest('[data-hour]');
         const slotHour = slotEl ? parseInt(slotEl.dataset.hour, 10) : null;
-        logChore(choreId, "", actionEl.dataset.date || "", [], slotHour, null, null, state.user?.id).then(async () => {
-          await (state.calendarView === "week" ? loadWeekData() : loadTodayData());
+        logChore(choreId, "", actionEl.dataset.date || "", [], slotHour, null, null, state.user?.id).then(owned(async () => {
+  const contextScope = captureScope(state);
+          await (withCurrentContext(state.calendarView === "week" ? loadWeekData() : loadTodayData(), contextScope));
           render(app);
-        });
+        }));
         break;
       }
       case "undo-chore": {
@@ -2133,20 +2053,21 @@ export async function init() {
         const uLogId = parseInt(actionEl.dataset.logId);
         // Capture the log before deleting so removal is undoable (2.3).
         const removedLog = findLogById(uLogId);
-        undoLog(uLogId).then(async () => {
+        undoLog(uLogId).then(owned(async () => {
+  const contextScope = captureScope(state);
           state.activeSheet     = null;
           state.activeSheetData = {};
           state.historyLogs = (state.historyLogs || []).filter(l => l.id !== uLogId);
-          await reloadViewData();
+          await withCurrentContext(reloadViewData(), contextScope);
           render(app);
           showToastWithRestore("Log removed", removedLog);
-        }).catch((err) => {
+        })).catch(owned((err) => {
           console.error('undo-chore failed:', err);
           state.activeSheet     = null;
           state.activeSheetData = {};
-          reloadViewData().then(() => render(app));
+          reloadViewData().then(owned(() => render(app)));
           showToast(err.message || "Failed to remove log", "error");
-        });
+        }));
         break;
       }
       case "view-log": {
@@ -2187,10 +2108,11 @@ export async function init() {
         const slotHour = sch?.specificTime
           ? parseInt(sch.specificTime.split(":")[0], 10)
           : null;
-        logChore(choreId, "", date, [], slotHour, null, null, state.user?.id).then(async () => {
-          await loadTodayData();
+        logChore(choreId, "", date, [], slotHour, null, null, state.user?.id).then(owned(async () => {
+  const contextScope = captureScope(state);
+          await withCurrentContext(loadTodayData(), contextScope);
           render(app);
-        }).catch(() => showToast("Failed to log chore", "error"));
+        })).catch(owned(() => showToast("Failed to log chore", "error")));
         break;
       }
       case "edit-schedule": {
@@ -2205,6 +2127,12 @@ export async function init() {
 
       case "save-log": {
         e.preventDefault();
+        const draft = state.activeSheetData;
+        if (draft.saving) break;
+        const invalid = [...actionEl.closest('.bottom-sheet').querySelectorAll('input')].find(input => !input.checkValidity());
+        if (invalid) { invalid.reportValidity(); break; }
+        draft.submission ||= {};
+        const ownsSheet = () => actionScope.current() && state.activeSheetData === draft;
         const logId   = actionEl.dataset.logId;
         const choreId = parseInt(actionEl.dataset.choreId, 10);
         const note    = (document.querySelector('#log-note')?.value || "").trim();
@@ -2224,6 +2152,8 @@ export async function init() {
         });
         const volumeVal = document.querySelector('#log-volume')?.value;
         const volumeML = volumeVal && volumeVal !== "" ? parseInt(volumeVal, 10) : null;
+        const durationInput = document.querySelector('#log-duration');
+        const durationSeconds = durationInput?.value ? Number(durationInput.value) : null;
         const memberVal = document.querySelector('#log-member')?.value;
         const userId = memberVal && memberVal !== "" ? parseInt(memberVal, 10) : null;
 
@@ -2256,23 +2186,33 @@ export async function init() {
             slotHour = new Date(whenInput.value).getHours();
             date = whenInput.value.split('T')[0];
           } else {
-            // Editing existing log: only override if the user changed
-            // the value — morph.js may have corrupted the input during
-            // re-renders.
-            const inputSlotHour = new Date(whenInput.value).getHours();
-            const inputDate = whenInput.value.split('T')[0];
-            const initialSlot = actionEl.dataset.slotHour && actionEl.dataset.slotHour !== ""
-              ? parseInt(actionEl.dataset.slotHour, 10) : null;
-            if (inputDate !== actionEl.dataset.date || inputSlotHour !== initialSlot) {
+            // Compare the full displayed local value, including minutes.
+            // An unchanged picker must not round away stored seconds.
+            if (whenInput.value !== whenInput.dataset.originalValue) {
               completedAt = new Date(whenInput.value).toISOString();
-              slotHour = inputSlotHour;
-              date = inputDate;
-            }
+              slotHour = new Date(whenInput.value).getHours();
+              date = whenInput.value.split("T")[0];
+            } else { completedAt = null; slotHour = null; date = ""; }
           }
         }
 
+        draft.saving = true;
+        actionEl.disabled = true;
+        actionEl.dataset.readyLabel ||= actionEl.textContent;
+        actionEl.textContent = "Saving…";
+        const patch = { note };
+        const original = logId ? findLogById(parseInt(logId,10)) : null;
+        if ((chore?.indicatorLabels || []).length) patch.indicators = indicators;
+        if (chore?.hasVolumeML && (chore?.indicatorLabels || []).length) patch.indicatorVolumes = indicatorVolumes;
+        if (document.querySelector("#log-volume")) patch.volumeML = volumeML;
+        if (durationInput) patch.durationSeconds = durationSeconds;
+        if (ratingEl) patch.rating = rating;
+        if (document.querySelector("#log-title")) patch.title = titleVal || null;
+        if (document.querySelector(".subject-chip")) patch.subject = subject;
+        if (userId !== null && userId !== original?.userId) patch.userId = userId;
+        if (completedAt) { patch.completedAt = completedAt; patch.hour = slotHour; patch.date = date; }
         const doLog = logId
-          ? updateLog(parseInt(logId, 10), note, indicators, volumeML, userId, date, slotHour, completedAt, indicatorVolumes, rating, titleVal || null, subject)
+          ? updateLog(parseInt(logId, 10), patch)
           : (() => {
             const followUpDays = parseInt(document.querySelector('#followup-days')?.value || '0', 10) || 0;
             const followUpHours = parseInt(document.querySelector('#followup-hours')?.value || '0', 10) || 0;
@@ -2285,38 +2225,39 @@ export async function init() {
               const pad = n => String(n).padStart(2, "0");
               followUpTime = `${fu.getFullYear()}-${pad(fu.getMonth() + 1)}-${pad(fu.getDate())}T${pad(fu.getHours())}:${pad(fu.getMinutes())}`;
             }
-            return logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId, indicatorVolumes, followUpMinutes, followUpTime, rating, titleVal || null, null, subject);
+            return logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId, indicatorVolumes, followUpMinutes, followUpTime, rating, titleVal || null, durationSeconds, subject, { submission:draft.submission });
           })();
-        doLog.then(async (data) => {
+        syncLogSaveControls(app);
+        doLog.then(owned(async (data) => {
+  const contextScope = captureScope(state);
+          if (!actionScope.current()) return;
           const newLogId = data?.log?.id;
-          if (logId) {
-            const histIdx = (state.historyLogs || []).findIndex(l => l.id === parseInt(logId, 10));
-            if (histIdx >= 0) {
-              const old = state.historyLogs[histIdx];
-              const updated = { ...old, note, indicators };
-              if (Object.keys(indicatorVolumes).length > 0) updated.indicatorVolumes = indicatorVolumes;
-              if (volumeML !== null) updated.volumeML = volumeML;
-              if (userId !== null) updated.userId = userId;
-              if (completedAt) updated.completedAt = completedAt;
-              if (date) updated.logDate = date;
-              if (slotHour !== null) updated.slotHour = slotHour;
-              if (rating !== null) updated.rating = rating;
-              if (titleVal) updated.title = titleVal;
-              state.historyLogs[histIdx] = updated;
-            }
-          }
-          state.activeSheet     = null;
-          state.activeSheetData = {};
+          if (ownsSheet()) { state.activeSheet = null; state.activeSheetData = {}; }
+          await withCurrentContext(hydratePendingLogs(), contextScope);
+          if (!actionScope.current()) return;
+          if (data.queued) showToast("Saved on this device. Waiting to sync.", "info");
           if (state.currentRoute === "/" || state.currentRoute === "/today") {
-            await loadLatestLogsData();
+            await withCurrentContext(loadLatestLogsData(), contextScope);
           }
-          await reloadViewData();
+          if (!actionScope.current()) return;
+          await withCurrentContext(reloadViewData(), contextScope);
+          if (!actionScope.current()) return;
           render(app);
           if (newLogId) {
             const chore = (state.chores || []).find(c => c.id === choreId);
             showToastWithUndo(`${chore ? chore.icon + " " + chore.name : "Chore"}`, newLogId);
           }
-        }).catch(() => showToast("Failed to save log", "error"));
+        })).catch(owned(async err => {
+  const contextScope = captureScope(state);
+          if (!ownsSheet()) return;
+          draft.saveError = err.message || "Failed to save log. Your draft is still here.";
+          draft.savedDurably = err.durable === true;
+          await withCurrentContext(hydratePendingLogs(), contextScope);
+          if (ownsSheet()) showToast(draft.saveError, "error");
+        })).finally(owned(() => {
+          draft.saving = false;
+          if (ownsSheet()) syncLogSaveControls(app);
+        }));
         break;
       }
 
@@ -2333,12 +2274,13 @@ export async function init() {
         const choreId = parseInt(actionEl.dataset.choreId, 10);
         const date    = actionEl.dataset.date || "";
         const note    = (document.querySelector('#quick-log-note')?.value || "").trim();
-        logChore(choreId, note, date, []).then(async () => {
+        logChore(choreId, note, date, []).then(owned(async () => {
+  const contextScope = captureScope(state);
           state.activeSheet     = null;
           state.activeSheetData = {};
-          await (state.calendarView === "week" ? loadWeekData() : loadTodayData());
+          await (withCurrentContext(state.calendarView === "week" ? loadWeekData() : loadTodayData(), contextScope));
           render(app);
-        }).catch(() => showToast("Failed to log chore", "error"));
+        })).catch(owned(() => showToast("Failed to log chore", "error")));
         break;
       }
 
@@ -2346,13 +2288,13 @@ export async function init() {
         e.preventDefault();
         state.calendarDate = actionEl.dataset.date;
         state.todayDate = actionEl.dataset.date;
-        loadTodayData().then(() => render(app));
+        loadTodayData().then(owned(() => render(app)));
         break;
 
       case "navigate-week":
         e.preventDefault();
         state.calendarDate = actionEl.dataset.date;
-        loadWeekData().then(() => render(app));
+        loadWeekData().then(owned(() => render(app)));
         break;
 
       case "open-pick-chore-sheet":
@@ -2395,13 +2337,14 @@ export async function init() {
           specificTime,
           isActive:      true,
           ...freqPayload,
-        }).then(async () => {
+        }).then(owned(async () => {
+  const contextScope = captureScope(state);
           state.activeSheet = null;
           state.activeSheetData = {};
-          state.schedules = await loadSchedules();
-          await (state.calendarView === "week" ? loadWeekData() : loadTodayData());
+          state.schedules = await withCurrentContext(loadSchedules(), contextScope);
+          await (withCurrentContext(state.calendarView === "week" ? loadWeekData() : loadTodayData(), contextScope));
           render(app);
-        }).catch(() => showToast("Failed to schedule chore", "error"));
+        })).catch(owned(() => showToast("Failed to schedule chore", "error")));
         break;
       }
 
@@ -2425,13 +2368,14 @@ export async function init() {
           specificTime,
           isActive:      true,
           ...freqPayload,
-        }).then(async () => {
+        }).then(owned(async () => {
+  const contextScope = captureScope(state);
           state.activeSheet = null;
           state.activeSheetData = {};
-          state.schedules = await loadSchedules();
-          await reloadViewData();
+          state.schedules = await withCurrentContext(loadSchedules(), contextScope);
+          await withCurrentContext(reloadViewData(), contextScope);
           render(app);
-        }).catch(() => showToast("Failed to schedule chore", "error"));
+        })).catch(owned(() => showToast("Failed to schedule chore", "error")));
         break;
       }
 
@@ -2442,13 +2386,14 @@ export async function init() {
         const specificTime = timeInput?.value || null;
         const freqPayload  = readSheetFreq("edit-sheet", state.calendarDate);
         updateSchedule(scheduleId, { specificTime, ...freqPayload })
-          .then(async () => {
+          .then(owned(async () => {
+  const contextScope = captureScope(state);
             state.activeSheet     = null;
             state.activeSheetData = {};
-            state.schedules = await loadSchedules();
-            await reloadViewData();
+            state.schedules = await withCurrentContext(loadSchedules(), contextScope);
+            await withCurrentContext(reloadViewData(), contextScope);
             render(app);
-          }).catch(() => showToast("Failed to update schedule", "error"));
+          })).catch(owned(() => showToast("Failed to update schedule", "error")));
         break;
       }
 
@@ -2456,13 +2401,14 @@ export async function init() {
         e.preventDefault();
         const scheduleId = parseInt(actionEl.dataset.scheduleId, 10);
         deleteSchedule(scheduleId)
-          .then(async () => {
+          .then(owned(async () => {
+  const contextScope = captureScope(state);
             state.activeSheet     = null;
             state.activeSheetData = {};
-            state.schedules = await loadSchedules();
-            await reloadViewData();
+            state.schedules = await withCurrentContext(loadSchedules(), contextScope);
+            await withCurrentContext(reloadViewData(), contextScope);
             render(app);
-          }).catch(() => showToast("Failed to remove schedule", "error"));
+          })).catch(owned(() => showToast("Failed to remove schedule", "error")));
         break;
       }
 
@@ -2494,7 +2440,7 @@ export async function init() {
         state.activeSheet = null;
         state.activeSheetData = {};
         // Optimistically update state and re-render; persist in the background.
-        saveHiddenHomeChores(state, newHidden).then(() => render(app));
+        saveHiddenHomeChores(state, newHidden).then(owned(() => render(app)));
         render(app);
         break;
       }
@@ -2512,7 +2458,7 @@ export async function init() {
         state.currentRoute = "/";
         state.homeView = actionEl.dataset.view || "log";
         state.jiggleMode = false;
-        loadLatestLogsData().then(() => render(app));
+        loadLatestLogsData().then(owned(() => render(app)));
         break;
       }
 
@@ -2530,7 +2476,7 @@ export async function init() {
         state.activeSheet = "chore-edit";
         state.activeSheetData = { choreId };
         render(app);
-        Promise.all([loadNotificationPrefs(), loadChoreReminderPrefsData()]).then(() => render(app));
+        Promise.all([loadNotificationPrefs(), loadChoreReminderPrefsData()]).then(owned(() => render(app)));
         break;
       }
 
@@ -2544,7 +2490,7 @@ export async function init() {
           hidden.add(choreId);
         }
         const newHidden = [...hidden];
-        saveHiddenHomeChores(state, newHidden).then(() => render(app));
+        saveHiddenHomeChores(state, newHidden).then(owned(() => render(app)));
         render(app);
         break;
       }
@@ -2601,20 +2547,21 @@ export async function init() {
           apiFetch("/api/chores", {
             method: "POST",
             body: JSON.stringify(body),
-          }).then(async ({ data }) => {
+          }).then(owned(async ({ data }) => {
+  const contextScope = captureScope(state);
             const newChore = data?.chore;
             if (!newChore) { showToast("Failed to create chore", "error"); return; }
             state.activeSheet = null;
             state.activeSheetData = {};
-            await loadChoreData();
+            await withCurrentContext(loadChoreData(), contextScope);
             // Append new chore to order so it appears at the bottom.
             if (newChore.id) {
               const newOrder = [...(state.choreOrder || []), newChore.id];
-              await saveChoreOrder(state, newOrder);
+              await withCurrentContext(saveChoreOrder(state, newOrder), contextScope);
             }
             render(app);
             showToast(`${icon} ${name} added`, "success");
-          }).catch(() => showToast("Failed to create chore", "error"));
+          })).catch(owned(() => showToast("Failed to create chore", "error")));
         } else {
           const chore = (state.chores || []).find(c => c.id === choreId);
           const oldVis = chore?.visibility || "household";
@@ -2633,7 +2580,8 @@ export async function init() {
           apiFetch(`/api/chores/${choreId}`, {
             method: "PATCH",
             body: JSON.stringify(body),
-          }).then(async ({ data, response }) => {
+          }).then(owned(async ({ data, response }) => {
+  const contextScope = captureScope(state);
             if (!response.ok) {
               const msg = data?.error || "Failed to update chore";
               showToast(msg, "error");
@@ -2641,7 +2589,7 @@ export async function init() {
               if (response.status === 404) {
                 state.activeSheet = null;
                 state.activeSheetData = {};
-                await loadChoreData();
+                await withCurrentContext(loadChoreData(), contextScope);
                 render(app);
               }
               return;
@@ -2652,9 +2600,9 @@ export async function init() {
               if (idx >= 0) state.chores[idx] = updated;
               else state.chores.push(updated);
               // If visibility changed to private, ensure member assignments cleared are reflected in schedules
-              try { state.schedules = await loadSchedules(); } catch {}
+              try { state.schedules = await withCurrentContext(loadSchedules(), contextScope); } catch {}
             } else {
-              await loadChoreData();
+              await withCurrentContext(loadChoreData(), contextScope);
             }
             state.activeSheet = null;
             state.activeSheetData = {};
@@ -2664,7 +2612,7 @@ export async function init() {
             } else {
               showToast("Chore updated", "success");
             }
-          }).catch(() => showToast("Failed to update chore", "error"));
+          })).catch(owned(() => showToast("Failed to update chore", "error")));
         }
         break;
       }
@@ -2677,7 +2625,8 @@ export async function init() {
         // eslint-disable-next-line no-alert
         if (!confirm(`Delete "${chore.name}"? This cannot be undone.`)) break;
         apiFetch(`/api/chores/${choreId}`, { method: "DELETE" })
-          .then(async ({ response }) => {
+          .then(owned(async ({ response }) => {
+  const contextScope = captureScope(state);
             if (!response.ok) { showToast("Cannot delete this chore", "error"); return; }
             state.activeSheet = null;
             state.activeSheetData = {};
@@ -2685,11 +2634,11 @@ export async function init() {
             state.choreOrder = (state.choreOrder || []).filter(id => id !== choreId);
             // Remove from hidden list.
             state.hiddenHomeChoreIDs = (state.hiddenHomeChoreIDs || []).filter(id => id !== choreId);
-            await loadChoreData();
+            await withCurrentContext(loadChoreData(), contextScope);
             render(app);
             showToast("Chore deleted", "info");
-          })
-          .catch(() => showToast("Failed to delete chore", "error"));
+          }))
+          .catch(owned(() => showToast("Failed to delete chore", "error")));
         break;
       }
 
@@ -2701,15 +2650,16 @@ export async function init() {
         // eslint-disable-next-line no-alert
         if (!confirm(`Restore "${chore.name}" to its original default values?`)) break;
         apiFetch(`/api/chores/${choreId}/restore-default`, { method: "POST" })
-          .then(async ({ response }) => {
+          .then(owned(async ({ response }) => {
+  const contextScope = captureScope(state);
             if (!response.ok) { showToast("Could not restore default", "error"); return; }
             state.activeSheet = null;
             state.activeSheetData = {};
-            await loadChoreData();
+            await withCurrentContext(loadChoreData(), contextScope);
             render(app);
             showToast("Restored to default", "success");
-          })
-          .catch(() => showToast("Failed to restore default", "error"));
+          }))
+          .catch(owned(() => showToast("Failed to restore default", "error")));
         break;
       }
 
@@ -2738,21 +2688,22 @@ export async function init() {
         if (isNaN(ml)) break;
         // Fill the plain volume input if present.
         const plain = document.querySelector("#log-volume");
-        if (plain) plain.value = String(ml);
+        const chore = state.chores.find(c => c.id === state.activeSheetData?.choreId);
+        const setAmount = input => {
+          if (input.tagName === 'SELECT' && ![...input.options].some(o => o.value === String(ml))) {
+            const option = document.createElement('option'); option.value = String(ml);
+            option.textContent = formatAmount(ml,chore || {},state.volumeUnit); input.appendChild(option);
+          }
+          input.value = String(ml);
+        };
+        if (plain) setAmount(plain);
         // Fill only per-indicator volume selects whose type is already on.
         // Recent amounts must not change the user's type selection.
         document.querySelectorAll(".indicator-row").forEach(row => {
           const select = row.querySelector(".indicator-volume-select");
           const chip = row.querySelector("[data-action='toggle-indicator']");
           if (!select || !chip || chip.getAttribute("aria-pressed") !== "true") return;
-          const hasOption = [...select.options].some(o => o.value === String(ml));
-          if (!hasOption) {
-            const opt = document.createElement("option");
-            opt.value = String(ml);
-            opt.textContent = formatVolume(ml, state.volumeUnit);
-            select.appendChild(opt);
-          }
-          select.value = String(ml);
+          setAmount(select);
           select.style.display = "";
         });
         actionEl.classList.add("volume-recent-chip--active");
@@ -2765,37 +2716,44 @@ export async function init() {
         e.preventDefault();
         const choreId = parseInt(actionEl.dataset.choreId, 10);
         if (isNaN(choreId)) break;
-        state.activeTimer = {
-          choreId,
-          choreName: actionEl.dataset.choreName || "",
-          choreIcon: actionEl.dataset.choreIcon || "⏱",
-          startedAt: Date.now(),
-        };
-        saveTimer(state.activeTimer);
-        state.activeSheet = null;
-        state.activeSheetData = {};
-        render(app);
-        showToast("Timer started", "info");
+        const draft = state.activeSheetData;
+        const timer = { choreId, choreName:actionEl.dataset.choreName || "", choreIcon:actionEl.dataset.choreIcon || "⏱", startedAt:Date.now() };
+        startTimer(timer, actionScope.origin).then(actionScope.guard(saved => {
+          state.activeTimer = saved;
+          if (state.activeSheetData === draft) { state.activeSheet = null; state.activeSheetData = {}; }
+          render(app);
+          showToast("Timer started", "info");
+        })).catch(actionScope.guard(err => showToast(err.message || "Could not save the timer. Please retry.", "error")));
         break;
       }
 
       case "stop-timer": {
         e.preventDefault();
-        const t = state.activeTimer;
-        if (!t) break;
-        const durationSeconds = elapsedSeconds(t);
-        const completedAt = new Date().toISOString();
-        // Clear the timer immediately so a double-tap can't double-log.
-        state.activeTimer = null;
-        saveTimer(null);
-        render(app);
-        logChore(t.choreId, "", "", [], null, completedAt, null, state.user?.id ?? null, {}, 0, null, null, null, durationSeconds)
-          .then(async () => {
-            await Promise.all([loadTodayData(), loadLatestLogsData()]);
-            render(app);
-            showToast(`Logged ${formatElapsed(durationSeconds)}`, "success");
-          })
-          .catch(() => showToast("Failed to log timer", "error"));
+        const shown = state.activeTimer;
+        if (!shown || shown.saving) break;
+        shown.saving = true;
+        renderTimerChip();
+        stopTimer(shown.id, actionScope.origin).then(owned(async t => {
+  const contextScope = captureScope(state);
+          if (!actionScope.current()) return;
+          if (!t) { if (state.activeTimer?.id === shown.id) state.activeTimer = null; return; }
+          t.saving = true;
+          state.activeTimer = t;
+          renderTimerChip();
+          const data = await withCurrentContext(logChore(t.choreId, "", "", [], null, null, null, null, {}, 0, null, null, null, null, null, {submission:t.submission}), contextScope);
+          await withCurrentContext(clearFinishedTimer(t.id, actionScope.origin), contextScope);
+          if (!actionScope.current()) return;
+          if (state.activeTimer?.id === t.id) state.activeTimer = null;
+          await withCurrentContext(Promise.all([loadTodayData(), loadLatestLogsData(), hydratePendingLogs()]), contextScope);
+          if (!actionScope.current()) return;
+          render(app);
+          showToast(data.queued ? `Saved ${formatElapsed(elapsedSeconds(t))} on this device. Waiting to sync.` : `Logged ${formatElapsed(elapsedSeconds(t))}`, data.queued ? "info" : "success");
+        })).catch(actionScope.guard(err => showToast(err.message || "Timer is saved. Retry when ready.", "error")))
+          .finally(owned(() => {
+            if (!actionScope.current()) return;
+            if (state.activeTimer?.id === shown.id) state.activeTimer.saving = false;
+            renderTimerChip();
+          }));
         break;
       }
 
@@ -2818,7 +2776,7 @@ export async function init() {
         apiFetch(`/api/day-notes/${date}`, {
           method: "PUT",
           body: JSON.stringify({ note }),
-        }).then(({ response }) => {
+        }).then(owned(({ response }) => {
           if (!response.ok) { showToast("Failed to save note", "error"); return; }
           state.dayNotes = state.dayNotes || {};
           if (note) state.dayNotes[date] = note;
@@ -2826,7 +2784,7 @@ export async function init() {
           state.activeSheet = null;
           state.activeSheetData = {};
           render(app);
-        }).catch(() => showToast("Failed to save note", "error"));
+        })).catch(owned(() => showToast("Failed to save note", "error")));
         break;
       }
 
@@ -2856,14 +2814,15 @@ export async function init() {
         }
         const widget = { type, metric, period, choreIds, title: title || "Widget" };
         const widgets = [...(state.stats?.widgets || []), widget];
-        saveStatsWidgets(state, widgets).then(async (saved) => {
+        saveStatsWidgets(state, widgets).then(owned(async (saved) => {
+  const contextScope = captureScope(state);
           if (!saved) { showToast("Failed to add widget", "error"); return; }
           state.activeSheet = null;
           state.activeSheetData = {};
-          await loadWidgetData();
+          await withCurrentContext(loadWidgetData(), contextScope);
           render(app);
           showToast("Widget added", "success");
-        });
+        }));
         break;
       }
 
@@ -2871,10 +2830,10 @@ export async function init() {
         e.preventDefault();
         const id = actionEl.dataset.widgetId;
         const widgets = (state.stats?.widgets || []).filter(w => w.id !== id);
-        saveStatsWidgets(state, widgets).then((saved) => {
+        saveStatsWidgets(state, widgets).then(owned((saved) => {
           if (!saved) { showToast("Failed to remove widget", "error"); return; }
           render(app);
-        });
+        }));
         break;
       }
 
@@ -2887,11 +2846,12 @@ export async function init() {
         if (!current || current.period === period) break;
         const widgets = (state.stats.widgets || []).map(w => w.id === id ? { ...w, period } : w);
         // Persist the new period and refetch the affected widget's data.
-        saveStatsWidgets(state, widgets).then(async (saved) => {
+        saveStatsWidgets(state, widgets).then(owned(async (saved) => {
+  const contextScope = captureScope(state);
           if (!saved) { showToast("Failed to update widget", "error"); return; }
-          await loadWidgetData();
+          await withCurrentContext(loadWidgetData(), contextScope);
           render(app);
-        });
+        }));
         break;
       }
 
@@ -2926,7 +2886,7 @@ export async function init() {
         const pref = getChoreReminderPref(choreId) || { choreId, enabled: false, leadMinutes: state.notificationPrefs?.defaultReminderLeadMinutes ?? 10 };
         pref.enabled = enabled;
         saveChoreReminderPref(choreId, { enabled, leadMinutes: pref.leadMinutes })
-          .then(updated => {
+          .then(owned(updated => {
             const idx = (state.choreReminderPrefs || []).findIndex(p => p.choreId === choreId);
             if (idx >= 0) {
               state.choreReminderPrefs[idx] = updated;
@@ -2934,10 +2894,10 @@ export async function init() {
               state.choreReminderPrefs = [...(state.choreReminderPrefs || []), updated];
             }
             render(app);
-          })
-          .catch(() => {
+          }))
+          .catch(owned(() => {
             actionEl.checked = !enabled;
-          });
+          }));
         break;
       }
 
@@ -2995,32 +2955,19 @@ export async function init() {
         break;
       }
 
-      case "load-more-history": {
+      case "load-more-history":
         e.preventDefault();
-        const before = state.historyBefore;
-        if (!before || state._historyLoadingMore) break;
-        state._historyLoadingMore = true;
-        const btn = actionEl;
-        btn.disabled = true;
-        btn.textContent = "Loading...";
-        loadMoreHistory(before).then(data => {
-          state.historyLogs = [...(state.historyLogs || []), ...(data.logs || [])];
-          state.historyHasMore = data.hasMore;
-          state.historyBefore = data.start || null;
-          state._historyLoadingMore = false;
-          render(app);
-        }).catch(() => {
-          state._historyLoadingMore = false;
-          btn.disabled = false;
-          btn.textContent = "Load more";
-        });
+        void loadMoreHistoryPage();
         break;
-      }
+      case "retry-activity":
+        e.preventDefault();
+        void loadActivityPage();
+        break;
 
       case "history-filter-all": {
         e.preventDefault();
         // Clear the filter: show all activity, nothing highlighted.
-        state.historyChoreFilter = null;
+        if (setActivityChoreFilter(state,null)) void loadActivityPage();
         render(app);
         break;
       }
@@ -3044,7 +2991,7 @@ export async function init() {
         } else {
           selected.splice(idx, 1);
         }
-        state.historyChoreFilter = selected.length === 0 ? null : selected;
+        if (setActivityChoreFilter(state,selected.length === 0 ? null : selected)) void loadActivityPage();
         render(app);
         break;
       }
@@ -3055,24 +3002,24 @@ export async function init() {
         const enabledTypes = state.notificationPrefs?.enabledPushTypes || [];
         const pushEnabled = isChecked;
         saveNotificationPreferences({ pushEnabled, enabledPushTypes: isChecked ? enabledTypes : [] })
-          .then(data => {
+          .then(owned(data => {
             state.notificationPrefs = data.preferences;
             render(app);
-          })
-          .catch(() => {
+          }))
+          .catch(owned(() => {
             actionEl.checked = !isChecked;
-          });
+          }));
         break;
       }
 
       case "enable-notifications": {
         e.preventDefault();
         if (typeof Notification === 'undefined') break;
-        Notification.requestPermission().then(result => {
+        Notification.requestPermission().then(owned(result => {
           if (result === 'granted') {
             maybeSubscribePush().catch(() => {});
           }
-        }).catch(() => {});
+        })).catch(() => {});
         break;
       }
 
@@ -3098,13 +3045,13 @@ export async function init() {
 
         const pushEnabled = enabledTypes.length > 0;
         saveNotificationPreferences({ enabledPushTypes: enabledTypes, pushEnabled })
-          .then(data => {
+          .then(owned(data => {
             state.notificationPrefs = data.preferences;
             render(app);
-          })
-          .catch(() => {
+          }))
+          .catch(owned(() => {
             actionEl.checked = !isChecked;
-          });
+          }));
           break;
       }
 
@@ -3118,12 +3065,7 @@ export async function init() {
         if (state.stats.choreAnalyticsPeriod[choreId] === period) break;
         state.stats.choreAnalyticsPeriod[choreId] = period;
         state.stats.choreTimeSeries = state.stats.choreTimeSeries || {};
-        // Refetch the chore's time-series at the selected grain, then re-render.
-        loadChoreTimeSeries(choreId, choreAnalyticsGrain(period)).then(data => {
-          if (data && data.timeSeries) {
-            state.stats.choreTimeSeries[choreId] = data.timeSeries;
-          }
-        }).catch(() => {}).then(() => render(app));
+        void refreshStatsResource('chore', choreId);
         break;
       }
 
@@ -3140,7 +3082,7 @@ export async function init() {
         } else {
           break;
         }
-        loadBabyTimeSeries().then(() => render(app));
+        void refreshStatsResource('baby', type);
         break;
       }
 
@@ -3186,7 +3128,7 @@ export async function init() {
         if (unit === state.volumeUnit) break;
         // saveVolumeUnit updates state optimistically (and rolls back on
         // failure); render now for snappy feedback and again on completion.
-        saveVolumeUnit(state, unit).then(() => render(app));
+        saveVolumeUnit(state, unit).then(owned(() => render(app)));
         render(app);
         break;
       }
@@ -3201,10 +3143,10 @@ export async function init() {
         if (hide === state.hideNotificationBadge) break;
         const saved = saveHideNotificationBadge(state, hide);
         updateTopBar();
-        saved.then(() => {
+        saved.then(owned(() => {
           updateTopBar();
           render(app);
-        });
+        }));
         break;
       }
 
@@ -3239,87 +3181,27 @@ export async function init() {
         e.preventDefault();
         const uid = parseInt(actionEl.dataset.userId, 10);
         if (!uid) break;
-        state.stats = state.stats || {};
         state.stats.topChoresUserId = uid;
-        state.stats.topChoresPeriod = state.stats.topChoresPeriod || "month";
-        state.stats.topChoresByUserAndPeriod = state.stats.topChoresByUserAndPeriod || {};
-        const period = state.stats.topChoresPeriod;
-        const cacheKey = `${uid}-${period}`;
-        if (state.stats.topChoresByUserAndPeriod[cacheKey]) {
-          render(app);
-        } else {
-          loadTopChores(uid, period).then(data => {
-            if (data && data.topChores) {
-              state.stats.topChoresByUserAndPeriod[cacheKey] = data.topChores;
-            }
-          }).catch(() => {}).then(() => render(app));
-        }
+        void refreshStatsResource('top-chores');
         break;
       }
 
       case "stats-period": {
         e.preventDefault();
-        const section = actionEl.dataset.section;
-        const period = actionEl.dataset.period;
-        if (!section || !period) break;
-        state.stats = state.stats || {};
-        if (section === "leaderboard") {
-          const prev = state.stats.leaderboardPeriod || "week";
-          if (prev === period) break;
-          state.stats.leaderboardPeriod = period;
-          state.stats.leaderboardByPeriod = state.stats.leaderboardByPeriod || {};
-          state.stats.leaderboardRangeByPeriod = state.stats.leaderboardRangeByPeriod || {};
-          if (state.stats.leaderboardByPeriod[period]) {
-            render(app);
-          } else {
-            loadLeaderboard(period).then(data => {
-              if (data && data.leaderboard) {
-                state.stats.leaderboardByPeriod[period] = data.leaderboard;
-                if (data.start || data.end) {
-                  state.stats.leaderboardRangeByPeriod[period] = { start: data.start || "", end: data.end || "" };
-                }
-              }
-            }).catch(() => {}).then(() => render(app));
-          }
-        } else if (section === "top-chores") {
-          const prev = state.stats.topChoresPeriod || "month";
-          if (prev === period) break;
-          state.stats.topChoresPeriod = period;
-          state.stats.topChoresByUserAndPeriod = state.stats.topChoresByUserAndPeriod || {};
-          const uid = state.stats.topChoresUserId || (state.user && state.user.id) || 0;
-          const cacheKey = `${uid}-${period}`;
-          if (state.stats.topChoresByUserAndPeriod[cacheKey]) {
-            render(app);
-          } else {
-            loadTopChores(uid, period).then(data => {
-              if (data && data.topChores) {
-                state.stats.topChoresByUserAndPeriod[cacheKey] = data.topChores;
-              }
-            }).catch(() => {}).then(() => render(app));
-          }
-        } else if (section === "categories") {
-          const prev = state.stats.categoriesPeriod || "week";
-          if (prev === period) break;
-          state.stats.categoriesPeriod = period;
-          loadCategoryBreakdown(period).then(data => {
-            if (data && data.breakdown) {
-              state.stats.categoriesBreakdown = data.breakdown;
-            }
-          }).catch(() => {}).then(() => render(app));
-        } else if (section === "chores") {
-          const prev = state.stats.choreStatsPeriod || "month";
-          if (prev === period) break;
-          state.stats.choreStatsPeriod = period;
-          loadChoreStats({ period }).then(data => {
-            if (data && data.choreStats) {
-              state.stats.choreStats = data.choreStats;
-              state.stats.choreStatsStart = data.start;
-              state.stats.choreStatsEnd = data.end;
-            }
-          }).catch(() => {}).then(() => render(app));
-        }
+        const section = actionEl.dataset.section, period = actionEl.dataset.period;
+        const fields = {leaderboard:'leaderboardPeriod', 'top-chores':'topChoresPeriod', categories:'categoriesPeriod', chores:'choreStatsPeriod'};
+        const field = fields[section];
+        if (!field || !period || state.stats[field] === period) break;
+        state.stats[field] = period;
+        void refreshStatsResource(section);
         break;
       }
+
+      case 'retry-stats':
+        e.preventDefault();
+        loadAllStatsData().then(owned(() => render(app)));
+        render(app);
+        break;
 
       case "stats-feeding-gaps-quick": {
         e.preventDefault();
@@ -3331,11 +3213,7 @@ export async function init() {
         startDate.setDate(startDate.getDate() - (days - 1));
         state.stats.feedingGapsEnd = fmt(endDate);
         state.stats.feedingGapsStart = fmt(startDate);
-        loadFeedingGaps(state.stats.feedingGapsStart, apiExclusiveEnd(state.stats.feedingGapsEnd)).then(data => {
-          if (data && data.feedingGaps) {
-            state.stats.feedingGaps = data.feedingGaps;
-          }
-        }).catch(() => {}).then(() => render(app));
+        void refreshStatsResource('gaps');
         break;
       }
 
@@ -3406,7 +3284,7 @@ export async function init() {
     }
     const all = [...new Set([...cur, ...STATS_SECTIONS])];
     state.stats.sectionOrder = all;
-    saveStatsSectionOrder(state, all).then(() => render(app));
+    saveStatsSectionOrder(state, all).then(owned(() => render(app)));
   });
 
   // Prevent taps/clicks on select elements inside member rows from
@@ -3451,20 +3329,10 @@ export async function init() {
     if (!el) return;
     state.historySearch = el.value || "";
     clearTimeout(historySearchTimer);
+    prepareActivity(state);
+    const scope = captureScope(state, null, () => [state.historySearch,state.currentRoute]);
     historySearchTimer = setTimeout(() => {
-      loadHistory(state.historySearch).then(data => {
-        state.historyLogs = data?.logs || [];
-        state.historyHasMore = data?.hasMore || false;
-        state.historyBefore = data?.start || null;
-        render(app);
-        // Restore focus + caret after the morph re-render.
-        const input = document.querySelector("#history-search-input");
-        if (input) {
-          input.focus();
-          const end = input.value.length;
-          try { input.setSelectionRange(end, end); } catch {}
-        }
-      }).catch(() => {});
+      if (scope.current()) void loadActivityPage();
     }, 300);
   });
 
@@ -3472,6 +3340,13 @@ export async function init() {
   // Uses "change" (not "click") because <select> fires "change" on selection.
   document.addEventListener("change", (e) => {
     const actionEl = e.target.closest("[data-action]");
+    if (actionEl?.dataset?.action === "export-range") {
+      state.exportRange = {...(state.exportRange || {}), [actionEl.dataset.field]:actionEl.value};
+      state.exportError = null;
+      state.exportStatus = null;
+      return;
+    }
+
     if (actionEl?.dataset?.action === "change-frequency") {
       const sheet   = actionEl.closest(".bottom-sheet");
       const freqVal = actionEl.value;
@@ -3492,13 +3367,7 @@ export async function init() {
         } else {
           state.stats.busyHoursFilter[filter] = raw ? parseInt(raw, 10) : null;
         }
-        loadBusyHours(state.stats.busyHoursFilter).then(data => {
-          if (data && data.busyHours) {
-            state.stats.busyHours = data.busyHours;
-            state.stats.busyHoursStart = data.start;
-            state.stats.busyHoursEnd = data.end;
-          }
-        }).catch(() => {}).then(() => render(app));
+        void refreshStatsResource('busy-hours');
       }
       if (actionEl?.dataset?.action === "stats-feeding-gaps-date") {
         const field = actionEl.dataset.field;
@@ -3508,11 +3377,7 @@ export async function init() {
         const s = state.stats.feedingGapsStart;
         const e = state.stats.feedingGapsEnd;
         if (s && e) {
-          loadFeedingGaps(s, apiExclusiveEnd(e)).then(data => {
-            if (data && data.feedingGaps) {
-              state.stats.feedingGaps = data.feedingGaps;
-            }
-          }).catch(() => {}).then(() => render(app));
+          void refreshStatsResource('gaps');
         }
       }
     if (actionEl?.dataset?.action === "pick-metric-type") {
@@ -3533,7 +3398,12 @@ export async function init() {
           state.stats.sectionHidden = [...hidden, section];
         }
       }
-      saveStatsSectionHidden(state, state.stats.sectionHidden).then(() => render(app));
+      saveStatsSectionHidden(state, state.stats.sectionHidden).then(owned(async () => {
+        const scope = captureScope(state);
+        await loadAllStatsData();
+        if (scope.current()) render(app);
+      }));
+      render(app);
     }
     if (actionEl?.dataset?.action === "update-member-role") {
       const userId = parseInt(actionEl.dataset.userId, 10);
@@ -3543,24 +3413,26 @@ export async function init() {
         const name = member ? (member.displayName || member.email) : "this member";
         // eslint-disable-next-line no-alert
         if (!confirm(`Transfer ownership to ${name}? You will become an admin.`)) return;
-        transferOwnership(userId).then(async (data) => {
+        transferOwnership(userId).then(owned(async (data) => {
+  const contextScope = captureScope(state);
           if (data.status === "transferred") {
-            await loadHouseholdData();
+            await withCurrentContext(loadHouseholdData(), contextScope);
             render(app);
             showToast(`Ownership transferred to ${name}`, "info");
           } else {
             showToast(data.error || "Failed to transfer ownership", "error");
           }
-        }).catch(() => showToast("Failed to transfer ownership", "error"));
+        })).catch(owned(() => showToast("Failed to transfer ownership", "error")));
       } else {
-        updateMemberRole(userId, newRole).then(async (data) => {
+        updateMemberRole(userId, newRole).then(owned(async (data) => {
+  const contextScope = captureScope(state);
           if (data.status === "updated") {
-            await loadHouseholdData();
+            await withCurrentContext(loadHouseholdData(), contextScope);
             render(app);
           } else {
             showToast(data.error || "Failed to update role", "error");
           }
-        }).catch(() => showToast("Failed to update role", "error"));
+        })).catch(owned(() => showToast("Failed to update role", "error")));
       }
     }
     if (actionEl?.dataset?.action === "change-chore-reminder-lead") {
@@ -3571,7 +3443,7 @@ export async function init() {
       const pref = getChoreReminderPref(choreId) || { choreId, enabled: true, leadMinutes };
       pref.leadMinutes = leadMinutes;
       saveChoreReminderPref(choreId, { enabled: true, leadMinutes })
-        .then(updated => {
+        .then(owned(updated => {
           const idx = (state.choreReminderPrefs || []).findIndex(p => p.choreId === choreId);
           if (idx >= 0) {
             state.choreReminderPrefs[idx] = updated;
@@ -3579,17 +3451,17 @@ export async function init() {
             state.choreReminderPrefs = [...(state.choreReminderPrefs || []), updated];
           }
           render(app);
-        })
+        }))
         .catch(() => {});
     }
     if (actionEl?.dataset?.action === "change-default-reminder-lead") {
       const leadMinutes = parseInt(actionEl.value, 10);
       if (isNaN(leadMinutes)) return;
       saveNotificationPreferences({ defaultReminderLeadMinutes: leadMinutes })
-        .then(data => {
+        .then(owned(data => {
           state.notificationPrefs = data.preferences;
           render(app);
-        })
+        }))
         .catch(() => {});
     }
   });
@@ -3669,40 +3541,21 @@ export async function init() {
     }
   });
 
-  try {
-    await Promise.all([loadHouseholdData(), loadPreferences(state)]);
-    await syncTimezone(state);
-    if (state.household) {
-      const initTasks = [
-        loadChoreData(),
-        loadTodayData(),
-        loadLatestLogsData(),
-        loadStatsData(),
-        loadNotifData(),
-      ];
-      // On a direct navigation to /stats (URL load instead of a tab click),
-      // the click handler that normally triggers loadAllStatsData never fires.
-      // Kick it off here so the period-aware Leaderboard and Top Chores caches
-      // are populated before the first render — otherwise the sections render
-      // empty until the user clicks around.
-      const initialRoute = state.currentRoute || window.location.pathname;
-      if (initialRoute === "/stats") {
-        initTasks.push(loadAllStatsData());
-      }
-      await Promise.all(initTasks);
-    }
-  } catch {}
+  if (state.user) await reloadAfterAuth();
 
   // ── PWA manifest shortcuts (?quicklog=…) ───────────────────────────────────
   // Long-pressing the home-screen icon exposes "Log feed", "Log chore", and
   // "Activity" shortcuts that deep-link via a start_url query param. Handle it
   // once here after bootstrap so the user lands one tap from logging.
   try {
-    const quicklog = new URLSearchParams(window.location.search).get("quicklog");
-    if (quicklog && state.user && state.household) {
+    const params = new URLSearchParams(window.location.search);
+    const quicklog = params.get("quicklog");
+    const pushMatches = !params.has("pushUser") || sameOrigin(contextSnapshot(), {userId:Number(params.get("pushUser")), householdId:Number(params.get("pushHousehold"))});
+    if (quicklog && pushMatches && state.user && state.household) {
       if (quicklog === "activity") {
         state.currentRoute = "/activity";
         state.activityView = "history";
+        await loadActivityPage();
       } else {
         state.currentRoute = "/";
         state.homeView = "log";
@@ -3844,6 +3697,7 @@ export async function init() {
   });
 
   document.addEventListener("drop", async e => {
+  const contextScope = captureScope(state);
     // ── Chores-tab list reorder ──────────────────────────────────────────────
     const choresTabTargetItem = e.target.closest("[data-chores-tab-reorder-id]");
     if (choresTabTargetItem) {
@@ -3851,7 +3705,8 @@ export async function init() {
       document.querySelectorAll(".chore-row--drag-over-top, .chore-row--drag-over-bottom")
         .forEach(el => el.classList.remove("chore-row--drag-over-top", "chore-row--drag-over-bottom"));
       let payload;
-      try { payload = JSON.parse(e.dataTransfer.getData("text/plain")); } catch { return; }
+      try { payload = JSON.parse(e.dataTransfer.getData("text/plain")); } catch {
+    if (!contextScope.current()) return; return; }
       if (!payload.choresTabReorderId) return;
       const draggedId = payload.choresTabReorderId;
       const targetId  = parseInt(choresTabTargetItem.dataset.choresTabReorderId, 10);
@@ -3866,7 +3721,7 @@ export async function init() {
       ids.splice(fromIdx, 1);
       const insertIdx = ids.indexOf(targetId);
       ids.splice(insertBefore ? insertIdx : insertIdx + 1, 0, draggedId);
-      await saveChoreOrder(state, ids);
+      await withCurrentContext(saveChoreOrder(state, ids), contextScope);
       render(app);
       return;
     }
@@ -3878,7 +3733,8 @@ export async function init() {
       document.querySelectorAll(".home-chore-card--drag-over")
         .forEach(el => el.classList.remove("home-chore-card--drag-over"));
       let payload;
-      try { payload = JSON.parse(e.dataTransfer.getData("text/plain")); } catch { return; }
+      try { payload = JSON.parse(e.dataTransfer.getData("text/plain")); } catch {
+    if (!contextScope.current()) return; return; }
       if (!payload.homeReorderChoreId) return;
       const draggedId = payload.homeReorderChoreId;
       const targetId  = parseInt(homeTargetItem.dataset.homeReorderChoreId, 10);
@@ -3890,7 +3746,7 @@ export async function init() {
       ids.splice(fromIdx, 1);
       const insertIdx = ids.indexOf(targetId);
       ids.splice(insertIdx, 0, draggedId);
-      await saveChoreOrder(state, ids);
+      await withCurrentContext(saveChoreOrder(state, ids), contextScope);
       render(app);
       return;
     }
@@ -3902,7 +3758,8 @@ export async function init() {
       document.querySelectorAll(".sheet-chore-item--drag-over-top, .sheet-chore-item--drag-over-bottom")
         .forEach(el => el.classList.remove("sheet-chore-item--drag-over-top", "sheet-chore-item--drag-over-bottom"));
       let payload;
-      try { payload = JSON.parse(e.dataTransfer.getData("text/plain")); } catch { return; }
+      try { payload = JSON.parse(e.dataTransfer.getData("text/plain")); } catch {
+    if (!contextScope.current()) return; return; }
       if (!payload.reorderChoreId) return;
       const draggedId = payload.reorderChoreId;
       const targetId  = parseInt(targetItem.dataset.reorderChoreId, 10);
@@ -3918,7 +3775,7 @@ export async function init() {
       ids.splice(fromIdx, 1);
       const insertIdx = ids.indexOf(targetId);
       ids.splice(insertBefore ? insertIdx : insertIdx + 1, 0, draggedId);
-      await saveChoreOrder(state, ids);
+      await withCurrentContext(saveChoreOrder(state, ids), contextScope);
       render(app);
       return;
     }
@@ -3930,7 +3787,8 @@ export async function init() {
     cell.classList.remove("drop-target");
     let payload;
     try { payload = JSON.parse(e.dataTransfer.getData("text/plain")); }
-    catch { return; }
+    catch {
+    if (!contextScope.current()) return; return; }
     const { choreId, scheduleId } = payload;
     const newPeriod = cell.dataset.dropPeriod || "anytime";
     const newHour   = cell.dataset.dropHour != null
@@ -3940,26 +3798,27 @@ export async function init() {
       if (scheduleId) {
         // Move an existing schedule to the new time slot (PATCH preserves all
         // other fields including isActive, frequencyType, etc.).
-        await updateSchedule(scheduleId, {
+        await withCurrentContext(updateSchedule(scheduleId, {
           timePeriod:   newPeriod,
           specificTime: newHour,
-        });
+        }), contextScope);
       } else {
         // Unscheduled chore dragged into a slot — create a new "once" schedule
         // for the drop target's date (shown on that specific day only).
         const dropDate = cell.dataset.dropDate || state.calendarDate || null;
-        await createSchedule({
+        await withCurrentContext(createSchedule({
           choreId,
           timePeriod:    newPeriod,
           specificTime:  newHour,
           frequencyType: "once",
           startDate:     dropDate,
           isActive:      true,
-        });
+        }), contextScope);
       }
-      state.schedules = await loadSchedules();
+      state.schedules = await withCurrentContext(loadSchedules(), contextScope);
       render(app);
-    } catch { showToast("Failed to schedule chore", "error"); }
+    } catch {
+    if (!contextScope.current()) return; showToast("Failed to schedule chore", "error"); }
   });
 
   // ── Long-press to log a chore (with indicators/note sheet) ──────────────
@@ -4109,7 +3968,7 @@ export async function init() {
           ids.splice(fromIdx, 1);
           const insertIdx = ids.indexOf(targetId);
           ids.splice(insertIdx, 0, draggedId);
-          saveChoreOrder(state, ids).then(() => render(app));
+          saveChoreOrder(state, ids).then(owned(() => render(app)));
         }
       }
       return;
@@ -4180,30 +4039,19 @@ export async function init() {
   // we don't hammer the API in background tabs.  Also refreshes household data
   // when a household_joined notification is detected so new members appear
   // without needing a page reload.
-  let notifPollTimer = null;
-  let _lastHHRefresh = 0;
-  function startNotifPoll() {
-    if (notifPollTimer) clearInterval(notifPollTimer);
-    notifPollTimer = setInterval(() => {
-      if (!document.hidden && state.user) {
-        loadNotifData().then(() => updateTopBar());
-        if (state.household) {
-          const hasJoinNotif = (state.notifications || []).some(n => n.type === 'household_joined');
-          const now = Date.now();
-          if (hasJoinNotif || now - _lastHHRefresh > 300000) {
-            _lastHHRefresh = now;
-            loadHouseholdData();
-          }
-        }
-      }
-    }, 30000);
+  async function resumeSession() {
+    if (document.hidden) return;
+    if (state.logoutPending) { void doLogout(); return; }
+    if (!await confirmBrowserSession()) return;
+    const scope = captureScope(state);
+    // Confirm both the cookie's owner and current chore visibility before
+    // replay or push registration. Old UI data is never authority to resume.
+    if (!await loadChoreData() || !scope.current()) return;
+    const refreshNotifications = document.querySelector("#notif-panel-container")?.hidden !== false;
+    await Promise.all([refreshNotifications ? loadNotifData() : undefined,loadHouseholdData(),reloadViewData(),flushOfflineQueue(null,{confirmed:true})]);
+    if (scope.current()) { maybeSubscribePush().catch(() => {}); render(app); }
   }
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden && state.user) {
-      loadNotifData().then(() => updateTopBar());
-      if (state.household) loadHouseholdData();
-    }
-  });
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) void resumeSession(); });
   if (state.user) startNotifPoll();
 
   // Tick the home grid's "X ago" labels once a minute while the home tab is
@@ -4221,66 +4069,95 @@ export async function init() {
   // prefers-reduced-motion (skips the transition, still refreshes).
   setupPullToRefresh();
 
-  // ── Offline log queue: replay + messaging ───────────────────────────────────
-  // A log made while offline is queued (see today.js logChore / offline-queue).
-  // Tell the user it was saved, and replay the queue when we regain
-  // connectivity or the app is foregrounded (iOS Safari lacks Background Sync,
-  // so foreground replay is the primary mechanism there).
-  window.addEventListener("nabu-log-queued", (e) => {
-    showToast("Saved — will sync when online", "info");
-    // Synthesize a "pending" row (Phase 2.1) so the queued log is visible in
-    // Activity until it syncs. Reconciled (cleared) on the next successful flush.
-    const body = e?.detail;
-    if (body && typeof body.choreId === "number") {
-      state.pendingLogs = state.pendingLogs || [];
-      state.pendingLogs.unshift({
-        id: `pending-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        choreId: body.choreId,
-        userId: body.userId ?? state.user?.id,
-        note: body.note || "",
-        indicators: body.indicators || [],
-        indicatorVolumes: body.indicatorVolumes || {},
-        volumeML: body.volumeML ?? null,
-        rating: body.rating ?? null,
-        subject: body.subject ?? "",
-        title: body.title ?? "",
-        completedAt: body.completedAt || new Date().toISOString(),
-        _pending: true,
-      });
-      render(document.querySelector("#app"));
-    }
+  window.addEventListener("storage", event => {
+    const origin = contextSnapshot();
+    if (event.key !== `nabu_timer:${origin?.userId}:${origin?.householdId}`) return;
+    const saved = loadTimer(origin);
+    if (saved?.id === state.activeTimer?.id && state.activeTimer?.saving) saved.saving = true;
+    state.activeTimer = saved;
+    renderTimerChip();
   });
-  const flushOfflineQueue = () => {
-    if (!state.user) return;
-    replayQueue(apiFetch).then(async (synced) => {
-      if (synced > 0) {
-        // Reconcile: the queued logs are now on the server, so drop the
-        // synthetic pending rows before refetching.
-        state.pendingLogs = [];
-        await Promise.all([loadLatestLogsData(), reloadViewData()]);
-        render(document.querySelector("#app"));
-        showToast(`Synced ${synced} log${synced === 1 ? "" : "s"}`, "success");
-      }
-    }).catch(() => {});
-  };
-  window.addEventListener("online", flushOfflineQueue);
-  document.addEventListener("visibilitychange", () => {
-    if (!document.hidden) flushOfflineQueue();
+  window.addEventListener("nabu-journal-change", () => {
+    hydratePendingLogs().then(owned(() => { if (!state.activeSheet) render(app); })).catch(() => {});
   });
-  // Replay anything left from a previous session on boot.
-  if (state.user && (typeof navigator === "undefined" || navigator.onLine !== false)) {
-    flushOfflineQueue();
-  }
+  window.addEventListener("online", () => {
+    void resumeSession();
+  });
+  await hydratePendingLogs();
+  if (state.user && navigator.onLine !== false) void flushOfflineQueue();
 
   render(app);
 }
 
-async function loadHouseholdData() {
+function syncLogSaveControls(root) {
+  const button = root.querySelector('[data-action="save-log"]');
+  if (!button) return;
+  const draft = state.activeSheetData || {}, sheet = button.closest(".bottom-sheet");
+  button.dataset.readyLabel ||= button.textContent;
+  button.disabled = !!draft.saving;
+  button.textContent = draft.saving ? "Saving…" : draft.saveError && draft.submission?.body
+    ? (draft.savedDurably ? "Retry saved entry" : "Retry entry") : button.dataset.readyLabel;
+  const frozen = !!draft.submission?.body && !!(draft.saving || draft.saveError);
+  sheet?.querySelectorAll('input, textarea, select, button:not([data-action="save-log"]):not([data-action="close-sheet"]):not([data-action="discard-log-draft"])').forEach(el => {
+    if (frozen && !el.disabled) { el.dataset.frozenDisabled = "true"; el.disabled = true; }
+    else if (!frozen && el.dataset.frozenDisabled) { el.disabled = false; delete el.dataset.frozenDisabled; }
+  });
+  let error = sheet?.querySelector(".saved-draft-error");
+  if (draft.saveError && sheet) {
+    if (!error) { error = document.createElement("div"); error.className = "saved-draft-error form-error"; error.setAttribute("role", "status"); button.before(error); }
+    error.innerHTML = `<p>${escapeHTML(draft.saveError)}</p>${draft.submission?.body ? `<p>Retry sends this entry unchanged.${draft.savedDurably ? "" : " Keep this page open; device storage is unavailable."}</p><button type="button" class="btn btn-ghost btn-sm" data-action="discard-log-draft">${draft.savedDurably ? "Discard saved copy and edit" : "Discard retry and edit"}</button>` : ''}`;
+  } else error?.remove();
+}
+
+function renderPendingWork() {
+  const rows = state.pendingLogs || [];
+  return `<details class="pending-work"><summary>${rows.length} log${rows.length === 1 ? "" : "s"} saved on this device · awaiting confirmation</summary>${rows.map(log => {
+    const chore = (state.chores || []).find(c => c.id === log.choreId);
+    return `<div class="pending-work-row" data-pending-key="${escapeHTML(log.idempotencyKey)}"><strong>${escapeHTML(chore?.name || "Saved log")}</strong>
+      ${log.note ? `<p>${escapeHTML(log.note)}</p>` : ""}${log.durationSeconds != null ? `<p>${formatElapsed(log.durationSeconds)}</p>` : ""}
+      <p>${escapeHTML(log._error || "Waiting to sync.")}</p>
+      <button type="button" class="btn btn-sm" data-action="retry-pending-log" data-key="${escapeHTML(log.idempotencyKey)}">Retry</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-action="discard-pending-log" data-key="${escapeHTML(log.idempotencyKey)}">Discard saved copy</button></div>`;
+  }).join("")}</details>`;
+}
+async function hydratePendingLogs() {
+  const contextScope = captureScope(state);
+  if (!state.user?.householdId) return;
+  const scope = captureScope(state, "journal");
   try {
-    const [data, listData] = await Promise.all([
+    const entries = await withCurrentContext(queuedLogs(scope.origin), contextScope);
+    if (!scope.current()) return;
+    state.pendingLogs = entries.map(entry => ({ ...entry.body, id:`pending-${entry.idempotencyKey}`, userId:entry.body.userId || entry.actorId,
+      _pending:true, _error:entry.error, _status:entry.status }));
+  } catch { /* preserve last good rows if storage is temporarily unavailable */ }
+}
+async function flushOfflineQueue(retryKey = null, {confirmed=false} = {}) {
+  if (!state.user?.householdId || state.logoutPending || state.transitioning || state.sessionUnconfirmed) return;
+  if (!confirmed && !await confirmBrowserSession()) return;
+  const contextScope = captureScope(state);
+  if (!state.user?.householdId || state.logoutPending || state.transitioning) return;
+  const scope = captureScope(state);
+  try {
+    const { syncedKeys } = await withCurrentContext(replayQueue(apiFetch, {origin:scope.origin,retryKey}), contextScope);
+    if (!scope.current()) return;
+    await withCurrentContext(hydratePendingLogs(), contextScope);
+    if (!scope.current()) return;
+    if (syncedKeys.length) {
+      await withCurrentContext(Promise.all([loadLatestLogsData(), reloadViewData()]), contextScope);
+      if (!scope.current()) return;
+      showToast(`Synced ${syncedKeys.length} log${syncedKeys.length === 1 ? "" : "s"}`, "success");
+    }
+    render(document.querySelector("#app"));
+  } catch { /* retained in the journal */ }
+}
+
+async function loadHouseholdData() {
+  const contextScope = captureScope(state, "household");
+  try {
+    const [data, listData] = await withCurrentContext(Promise.all([
       loadHousehold(),
       listHouseholds(),
-    ]);
+    ]), contextScope);
     if (data.household) {
       state.household = data.household;
       state.members = data.members;
@@ -4297,21 +4174,25 @@ async function loadHouseholdData() {
 }
 
 async function loadChoreData() {
+  const contextScope = captureScope(state, "chores");
   try {
-    const data = await loadChores();
+    const data = await withCurrentContext(loadChores(), contextScope);
     if (data.chores) {
       state.chores = data.chores;
+      return true;
     }
   } catch {}
+  return false;
 }
 
 async function loadTodayData() {
+  const contextScope = captureScope(state, "today", () => state.calendarDate || state.todayDate || todayISO(0));
   try {
     const date = state.calendarDate || state.todayDate || todayISO(0);
-    const [todayResult, scheduleList] = await Promise.all([
+    const [todayResult, scheduleList] = await withCurrentContext(Promise.all([
       loadToday(date),
       loadSchedules(),
-    ]);
+    ]), contextScope);
     state.todayLogs = todayResult.logs || [];
     state.dailySummary = todayResult.summary;
     state.schedules = scheduleList;
@@ -4319,114 +4200,97 @@ async function loadTodayData() {
 }
 
 async function loadWeekData() {
+  const contextScope = captureScope(state, "week", () => state.calendarDate || todayISO(0));
   try {
     const date = state.calendarDate || todayISO(0);
     const d = new Date(date + "T00:00:00");
     const day = d.getDay();
     d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
     const weekStart = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    const [weekResult, scheduleList] = await Promise.all([
+    const [weekResult, scheduleList] = await withCurrentContext(Promise.all([
       loadWeek(weekStart),
       loadSchedules(),
-    ]);
+    ]), contextScope);
     state.weekLogs = weekResult.logs || [];
     state.schedules = scheduleList;
   } catch {}
 }
 
+async function loadActivityPage(options = {}) {
+  const contextScope = captureScope(state);
+  const scope = captureScope(state);
+  const pending = loadActivity(state,options);
+  if (!state.activeSheet) render(document.querySelector("#app"));
+  await withCurrentContext(Promise.all([pending,loadDayNotesData()]), contextScope);
+  if (scope.current()) render(document.querySelector("#app"));
+}
 async function reloadViewData() {
-  if (state.currentRoute === "/activity") {
-    if (state.activityView === "history") {
-      try {
-        loadDayNotesData().catch(() => {});
-        const prevLogs = [...(state.historyLogs || [])];
-        const prevBefore = state.historyBefore;
-        const prevHasMore = state.historyHasMore;
-
-        const data = await loadHistory();
-        let newLogs = data?.logs || [];
-        state.historyHasMore = data?.hasMore || false;
-        state.historyBefore = data?.start || null;
-
-        if (prevBefore) {
-          const newStart = data?.start;
-          if (newStart) {
-            const newLogIds = new Set(newLogs.map(l => l.id));
-            const olderLogs = prevLogs.filter(l => {
-              const d = (l.completedAt || "").substring(0, 10);
-              return d && d < newStart && !newLogIds.has(l.id);
-            });
-            newLogs = [...newLogs, ...olderLogs];
-            state.historyBefore = prevBefore;
-            state.historyHasMore = prevHasMore;
-          }
-        }
-
-        state.historyLogs = newLogs;
-      } catch {}
-    } else if (state.calendarView === "week") {
-      await loadWeekData();
-    } else {
-      await loadTodayData();
-    }
-  } else if (state.currentRoute === "/schedule") {
-    try {
-      await loadChoreData();
-      const schedules = await loadSchedules();
-      state.schedules = schedules;
-      await loadTodayData();
-    } catch {}
-  } else if (state.calendarView === "week") {
-    await loadWeekData();
+  const contextScope = captureScope(state);
+  if (!state.user || !state.household) return;
+  const scope = captureScope(state);
+  const route = state.currentRoute || window.location.pathname || "/";
+  if (route === "/activity") {
+    await withCurrentContext(Promise.all([loadActivity(state,{preservePages:true}),loadDayNotesData()]), contextScope);
+  } else if (route === "/stats") {
+    await withCurrentContext(loadAllStatsData(), contextScope);
+  } else if (route === "/schedule") {
+    await withCurrentContext(loadTodayData(), contextScope);
   } else {
-    await loadTodayData();
+    await withCurrentContext(Promise.all([loadTodayData(),loadLatestLogsData()]), contextScope);
   }
+  if (scope.current()) await withCurrentContext(hydratePendingLogs(), contextScope);
+}
+
+async function runHouseholdTransition(run, {seed=false,route=state.currentRoute || window.location.pathname || "/"} = {}) {
+  if (state.transitioning) return;
+  const ticket = ++identityUIRevision, app = document.querySelector("#app");
+  closeAllPanels(); adoptUser(state.user,route); state.transitioning=true; render(app);
+  try {
+    const result = await run();
+    if (ticket !== identityUIRevision || !resultIsCurrent(result)) return;
+    adoptUser(result.user,route);
+    const scope = captureScope(state);
+    if (seed && result.ok) { await seedDefaultChores(); if (!scope.current()) return; }
+    await reloadAfterAuth();
+    if (!scope.current()) return;
+    if (!result.ok) showToast(result.error || "Could not change household. Please retry.","error");
+  } catch (err) {
+    if (ticket !== identityUIRevision) return;
+    await recoverIdentity(err,route);
+    if (ticket === identityUIRevision) showToast(err.message || "Could not confirm the household change. Please retry.","error");
+  }
+  if (ticket === identityUIRevision) { state.transitioning=false; render(app); }
 }
 
 async function doCreateHousehold(form) {
   const name = form.querySelector("#hh-name").value;
   const initials = (form.querySelector("#hh-initials")?.value || "").trim();
-  const data = await createHousehold(name, initials || generateInitials(name));
-  if (data.household) {
-    state.household = data.household;
-    await loadHouseholdData();
-    await seedDefaultChores();
-    await loadChoreData();
-    await loadTodayData();
-    state.currentRoute = "/";
-    render(document.querySelector("#app"));
-  }
+  return runHouseholdTransition(() => createHousehold(name, initials || generateInitials(name)), {seed:true,route:"/"});
 }
 
 async function seedDefaultChores() {
+  const contextScope = captureScope(state);
   try {
-    await apiFetch("/api/chores/seed-defaults", { method: "POST" });
+    await withCurrentContext(apiFetch("/api/chores/seed-defaults", { method: "POST" }), contextScope);
   } catch {}
 }
 
 async function doJoinHousehold(form) {
   const code = form.querySelector("#invite-code").value;
-  const data = await joinHousehold(code);
-  if (data.household) {
-    state.household = data.household;
-    await loadHouseholdData();
-    await loadChoreData();
-    await loadTodayData();
-    state.currentRoute = "/";
-    render(document.querySelector("#app"));
-  }
+  return runHouseholdTransition(() => joinHousehold(code), {route:"/"});
 }
 
 async function doUpdateHousehold(form) {
+  const contextScope = captureScope(state);
   const name = form.querySelector("#edit-hh-name")?.value?.trim() || "";
   const initials = (form.querySelector("#edit-hh-initials")?.value || "").trim();
   if (!name) return;
-  const data = await updateHousehold(name, initials || generateInitials(name));
+  const data = await withCurrentContext(updateHousehold(name, initials || generateInitials(name)), contextScope);
   if (!data || data.error) {
     showToast(data?.error || "Failed to update household", "error");
     return;
   }
-  await loadHouseholdData();
+  await withCurrentContext(loadHouseholdData(), contextScope);
   updateTopBar();
   const app = document.querySelector("#app");
   if (app) render(app);
@@ -4434,14 +4298,15 @@ async function doUpdateHousehold(form) {
 }
 
 async function doCreateChoreFromSheet(form) {
+  const contextScope = captureScope(state);
   const name      = form.querySelector('[name="choreName"]').value.trim();
   if (!name) return;
 
   try {
-    const { data: choreData } = await apiFetch("/api/chores", {
+    const { data: choreData } = await withCurrentContext(apiFetch("/api/chores", {
       method: "POST",
       body: JSON.stringify({ name }),
-    });
+    }), contextScope);
     const newChore = choreData?.chore;
     if (!newChore) { showToast("Failed to create chore", "error"); return; }
 
@@ -4449,27 +4314,28 @@ async function doCreateChoreFromSheet(form) {
     const specificTime = timeInput?.value || null;
     const slotDate     = form.querySelector('[name="date"]')?.value || state.activeSheetData?.date || null;
     const freqPayload  = readSheetFreq("sheet", slotDate);
-    await createSchedule({
+    await withCurrentContext(createSchedule({
       choreId:       newChore.id,
       timePeriod:    "anytime",
       specificTime,
       isActive:      true,
       ...freqPayload,
-    });
+    }), contextScope);
 
-    await loadChoreData();
+    await withCurrentContext(loadChoreData(), contextScope);
     // Append new chore to the user's custom order so it appears at the bottom
     // of the sheet list rather than being sorted to an arbitrary position.
     if (newChore.id) {
       const newOrder = [...(state.choreOrder || []), newChore.id];
-      await saveChoreOrder(state, newOrder);
+      await withCurrentContext(saveChoreOrder(state, newOrder), contextScope);
     }
-    state.schedules = await loadSchedules();
+    state.schedules = await withCurrentContext(loadSchedules(), contextScope);
     state.activeSheet     = null;
     state.activeSheetData = {};
     const app = document.querySelector("#app");
     if (app) render(app);
   } catch {
+    if (!contextScope.current()) return;
     showToast("Failed to create chore", "error");
   }
 }

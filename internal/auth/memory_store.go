@@ -2,18 +2,21 @@ package auth
 
 import (
 	"context"
+	"maps"
 	"sync"
 	"time"
 )
 
 type MemoryStore struct {
 	mu             sync.RWMutex
+	inTransaction  bool
 	idSeq          int64
 	usersByEmail   map[string]User
 	usersByID      map[int64]User
 	passwordsByID  map[int64]string
 	sessionsByHash map[string]Session
 	tokensByHash   map[string]AuthToken
+	mailByID       map[int64]AuthMail
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -23,7 +26,57 @@ func NewMemoryStore() *MemoryStore {
 		passwordsByID:  map[int64]string{},
 		sessionsByHash: map[string]Session{},
 		tokensByHash:   map[string]AuthToken{},
+		mailByID:       map[int64]AuthMail{},
 	}
+}
+
+func (s *MemoryStore) WithSession(ctx context.Context, userID int64, hash string, fn func() error) error {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	session, ok := s.sessionsByHash[hash]
+	user, exists := s.usersByID[userID]
+	now := time.Now()
+	if !ok || !exists || session.UserID != userID || session.AuthVersion != user.AuthVersion ||
+		!now.Before(session.ExpiresAt) || now.Sub(session.LastSeenAt) >= sessionIdleTimeout {
+		return ErrSessionNotFound
+	}
+	return fn()
+}
+
+// Copy-on-write gives memory mode the same rollback boundary as PostgreSQL.
+func (s *MemoryStore) InTransaction(ctx context.Context, fn func(Store) error) error {
+	if s.inTransaction {
+		return fn(s)
+	}
+	tx, commit, unlock := s.PrepareTransaction()
+	defer unlock()
+	if err := fn(tx); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	commit()
+	return nil
+}
+
+// PrepareTransaction lets account deletion commit the auth and household
+// snapshots together. The caller must unlock, even when discarding changes.
+func (s *MemoryStore) PrepareTransaction() (Store, func(), func()) {
+	s.mu.Lock()
+	tx := &MemoryStore{inTransaction: true, idSeq: s.idSeq,
+		usersByEmail: maps.Clone(s.usersByEmail), usersByID: maps.Clone(s.usersByID),
+		passwordsByID: maps.Clone(s.passwordsByID), sessionsByHash: maps.Clone(s.sessionsByHash),
+		tokensByHash: maps.Clone(s.tokensByHash), mailByID: maps.Clone(s.mailByID)}
+	commit := func() {
+		s.mailByID = tx.mailByID
+		s.idSeq, s.usersByEmail, s.usersByID = tx.idSeq, tx.usersByEmail, tx.usersByID
+		s.passwordsByID, s.sessionsByHash, s.tokensByHash = tx.passwordsByID, tx.sessionsByHash, tx.tokensByHash
+	}
+	return tx, commit, s.mu.Unlock
 }
 
 func (s *MemoryStore) nextID() int64 {
@@ -43,6 +96,7 @@ func (s *MemoryStore) CreateUser(_ context.Context, email, passwordHash string) 
 	now := time.Now().UTC()
 	user := User{
 		ID:          id,
+		HasPassword: passwordHash != "",
 		Email:       email,
 		DisplayName: emailToDisplay(email),
 		AvatarColor: "#19323C",
@@ -118,9 +172,13 @@ func (s *MemoryStore) UpdatePassword(_ context.Context, userID int64, passwordHa
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if _, ok := s.usersByID[userID]; !ok {
+	user, ok := s.usersByID[userID]
+	if !ok {
 		return ErrUserNotFound
 	}
+	user.AuthVersion++
+	user.HasPassword = passwordHash != ""
+	s.usersByID[userID], s.usersByEmail[user.Email] = user, user
 	s.passwordsByID[userID] = passwordHash
 	return nil
 }
@@ -140,17 +198,22 @@ func (s *MemoryStore) SetUserHousehold(_ context.Context, userID, householdID in
 	return nil
 }
 
-func (s *MemoryStore) CreateSession(_ context.Context, userID int64, tokenHash string, expiresAt time.Time) (Session, error) {
+func (s *MemoryStore) CreateSession(_ context.Context, userID, authVersion int64, tokenHash string, expiresAt time.Time) (Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	user, ok := s.usersByID[userID]
+	if !ok || user.AuthVersion != authVersion {
+		return Session{}, ErrInvalidCredentials
+	}
 	now := time.Now().UTC()
 	session := Session{
-		ID:         randomToken(32),
-		UserID:     userID,
-		ExpiresAt:  expiresAt,
-		LastSeenAt: now,
-		CreatedAt:  now,
+		ID:          randomToken(32),
+		UserID:      userID,
+		AuthVersion: authVersion,
+		ExpiresAt:   expiresAt,
+		LastSeenAt:  now,
+		CreatedAt:   now,
 	}
 	s.sessionsByHash[tokenHash] = session
 	return session, nil
@@ -213,10 +276,16 @@ func (s *MemoryStore) DeleteUser(_ context.Context, userID int64) error {
 		}
 	}
 	for hash, token := range s.tokensByHash {
-		if token.UserID != nil && *token.UserID == userID {
+		if token.Email == user.Email || (token.UserID != nil && *token.UserID == userID) {
 			delete(s.tokensByHash, hash)
 		}
 	}
+	for id, job := range s.mailByID {
+		if job.UserID == userID {
+			delete(s.mailByID, id)
+		}
+	}
+
 	return nil
 }
 
@@ -236,6 +305,33 @@ func (s *MemoryStore) CreateAuthToken(_ context.Context, userID *int64, email, t
 	}
 	s.tokensByHash[tokenHash] = token
 	return token, nil
+}
+
+func (s *MemoryStore) GetAuthToken(_ context.Context, tokenHash, kind string) (AuthToken, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	token, ok := s.tokensByHash[tokenHash]
+	if !ok || token.Kind != kind || token.ConsumedAt != nil || !time.Now().UTC().Before(token.ExpiresAt) {
+		return AuthToken{}, ErrInvalidToken
+	}
+	return token, nil
+}
+
+func (s *MemoryStore) DeleteUserAuthTokens(_ context.Context, userID int64, email string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for hash, token := range s.tokensByHash {
+		if token.Email == email || (token.UserID != nil && *token.UserID == userID) {
+			delete(s.tokensByHash, hash)
+		}
+	}
+	for id, job := range s.mailByID {
+		if job.UserID == userID {
+			delete(s.mailByID, id)
+		}
+	}
+
+	return nil
 }
 
 func (s *MemoryStore) ConsumeAuthToken(_ context.Context, tokenHash, kind string) (AuthToken, error) {

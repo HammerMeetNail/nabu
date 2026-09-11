@@ -80,7 +80,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie(h.cookieName)
 	if err == nil {
-		_ = h.authService.Logout(r.Context(), cookie.Value)
+		if err := h.authService.Logout(r.Context(), cookie.Value); err != nil {
+			writeServerError(w, "could not sign out; please retry", err)
+			return
+		}
 	}
 	h.clearSessionCookie(w)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "logged out"})
@@ -113,7 +116,7 @@ func (h *AuthHandler) ResendVerification(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "verification email sent"})
+	writeJSON(w, http.StatusOK, map[string]string{"status": "verification email queued"})
 }
 
 func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
@@ -123,12 +126,13 @@ func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err := h.authService.VerifyEmail(r.Context(), token)
+	_, session, err := h.authService.VerifyEmailAndLogin(r.Context(), token)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid or expired token")
 		return
 	}
 
+	h.SetSessionCookie(w, session.ID)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "email verified"})
 }
 

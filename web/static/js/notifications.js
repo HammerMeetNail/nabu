@@ -1,5 +1,6 @@
 import { apiFetch } from "./api.js";
 import { escapeHTML } from "./utils.js";
+import { contextSnapshot, assertContext } from "./browser-context.js";
 
 /**
  * Clear the PWA home screen icon badge.
@@ -34,6 +35,8 @@ export function requestNotificationPermission() {
  * This is called once after login / registration.
  */
 export async function maybeSubscribePush() {
+  const origin = contextSnapshot();
+  if (!origin?.userId || origin.status !== "active") return;
   const vapidKey = document.querySelector('meta[name="vapid-public-key"]')?.content;
   if (!vapidKey || !navigator.serviceWorker || !window.PushManager) return;
   if (Notification.permission !== 'granted') return;
@@ -49,7 +52,8 @@ export async function maybeSubscribePush() {
     const reg = await navigator.serviceWorker.ready;
     const existing = await reg.pushManager.getSubscription();
     if (existing) {
-      await sendSubscriptionToServer(existing);
+      assertContext(origin);
+      await sendSubscriptionToServer(existing, origin);
       return;
     }
 
@@ -57,23 +61,21 @@ export async function maybeSubscribePush() {
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(vapidKey),
     });
-    await sendSubscriptionToServer(sub);
+    assertContext(origin);
+    await sendSubscriptionToServer(sub, origin);
   } catch (e) {
     // Best-effort — push is optional. Log the reason for debugging.
-    window.__pushError = e.name + ': ' + e.message;
-    console.error("push subscribe failed:", e.name, e.message);
+    window.__pushError = "Push registration needs retry";
   }
 }
 
-async function sendSubscriptionToServer(sub) {
-  try {
-    await apiFetch("/api/push/subscribe", {
+async function sendSubscriptionToServer(sub, origin) {
+    const { response } = await apiFetch("/api/push/subscribe", {
       method: "POST",
-      body: JSON.stringify({ subscription: sub.toJSON() }),
+      origin,
+      body: JSON.stringify({ subscription: sub.toJSON(), bindingId:origin.bindingId }),
     });
-  } catch (e) {
-    window.__pushError = 'send: ' + e.name + ': ' + e.message;
-  }
+    if (!response.ok) throw new Error("Push registration needs retry");
 }
 
 function urlBase64ToUint8Array(base64String) {
@@ -92,9 +94,7 @@ function urlBase64ToUint8Array(base64String) {
  * @returns {{ preferences: object, availableTypes: Array }}
  */
 export async function loadNotificationPreferences() {
-  const res = await fetch("/api/notification-preferences", { credentials: "same-origin" });
-  if (!res.ok) return { preferences: { enabledPushTypes: [] }, availableTypes: [] };
-  return res.json();
+  return (await apiFetch("/api/notification-preferences")).data;
 }
 
 /**
@@ -110,10 +110,10 @@ export async function saveNotificationPreferences(prefs) {
   if (!response.ok) throw new Error("Failed to save notification preferences");
   return data;
 }
-export async function loadNotifications() {
-  const res = await fetch("/api/notifications", { credentials: "same-origin" });
-  if (!res.ok) return { notifications: [], unreadCount: 0 };
-  return res.json();
+export async function loadNotifications(cursor = null) {
+  // Ordered pages must take a fresh snapshot after a mutation, even while
+  // an older GET for the same cursor is still completing.
+  return (await apiFetch("/api/notifications" + (cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""), {signal:AbortSignal.timeout(20000)})).data;
 }
 
 /**
@@ -159,18 +159,20 @@ export async function saveChoreReminderPref(choreId, pref) {
  * @param {Array} notifications
  * @returns {string} HTML string
  */
-export function renderNotificationPanel(notifications) {
-  const unread = notifications.filter((n) => !n.isRead);
-  const items = unread.length
-    ? unread
+export function renderNotificationPanel(notifications, state = {}) {
+  const unread = state.unreadNotifications ?? notifications.filter((n) => !n.isRead).length;
+  const busy = state.notificationLoading || state.notificationLoadingMore || state.notificationMutating;
+  const disabled = state.notificationMutating ? ' disabled' : '';
+  const items = notifications.length
+    ? notifications
         .map(
           (n) => `
-    <li class="notif-item" data-notif-id="${n.id}">
-      <button type="button" class="notif-content" data-action="mark-notif-read" data-notif-id="${n.id}">
+    <li class="notif-item${n.isRead ? ' notif-read' : ''}" data-notif-id="${n.id}">
+      <button type="button" class="notif-content" data-action="mark-notif-read" data-notif-id="${n.id}" aria-label="${n.isRead ? 'Read notification' : 'Mark notification read'}"${disabled}>
         <span class="notif-title">${escapeHTML(n.title)}</span>
         <span class="notif-body">${escapeHTML(n.body)}</span>
       </button>
-      <button type="button" class="notif-dismiss icon-button" data-action="dismiss-notification" data-notif-id="${n.id}" aria-label="Dismiss">
+      <button type="button" class="notif-dismiss icon-button" data-action="dismiss-notification" data-notif-id="${n.id}" aria-label="Dismiss"${disabled}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <line x1="18" y1="6" x2="6" y2="18"></line>
           <line x1="6" y1="6" x2="18" y2="18"></line>
@@ -181,17 +183,6 @@ export function renderNotificationPanel(notifications) {
         .join("")
     : `<li class="notif-empty">No notifications</li>`;
 
-  // Push diagnostic (remove once push is confirmed working)
-  let diag = "";
-  if (window.__pushDiag) {
-    const lp = window.__pushDiag;
-    diag = `<li class="notif-item" style="font-size:11px;color:var(--text-secondary)">
-      <div class="notif-content">
-        <span>Push: decrypted=${lp.decrypted} title="${escapeHTML(lp.title||'')}" ${new Date(lp.time).toLocaleTimeString()}</span>
-      </div>
-    </li>`;
-  }
-
   return `
   <div class="notif-backdrop" data-action="close-notifications"></div>
   <div class="notif-panel" id="notif-panel">
@@ -199,8 +190,8 @@ export function renderNotificationPanel(notifications) {
     <div class="notif-panel-header">
       <span class="notif-panel-title">Notifications</span>
       ${
-        unread.length > 0
-          ? `<button type="button" class="notif-mark-all-read text-button" data-action="mark-all-read">Mark all read</button>`
+        unread > 0
+          ? `<button type="button" class="notif-mark-all-read text-button" data-action="mark-all-read"${disabled}>Mark all read</button>`
           : ""
       }
       <button type="button" class="notif-close icon-button" data-action="close-notifications" aria-label="Close">
@@ -210,8 +201,11 @@ export function renderNotificationPanel(notifications) {
         </svg>
       </button>
     </div>
-    <ul class="notif-list">
-      ${items}
-    </ul>
+    <button type="button" class="text-button" data-action="refresh-notifications"${busy ? ' disabled' : ''}>Refresh notifications</button>
+    ${state.notificationError ? `<p role="alert" class="error-text" data-testid="notification-error">${escapeHTML(state.notificationError)}</p>` : ''}
+    ${state.notificationLoading ? '<p role="status">Loading notifications…</p>' : ''}
+    <ul class="notif-list">${items}</ul>
+    ${state.notificationCursor ? `<button type="button" class="btn btn-secondary btn-sm" data-action="more-notifications"${busy ? ' disabled' : ''}>${state.notificationLoadingMore ? 'Loading…' : state.notificationErrorAction === 'more' ? 'Retry loading older notifications' : 'Load older notifications'}</button>` : ''}
+    <p class="text-secondary notif-retention">Notifications stay here until you delete them.</p>
   </div>`;
 }

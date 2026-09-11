@@ -20,6 +20,25 @@ struct StatsCard<Content: View>: View {
     }
 }
 
+struct StatsLoadStatus: View {
+    @ObservedObject var model: StatsModel
+    let resource: String
+
+    var body: some View {
+        if model.loading.contains(resource) {
+            ProgressView("Loading chart")
+                .font(.caption)
+        } else if let message = model.errors[resource] {
+            HStack {
+                Text(message).font(.caption)
+                Button("Retry") { Task { await model.retrySection(resource) } }
+                    .accessibilityIdentifier("stats-retry-\(resource)")
+            }
+            .foregroundStyle(DesignColors.textSecondary)
+        }
+    }
+}
+
 /// Native segmented day/week/month(/all) period control (PWA
 /// `renderStatsPeriodToggle` semantics, §2.1 presentation).
 struct StatsPeriodToggle: View {
@@ -166,18 +185,25 @@ struct BabyCareSection: View {
     var body: some View {
         StatsCard {
             Text("Baby").font(.headline)
-            if let ts = model.feedBabyTS {
+            if let chore = model.feedBabyChore {
+                let ts = model.feedBabyTS ?? emptySeries(chore)
                 BabyColumn(model: model, ts: ts, type: "feed", period: model.feedBabyPeriod,
                            members: members, volumeUnit: volumeUnit)
             }
-            if let ts = model.changeBabyTS {
+            if let chore = model.changeBabyChore {
+                let ts = model.changeBabyTS ?? emptySeries(chore)
                 BabyColumn(model: model, ts: ts, type: "change", period: model.changeBabyPeriod,
                            members: members, volumeUnit: volumeUnit)
             }
-            if !model.feedingGaps.isEmpty || model.feedBabyTS != nil {
+            if model.feedBabyChore != nil {
                 FeedingGapsColumn(model: model, volumeUnit: volumeUnit)
             }
         }
+    }
+
+    private func emptySeries(_ chore: Chore) -> ChoreTimeSeries {
+        ChoreTimeSeries(choreId: chore.id, choreName: chore.name, choreIcon: chore.icon,
+                        metricType: chore.metricType, metricUnit: chore.metricUnit, byMember: [], periods: [])
     }
 }
 

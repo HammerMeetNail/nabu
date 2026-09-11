@@ -1,6 +1,6 @@
 // web/static/js/calendar.js
 
-import { escapeHTML }     from "./utils.js";
+import { escapeHTML, localDateStr }     from "./utils.js";
 import { todayISO }       from "./today.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -384,7 +384,7 @@ export function isActiveForDayJS(sch, isoDate) {
   if (!sch.isActive) return false;
   const d = new Date(isoDate + "T00:00:00");
   if (sch.recurrenceEnd) {
-    if (d > new Date(sch.recurrenceEnd)) return false;
+    if (isoDate > String(sch.recurrenceEnd).slice(0, 10)) return false;
   }
   const wd = d.getDay(); // 0=Sun
   switch (sch.frequencyType) {
@@ -400,10 +400,11 @@ export function isActiveForDayJS(sch, isoDate) {
       const originDateStr = sch.startDate
         ? String(sch.startDate).slice(0, 10)
         : sch.createdAt
-          ? String(sch.createdAt).slice(0, 10)
+          ? localDateStr(new Date(sch.createdAt))
           : isoDate;
-      const origin = new Date(originDateStr + "T00:00:00");
-      const diffDays = Math.round((d - origin) / 86400000);
+      const origin = new Date(originDateStr + "T00:00:00Z");
+      const ordinal = new Date(isoDate + "T00:00:00Z");
+      const diffDays = (ordinal - origin) / 86400000;
       return diffDays >= 0 && diffDays % sch.intervalDays === 0;
     }
     case "monthly_by_date":

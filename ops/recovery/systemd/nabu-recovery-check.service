@@ -1,0 +1,14 @@
+[Unit]
+Description=Nabu Recovery freshness and archive check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=deploy
+WorkingDirectory=/opt/nabu
+UMask=0077
+TimeoutStartSec=5min
+TimeoutStopSec=30s
+KillMode=control-group
+ExecStart=/opt/nabu/scripts/recovery-job.sh check

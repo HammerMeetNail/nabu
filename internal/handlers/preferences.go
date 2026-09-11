@@ -37,31 +37,15 @@ func (h *PreferencesHandler) WithHouseholdStore(hs household.Store) *Preferences
 	return h
 }
 
-func (h *PreferencesHandler) visibleChoreSet(userID, householdID int64, ctx context.Context) map[int64]struct{} {
-	if h.choreStore == nil || householdID == 0 {
-		return nil
+func (h *PreferencesHandler) visibleChoreSet(userID, householdID int64, ctx context.Context) (map[int64]struct{}, error) {
+	if householdID == 0 {
+		return map[int64]struct{}{}, nil
 	}
-	chores, err := h.choreStore.ListChores(ctx, householdID)
-	if err != nil {
-		return nil
+	if h.choreStore == nil {
+		// An explicitly unwired internal handler has no chore-backed preferences.
+		return nil, nil
 	}
-	visible := make(map[int64]struct{}, len(chores))
-	for _, c := range chores {
-		if c.Visibility == chore.VisibilityAdmins {
-			if h.householdStore == nil {
-				continue
-			}
-			role, err := h.householdStore.GetMembershipForHousehold(ctx, userID, householdID)
-			if err != nil {
-				continue
-			}
-			if role != household.RoleOwner && role != household.RoleAdmin {
-				continue
-			}
-		}
-		visible[c.ID] = struct{}{}
-	}
-	return visible
+	return chore.NewService(h.choreStore).WithMemberships(h.householdStore).VisibleChoreIDs(ctx, userID, householdID)
 }
 
 func (h *PreferencesHandler) filterPreferencesForResponse(prefs userprefs.Preferences, visible map[int64]struct{}) userprefs.Preferences {
@@ -186,8 +170,14 @@ func (h *PreferencesHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if user.HouseholdID != nil {
-		visible := h.visibleChoreSet(user.ID, *user.HouseholdID, r.Context())
+		visible, err := h.visibleChoreSet(user.ID, *user.HouseholdID, r.Context())
+		if err != nil {
+			writeServerError(w, "failed to verify chore access", err)
+			return
+		}
 		prefs = h.filterPreferencesForResponse(prefs, visible)
+	} else {
+		prefs = h.filterPreferencesForResponse(prefs, map[int64]struct{}{})
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{"preferences": prefs})
@@ -218,9 +208,14 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var visible map[int64]struct{}
+	visible := map[int64]struct{}{}
 	if user.HouseholdID != nil {
-		visible = h.visibleChoreSet(user.ID, *user.HouseholdID, r.Context())
+		var err error
+		visible, err = h.visibleChoreSet(user.ID, *user.HouseholdID, r.Context())
+		if err != nil {
+			writeServerError(w, "failed to verify chore access", err)
+			return
+		}
 	}
 
 	if req.ChoreOrder != nil {
@@ -294,34 +289,12 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	if req.StatsWidgets != nil {
 		// Ownership + visibility check: every referenced chore must be visible to caller.
-		if h.choreStore != nil {
-			if visible == nil && user.HouseholdID != nil {
-				visible = h.visibleChoreSet(user.ID, *user.HouseholdID, r.Context())
-			}
-			for _, wdg := range *req.StatsWidgets {
-				for _, cid := range wdg.ChoreIDs {
-					if visible != nil {
-						if _, ok := visible[cid]; !ok {
-							writeError(w, http.StatusNotFound, "chore not found")
-							return
-						}
-					} else {
-						// Fallback ownership check
-						owned := false
-						if user.HouseholdID != nil {
-							if chores, err := h.choreStore.ListChores(r.Context(), *user.HouseholdID); err == nil {
-								for _, c := range chores {
-									if c.ID == cid {
-										owned = true
-										break
-									}
-								}
-							}
-						}
-						if !owned {
-							writeError(w, http.StatusForbidden, "widget references a chore outside your household")
-							return
-						}
+		for _, wdg := range *req.StatsWidgets {
+			for _, cid := range wdg.ChoreIDs {
+				if visible != nil {
+					if _, ok := visible[cid]; !ok {
+						writeError(w, http.StatusNotFound, "chore not found")
+						return
 					}
 				}
 			}
@@ -337,12 +310,7 @@ func (h *PreferencesHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeServerError(w, "failed to load preferences", err)
 		return
 	}
-	if user.HouseholdID != nil {
-		if visible == nil {
-			visible = h.visibleChoreSet(user.ID, *user.HouseholdID, r.Context())
-		}
-		prefs = h.filterPreferencesForResponse(prefs, visible)
-	}
+	prefs = h.filterPreferencesForResponse(prefs, visible)
 
 	writeJSON(w, http.StatusOK, map[string]any{"preferences": prefs})
 }

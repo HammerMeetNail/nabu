@@ -1,12 +1,9 @@
 import { apiFetch } from "./api.js";
 import { escapeHTML, formatVolume } from "./utils.js";
 import { loadSchedulesForDate } from "./schedule.js";
-import { enqueueLog } from "./offline-queue.js";
-
-function newIdempotencyKey() {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-}
+import { submitLog } from "./offline-queue.js";
+import { contextSnapshot, sameOrigin, ContextChangedError } from "./browser-context.js";
+import { newKey } from "./device-store.js";
 
 function formatLocalISODate(d) {
   const year = d.getFullYear();
@@ -55,7 +52,8 @@ export async function loadMoreHistory(before) {
   return data;
 }
 
-export async function logChore(choreId, note, date = "", indicators = [], slotHour = null, completedAt = null, volumeML = null, userId = null, indicatorVolumes = {}, followUpMinutes = 0, followUpTime = null, rating = null, title = null, durationSeconds = null, subject = null) {
+export async function logChore(choreId, note, date = "", indicators = [], slotHour = null, completedAt = null, volumeML = null, userId = null, indicatorVolumes = {}, followUpMinutes = 0, followUpTime = null, rating = null, title = null, durationSeconds = null, subject = null, { submission = {} } = {}) {
+  if (submission.promise) return submission.promise;
   const body = { choreId, note, indicators };
   if (Object.keys(indicatorVolumes).length > 0) body.indicatorVolumes = indicatorVolumes;
   if (date) body.date = date;
@@ -69,30 +67,22 @@ export async function logChore(choreId, note, date = "", indicators = [], slotHo
   if (title) body.title = title;
   if (durationSeconds !== null) body.durationSeconds = durationSeconds;
   if (subject !== null) body.subject = subject;
-  // Idempotency key so an offline replay can't create a duplicate.
-  body.idempotencyKey = newIdempotencyKey();
-  try {
-    const { data } = await apiFetch("/api/logs", {
-      method: "POST",
-      body: JSON.stringify(body),
-    });
-    return data;
-  } catch (err) {
-    // Network failure (offline / flaky). Queue the log so it (and its
-    // timestamp) is not lost, then report it as queued instead of failing.
-    // Capture completedAt now if it wasn't set, so the time is preserved.
-    if (!body.completedAt) body.completedAt = new Date().toISOString();
-    try {
-      await enqueueLog(body);
-      if (typeof window !== "undefined" && window.dispatchEvent) {
-        // Include the queued body so the UI can synthesize a "pending" row.
-        window.dispatchEvent(new CustomEvent("nabu-log-queued", { detail: body }));
-      }
-      return { log: null, queued: true };
-    } catch {
-      throw err; // couldn't even queue — surface the original error
+  if (!submission.body) {
+    if (!body.completedAt) {
+      const when = date ? (slotHour !== null ? new Date(`${date}T${String(slotHour).padStart(2,"0")}:00:00`) : new Date(`${date}T12:00:00Z`)) : new Date();
+      body.completedAt = when.toISOString();
     }
+    body.idempotencyKey = submission.idempotencyKey || newKey();
+    submission.idempotencyKey = body.idempotencyKey;
+    submission.body = JSON.parse(JSON.stringify(body));
+    submission.origin = contextSnapshot();
   }
+  const active = contextSnapshot();
+  if (submission.origin && !sameOrigin(submission.origin, active)) throw new ContextChangedError();
+  submission.origin = active;
+  submission.promise = submitLog(submission.body, apiFetch, submission.origin)
+    .finally(() => { delete submission.promise; });
+  return submission.promise;
 }
 
 export async function undoLog(logId) {
@@ -101,21 +91,8 @@ export async function undoLog(logId) {
   return data;
 }
 
-export async function updateLog(logId, note, indicators = [], volumeML = null, userId = null, date = "", slotHour = null, completedAt = null, indicatorVolumes = {}, rating = null, title = null, subject = undefined) {
-  const body = { note, indicators };
-  if (Object.keys(indicatorVolumes).length > 0) body.indicatorVolumes = indicatorVolumes;
-  if (volumeML !== null) body.volumeML = volumeML;
-  if (userId !== null) body.userId = userId;
-  if (date) body.date = date;
-  if (slotHour !== null) body.hour = slotHour;
-  if (completedAt) body.completedAt = completedAt;
-  if (rating !== null) body.rating = rating;
-  if (title) body.title = title;
-  if (subject !== undefined) body.subject = subject;
-  const { response, data } = await apiFetch(`/api/logs/${logId}`, {
-    method: "PATCH",
-    body: JSON.stringify(body),
-  });
+export async function updateLog(logId, patch) {
+  const { response, data } = await apiFetch(`/api/logs/${logId}`, { method:"PATCH", body:JSON.stringify(patch) });
   if (!response.ok) throw new Error(data?.error || `Update failed (${response.status})`);
   return data;
 }
@@ -230,15 +207,25 @@ export function renderHistoryView(state) {
   // Chore chips filter the loaded (windowed) pages; they don't apply to a
   // flat text search, so hide the filter FAB while searching.
   const filterFab = (chores.length > 0 && !searching) ? renderHistoryFilter(state) : '';
-  const searchBar = renderHistorySearchBar(state);
+  const status = state.historyError ? `<p class="form-error" role="status">${escapeHTML(state.historyError)} <button class="btn btn-sm" data-action="retry-activity">Retry</button></p>`
+    : state.historyLoading ? '<p role="status" class="text-secondary">Loading activity…</p>' : '';
+  const searchBar = renderHistorySearchBar(state) + status;
+  const loadMore = state.historyHasMore && !searching
+    ? `<div class="load-more-wrap"><button type="button" class="btn btn-secondary load-more-btn" data-action="load-more-history"${state._historyLoadingMore ? ' disabled' : ''}>${state._historyLoadingMore ? 'Loading…' : 'Load more'}</button></div>`
+    : '';
+
 
   if (logs.length === 0) {
+    if (state.historyLoading || state.historyError) return `<div class="history-view">${searchBar}${filterFab}</div>`;
     const emptyMsg = searching
       ? '<p class="text-secondary">No activity matches your search.</p>'
-      : '<p class="text-secondary">No completed chores yet.</p>';
+      : state.historyHasMore
+        ? '<p class="text-secondary">No activity in this time range. Load more to look further back.</p>'
+        : '<p class="text-secondary">No completed chores yet.</p>';
     return `<div class="history-view">
       ${searchBar}
       ${emptyMsg}
+      ${loadMore}
       ${filterFab}
     </div>`;
   }
@@ -302,9 +289,6 @@ export function renderHistoryView(state) {
       })).filter(g => g.rows.length > 0)
     : rawDayGroups;
 
-  const loadMore = state.historyHasMore
-    ? `<div class="load-more-wrap"><button type="button" class="btn btn-secondary load-more-btn" data-action="load-more-history">Load more</button></div>`
-    : '';
 
   if (dayGroups.length === 0) {
     // Nothing on the loaded pages matches. If more pages exist, the match may

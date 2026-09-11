@@ -29,11 +29,11 @@ final class APNsContractTests: XCTestCase {
     }
 
     func testUnregisterRequestEncodesServerFieldNames() throws {
-        let req = APNsUnregisterRequest(token: "deadbeef00", environment: "production")
+        let req = APNsUnregisterRequest(token: "deadbeef00")
         let dict = json(try apiEncoder.encode(req))
         XCTAssertEqual(dict["token"] as? String, "deadbeef00")
-        XCTAssertEqual(dict["environment"] as? String, "production")
-        XCTAssertEqual(dict.count, 2, "unexpected extra fields: \(dict.keys.sorted())")
+        XCTAssertNil(dict["environment"])
+        XCTAssertEqual(dict.count, 1, "unexpected extra fields: \(dict.keys.sorted())")
     }
 
     func testReminderSnoozeRequestEncodesServerFieldNames() throws {

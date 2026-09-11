@@ -2,7 +2,10 @@ package notification
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"github.com/HammerMeetNail/nabu/internal/chore"
+	"github.com/HammerMeetNail/nabu/internal/household"
 	"log"
 )
 
@@ -22,6 +25,53 @@ type PushSender interface {
 type Service struct {
 	store      Store
 	pushSender PushSender // may be nil
+	households household.Store
+	chores     chore.Store
+}
+
+type Scope struct{ HouseholdID, ChoreID int64 }
+
+func (s *Service) WithAuthorization(hh household.Store, chores chore.Store) *Service {
+	s.households, s.chores = hh, chores
+	return s
+}
+func (s *Service) deliver(ctx context.Context, userID int64, scopes []Scope, fn func() error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if s.households == nil {
+		return fn()
+	} // explicitly unwired internal/test service
+	if len(scopes) == 0 || scopes[0].HouseholdID == 0 {
+		return errors.New("notification household required")
+	}
+	scope := scopes[0]
+	return household.WithMember(ctx, s.households, userID, scope.HouseholdID, func(role string) error {
+		if scope.ChoreID != 0 {
+			c, err := s.chores.GetChore(ctx, scope.ChoreID)
+			if err != nil {
+				return err
+			}
+			if c.HouseholdID != scope.HouseholdID || (c.Visibility == chore.VisibilityAdmins && role != household.RoleOwner && role != household.RoleAdmin) {
+				return errors.New("notification access changed")
+			}
+		}
+		return fn()
+	})
+}
+func (s *Service) send(ctx context.Context, n Notification, scopes []Scope) {
+	data := map[string]any{"type": n.Type}
+	if len(scopes) > 0 {
+		data["householdId"] = scopes[0].HouseholdID
+		data["choreId"] = scopes[0].ChoreID
+	}
+	if sender, ok := s.pushSender.(interface {
+		SendPushToUserWithData(context.Context, int64, string, string, map[string]any) error
+	}); ok {
+		_ = sender.SendPushToUserWithData(ctx, n.UserID, n.Title, n.Body, data)
+	} else {
+		_ = s.pushSender.SendPushToUser(ctx, n.UserID, n.Title, n.Body)
+	}
 }
 
 func NewService(store Store) *Service {
@@ -38,12 +88,8 @@ func (s *Service) WithPushSender(ps PushSender) *Service {
 // List returns up to 50 most-recent notifications for a user, plus the
 // current unread count.
 func (s *Service) List(ctx context.Context, userID int64) ([]Notification, int, error) {
-	notifs, err := s.store.ListNotifications(ctx, userID, 50, 0)
-	if err != nil {
-		return nil, 0, err
-	}
-	unread, err := s.store.GetUnreadCount(ctx, userID)
-	return notifs, unread, err
+	page, err := s.ListPage(ctx, userID, "")
+	return page.Notifications, page.UnreadCount, err
 }
 
 // GetNotificationPreferences returns the current user's reminder/notification
@@ -115,7 +161,7 @@ func (s *Service) Delete(ctx context.Context, id, userID int64) error {
 //
 // This is intentionally fire-and-forget: callers should invoke it in a
 // goroutine so individual push failures do not block the HTTP response.
-func (s *Service) NotifyChoreLogged(ctx context.Context, members []MemberInfo, loggerID, actorID int64, choreName, choreIcon string) {
+func (s *Service) NotifyChoreLogged(ctx context.Context, members []MemberInfo, loggerID, actorID int64, choreName, choreIcon string, scopes ...Scope) {
 	loggerName := "Someone"
 	for _, m := range members {
 		if m.UserID == loggerID {
@@ -133,19 +179,22 @@ func (s *Service) NotifyChoreLogged(ctx context.Context, members []MemberInfo, l
 		if m.UserID == loggerID || m.UserID == actorID {
 			continue
 		}
-		n, err := s.store.CreateNotification(ctx, Notification{
-			UserID: m.UserID,
-			Type:   "chore_logged",
-			Title:  title,
-			Body:   body,
+		_ = s.deliver(ctx, m.UserID, scopes, func() error {
+			n, err := s.store.CreateNotification(ctx, Notification{
+				UserID: m.UserID,
+				Type:   "chore_logged",
+				Title:  title,
+				Body:   body,
+			})
+			if err != nil {
+				return err
+			}
+			if s.pushSender != nil && s.shouldSendPush(ctx, m.UserID, "chore_logged") {
+				log.Printf("notif: sending push to user %d type=chore_logged", n.UserID)
+				s.send(ctx, n, scopes)
+			}
+			return nil
 		})
-		if err != nil {
-			continue
-		}
-		if s.pushSender != nil && s.shouldSendPush(ctx, m.UserID, "chore_logged") {
-			log.Printf("notif: sending push to user %d type=chore_logged", n.UserID)
-			_ = s.pushSender.SendPushToUser(ctx, n.UserID, n.Title, n.Body)
-		}
 	}
 }
 
@@ -155,7 +204,7 @@ func (s *Service) NotifyChoreLogged(ctx context.Context, members []MemberInfo, l
 //
 // This is intentionally fire-and-forget: callers should invoke it in a
 // goroutine so individual push failures do not block the HTTP response.
-func (s *Service) NotifyHouseholdJoined(ctx context.Context, members []MemberInfo, joinerID int64, joinerName string, householdName string) {
+func (s *Service) NotifyHouseholdJoined(ctx context.Context, members []MemberInfo, joinerID int64, joinerName string, householdName string, scopes ...Scope) {
 	title := "New Member"
 	body := fmt.Sprintf("%s joined %s", joinerName, householdName)
 
@@ -163,19 +212,22 @@ func (s *Service) NotifyHouseholdJoined(ctx context.Context, members []MemberInf
 		if m.UserID == joinerID {
 			continue
 		}
-		n, err := s.store.CreateNotification(ctx, Notification{
-			UserID: m.UserID,
-			Type:   "household_joined",
-			Title:  title,
-			Body:   body,
+		_ = s.deliver(ctx, m.UserID, scopes, func() error {
+			n, err := s.store.CreateNotification(ctx, Notification{
+				UserID: m.UserID,
+				Type:   "household_joined",
+				Title:  title,
+				Body:   body,
+			})
+			if err != nil {
+				return err
+			}
+			if s.pushSender != nil && s.shouldSendPush(ctx, m.UserID, "household_joined") {
+				log.Printf("notif: sending household_joined push to user %d", n.UserID)
+				s.send(ctx, n, scopes)
+			}
+			return nil
 		})
-		if err != nil {
-			continue
-		}
-		if s.pushSender != nil && s.shouldSendPush(ctx, m.UserID, "household_joined") {
-			log.Printf("notif: sending household_joined push to user %d", n.UserID)
-			_ = s.pushSender.SendPushToUser(ctx, n.UserID, n.Title, n.Body)
-		}
 	}
 }
 
@@ -184,7 +236,7 @@ func (s *Service) NotifyHouseholdJoined(ctx context.Context, members []MemberInf
 func (s *Service) shouldSendPush(ctx context.Context, userID int64, notifType string) bool {
 	prefs, err := s.store.GetReminderPreferences(ctx, userID)
 	if err != nil {
-		return true
+		return false
 	}
 	if !prefs.PushEnabled {
 		return false

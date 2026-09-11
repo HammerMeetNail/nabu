@@ -118,7 +118,7 @@ test.describe("Feeding gaps chart", () => {
     await expect(gapsColumn.locator("[data-action=\"stats-feeding-gaps-compare\"]")).toHaveCount(0);
   });
 
-  test("no cluster feeding section when there are no feeding logs", async ({
+  test("empty cluster feeding keeps its range controls visible", async ({
     page,
   }) => {
     const { chores } = await setupWithChores(page);
@@ -128,9 +128,40 @@ test.describe("Feeding gaps chart", () => {
     await page.click("a[data-nav=\"stats\"]");
     await page.waitForSelector(".stats-page", { timeout: 10000 });
 
-    // The cluster feeding column should not appear since there are no gaps
-    await expect(
-      page.locator(".baby-care-column").filter({ hasText: "Cluster Feeding" })
-    ).toHaveCount(0);
+    const column = page.locator(".baby-care-column").filter({ hasText: "Cluster Feeding" });
+    await expect(column).toBeVisible();
+    await expect(column).toContainText("No data");
+    await expect(column.locator('[data-action="stats-feeding-gaps-quick"][data-days="1"]')).toBeVisible();
   });
+});
+
+test.describe('Feeding gap calendar dates', () => {
+  for (const timezoneId of ['Asia/Tokyo', 'America/New_York']) {
+    test(`empty Day range retains controls and sends the next date in ${timezoneId}`, async ({ browser }) => {
+      const context = await browser.newContext({ timezoneId });
+      try {
+        const page = await context.newPage();
+        // A fixed instant makes the two browsers use different local dates.
+        await page.clock.setFixedTime(new Date('2026-09-10T00:30:00Z'));
+        await setupWithChores(page);
+        await page.click('[data-nav="stats"]');
+        const day = page.locator('[data-action="stats-feeding-gaps-quick"][data-days="1"]');
+        await expect(day).toBeVisible();
+        const response = page.waitForResponse(r => r.url().includes('/api/stats/feeding-gaps?') && new URL(r.url()).searchParams.get('start') === (timezoneId === 'Asia/Tokyo' ? '2026-09-10' : '2026-09-09'));
+        await day.click();
+        const result = await response;
+        expect(result.ok()).toBe(true);
+        const url = new URL(result.url());
+        expect(url.searchParams.get('end')).toBe(timezoneId === 'Asia/Tokyo' ? '2026-09-11' : '2026-09-10');
+        await expect(day).toHaveClass(/period-toggle--active/);
+        await expect(page.locator('.feeding-gaps-dates')).toBeVisible();
+        await expect(page.locator('.baby-care-column').filter({ has: day })).toContainText('No data');
+        const inclusive = await page.evaluate(async () => {
+          const { isActiveForDayJS } = await import('/static/js/calendar.js');
+          return isActiveForDayJS({ isActive: true, frequencyType: 'daily', recurrenceEnd: '2026-09-10T00:00:00Z' }, '2026-09-10');
+        });
+        expect(inclusive).toBe(true);
+      } finally { await context.close(); }
+    });
+  }
 });

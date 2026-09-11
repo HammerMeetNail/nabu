@@ -48,7 +48,7 @@ func setupPushAuditTest(t *testing.T) (*PushHandler, *auth.Service, string, *aud
 func TestPushAudit_Subscribed(t *testing.T) {
 	handler, authSvc, sessionID, rec, userID, hhID := setupPushAuditTest(t)
 
-	body := `{"subscription":{"endpoint":"https://fcm.googleapis.com/send/abc","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`
+	body := `{"bindingId":"12345678-1234-1234-1234-123456789abc","subscription":{"endpoint":"https://fcm.googleapis.com/send/abc","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`
 	req := withUser(httptest.NewRequest(http.MethodPost, "/api/push/subscribe", strings.NewReader(body)), authSvc, sessionID)
 	req.Header.Set("Content-Type", "application/json")
 	resp := httptest.NewRecorder()
@@ -73,7 +73,7 @@ func TestPushAudit_Unsubscribed(t *testing.T) {
 	handler, authSvc, sessionID, rec, userID, hhID := setupPushAuditTest(t)
 
 	// Subscribe first so unsubscribe has a target.
-	subBody := `{"subscription":{"endpoint":"https://fcm.googleapis.com/send/abc","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`
+	subBody := `{"bindingId":"12345678-1234-1234-1234-123456789abc","subscription":{"endpoint":"https://fcm.googleapis.com/send/abc","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`
 	subReq := withUser(httptest.NewRequest(http.MethodPost, "/api/push/subscribe", strings.NewReader(subBody)), authSvc, sessionID)
 	subReq.Header.Set("Content-Type", "application/json")
 	handler.Subscribe(httptest.NewRecorder(), subReq)

@@ -14,6 +14,7 @@ final class DataLoader: ObservableObject {
     private(set) var preferences: PreferencesDataLoader!
 
     private var pathMonitor: NWPathMonitor?
+    private var flushing: Set<UUID> = []
 
     init() {
         self.api = APIClient(baseURL: URL(string: "http://localhost:8080")!)
@@ -44,7 +45,7 @@ final class DataLoader: ObservableObject {
                 guard let self else { return }
                 self.state.isOffline = !satisfied
                 if satisfied {
-                    await self.flushOfflineQueue()
+                    await self.foregroundRefresh()
                 }
             }
         }
@@ -52,63 +53,71 @@ final class DataLoader: ObservableObject {
         pathMonitor = monitor
     }
 
-    /// Replays queued offline logs; on success clears the synthetic pending
-    /// rows and refetches so Activity shows the server's copies.
-    func flushOfflineQueue() async {
-        guard state.user != nil else { return }
-        let logStore = LogStore(api: api)
-        let synced = await logStore.replayOfflineQueue()
+    /// Every replay pass first confirms /me. Failed confirmation retains the
+    /// journal and never uses cached household state as write authority.
+    func flushOfflineQueue(retryFailed: Bool = false) async {
+        let api = self.api
+        let state = self.state
+        guard let response: UserResponse = try? await api.get("/api/me"), response.user != nil,
+              let origin = api.identity.snapshot.origin else { return }
+        let revision = state.revision
+        guard flushing.insert(revision).inserted else { return }
+        defer { flushing.remove(revision) }
+        let owner = state.beginOperation("flushOfflineQueue")
+        let logs = self.logs!
+        let synced = await LogStore(api: api).replayOfflineQueue(retryFailed: retryFailed)
+        guard state.owns(owner) else { return }
+        state.pendingLogs = OfflineLogQueue.shared.scopedItems(origin).map {
+            PendingLog(body: $0.body, fallbackUserId: origin.actorID)
+        }
         if synced > 0 {
-            state.pendingLogs = []
             await logs.loadTodayData()
+            guard state.owns(owner) else { return }
             await logs.loadLatestLogsData()
         }
     }
 
-    // Called after initial auth (login/register/onboarding)
     func reloadAfterAuth() async {
-        NSLog("[Nabu] DataLoader.reloadAfterAuth starting")
+        let state = self.state
+        guard state.user != nil else { return }
+        let owner = state.beginOperation("reloadAfterAuth")
+        let household = self.household!, preferences = self.preferences!, notifs = self.notifs!
+        let chores = self.chores!, logs = self.logs!, schedules = self.schedules!
         await withTaskGroup(of: Void.self) { group in
-            group.addTask { await self.household.loadHouseholdData() }
-            group.addTask { await self.preferences.loadPreferences() }
-            group.addTask { await self.notifs.loadNotificationPreferences() }
+            group.addTask { await household.loadHouseholdData() }
+            group.addTask { await preferences.loadPreferences() }
+            group.addTask { await notifs.loadNotificationPreferences() }
         }
+        guard state.owns(owner) else { return }
         await preferences.syncTimezone()
-
-        guard state.household != nil else {
-            NSLog("[Nabu] DataLoader: no household, aborting second task group")
-            return
-        }
-
-        NSLog("[Nabu] DataLoader: loading chores/logs/schedules/notifs")
+        guard state.owns(owner), state.household != nil else { return }
         await withTaskGroup(of: Void.self) { group in
-            group.addTask { await self.chores.loadChoreData() }
-            group.addTask { await self.logs.loadTodayData() }
-            group.addTask { await self.logs.loadLatestLogsData() }
-            group.addTask { await self.schedules.loadSchedules() }
-            group.addTask { await self.notifs.loadNotifData() }
+            group.addTask { await chores.loadChoreData() }
+            group.addTask { await logs.loadTodayData() }
+            group.addTask { await logs.loadLatestLogsData() }
+            group.addTask { await schedules.loadSchedules() }
+            group.addTask { await notifs.loadNotifData() }
         }
-        NSLog("[Nabu] DataLoader.reloadAfterAuth complete. schedules=\(state.schedules.count) chores=\(state.chores.count)")
-
-        // Replay anything left in the offline queue from a previous session.
+        guard state.owns(owner) else { return }
         await flushOfflineQueue()
     }
 
-    // Called on foreground / visibility change
     func foregroundRefresh() async {
-        guard state.user != nil else { return }
+        let api = self.api
+        let state = self.state
+        guard api.identity.snapshot.phase != .logoutPending else { return }
+        guard let response: UserResponse = try? await api.get("/api/me"), response.user != nil else { return }
+        let owner = state.beginOperation("foregroundRefresh")
+        let notifs = self.notifs!, household = self.household!, chores = self.chores!
         await flushOfflineQueue()
-        // Refresh the session so account-level changes made outside the app
-        // are picked up — e.g. the user verified their email in the browser
-        // (the cross-device fallback for verification links).
-        if let response: UserResponse = try? await api.get("/api/me"),
-           state.user != response.user {
-            state.user = response.user
-        }
-        guard state.user != nil else { return }
-        await notifs.loadNotifData()
-        if state.household != nil {
+        guard state.owns(owner) else { return }
+        // Foreground refresh must not collapse pages being read in the panel.
+        if !state.notificationPanelOpen { await notifs.loadNotifData() }
+        guard state.owns(owner) else { return }
+        if state.user?.householdId != nil {
             await household.loadHouseholdData()
+            guard state.owns(owner) else { return }
+            await chores.loadChoreData()
         }
     }
 }

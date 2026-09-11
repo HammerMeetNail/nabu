@@ -1,5 +1,6 @@
 import { getCSRFToken } from "./api.js";
 import { escapeHTML } from "./utils.js";
+import { changeIdentity, logoutIdentity, originHeaders } from "./browser-context.js";
 
 export async function loadSession() {
   const res = await fetch("/api/me");
@@ -12,9 +13,11 @@ export async function loadSession() {
 }
 
 export async function handleLogin(email, password) {
+  return changeIdentity(async () => {
   const csrfToken = getCSRFToken();
   const res = await fetch("/api/auth/login", {
     method: "POST",
+    signal: AbortSignal.timeout(15000),
     headers: {
       "Content-Type": "application/json",
       "X-CSRF-Token": csrfToken,
@@ -23,12 +26,15 @@ export async function handleLogin(email, password) {
   });
   const data = await res.json();
   return { ok: res.ok, data };
+  });
 }
 
 export async function handleRegister(email, password) {
+  return changeIdentity(async () => {
   const csrfToken = getCSRFToken();
   const res = await fetch("/api/auth/register", {
     method: "POST",
+    signal: AbortSignal.timeout(15000),
     headers: {
       "Content-Type": "application/json",
       "X-CSRF-Token": csrfToken,
@@ -37,20 +43,25 @@ export async function handleRegister(email, password) {
   });
   const data = await res.json();
   return { ok: res.ok, data };
+  });
 }
 
-export async function handleLogout() {
-  const csrfToken = getCSRFToken();
-  await fetch("/api/auth/logout", {
+export async function handleLogout(onPending) {
+  return logoutIdentity(async origin => {
+    const response = await fetch("/api/auth/logout", {
     method: "POST",
-    headers: { "X-CSRF-Token": csrfToken },
+    signal: AbortSignal.timeout(15000),
+    headers: { "X-CSRF-Token": getCSRFToken(), ...(origin?.userId ? { "X-Nabu-User-ID": String(origin.userId) } : {}) },
   });
+    return { ok:response.ok, error:`Sign-out is unfinished (${response.status}). Please retry.` };
+  }, onPending);
 }
 
 export async function handleMagicLinkRequest(email) {
   const csrfToken = getCSRFToken();
   await fetch("/api/auth/magic-link/request", {
     method: "POST",
+    signal: AbortSignal.timeout(15000),
     headers: {
       "Content-Type": "application/json",
       "X-CSRF-Token": csrfToken,
@@ -63,6 +74,7 @@ export async function handleForgotPassword(email) {
   const csrfToken = getCSRFToken();
   await fetch("/api/auth/password/forgot", {
     method: "POST",
+    signal: AbortSignal.timeout(15000),
     headers: {
       "Content-Type": "application/json",
       "X-CSRF-Token": csrfToken,
@@ -72,9 +84,11 @@ export async function handleForgotPassword(email) {
 }
 
 export async function handleResetPassword(token, password) {
+ return changeIdentity(async () => {
   const csrfToken = getCSRFToken();
   const res = await fetch("/api/auth/password/reset", {
     method: "POST",
+    signal: AbortSignal.timeout(15000),
     headers: {
       "Content-Type": "application/json",
       "X-CSRF-Token": csrfToken,
@@ -82,13 +96,17 @@ export async function handleResetPassword(token, password) {
     body: JSON.stringify({ token, password }),
   });
   return { ok: res.ok, data: await res.json() };
+ });
 }
 
 export async function handleChangePassword(currentPassword, newPassword) {
+ return changeIdentity(async origin => {
   const csrfToken = getCSRFToken();
   const res = await fetch("/api/auth/password", {
     method: "POST",
+    signal: AbortSignal.timeout(15000),
     headers: {
+      ...originHeaders(origin),
       "Content-Type": "application/json",
       "X-CSRF-Token": csrfToken,
     },
@@ -98,6 +116,7 @@ export async function handleChangePassword(currentPassword, newPassword) {
     }),
   });
   return { ok: res.ok, data: await res.json() };
+ });
 }
 
 // renderOAuthButtons renders the third-party sign-in block shared by the
@@ -171,6 +190,7 @@ export function renderRegisterView(googleOAuthEnabled, appleSignInEnabled) {
         <input id="reg-confirm" type="password" name="confirm" required minlength="8">
       </div>
       <div id="register-error" class="form-error hidden"></div>
+      <p id="register-status" class="text-secondary hidden" role="status"></p>
       <button type="submit" class="btn btn-primary btn-block">Create Account</button>
     </form>
     ${renderOAuthButtons(googleOAuthEnabled, appleSignInEnabled)}
@@ -208,13 +228,20 @@ export function renderMagicLinkNoticeView() {
   </div>`;
 }
 
-export function renderVerifyEmailView(success) {
-  return `<div class="auth-card">
-    <h1 class="auth-title">${success ? "Email Verified!" : "Verify Your Email"}</h1>
-    <p class="text-center">${success ? "Your email has been verified. You can now sign in." : "Check your email for a verification link."}</p>
-    <div class="mt-3">
-      <button type="button" class="btn btn-primary btn-block" data-action="show-login">Sign In</button>
-    </div>
+export function renderVerifyEmailView(status) {
+  const messages = {
+    pending: ["Verifying Email…", "Please wait while we check your link."],
+    success: ["Email Verified!", "You're signed in. You can set a password in Settings."],
+    error: ["Verification Failed", "This link could not be verified. Sign in to request another link."],
+    missing: ["Verify Your Email", "Check your email for a verification link."],
+  };
+  const [title, message] = messages[status] || messages.missing;
+  return `<div class="auth-card" role="status">
+    <h1 class="auth-title">${title}</h1>
+    <p class="text-center">${message}</p>
+    ${status === "pending" ? "" : `<div class="mt-3">
+      <button type="button" class="btn btn-primary btn-block" data-action="show-login">${status === "success" ? "Continue" : "Sign In"}</button>
+    </div>`}
   </div>`;
 }
 

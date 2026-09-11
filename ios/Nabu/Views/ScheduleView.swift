@@ -8,6 +8,9 @@ struct ScheduleView: View {
     @State private var showingPickChore = false
     @State private var loadError: String? = nil
     @State private var deletingSchedule: ChoreSchedule?
+    @State private var logging: Set<String> = []
+    @State private var logKeys: [String: String] = [:]
+    @State private var logError: String?
 
     private let scheduleStore: ScheduleStore
 
@@ -36,6 +39,10 @@ struct ScheduleView: View {
                         Label("Nothing upcoming", systemImage: "calendar.badge.clock")
                     } description: {
                         Text("No active schedules for the next 14 days.")
+                    } actions: {
+                        Button("Schedule a chore") { showingPickChore = true }
+                            .buttonStyle(.borderedProminent)
+                            .accessibilityIdentifier("empty-schedule-create")
                     }
                 } else {
                     List {
@@ -78,6 +85,9 @@ struct ScheduleView: View {
                 }
             }
             .navigationTitle("Schedule")
+            .safeAreaInset(edge: .bottom) {
+                if let logError { Text(logError).font(.caption).foregroundStyle(.red).padding() }
+            }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
@@ -190,6 +200,7 @@ struct ScheduleView: View {
                         .clipShape(Circle())
                 }
                 .buttonStyle(.plain)
+                .disabled(logging.contains("\(item.schedule.id):\(item.date)"))
             }
 
             Button {
@@ -214,6 +225,14 @@ struct ScheduleView: View {
     }
 
     private func tapLog(_ item: UpcomingItem) async {
+        let owner = state.revision
+        let itemKey = "\(item.schedule.id):\(item.date)"
+        guard logging.insert(itemKey).inserted else { return }
+        defer { logging.remove(itemKey) }
+        if logKeys[itemKey] == nil { logKeys[itemKey] = UUID().uuidString }
+        let key = logKeys[itemKey]!
+        let store = LogStore(api: scheduleStore.api)
+        logError = nil
         let now = Date()
         let isoFormatter = ISO8601DateFormatter()
         let df = DateFormatter()
@@ -223,27 +242,42 @@ struct ScheduleView: View {
         let hour = Calendar.current.component(.hour, from: now)
 
         do {
-            let body = CreateLogRequest(choreId: item.chore.id, note: nil, indicators: nil,
-                                          date: dateStr, hour: hour, completedAt: completedAt,
-                                          volumeML: nil, userId: nil, indicatorVolumes: nil,
-                                          followUpMinutes: nil, followUpTime: nil)
-            let resp: LogResponse = try await environment.apiClient.post("/api/logs", body: body)
-            state.todayLogs.insert(resp.log, at: 0)
-        } catch {}
+            let outcome = try await store.createLog(choreId: item.chore.id, date: dateStr,
+                slotHour: hour, completedAt: completedAt, idempotencyKey: key)
+            guard state.revision == owner else { return }
+            switch outcome {
+            case .created(let response):
+                state.todayLogs.insert(response.log, at: 0)
+                state.latestLogs[item.chore.id] = response.log
+                logKeys.removeValue(forKey: itemKey)
+                await loadSchedules()
+            case .queued(let pending):
+                if !state.pendingLogs.contains(where: { $0.id == pending.id }) { state.pendingLogs.insert(pending, at: 0) }
+            }
+        } catch {
+            guard state.revision == owner else { return }
+            logError = (error as? APIError)?.errorDescription ?? "Could not confirm the save. Retry from Pending saves."
+        }
     }
 
     private func deleteSchedule(_ schedule: ChoreSchedule) async {
+        let owner = state.revision
         do {
             let _: StatusResponse = try await scheduleStore.deleteSchedule(id: schedule.id)
+            guard state.revision == owner else { return }
             state.schedules.removeAll { $0.id == schedule.id }
         } catch {}
     }
 
     private func loadSchedules() async {
+        let owner = state.beginOperation("loadSchedules")
         do {
-            state.schedules = try await scheduleStore.loadSchedules()
+            let schedules = try await scheduleStore.loadSchedules()
+            guard state.owns(owner) else { return }
+            state.schedules = schedules
             loadError = nil
         } catch {
+            guard state.owns(owner) else { return }
             loadError = error.localizedDescription
         }
     }
@@ -296,7 +330,7 @@ struct PickChoreSheet: View {
                         Stepper("Every \(intervalDays) days", value: $intervalDays, in: 2...365)
                     }
                     if frequencyType != .once {
-                        Toggle("Stop repeating", isOn: $hasEndDate)
+                        Toggle("Repeat through (inclusive)", isOn: $hasEndDate)
                         if hasEndDate {
                             DatePicker("End date", selection: $endDate, displayedComponents: .date)
                         }
@@ -370,7 +404,7 @@ struct PickChoreSheet: View {
             monthWeekday: nil,
             monthOfYear: nil,
             startDate: df.string(from: Date()),
-            recurrenceEnd: hasEndDate ? df.string(from: endDate) : nil,
+            recurrenceEnd: hasEndDate ? scheduleEndTimestamp(endDate) : nil,
             targetCount: nil,
             isActive: true,
             assignedUserId: nil
@@ -443,7 +477,7 @@ struct EditScheduleSheet: View {
                         Stepper("Every \(intervalDays) days", value: $intervalDays, in: 2...365)
                     }
                     if frequencyType != .once {
-                        Toggle("Stop repeating", isOn: $hasEndDate)
+                        Toggle("Repeat through (inclusive)", isOn: $hasEndDate)
                         if hasEndDate {
                             DatePicker("End date", selection: $endDate, displayedComponents: .date)
                         }
@@ -506,7 +540,7 @@ struct EditScheduleSheet: View {
         intervalDays = max(schedule.intervalDays, 2)
         if let end = schedule.recurrenceEnd {
             hasEndDate = true
-            endDate = end
+            endDate = scheduleEndSelection(end)
         }
     }
 
@@ -515,9 +549,6 @@ struct EditScheduleSheet: View {
         let mm = String(format: "%02d", selectedMinute)
         let specificTime = "\(hh):\(mm)"
 
-        let df = DateFormatter()
-        df.dateFormat = "yyyy-MM-dd"
-
         let body = PatchScheduleRequest(
             choreId: nil, timePeriod: nil, specificTime: specificTime,
             frequencyType: frequencyType.rawValue, isActive: nil,
@@ -525,7 +556,7 @@ struct EditScheduleSheet: View {
             intervalDays: frequencyType == .everyNDays ? intervalDays : nil,
             dayOfMonth: nil, monthOfYear: nil,
             startDate: nil,
-            recurrenceEnd: hasEndDate ? df.string(from: endDate) : nil
+            recurrenceEnd: .some(hasEndDate ? scheduleEndTimestamp(endDate) : nil)
         )
 
         do {

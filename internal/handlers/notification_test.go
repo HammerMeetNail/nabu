@@ -116,3 +116,13 @@ func TestNotificationDelete_InvalidID(t *testing.T) {
 		t.Fatalf("status = %d, want 400", rec.Code)
 	}
 }
+
+func TestNotificationListRejectsInvalidCursor(t *testing.T) {
+	handler, sessionID, authService := setupNotificationTest(t)
+	r := withUser(httptest.NewRequest(http.MethodGet, "/api/notifications?cursor=invalid!", nil), authService, sessionID)
+	w := httptest.NewRecorder()
+	handler.List(w, r)
+	if w.Code != 400 {
+		t.Fatalf("invalid cursor: %d", w.Code)
+	}
+}

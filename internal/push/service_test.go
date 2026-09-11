@@ -1,9 +1,11 @@
 package push
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"testing"
@@ -19,8 +21,8 @@ const (
 // now restricted to allowlisted hosts (fcm.googleapis.com etc.), so tests use
 // a fake transport that records requests instead of dialing.
 type stubRoundTripper struct {
-	status  int
-	err     error
+	status   int
+	err      error
 	requests []*http.Request
 }
 
@@ -142,6 +144,10 @@ func TestSendPushToUser_InvalidEndpoint(t *testing.T) {
 // TestSendPushToUser_NetworkError covers the client.Do error path (lines 70–72):
 // the transport fails after the endpoint passed validation.
 func TestSendPushToUser_NetworkError(t *testing.T) {
+	var captured bytes.Buffer
+	old := log.Writer()
+	log.SetOutput(&captured)
+	t.Cleanup(func() { log.SetOutput(old) })
 	priv, pub, err := GenerateVAPIDKeys()
 	if err != nil {
 		t.Fatalf("GenerateVAPIDKeys: %v", err)
@@ -151,14 +157,14 @@ func TestSendPushToUser_NetworkError(t *testing.T) {
 		t.Fatalf("NewVAPIDSigner: %v", err)
 	}
 
-	rt := &stubRoundTripper{err: errors.New("connection refused")}
+	rt := &stubRoundTripper{err: errors.New("connection refused for private@example.invalid")}
 	svc := NewService(NewMemoryStore(), signer)
 	svc.client = &http.Client{Transport: rt}
 
 	store := NewMemoryStore()
 	ctx := context.Background()
 	_ = store.SaveSubscription(ctx, 5, Subscription{
-		Endpoint: "https://fcm.googleapis.com/fcm/send/abc",
+		Endpoint: "https://fcm.googleapis.com/fcm/send/recognizable-secret-capability",
 		P256DH:   validP256DH,
 		Auth:     validAuth,
 	})
@@ -169,6 +175,9 @@ func TestSendPushToUser_NetworkError(t *testing.T) {
 	}
 	if len(rt.requests) != 1 {
 		t.Errorf("expected 1 attempted request, got %d", len(rt.requests))
+	}
+	if strings.Contains(captured.String(), "recognizable-secret-capability") || strings.Contains(captured.String(), "private@example.invalid") {
+		t.Fatal("transport diagnostics leaked endpoint or private error text")
 	}
 }
 func TestSendPushToUser_StaleEndpointCleanup(t *testing.T) {
@@ -225,9 +234,9 @@ func TestSendPushToUser_SkipsDisallowedEndpoints(t *testing.T) {
 	store := NewMemoryStore()
 	ctx := context.Background()
 	disallowed := []string{
-		"http://169.254.169.254/latest/meta-data/", // cloud metadata
-		"http://10.0.0.5/x",                        // private IP
-		"https://127.0.0.1/admin",                  // loopback
+		"http://169.254.169.254/latest/meta-data/",    // cloud metadata
+		"http://10.0.0.5/x",                           // private IP
+		"https://127.0.0.1/admin",                     // loopback
 		"https://metadata.internal/latest/meta-data/", // internal hostname
 		"http://localhost/x",
 		"notaurl",

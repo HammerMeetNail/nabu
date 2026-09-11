@@ -5,7 +5,7 @@ final class ChoreStore {
     let api: APIClient
 
     init(api: APIClient) {
-        self.api = api
+        self.api = api.scoped()
     }
 
     func createChore(name: String, icon: String, color: String, category: String = "custom",

@@ -108,7 +108,7 @@ func TestMemoryStore_UpdateLog_NilIndicators(t *testing.T) {
 		Indicators:  []string{"a"},
 		CompletedAt: time.Now(),
 	})
-	err := store.UpdateLog(ctx, chorelog.ChoreLog{ID: entry.ID, Indicators: nil})
+	err := store.UpdateLog(ctx, chorelog.ChoreLog{ID: entry.ID, HouseholdID: entry.HouseholdID, Indicators: nil})
 	if err != nil {
 		t.Fatalf("UpdateLog: %v", err)
 	}

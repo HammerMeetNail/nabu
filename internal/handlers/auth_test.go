@@ -91,6 +91,7 @@ func TestAuthLogin(t *testing.T) {
 	handler, svc := setupAuthHandler(t)
 
 	_, _, err := svc.Register(httptest.NewRequest(http.MethodGet, "/", nil).Context(), "alice@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("setup: %v", err)
 	}
@@ -295,14 +296,15 @@ func TestAuthVerifyEmail(t *testing.T) {
 	// Register to trigger verification email
 	ctx := httptest.NewRequest(http.MethodGet, "/", nil).Context()
 	_, _, err := svc.Register(ctx, "alice@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	if len(mailer.Messages) == 0 {
+	if len(mailer.Messages()) == 0 {
 		t.Skip("no verification email sent (mailer may not be wired)")
 	}
 
-	token := extractTokenFromBody(t, mailer.Messages[len(mailer.Messages)-1].Body, "token=")
+	token := extractTokenFromBody(t, mailer.Messages()[len(mailer.Messages())-1].Body, "token=")
 
 	// Use a fresh handler with the same service
 	handler := NewAuthHandler(svc, "nabu_session", false, "http://localhost:8080")
@@ -370,10 +372,10 @@ func TestAuthConsumeMagicLink(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RequestMagicLink: %v", err)
 	}
-	if len(mailer.Messages) == 0 {
+	if len(mailer.Messages()) == 0 {
 		t.Skip("no magic link email sent")
 	}
-	token := extractTokenFromBody(t, mailer.Messages[len(mailer.Messages)-1].Body, "token=")
+	token := extractTokenFromBody(t, mailer.Messages()[len(mailer.Messages())-1].Body, "token=")
 
 	handler := NewAuthHandler(svc, "nabu_session", false, "http://localhost:8080")
 	req := httptest.NewRequest(http.MethodGet, "/api/auth/magic-link?token="+token, nil)
@@ -419,10 +421,10 @@ func TestAuthResetPassword(t *testing.T) {
 	_, _ = quickRegister(svc, "alice@example.com")
 	_ = svc.RequestPasswordReset(ctx, "alice@example.com")
 
-	if len(mailer.Messages) == 0 {
+	if len(mailer.Messages()) == 0 {
 		t.Skip("no reset email sent")
 	}
-	token := extractTokenFromBody(t, mailer.Messages[len(mailer.Messages)-1].Body, "token=")
+	token := extractTokenFromBody(t, mailer.Messages()[len(mailer.Messages())-1].Body, "token=")
 
 	handler := NewAuthHandler(svc, "nabu_session", false, "http://localhost:8080")
 	body := `{"token":"` + token + `","password":"newpassword123"}`
@@ -872,10 +874,10 @@ func TestAuthAppleWebCallbackRedirectCookieHonored(t *testing.T) {
 func TestAuthAppleWebCallbackRedirectCookieUnsafeFallsBack(t *testing.T) {
 	handler, _ := setupAppleWebHandler(t)
 	for name, cookieVal := range map[string]string{
-		"full URL":    "http://localhost:8080/settings",
-		"evil URL":    "https://evil.example",
-		"scheme-rel":  "//evil.example/settings",
-		"javascript":  "javascript:alert(1)",
+		"full URL":   "http://localhost:8080/settings",
+		"evil URL":   "https://evil.example",
+		"scheme-rel": "//evil.example/settings",
+		"javascript": "javascript:alert(1)",
 	} {
 		t.Run(name, func(t *testing.T) {
 			rec := postAppleCallback(handler, url.Values{"state": {"mystate"}, "id_token": {"apple-token"}},

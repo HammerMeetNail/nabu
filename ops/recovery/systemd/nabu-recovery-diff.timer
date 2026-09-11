@@ -1,0 +1,9 @@
+[Unit]
+Description=Nabu Daily differential backup
+
+[Timer]
+OnCalendar=Mon..Sat *-*-* 01:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

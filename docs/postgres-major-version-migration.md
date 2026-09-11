@@ -1,131 +1,32 @@
-# PostgreSQL Major Version Migration
+# PostgreSQL major-version migration
 
-PostgreSQL cannot start if the data directory was initialized by a different
-major version (e.g. 16 → 17). This document covers how to migrate in place on
-the production server.
+A PostgreSQL data directory can only be started by its compatible major version.
+Changing an image tag is not a migration. `compose.server.yaml` deploys the app;
+it does not define the standalone production PostgreSQL image or data mount.
+Inventory the actual cluster before choosing a target version or path.
 
-## When this applies
+Follow the [backup and recovery runbook](recovery-runbook.md) for encryption,
+isolated restore, application checks, write fencing, cutover and rollback.
 
-You bumped the `postgres` image tag in `compose.server.yaml` to a new major
-version (e.g. `16-alpine` → `17-alpine`) while an existing data volume at
-`/mnt/data/nabu/postgres` already contains a pg16-initialized cluster.
+1. Verify the source major/image digest and data path. Preserve its volume and
+   image. Confirm a current, restorable encrypted backup and key escrow.
+2. Test the intended target major/image in a fresh isolated database. Use a
+   trusted logical dump from a compatible `pg_dump`, the target PostgreSQL image,
+   and the real app. Physical backups and WAL cannot cross PostgreSQL majors.
+3. Run migrations, validate constraints and representative records, and perform
+   two-household read/write isolation and persistence checks. Measure transfer,
+   restore, index creation, app startup and validation against the one-hour RTO.
+4. During the approved maintenance window, fence HTTP writes and background
+   workers, take the final encrypted logical dump, and restore it into a new
+   volume. Never wipe or reuse the old volume as the restore destination.
+5. Prepare and review the exact app connection/image change. Cut over only after
+   dependency-aware `/ready` and authenticated smoke checks pass. Establish a new
+   full physical backup and working WAL archive for the target major.
+6. Before accepting new writes, rollback can use the preserved old cluster and
+   prior app configuration. After new writes, fence traffic and reconcile those
+   writes before reverting. Retain the old volume until rollback is no longer
+   needed and the backup retention/access policy permits deletion.
 
-Symptom in `podman logs <postgres-container>`:
-
-```
-FATAL: database files are incompatible with server
-DETAIL: The data directory was initialized by PostgreSQL version 16,
-        which is not compatible with this version 17.x
-```
-
-## Pre-migration checklist
-
-- [ ] Confirm you have a recent snapshot/backup of `/mnt/data/nabu/postgres`
-      (or take one now via your cloud provider's volume snapshot).
-- [ ] Note the `DB_PASSWORD` from `/opt/nabu/.env`.
-- [ ] Schedule a maintenance window — the app will be down for the duration.
-
-## Migration steps
-
-All commands run on the production server as a user with `sudo` and
-`podman` access.
-
-### 1. Stop the stack
-
-```bash
-cd /opt/nabu
-podman-compose down
-```
-
-### 2. Dump the database using the old major version
-
-Spin up a temporary pg16 container (or whatever the current major version is)
-pointing at the existing data volume, then export with `pg_dump`.
-
-```bash
-DB_PASSWORD=$(grep DB_PASSWORD /opt/nabu/.env | cut -d= -f2)
-
-podman run -d --name pg_old \
-  -e POSTGRES_USER=nabu \
-  -e POSTGRES_PASSWORD="${DB_PASSWORD}" \
-  -e POSTGRES_DB=nabu \
-  -v /mnt/data/nabu/postgres:/var/lib/postgresql/data \
-  docker.io/library/postgres:16-alpine   # <-- old major version
-
-# Wait for postgres to finish starting
-sleep 8
-podman logs pg_old | tail -5  # should end with "ready to accept connections"
-
-podman exec pg_old pg_dump -U nabu nabu > /tmp/nabu_backup.sql
-wc -l /tmp/nabu_backup.sql  # sanity check — should not be zero
-
-podman stop pg_old && podman rm pg_old
-```
-
-### 3. Wipe the old data directory
-
-```bash
-sudo rm -rf /mnt/data/nabu/postgres/*
-```
-
-### 4. Update the compose file to the new major version
-
-Edit `/opt/nabu/compose.yaml` (or re-run CI to deploy the updated
-`compose.server.yaml` that already has the new version pinned).
-
-```bash
-sed -i 's|postgres:16-alpine|postgres:17-alpine|' /opt/nabu/compose.yaml
-```
-
-### 5. Start postgres and restore
-
-```bash
-cd /opt/nabu
-podman-compose up -d postgres
-sleep 8
-
-POSTGRES_CONTAINER=$(podman ps -qf name=postgres)
-podman exec -i "${POSTGRES_CONTAINER}" psql -U nabu nabu \
-  < /tmp/nabu_backup.sql
-```
-
-### 6. Verify the restore
-
-```bash
-podman exec "${POSTGRES_CONTAINER}" psql -U nabu nabu \
-  -c "\dt"                          # list tables
-podman exec "${POSTGRES_CONTAINER}" psql -U nabu nabu \
-  -c "SELECT count(*) FROM chores;" # spot-check row count
-```
-
-### 7. Bring up the full stack
-
-```bash
-podman-compose up -d
-```
-
-Check the app is healthy:
-
-```bash
-podman-compose ps
-curl -sf http://localhost:8080/health && echo "OK"
-```
-
-### 8. Clean up
-
-```bash
-rm /tmp/nabu_backup.sql
-```
-
-## Rolling back
-
-If anything goes wrong before step 7, stop everything, restore the volume from
-the snapshot taken in the pre-migration checklist, pin the compose file back to
-the old major version, and bring the stack back up.
-
-```bash
-podman-compose down
-# restore snapshot to /mnt/data/nabu/postgres ...
-sed -i 's|postgres:17-alpine|postgres:16-alpine|' /opt/nabu/compose.yaml
-podman-compose up -d
-```
+The restore tooling deliberately has no option to overwrite a running database.
+Production timing, paths, credentials, image compatibility and cutover approval
+must come from that maintenance operation, not from local fixtures.

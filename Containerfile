@@ -1,5 +1,5 @@
 # Build stage
-FROM docker.io/library/golang:1.26.6-alpine AS builder
+FROM docker.io/library/golang:1.26.8-alpine AS builder
 
 WORKDIR /build
 
@@ -10,8 +10,11 @@ RUN apk add --no-cache git ca-certificates
 COPY go.mod go.sum ./
 RUN go mod download
 
-# Copy source code
-COPY . .
+# Copy only the server's source and embedded assets into the build stage.
+COPY cmd ./cmd
+COPY internal ./internal
+COPY migrations ./migrations
+COPY web ./web
 
 # Build version arg (injected by CI from git tag, e.g. "0.1.1")
 ARG BUILD_VERSION=dev
@@ -48,7 +51,7 @@ EXPOSE 8080
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/ready || exit 1
 
 # Run the application
 CMD ["./nabu"]

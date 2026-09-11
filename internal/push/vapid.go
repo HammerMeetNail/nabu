@@ -5,6 +5,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -32,23 +33,20 @@ func NewVAPIDSigner(privateKeyB64, publicKeyB64, subject string) (*VAPIDSigner, 
 		return nil, fmt.Errorf("decode public key: %w", err)
 	}
 
-	curve := elliptic.P256()
-	// Reconstruct public key from uncompressed point
-	if len(pubBytes) != 65 || pubBytes[0] != 0x04 {
-		return nil, fmt.Errorf("invalid uncompressed public key length %d", len(pubBytes))
+	// Old generators omitted leading zero bytes. Preserve valid short scalars
+	// while letting the standard library reject zero/out-of-range private keys.
+	if len(privBytes) == 0 || len(privBytes) > 32 {
+		return nil, fmt.Errorf("invalid private key length")
 	}
-	x := new(big.Int).SetBytes(pubBytes[1:33])
-	y := new(big.Int).SetBytes(pubBytes[33:65])
-
-	privateKey := new(ecdsa.PrivateKey)
-	privateKey.Curve = curve
-	privateKey.X = x
-	privateKey.Y = y
-	privateKey.D = new(big.Int).SetBytes(privBytes)
-
-	// Verify the public key matches the private key
-	if !curve.IsOnCurve(x, y) {
-		return nil, fmt.Errorf("public key not on curve")
+	raw := make([]byte, 32)
+	copy(raw[32-len(privBytes):], privBytes)
+	privateKey, err := ecdsa.ParseRawPrivateKey(elliptic.P256(), raw)
+	if err != nil {
+		return nil, fmt.Errorf("invalid private key")
+	}
+	derivedPublic, err := privateKey.PublicKey.Bytes()
+	if err != nil || subtle.ConstantTimeCompare(derivedPublic, pubBytes) != 1 {
+		return nil, fmt.Errorf("public key does not match private key")
 	}
 
 	return &VAPIDSigner{
@@ -65,14 +63,15 @@ func GenerateVAPIDKeys() (privB64, pubB64 string, err error) {
 	if err != nil {
 		return "", "", err
 	}
-	privB64 = base64urlEncode(priv.D.Bytes())
-	x := priv.X.Bytes()
-	y := priv.Y.Bytes()
-	// Pad to 32 bytes each
-	pub := make([]byte, 65)
-	pub[0] = 0x04
-	copy(pub[1+(32-len(x)):33], x)
-	copy(pub[33+(32-len(y)):65], y)
+	raw, err := priv.Bytes()
+	if err != nil {
+		return "", "", err
+	}
+	pub, err := priv.PublicKey.Bytes()
+	if err != nil {
+		return "", "", err
+	}
+	privB64 = base64urlEncode(raw)
 	pubB64 = base64urlEncode(pub)
 	return privB64, pubB64, nil
 }

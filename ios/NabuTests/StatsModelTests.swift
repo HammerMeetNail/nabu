@@ -29,8 +29,8 @@ final class StatsModelTests: XCTestCase {
         }
     }
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         state = AppState()
         state.user = User(id: 7, householdId: 1, email: "t@t.com", displayName: "T",
                           avatarColor: "#000000", emailVerified: true, role: "owner", createdAt: Date())
@@ -109,7 +109,7 @@ final class StatsModelTests: XCTestCase {
         // Top chores default to the signed-in user, like the PWA.
         XCTAssertTrue(urls.contains { $0.contains("/api/stats/top-chores?userId=7&period=month") })
         // Feeding gaps: last 7 days with an exclusive API end (inclusive + 1).
-        let start = StatsModel.dateString(Calendar.current.date(byAdding: .day, value: -7, to: Date())!)
+        let start = StatsModel.dateString(Calendar.current.date(byAdding: .day, value: -6, to: Date())!)
         let apiEnd = StatsModel.exclusiveEnd(StatsModel.dateString(Date()))
         XCTAssertTrue(urls.contains { $0.contains("/api/stats/feeding-gaps?start=\(start)&end=\(apiEnd)") })
 
@@ -151,6 +151,17 @@ final class StatsModelTests: XCTestCase {
     }
 
     // MARK: - Widgets
+
+    func testAllTwentyServerSupportedWidgetsLoadTheirValues() async {
+        state.statsWidgets = (0..<20).map { makeWidget(id: "w\($0)", type: "total", choreIds: [1]) }
+        installMock()
+        await model.loadWidgetData()
+        XCTAssertEqual(model.widgetSummaries.count, 20)
+        for widget in state.statsWidgets {
+            XCTAssertEqual(model.widgetSummaries[widget.id]?.first?.count, 5)
+        }
+        XCTAssertEqual(requests.urlStrings().filter { $0.contains("/summary") }.count, 20)
+    }
 
     func testWidgetDataFetchesSummaryForTotalAndTimeSeriesForCharts() async {
         state.statsWidgets = [
@@ -254,4 +265,134 @@ final class StatsModelTests: XCTestCase {
         installMock()
         XCTAssertTrue(model.isFeedingGapsQuickActive(days: 7))
     }
+
+    func testHiddenSectionsOnlyFetchOverviewAndRefreshRepeatsItOnce() async {
+        state.chores = [makeFeedBaby(), makeMedsChore()]
+        state.statsWidgets = [makeWidget()]
+        state.statsSectionHidden = StatsSections.all + ["chore:3", "widget:w1"]
+        installMock()
+        await model.loadAll()
+        XCTAssertEqual(requests.urlStrings().map { URL(string: $0)!.path }, ["/api/stats/overview"])
+        await model.loadAll(showSpinner: false)
+        XCTAssertEqual(requests.urlStrings().count, 2)
+    }
+
+    func testCategoriesDiscardOldSuccessAndFailureAfterNewSelection() async {
+        for status in [200, 500] {
+            let gate = NativeResponseGate()
+            api.mockAsyncHandler = { request in
+                let month = request.url!.query!.contains("month")
+                if month { await gate.pause() }
+                let json = month ? #"{"breakdown":[{"category":"old","count":9}],"start":"2026-09-01","end":"2026-10-01"}"# : #"{"breakdown":[{"category":"new","count":3}],"start":"2026-09-10","end":"2026-09-11"}"#
+                return (Data(json.utf8), HTTPURLResponse(url: request.url!, statusCode: month ? status : 200, httpVersion: nil, headerFields: nil)!)
+            }
+            model = StatsModel()
+            model.configure(api: api, state: state)
+            let old = Task { await model.setCategoriesPeriod("month") }
+            await gate.waitUntilPaused()
+            await model.setCategoriesPeriod("day")
+            await gate.release()
+            await old.value
+            XCTAssertEqual(model.categoriesBreakdown.map(\.category), ["new"])
+            XCTAssertNil(model.errors["categories"])
+            XCTAssertFalse(model.loading.contains("categories"))
+        }
+    }
+
+    func testLeaderboardRefreshDoesNotReuseStaleCache() async {
+        state.statsSectionHidden = StatsSections.all.filter { $0 != "leaderboard" }
+        installMock()
+        await model.loadAll()
+        await model.loadAll(showSpinner: false)
+        XCTAssertEqual(requests.urlStrings().filter { $0.contains("/leaderboard?") }.count, 2)
+    }
+
+    func testOldResponseCannotClearNewRequestLoading() async {
+        let oldGate = NativeResponseGate(), newGate = NativeResponseGate()
+        api.mockAsyncHandler = { request in
+            let old = request.url!.query!.contains("month")
+            if old { await oldGate.pause() } else { await newGate.pause() }
+            return (Data(#"{"breakdown":[],"start":"2026-09-10","end":"2026-09-11"}"#.utf8),
+                    HTTPURLResponse(url: request.url!, statusCode: old ? 500 : 200, httpVersion: nil, headerFields: nil)!)
+        }
+        model.configure(api: api, state: state)
+        let old = Task { await model.setCategoriesPeriod("month") }
+        await oldGate.waitUntilPaused()
+        let new = Task { await model.setCategoriesPeriod("day") }
+        await newGate.waitUntilPaused()
+        await oldGate.release()
+        await old.value
+        XCTAssertTrue(model.loading.contains("categories"))
+        XCTAssertNil(model.errors["categories"])
+        await newGate.release()
+        await new.value
+        XCTAssertFalse(model.loading.contains("categories"))
+        XCTAssertNil(model.errors["categories"])
+    }
+
+    func testWidgetPartialFailurePreservesWholeLastGoodResultAndCanRetry() async {
+        state.statsWidgets = [makeWidget(choreIds: [1, 1, 2])]
+        let responseState = WidgetResponseState()
+        api.mockAsyncHandler = { request in
+            await responseState.record()
+            let fail = await responseState.shouldFail && request.url!.path.contains("/2/")
+            let json = #"{"summary":{"choreId":1,"count":5,"totalML":0,"totalDuration":0,"byMember":[]}}"#
+            return (Data(json.utf8), HTTPURLResponse(url: request.url!, statusCode: fail ? 500 : 200, httpVersion: nil, headerFields: nil)!)
+        }
+        model.configure(api: api, state: state)
+        await model.loadWidgetData()
+        let firstCount = await responseState.count
+        XCTAssertEqual(firstCount, 2, "Duplicate child IDs must not cause extra requests")
+        XCTAssertEqual(model.widgetSummaries["w1"]?.count, 2)
+        await responseState.setFailure(true)
+        await model.loadWidgetData()
+        XCTAssertEqual(model.widgetSummaries["w1"]?.count, 2)
+        XCTAssertNotNil(model.errors["widget:w1"])
+        await responseState.setFailure(false)
+        await model.retrySection("widget:w1")
+        XCTAssertNil(model.errors["widget:w1"])
+    }
+
+    func testOldModelCannotStartMoreWidgetRequestsAfterIdentityChange() async {
+        await assertOldModelRejectsCompletion(after: nil)
+    }
+
+    func testDelayedWidgetsCannotPublishAfterSameActorHouseholdSwitch() async {
+        let user = state.user!
+        let switched = User(id: user.id, householdId: 2, email: user.email, displayName: user.displayName,
+            avatarColor: user.avatarColor, emailVerified: user.emailVerified, role: user.role, createdAt: user.createdAt)
+        await assertOldModelRejectsCompletion(after: switched)
+    }
+
+    private func assertOldModelRejectsCompletion(after replacement: User?) async {
+        let identity = ClientIdentity()
+        identity.accept(state.user)
+        state.adopt(identity.snapshot)
+        state.statsWidgets = [makeWidget(choreIds: [1, 2])]
+        api = APIClient(baseURL: URL(string: "http://localhost:9999")!, identity: identity)
+        let gate = NativeResponseGate()
+        let recorder = requests!
+        api.mockAsyncHandler = { request in
+            recorder.record(request)
+            await gate.pause()
+            return (Data(#"{"summary":{"choreId":1,"count":5,"totalML":0,"totalDuration":0,"byMember":[]}}"#.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        model.configure(api: api, state: state)
+        let old = Task { await model.loadWidgetData() }
+        await gate.waitUntilPaused()
+        identity.accept(replacement)
+        state.adopt(identity.snapshot)
+        await gate.release()
+        await old.value
+        await model.loadAll()
+        XCTAssertEqual(requests.urlStrings().count, 1)
+        XCTAssertTrue(model.widgetSummaries.isEmpty)
+    }
+}
+
+private actor WidgetResponseState {
+    var shouldFail = false
+    var count = 0
+    func setFailure(_ value: Bool) { shouldFail = value }
+    func record() { count += 1 }
 }

@@ -1,7 +1,11 @@
 package push_test
 
 import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/sha256"
 	"encoding/base64"
+	"math/big"
 	"strings"
 	"testing"
 
@@ -83,22 +87,51 @@ func TestNewVAPIDSigner_BadPublicKey(t *testing.T) {
 func TestNewVAPIDSigner_MismatchedKeys(t *testing.T) {
 	priv1, _, _ := push.GenerateVAPIDKeys()
 	_, pub2, _ := push.GenerateVAPIDKeys()
-	// Using private key from key 1 with public key from key 2 —
-	// the keys are on the curve so NewVAPIDSigner may or may not detect this,
-	// but SignJWT must still produce a 3-part JWT token.
-	signer, err := push.NewVAPIDSigner(priv1, pub2, "mailto:x@x.com")
-	if err != nil {
-		// Some implementations do detect the mismatch; that's fine.
-		return
+	if _, err := push.NewVAPIDSigner(priv1, pub2, "mailto:x@x.com"); err == nil {
+		t.Fatal("expected mismatched keys to be rejected")
 	}
-	// If no error: signer must still produce a syntactically valid JWT
-	jwt, err := signer.SignJWT("https://fcm.googleapis.com/fcm/send/example")
-	if err != nil {
-		t.Fatalf("SignJWT with mismatched keys: %v", err)
+}
+
+func TestNewVAPIDSigner_RejectsInvalidScalar(t *testing.T) {
+	_, pub, _ := push.GenerateVAPIDKeys()
+	for _, raw := range [][]byte{nil, make([]byte, 32), make([]byte, 33), elliptic.P256().Params().N.Bytes()} {
+		if _, err := push.NewVAPIDSigner(base64.RawURLEncoding.EncodeToString(raw), pub, "mailto:x@x.com"); err == nil {
+			t.Errorf("accepted invalid private scalar of length %d", len(raw))
+		}
 	}
-	parts := strings.Split(jwt, ".")
+}
+
+func TestNewVAPIDSigner_LegacyShortScalarSignsValidRawJWT(t *testing.T) {
+	// Earlier key generation omitted leading zero bytes; preserve that encoding.
+	raw := make([]byte, 32)
+	raw[31] = 1
+	private, err := ecdsa.ParseRawPrivateKey(elliptic.P256(), raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	public, err := private.PublicKey.Bytes()
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := push.NewVAPIDSigner(base64.RawURLEncoding.EncodeToString([]byte{1}), base64.RawURLEncoding.EncodeToString(public), "mailto:x@x.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	token, err := signer.SignJWT("https://push.example.invalid/send/test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
-		t.Errorf("JWT should have 3 parts, got %d", len(parts))
+		t.Fatal("invalid JWT encoding")
+	}
+	signature, err := base64.RawURLEncoding.DecodeString(parts[2])
+	if err != nil || len(signature) != 64 {
+		t.Fatalf("signature must be raw r||s: length=%d err=%v", len(signature), err)
+	}
+	digest := sha256.Sum256([]byte(parts[0] + "." + parts[1]))
+	if !ecdsa.Verify(&private.PublicKey, digest[:], new(big.Int).SetBytes(signature[:32]), new(big.Int).SetBytes(signature[32:])) {
+		t.Fatal("JWT does not verify with the advertised public key")
 	}
 }
 

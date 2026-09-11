@@ -48,7 +48,7 @@ test.describe("Offline log queue", () => {
     await page.click('[data-action="save-log"]');
 
     await expect(
-      page.locator("#toast-container .toast", { hasText: "will sync when online" })
+      page.locator("#toast-container .toast", { hasText: "Saved on this device. Waiting to sync." })
     ).toBeVisible({ timeout: 5000 });
 
     // Nothing persisted server-side yet.

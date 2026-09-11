@@ -188,7 +188,7 @@ func TestClient_SendsAlertWithHeadersAndData(t *testing.T) {
 
 	aps, _ := req.payload["aps"].(map[string]any)
 	alert, _ := aps["alert"].(map[string]any)
-	if alert["title"] != "Reminder" || alert["body"] != "Feed Baby" {
+	if alert["title"] != "Nabu" || alert["body"] != "Open Nabu to check your household updates." {
 		t.Fatalf("alert = %v", alert)
 	}
 	if aps["category"] != "NABU_REMINDER" {
@@ -270,7 +270,7 @@ func TestMemoryStore_TokenTakeoverAndIsolation(t *testing.T) {
 	_ = store.RegisterDevice(ctx, Device{UserID: 2, Token: "tok2", Environment: EnvironmentSandbox, BundleID: "b"})
 
 	// User 2 cannot unregister user 1's token.
-	_ = store.UnregisterDevice(ctx, 2, "tok1")
+	_ = store.UnregisterDevice(ctx, 2, "tok1", "")
 	d1, _ := store.DevicesForUser(ctx, 1)
 	if len(d1) != 1 {
 		t.Fatal("cross-user unregister must not remove the token")
@@ -285,7 +285,7 @@ func TestMemoryStore_TokenTakeoverAndIsolation(t *testing.T) {
 	}
 
 	// Owner unregister works.
-	_ = store.UnregisterDevice(ctx, 2, "tok2")
+	_ = store.UnregisterDevice(ctx, 2, "tok2", "")
 	d2, _ = store.DevicesForUser(ctx, 2)
 	if len(d2) != 1 {
 		t.Fatalf("owner unregister failed: %d", len(d2))

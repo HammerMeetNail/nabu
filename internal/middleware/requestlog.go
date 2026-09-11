@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"github.com/HammerMeetNail/nabu/internal/diagnostics"
 	"log"
 	"net"
 	"net/http"
@@ -30,6 +31,8 @@ type statusRecorder struct {
 	status int
 }
 
+func (s *statusRecorder) Unwrap() http.ResponseWriter { return s.ResponseWriter }
+
 func (r *statusRecorder) WriteHeader(status int) {
 	r.status = status
 	r.ResponseWriter.WriteHeader(status)
@@ -42,10 +45,13 @@ func RequestLogger(logger *log.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now().UTC()
+			requestID := diagnostics.RequestID()
+			w.Header().Set("X-Request-ID", requestID)
 			recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 			next.ServeHTTP(recorder, r)
 
 			payload, _ := json.Marshal(map[string]any{
+				"request_id":  requestID,
 				"ts":          start.Format(time.RFC3339),
 				"method":      r.Method,
 				"path":        r.URL.Path,

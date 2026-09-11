@@ -22,29 +22,31 @@ struct StatsView: View {
             Group {
                 if model.isLoading {
                     SkeletonCards()
-                } else if model.overview == nil {
-                    // The primary fetch failed outright (every load is
-                    // best-effort, so nil overview after a load means the
-                    // network went nowhere) — retry inline, never a dead tab.
-                    InlineErrorView(message: "Stats couldn't be loaded. Check your connection and try again.") {
-                        await model.loadAll()
-                    }
-                } else if state.latestLogs.isEmpty {
-                    ContentUnavailableView {
-                        Label("No stats yet", systemImage: "chart.bar")
-                    } description: {
-                        Text("Log your first chore and the charts will light up.")
-                    } actions: {
-                        Button("Log Your First Chore") {
-                            state.currentTab = .home
-                        }
-                        .buttonStyle(.borderedProminent)
-                    }
+                        .accessibilityIdentifier("stats-loading")
                 } else {
                     ScrollView {
                         VStack(spacing: 16) {
+                            if model.overview == nil {
+                                InlineErrorView(message: "Stats couldn't be loaded. Try again.") {
+                                    await model.loadAll(showSpinner: false)
+                                }
+                            }
+                            if state.latestLogs.isEmpty {
+                                Text("Log a chore to start your stats. You can still adjust the charts below.")
+                                    .foregroundStyle(DesignColors.textSecondary)
+                                Button("Log Your First Chore") { state.currentTab = .home }
+                            }
                             ForEach(model.sectionLayout, id: \.self) { key in
-                                sectionView(for: key)
+                                VStack(spacing: 8) {
+                                    sectionView(for: key)
+                                    if key == "baby" {
+                                        StatsLoadStatus(model: model, resource: "baby:feed")
+                                        StatsLoadStatus(model: model, resource: "baby:change")
+                                        StatsLoadStatus(model: model, resource: "gaps")
+                                    } else {
+                                        StatsLoadStatus(model: model, resource: key == "recap" ? "overview" : key)
+                                    }
+                                }
                             }
                         }
                         .padding()
@@ -95,13 +97,13 @@ struct StatsView: View {
         case "last-done":
             LastDoneSection(chores: state.chores, latestLogs: state.latestLogs)
         case "baby":
-            if model.feedBabyTS != nil || model.changeBabyTS != nil {
+            if model.feedBabyChore != nil || model.changeBabyChore != nil {
                 BabyCareSection(model: model, members: state.authorMembers, volumeUnit: volumeUnit)
             }
         case "activity":
-            if !model.heatmap.isEmpty { heatmapSection }
+            heatmapSection
         case "busy-hours":
-            if !model.busyHours.isEmpty { busyHoursSection }
+            busyHoursSection
         case "leaderboard":
             leaderboardSection
         case "top-chores":
@@ -109,7 +111,7 @@ struct StatsView: View {
         case "categories":
             categoriesSection
         case "chores":
-            if !activeChoreStats.isEmpty { choresSection }
+            choresSection
         case "recap":
             if let recap = model.overview?.recap, recap.totalChores > 0 {
                 recapCard(recap)
@@ -363,11 +365,7 @@ struct StatsView: View {
     // MARK: - Categories
 
     private var categoriesSection: some View {
-        // Period-scoped breakdown; falls back to the overview's weekly
-        // breakdown before the first period fetch lands (PWA parity).
-        let entries = model.categoriesBreakdown.isEmpty
-            ? (model.overview?.breakdown ?? [])
-            : model.categoriesBreakdown
+        let entries = model.categoriesBreakdown
 
         return StatsCard {
             HStack {
@@ -431,6 +429,9 @@ struct StatsView: View {
             }
 
             let stats = activeChoreStats
+            if stats.isEmpty {
+                Text("No chores in this period").foregroundStyle(DesignColors.textSecondary)
+            }
             ForEach(Array(stats.enumerated()), id: \.element.choreId) { idx, cs in
                 if cs.hasIndicators || cs.hasVolume {
                     DisclosureGroup {

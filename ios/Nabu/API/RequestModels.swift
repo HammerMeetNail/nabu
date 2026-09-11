@@ -28,6 +28,11 @@ struct ResetPasswordRequest: Codable {
 struct ChangePasswordRequest: Codable {
     let currentPassword: String
     let newPassword: String
+
+    enum CodingKeys: String, CodingKey {
+        case currentPassword = "current_password"
+        case newPassword = "new_password"
+    }
 }
 
 // MARK: - Household
@@ -178,20 +183,20 @@ struct CreateLogRequest: Codable, Equatable {
 struct UpdateLogRequest: Codable {
     let note: String?
     let indicators: [String]?
-    let volumeML: Int?
+    let volumeML: Int??
     let userId: Int?
     let completedAt: String?
     let hour: Int?
     let date: String?
     let indicatorVolumes: [String: Int]?
-    let rating: Int?
-    let title: String?
-    let durationSeconds: Int?
+    let rating: Int??
+    let title: String??
+    let durationSeconds: Int??
     /// Double-optional: outer nil omits the key (no change); `.some(nil)`
     /// sends an explicit JSON null (clears the subject), matching the PWA.
     let subject: String??
 
-    init(note: String?, indicators: [String]?, volumeML: Int?, userId: Int?, completedAt: String?, hour: Int?, date: String?, indicatorVolumes: [String: Int]?, rating: Int? = nil, title: String? = nil, durationSeconds: Int? = nil, subject: String?? = nil) {
+    init(note: String?, indicators: [String]?, volumeML: Int??, userId: Int?, completedAt: String?, hour: Int?, date: String?, indicatorVolumes: [String: Int]?, rating: Int?? = nil, title: String?? = nil, durationSeconds: Int?? = nil, subject: String?? = nil) {
         self.note = note
         self.indicators = indicators
         self.volumeML = volumeML
@@ -339,5 +344,4 @@ struct APNsRegisterRequest: Codable {
 
 struct APNsUnregisterRequest: Codable {
     let token: String
-    let environment: String
 }

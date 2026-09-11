@@ -2,14 +2,21 @@ package household
 
 import (
 	"context"
+	"github.com/HammerMeetNail/nabu/internal/readlimit"
+	"maps"
+	"slices"
 	"sync"
 	"time"
 )
 
 type MemoryStore struct {
-	mu         sync.RWMutex
-	idSeq      int64
-	households map[int64]Household
+	mu                sync.RWMutex
+	inTransaction     bool
+	userExists        func(context.Context, int64) error
+	onMembership      func(int64, int64, bool)
+	membershipChanges []membershipChange
+	idSeq             int64
+	households        map[int64]Household
 	// userHH maps userID -> active householdID
 	userHH map[int64]int64
 	// userHouseholds maps userID -> []HouseholdWithRole
@@ -28,15 +35,78 @@ func NewMemoryStore() *MemoryStore {
 	}
 }
 
+func (s *MemoryStore) InTransaction(ctx context.Context, fn func(Store) error) error {
+	if s.inTransaction {
+		return fn(s)
+	}
+	tx, commit, unlock := s.PrepareTransaction()
+	defer unlock()
+	if err := fn(tx); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	commit()
+	return nil
+}
+
+func (s *MemoryStore) PrepareTransaction() (Store, func(), func()) {
+	s.mu.Lock()
+	memberships := make(map[int64][]HouseholdWithRole, len(s.userHouseholds))
+	for userID, entries := range s.userHouseholds {
+		memberships[userID] = slices.Clone(entries)
+	}
+	tx := &MemoryStore{inTransaction: true, userExists: s.userExists, onMembership: s.onMembership, idSeq: s.idSeq, households: maps.Clone(s.households),
+		userHH: maps.Clone(s.userHH), userHouseholds: memberships, invites: maps.Clone(s.invites), inviteByCode: maps.Clone(s.inviteByCode)}
+	commit := func() {
+		s.idSeq, s.households, s.userHH, s.userHouseholds = tx.idSeq, tx.households, tx.userHH, tx.userHouseholds
+		s.invites, s.inviteByCode = tx.invites, tx.inviteByCode
+		for _, change := range tx.membershipChanges {
+			if s.onMembership != nil {
+				s.onMembership(change.userID, change.householdID, change.member)
+			}
+		}
+	}
+	return tx, commit, s.mu.Unlock
+}
+
+func (s *MemoryStore) RevokeInvites(_ context.Context, householdID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.revokeInvites(householdID)
+}
+
+func (s *MemoryStore) revokeInvites(householdID int64) error {
+	hh, ok := s.households[householdID]
+	if !ok {
+		return ErrNotFound
+	}
+	hh.InviteCode = GenerateInviteCode()
+	s.households[householdID] = hh
+	for id, invite := range s.invites {
+		if invite.HouseholdID == householdID {
+			delete(s.invites, id)
+			delete(s.inviteByCode, invite.Code)
+		}
+	}
+	return nil
+}
+
 func (s *MemoryStore) nextID() int64 {
 	s.idSeq++
 	return s.idSeq
 }
 
-func (s *MemoryStore) CreateHousehold(_ context.Context, name, initials string, ownerID int64) (Household, error) {
+func (s *MemoryStore) CreateHousehold(ctx context.Context, name, initials string, ownerID int64) (Household, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.userExists != nil {
+		if err := s.userExists(ctx, ownerID); err != nil {
+			return Household{}, err
+		}
+	}
 	id := s.nextID()
 	code := GenerateInviteCode()
 	now := time.Now().UTC()
@@ -139,7 +209,7 @@ func (s *MemoryStore) DeleteHousehold(_ context.Context, id int64) error {
 	return nil
 }
 
-func (s *MemoryStore) GetMembers(_ context.Context, householdID int64) ([]Member, error) {
+func (s *MemoryStore) GetMembers(ctx context.Context, householdID int64) ([]Member, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var members []Member
@@ -150,6 +220,9 @@ func (s *MemoryStore) GetMembers(_ context.Context, householdID int64) ([]Member
 					UserID: userID,
 					Role:   h.Role,
 				})
+				if err := readlimit.Check(ctx, len(members)); err != nil {
+					return nil, err
+				}
 				break
 			}
 		}
@@ -160,9 +233,14 @@ func (s *MemoryStore) GetMembers(_ context.Context, householdID int64) ([]Member
 	return members, nil
 }
 
-func (s *MemoryStore) AddMember(_ context.Context, householdID, userID int64, role string) error {
+func (s *MemoryStore) AddMember(ctx context.Context, householdID, userID int64, role string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.userExists != nil {
+		if err := s.userExists(ctx, userID); err != nil {
+			return err
+		}
+	}
 	hh, ok := s.households[householdID]
 	if !ok {
 		return ErrNotFound
@@ -180,6 +258,7 @@ func (s *MemoryStore) AddMember(_ context.Context, householdID, userID int64, ro
 		Role:     role,
 	})
 	s.userHH[userID] = householdID
+	s.membershipChanged(userID, householdID, true)
 	return nil
 }
 
@@ -210,7 +289,8 @@ func (s *MemoryStore) RemoveMember(_ context.Context, householdID, userID int64)
 			delete(s.userHH, userID)
 		}
 	}
-	return nil
+	s.membershipChanged(userID, householdID, false)
+	return s.revokeInvites(householdID)
 }
 
 func (s *MemoryStore) UpdateMemberRole(_ context.Context, householdID, userID int64, role string) error {
@@ -299,11 +379,13 @@ func (s *MemoryStore) CreateInvite(_ context.Context, householdID, createdBy int
 	defer s.mu.Unlock()
 	id := s.nextID()
 	now := time.Now().UTC()
+	expires := now.Add(7 * 24 * time.Hour)
 	inv := Invite{
 		ID:          id,
 		HouseholdID: householdID,
 		Code:        code,
 		CreatedBy:   createdBy,
+		ExpiresAt:   &expires,
 		MaxUses:     maxUses,
 		UsedCount:   0,
 		CreatedAt:   now,
@@ -339,13 +421,16 @@ func (s *MemoryStore) GetInviteByID(_ context.Context, id int64) (Invite, error)
 	return inv, nil
 }
 
-func (s *MemoryStore) GetInvites(_ context.Context, householdID int64) ([]Invite, error) {
+func (s *MemoryStore) GetInvites(ctx context.Context, householdID int64) ([]Invite, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var result []Invite
 	for _, inv := range s.invites {
 		if inv.HouseholdID == householdID {
 			result = append(result, inv)
+			if err := readlimit.Check(ctx, len(result)); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return result, nil
@@ -379,4 +464,28 @@ func (s *MemoryStore) DeleteInvite(_ context.Context, id int64) error {
 	}
 	delete(s.invites, id)
 	return nil
+}
+
+type membershipChange struct {
+	userID, householdID int64
+	member              bool
+}
+
+func (s *MemoryStore) SetMembershipCleanup(fn func(int64, int64, bool)) { s.onMembership = fn }
+func (s *MemoryStore) membershipChanged(userID, householdID int64, member bool) {
+	if s.inTransaction {
+		s.membershipChanges = append(s.membershipChanges, membershipChange{userID, householdID, member})
+	} else if s.onMembership != nil {
+		s.onMembership(userID, householdID, member)
+	}
+}
+func (s *MemoryStore) RemoveUserInvites(userID int64) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, invite := range s.invites {
+		if invite.CreatedBy == userID {
+			delete(s.invites, id)
+			delete(s.inviteByCode, invite.Code)
+		}
+	}
 }

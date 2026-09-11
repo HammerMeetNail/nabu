@@ -1,28 +1,30 @@
-import { getCSRFToken } from "./api.js";
+import { apiFetch as request } from "./api.js";
+import { changeIdentity } from "./browser-context.js";
 import { escapeHTML } from "./utils.js";
 
-function apiFetch(path, options = {}) {
-  const headers = new Headers(options.headers || {});
-  headers.set("Content-Type", "application/json");
-  const csrfToken = getCSRFToken();
-  if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
-  return fetch(path, { ...options, headers }).then(r => r.json());
+async function apiFetch(path, options = {}) { return (await request(path, options)).data; }
+async function householdTransition(path, options) {
+  const result = await changeIdentity(async () => {
+    const {response,data}=await request(path,{...options,allowContextChange:true});
+    return {ok:response.ok,data};
+  });
+  return {...result.data, ok:result.ok, user:result.user, identity:result.identity};
 }
 
 export async function listHouseholds() {
-  return await fetch("/api/households").then(r => r.json());
+  return apiFetch("/api/households");
 }
 
 export async function activateHousehold(id) {
-  return apiFetch(`/api/households/${id}/activate`, { method: "POST" });
+  return householdTransition(`/api/households/${id}/activate`, { method: "POST" });
 }
 
 export async function loadHousehold() {
-  return await fetch("/api/household").then(r => r.json());
+  try { return await apiFetch("/api/household"); } catch (err) { if (err.status === 404) return {}; throw err; }
 }
 
 export async function createHousehold(name, initials) {
-  return apiFetch("/api/household", {
+  return householdTransition("/api/household", {
     method: "POST",
     body: JSON.stringify({ name, initials: initials || "" }),
   });
@@ -44,7 +46,7 @@ export async function deleteInvite(id) {
 }
 
 export async function joinHousehold(inviteCode) {
-  return apiFetch("/api/household/join", {
+  return householdTransition("/api/household/join", {
     method: "POST",
     body: JSON.stringify({ inviteCode }),
   });
@@ -62,7 +64,7 @@ export async function updateMemberRole(userId, role) {
 }
 
 export async function leaveHousehold() {
-  return apiFetch("/api/household/leave", { method: "POST" });
+  return householdTransition("/api/household/leave", { method: "POST" });
 }
 
 export async function transferOwnership(newOwnerId) {
@@ -163,24 +165,25 @@ export function renderHouseholdView(household, members, invites, currentUser) {
     </details>`;
   }).join("");
   const inviteList = (invites || []).map(inv => {
-    const invUrl = `${window.location.origin}/join?code=${inv.code}`;
+    const invUrl = `${window.location.origin}/join?code=${encodeURIComponent(inv.code)}`;
     return `<li class="invite-item">
-    <code class="invite-link-url">${invUrl}</code>
-    <button type="button" class="btn btn-sm btn-secondary" data-action="copy-invite-link" data-code="${inv.code}">Copy</button>
-    <span class="text-secondary">${inv.usedCount}/${inv.maxUses || '∞'} uses</span>
+    <code class="invite-link-url">${escapeHTML(invUrl)}</code>
+    <button type="button" class="btn btn-sm btn-secondary" data-action="copy-invite-link" data-code="${escapeHTML(inv.code)}">Copy</button>
+    <span class="text-secondary">${inv.usedCount}/${inv.maxUses || 1} uses${inv.expiresAt ? ` · Expires ${escapeHTML(new Date(inv.expiresAt).toLocaleDateString())}` : ""}</span>
     <button type="button" class="btn btn-sm btn-danger" data-action="delete-invite" data-invite-id="${inv.id}">Revoke</button>
   </li>`;}).join("");
 
-  const inviteLink = `${window.location.origin}/join?code=${household.inviteCode}`;
+  const inviteLink = `${window.location.origin}/join?code=${encodeURIComponent(household.inviteCode)}`;
 
   const inviteSection = isOwner ? `
     <p class="text-secondary mb-1">Invite Link</p>
     <div class="invite-link-row">
-      <code class="invite-link-url">${inviteLink}</code>
-      <button type="button" class="btn btn-sm btn-secondary" data-action="copy-invite-link" data-code="${household.inviteCode}">Copy</button>
+      <code class="invite-link-url">${escapeHTML(inviteLink)}</code>
+      <button type="button" class="btn btn-sm btn-secondary" data-action="copy-invite-link" data-code="${escapeHTML(household.inviteCode)}">Copy</button>
     </div>
     <div class="mt-2">
-      <button type="button" class="btn btn-sm btn-primary" data-action="create-invite">New tracked link</button>
+      <button type="button" class="btn btn-sm btn-primary" data-action="create-invite">New single-use link</button>
+      <p class="text-secondary">New links expire after 7 days. Removing a member or changing a role revokes existing links.</p>
     </div>
     ${invites && invites.length ? `<h4 class="mt-3">Active Invites</h4><ul class="invite-list">${inviteList}</ul><div class="auth-divider"></div>` : ''}` : '';
 

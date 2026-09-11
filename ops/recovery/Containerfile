@@ -1,0 +1,38 @@
+# Match the live PostgreSQL major before adopting this image. Physical backups
+# require the same major; this image is prepared/tested for PostgreSQL 17 only.
+FROM docker.io/library/golang:1.26.8-alpine AS gosu-build
+ARG GOSU_VERSION=1.19
+ARG GOSU_SHA256=cd9719b775dbfedae53923c9b0dc792b66d42c51e0b36652ed6f747fbadc0164
+RUN apk add --no-cache curl \
+    && curl --fail --silent --show-error --location --max-time 120 \
+       "https://github.com/tianon/gosu/archive/refs/tags/${GOSU_VERSION}.tar.gz" -o /tmp/gosu.tar.gz \
+    && echo "${GOSU_SHA256}  /tmp/gosu.tar.gz" | sha256sum -c - \
+    && mkdir /gosu \
+    && tar xzf /tmp/gosu.tar.gz -C /gosu --strip-components=1
+WORKDIR /gosu
+RUN CGO_ENABLED=0 go build -mod=readonly -trimpath -o /out/gosu . \
+    && /out/gosu --version \
+    && /out/gosu nobody id
+
+FROM docker.io/library/postgres:17.11-alpine AS pgbackrest-build
+ARG PGBACKREST_VERSION=2.59.1
+ARG PGBACKREST_SHA256=1cd522afc33b8ff846ef88c55dc238717c9c8817a4f6ca7c9f64887de9c7402d
+RUN apk add --no-cache build-base pkgconf meson ninja curl openssl-dev libxml2-dev libssh2-dev lz4-dev zstd-dev bzip2-dev zlib-dev \
+    && curl --fail --silent --show-error --location --max-time 120 \
+       "https://github.com/pgbackrest/pgbackrest/releases/download/release/${PGBACKREST_VERSION}/pgbackrest-${PGBACKREST_VERSION}.tar.gz" -o /tmp/source.tar.gz \
+    && echo "${PGBACKREST_SHA256}  /tmp/source.tar.gz" | sha256sum -c - \
+    && mkdir /build \
+    && tar xzf /tmp/source.tar.gz -C /build --strip-components=1 \
+    && meson setup /build/output /build -Dlibsystemd=disabled \
+    && ninja -C /build/output \
+    && meson test -C /build/output --suite smoke --print-errorlogs
+
+FROM docker.io/library/postgres:17.11-alpine
+RUN apk upgrade --no-cache \
+    && apk add --no-cache libxml2 libssh2 lz4-libs zstd-libs libbz2 \
+    && mkdir -p /etc/pgbackrest /var/log/pgbackrest \
+    && chown postgres:postgres /var/log/pgbackrest
+COPY --from=pgbackrest-build /build/output/src/pgbackrest /usr/local/bin/pgbackrest
+COPY --from=gosu-build /out/gosu /usr/local/bin/gosu
+COPY ops/recovery/archive-wal.sh /usr/local/bin/nabu-pgbackrest-archive-wal
+RUN chmod 0755 /usr/local/bin/nabu-pgbackrest-archive-wal

@@ -1,8 +1,10 @@
 package middleware
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 )
@@ -40,16 +42,36 @@ func TestRateLimiter_DifferentIPsIndependent(t *testing.T) {
 	}
 }
 
-func TestRateLimiter_DifferentPathsIndependent(t *testing.T) {
+func TestRateLimiter_DifferentPathsShareBudget(t *testing.T) {
 	rl := NewRateLimiter(1, time.Minute)
 	defer rl.Stop()
 
 	if !rl.allow("1.1.1.1", "/api/auth/login") {
 		t.Fatal("login should be allowed")
 	}
-	// Same IP, different path → separate bucket
-	if !rl.allow("1.1.1.1", "/api/auth/register") {
-		t.Fatal("register should be allowed (separate path bucket)")
+	if rl.allow("1.1.1.1", "/api/auth/register") {
+		t.Fatal("different paths must share this limiter's IP budget")
+	}
+}
+
+func TestRateLimiter_RawResourceIDsCannotAllocateBuckets(t *testing.T) {
+	rl := NewRateLimiter(3, time.Minute)
+	t.Cleanup(rl.Stop)
+	handler := rl.Middleware("/api/")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) }))
+	for i := range 10000 {
+		r := httptest.NewRequest(http.MethodGet, fmt.Sprintf("/api/nonexistent/%d", i), nil)
+		r.RemoteAddr = "192.0.2.1:1234"
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		if i < 3 && w.Code != http.StatusNoContent {
+			t.Fatalf("request %d: %d", i, w.Code)
+		}
+		if i >= 3 && (w.Code != http.StatusTooManyRequests || w.Header().Get("Retry-After") == "") {
+			t.Fatalf("new path bypassed aggregate budget: %d", w.Code)
+		}
+	}
+	if len(rl.entries) != 1 {
+		t.Fatalf("allocated %d buckets for one client", len(rl.entries))
 	}
 }
 
@@ -197,7 +219,9 @@ func TestRateLimiter_NoTrustedCIDRs_IgnoresXForwardedFor(t *testing.T) {
 func TestRateLimiter_TrustedProxy_SpoofedXFF_RealWins(t *testing.T) {
 	rl := NewRateLimiter(1, time.Minute)
 	defer rl.Stop()
-	rl.SetTrustedProxies("10.0.0.0/8")
+	if err := rl.SetTrustedProxies("10.0.0.0/8"); err != nil {
+		t.Fatal(err)
+	}
 
 	// Attacker sends X-Forwarded-For: spoofed; the edge appends the real IP.
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
@@ -211,7 +235,9 @@ func TestRateLimiter_TrustedProxy_SpoofedXFF_RealWins(t *testing.T) {
 func TestRateLimiter_TrustedProxy_SingleXFFEntry(t *testing.T) {
 	rl := NewRateLimiter(5, time.Minute)
 	defer rl.Stop()
-	rl.SetTrustedProxies("10.0.0.0/8")
+	if err := rl.SetTrustedProxies("10.0.0.0/8"); err != nil {
+		t.Fatal(err)
+	}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
 	req.RemoteAddr = "10.0.0.1:80"
@@ -224,7 +250,9 @@ func TestRateLimiter_TrustedProxy_SingleXFFEntry(t *testing.T) {
 func TestRateLimiter_TrustedProxy_TwoHops_LeftmostUntrusted(t *testing.T) {
 	rl := NewRateLimiter(5, time.Minute)
 	defer rl.Stop()
-	rl.SetTrustedProxies("10.0.0.0/8")
+	if err := rl.SetTrustedProxies("10.0.0.0/8"); err != nil {
+		t.Fatal(err)
+	}
 
 	// Two trusted hops: 10.0.0.2 (inner) appended by 10.0.0.1 (our proxy).
 	// The rightmost non-trusted entry is the client at 172.16.0.5.
@@ -239,7 +267,9 @@ func TestRateLimiter_TrustedProxy_TwoHops_LeftmostUntrusted(t *testing.T) {
 func TestRateLimiter_TrustedProxy_EmptyAndMalformedXFFEntries(t *testing.T) {
 	rl := NewRateLimiter(5, time.Minute)
 	defer rl.Stop()
-	rl.SetTrustedProxies("10.0.0.0/8")
+	if err := rl.SetTrustedProxies("10.0.0.0/8"); err != nil {
+		t.Fatal(err)
+	}
 
 	// Empty and whitespace entries are skipped; all-trusted chain falls back
 	// to RemoteAddr.
@@ -261,7 +291,9 @@ func TestRateLimiter_TrustedProxy_EmptyAndMalformedXFFEntries(t *testing.T) {
 func TestRateLimiter_TrustedProxy_UsesXForwardedFor(t *testing.T) {
 	rl := NewRateLimiter(1, time.Minute)
 	defer rl.Stop()
-	rl.SetTrustedProxies("10.0.0.0/8")
+	if err := rl.SetTrustedProxies("10.0.0.0/8"); err != nil {
+		t.Fatal(err)
+	}
 
 	// First request from real client 192.168.1.1 via trusted proxy
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
@@ -283,7 +315,9 @@ func TestRateLimiter_TrustedProxy_UsesXForwardedFor(t *testing.T) {
 func TestRateLimiter_UntrustedProxy_UsesRemoteAddr(t *testing.T) {
 	rl := NewRateLimiter(1, time.Minute)
 	defer rl.Stop()
-	rl.SetTrustedProxies("10.0.0.0/8")
+	if err := rl.SetTrustedProxies("10.0.0.0/8"); err != nil {
+		t.Fatal(err)
+	}
 
 	// Proxy not in trusted list — XFF is ignored
 	req := httptest.NewRequest(http.MethodPost, "/api/auth/login", nil)
@@ -304,14 +338,20 @@ func TestRateLimiter_SetTrustedProxies_EmptyString(t *testing.T) {
 	rl := NewRateLimiter(5, time.Minute)
 	defer rl.Stop()
 	// Should not panic
-	rl.SetTrustedProxies("")
-	rl.SetTrustedProxies("  ,  ")
+	if err := rl.SetTrustedProxies(""); err != nil {
+		t.Fatal(err)
+	}
+	if err := rl.SetTrustedProxies("  ,  "); err == nil {
+		t.Fatal("malformed list accepted")
+	}
 }
 
 func TestRateLimiter_SetTrustedProxies_IPv4WithoutCIDR(t *testing.T) {
 	rl := NewRateLimiter(5, time.Minute)
 	defer rl.Stop()
-	rl.SetTrustedProxies("10.0.0.1")
+	if err := rl.SetTrustedProxies("10.0.0.1"); err != nil {
+		t.Fatal(err)
+	}
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.RemoteAddr = "10.0.0.1:80"
@@ -353,5 +393,69 @@ func TestRateLimiter_RetryAfterHeader(t *testing.T) {
 	retryAfter := rr.Header().Get("Retry-After")
 	if retryAfter == "" {
 		t.Fatal("expected Retry-After header on 429 response")
+	}
+}
+
+func TestRateLimiter_CardinalityIsBoundedWithoutResettingActiveClients(t *testing.T) {
+	l := NewRateLimiter(1, time.Minute)
+	t.Cleanup(l.Stop)
+	l.SetMaxClients(2)
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	l.now = func() time.Time { return now }
+	if !l.allow("first", "/api/a") || !l.allow("second", "/api/b") {
+		t.Fatal("initial clients denied")
+	}
+	for i := range 10000 {
+		if l.allow(fmt.Sprint(i), "/api/new") {
+			t.Fatal("admitted unbounded client")
+		}
+	}
+	if l.allow("first", "/api/another") {
+		t.Fatal("churn evicted active allowance")
+	}
+	if len(l.entries) != 2 || len(l.expiry) != 2 {
+		t.Fatalf("unbounded state: %d/%d", len(l.entries), len(l.expiry))
+	}
+	l.mu.Lock()
+	now = now.Add(time.Minute)
+	l.mu.Unlock()
+	if !l.allow("third", "/api/new") {
+		t.Fatal("expired entries did not free capacity")
+	}
+	if len(l.entries) != 1 || len(l.expiry) != 1 {
+		t.Fatalf("expiry did not remove old state: %d/%d", len(l.entries), len(l.expiry))
+	}
+}
+
+func TestRateLimiter_StopIsIdempotentAndWaitsForCleanup(t *testing.T) {
+	l := NewRateLimiter(1, time.Minute)
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() { defer wg.Done(); l.Stop() }()
+	}
+	wg.Wait()
+	select {
+	case <-l.cleanupDone:
+	default:
+		t.Fatal("cleanup still running")
+	}
+}
+
+func TestRateLimiter_RetryAfterUsesLimiterClock(t *testing.T) {
+	l := NewRateLimiter(1, time.Minute)
+	t.Cleanup(l.Stop)
+	now := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	l.now = func() time.Time { return now }
+	handler := l.Middleware("/api/")(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) }))
+	request := httptest.NewRequest(http.MethodGet, "/api/chores", nil)
+	handler.ServeHTTP(httptest.NewRecorder(), request)
+	l.mu.Lock()
+	now = now.Add(14500 * time.Millisecond)
+	l.mu.Unlock()
+	denied := httptest.NewRecorder()
+	handler.ServeHTTP(denied, request)
+	if denied.Header().Get("Retry-After") != "46" {
+		t.Fatalf("retry delay %q", denied.Header().Get("Retry-After"))
 	}
 }

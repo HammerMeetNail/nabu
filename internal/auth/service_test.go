@@ -18,6 +18,7 @@ func TestRegister(t *testing.T) {
 	svc.SetMailer(mailer, "http://localhost:8080")
 
 	user, session, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register returned error: %v", err)
 	}
@@ -30,8 +31,8 @@ func TestRegister(t *testing.T) {
 	if session.ID == "" {
 		t.Fatal("expected session ID")
 	}
-	if len(mailer.Messages) != 1 {
-		t.Fatalf("mail messages = %d, want 1", len(mailer.Messages))
+	if len(mailer.Messages()) != 1 {
+		t.Fatalf("mail messages = %d, want 1", len(mailer.Messages()))
 	}
 }
 
@@ -40,6 +41,7 @@ func TestRegisterDuplicateEmail(t *testing.T) {
 	svc := NewService(store)
 
 	_, _, err := svc.Register(context.Background(), "bob@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("first register: %v", err)
 	}
@@ -55,6 +57,7 @@ func TestRegisterWeakPassword(t *testing.T) {
 	svc := NewService(store)
 
 	_, _, err := svc.Register(context.Background(), "test@example.com", "short")
+	svc.DeliverPendingMail(context.Background())
 	if err != ErrWeakPassword {
 		t.Fatalf("error = %v, want ErrWeakPassword", err)
 	}
@@ -65,6 +68,7 @@ func TestRegisterInvalidEmail(t *testing.T) {
 	svc := NewService(store)
 
 	_, _, err := svc.Register(context.Background(), "not-an-email", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != ErrInvalidEmail {
 		t.Fatalf("error = %v, want ErrInvalidEmail", err)
 	}
@@ -80,6 +84,7 @@ func TestLogin(t *testing.T) {
 	svc := NewService(store)
 
 	user, _, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -101,6 +106,7 @@ func TestLoginInvalidCredentials(t *testing.T) {
 	svc := NewService(store)
 
 	_, _, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -156,6 +162,7 @@ func TestAuthenticate(t *testing.T) {
 	svc := NewService(store)
 
 	user, session, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -184,6 +191,7 @@ func TestLogout(t *testing.T) {
 	svc := NewService(store)
 
 	_, session, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -205,11 +213,12 @@ func TestVerifyEmail(t *testing.T) {
 	svc.SetMailer(mailer, "http://localhost:8080")
 
 	_, _, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 
-	body := mailer.Messages[0].Body
+	body := mailer.Messages()[0].Body
 	token := extractToken(body, "token=")
 	if token == "" {
 		t.Fatal("could not extract token from verification email")
@@ -231,6 +240,7 @@ func TestMagicLink(t *testing.T) {
 	svc.SetMailer(mailer, "http://localhost:8080")
 
 	_, _, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -239,7 +249,7 @@ func TestMagicLink(t *testing.T) {
 		t.Fatalf("RequestMagicLink: %v", err)
 	}
 
-	body := mailer.Messages[1].Body
+	body := mailer.Messages()[1].Body
 	token := extractToken(body, "token=")
 
 	_, session, err := svc.ConsumeMagicLink(context.Background(), token)
@@ -261,7 +271,7 @@ func TestMagicLinkNewUser(t *testing.T) {
 		t.Fatalf("RequestMagicLink: %v", err)
 	}
 
-	body := mailer.Messages[0].Body
+	body := mailer.Messages()[0].Body
 	token := extractToken(body, "token=")
 
 	user, session, err := svc.ConsumeMagicLink(context.Background(), token)
@@ -283,6 +293,7 @@ func TestPasswordReset(t *testing.T) {
 	svc.SetMailer(mailer, "http://localhost:8080")
 
 	_, _, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -291,7 +302,7 @@ func TestPasswordReset(t *testing.T) {
 		t.Fatalf("RequestPasswordReset: %v", err)
 	}
 
-	body := mailer.Messages[1].Body
+	body := mailer.Messages()[1].Body
 	token := extractToken(body, "token=")
 
 	_, _, err = svc.ResetPassword(context.Background(), token, "newpassword123")
@@ -312,16 +323,18 @@ func TestResendVerification(t *testing.T) {
 	svc.SetMailer(mailer, "http://localhost:8080")
 
 	user, _, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
-	mailer.Messages = nil
+	mailer.Clear()
 
 	if err := svc.ResendVerification(context.Background(), user.ID); err != nil {
 		t.Fatalf("ResendVerification: %v", err)
 	}
-	if len(mailer.Messages) != 1 {
-		t.Fatalf("mail messages = %d, want 1", len(mailer.Messages))
+	svc.DeliverPendingMail(context.Background())
+	if len(mailer.Messages()) != 1 {
+		t.Fatalf("mail messages = %d, want 1", len(mailer.Messages()))
 	}
 }
 
@@ -373,6 +386,7 @@ func TestChangePassword(t *testing.T) {
 	svc.SetMailer(mailer, "http://localhost:8080")
 
 	user, _, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -403,6 +417,7 @@ func TestChangePasswordWrongCurrent(t *testing.T) {
 	svc := NewService(store)
 
 	user, _, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -418,6 +433,7 @@ func TestChangePasswordWeak(t *testing.T) {
 	svc := NewService(store)
 
 	user, _, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -433,6 +449,7 @@ func TestLoginPreservesOtherDeviceSession(t *testing.T) {
 	svc := NewService(store)
 
 	_, deviceA, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -455,6 +472,7 @@ func TestPasswordChangeInvalidatesAllSessions(t *testing.T) {
 	svc.SetMailer(mailer, "http://localhost:8080")
 
 	user, deviceA, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -501,6 +519,7 @@ func TestSetUserHousehold(t *testing.T) {
 	svc.SetMailer(mailer, "http://localhost:8080")
 
 	user, _, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -548,6 +567,7 @@ func TestAuthenticateExpiredSession(t *testing.T) {
 	svc := NewService(store)
 
 	_, session, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -570,8 +590,8 @@ func TestRequestPasswordResetUnknownEmail(t *testing.T) {
 	if err := svc.RequestPasswordReset(context.Background(), "nobody@example.com"); err != nil {
 		t.Fatalf("RequestPasswordReset unknown email: %v", err)
 	}
-	if len(mailer.Messages) != 0 {
-		t.Fatalf("expected no emails, got %d", len(mailer.Messages))
+	if len(mailer.Messages()) != 0 {
+		t.Fatalf("expected no emails, got %d", len(mailer.Messages()))
 	}
 }
 
@@ -582,24 +602,25 @@ func TestResendVerificationAlreadyVerified(t *testing.T) {
 	svc.SetMailer(mailer, "http://localhost:8080")
 
 	user, _, err := svc.Register(context.Background(), "alice@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 
 	// Verify email first.
-	body := mailer.Messages[0].Body
+	body := mailer.Messages()[0].Body
 	token := extractToken(body, "token=")
 	if _, err := svc.VerifyEmail(context.Background(), token); err != nil {
 		t.Fatalf("VerifyEmail: %v", err)
 	}
-	mailer.Messages = nil
+	mailer.Clear()
 
 	// ResendVerification for already-verified user should be a no-op.
 	if err := svc.ResendVerification(context.Background(), user.ID); err != nil {
 		t.Fatalf("ResendVerification already verified: %v", err)
 	}
-	if len(mailer.Messages) != 0 {
-		t.Fatalf("expected no emails sent, got %d", len(mailer.Messages))
+	if len(mailer.Messages()) != 0 {
+		t.Fatalf("expected no emails sent, got %d", len(mailer.Messages()))
 	}
 }
 
@@ -611,6 +632,7 @@ func TestRegisterPasswordTooLong(t *testing.T) {
 
 	longPassword := strings.Repeat("a", 73)
 	_, _, err := svc.Register(context.Background(), "a@example.com", longPassword)
+	svc.DeliverPendingMail(context.Background())
 	if err != ErrPasswordTooLong {
 		t.Fatalf("Register with 73-char password: error = %v, want ErrPasswordTooLong", err)
 	}
@@ -622,6 +644,7 @@ func TestRegisterPasswordAtLimit(t *testing.T) {
 
 	password := strings.Repeat("a", 72)
 	_, _, err := svc.Register(context.Background(), "a@example.com", password)
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register with exactly 72-char password should succeed: %v", err)
 	}
@@ -659,6 +682,7 @@ func TestAuthenticateIdleTimeout(t *testing.T) {
 	svc.now = func() time.Time { return base }
 
 	_, session, err := svc.Register(context.Background(), "idle@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}
@@ -679,6 +703,7 @@ func TestAuthenticateActiveSessionNotExpired(t *testing.T) {
 	svc.now = func() time.Time { return base }
 
 	_, session, err := svc.Register(context.Background(), "active@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatalf("Register: %v", err)
 	}

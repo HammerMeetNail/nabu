@@ -29,7 +29,7 @@ func (s *PostgresStore) ListNotifications(ctx context.Context, userID int64, lim
 		`SELECT id, user_id, type, title, body, is_read, created_at
 		 FROM notifications
 		 WHERE user_id = $1
-		 ORDER BY created_at DESC
+		 ORDER BY created_at DESC, id DESC
 		 LIMIT $2 OFFSET $3`,
 		userID, limit, offset,
 	)
@@ -141,4 +141,28 @@ func nullStr(s string) *string {
 		return nil
 	}
 	return &s
+}
+
+func (s *PostgresStore) ListNotificationsBefore(ctx context.Context, userID int64, before *Cursor, limit int) ([]Notification, error) {
+	query := `SELECT id,user_id,type,title,body,is_read,created_at FROM notifications WHERE user_id=$1`
+	args := []any{userID, max(0, min(limit, PageSize+1))}
+	if before != nil {
+		query += ` AND (created_at,id)<($3,$4)`
+		args = append(args, before.At, before.ID)
+	}
+	query += ` ORDER BY created_at DESC,id DESC LIMIT $2`
+	rows, err := s.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	result := []Notification{}
+	for rows.Next() {
+		var n Notification
+		if err := rows.Scan(&n.ID, &n.UserID, &n.Type, &n.Title, &n.Body, &n.IsRead, &n.CreatedAt); err != nil {
+			return nil, err
+		}
+		result = append(result, n)
+	}
+	return result, rows.Err()
 }

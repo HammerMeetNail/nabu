@@ -37,7 +37,7 @@ func setupPushTest(t *testing.T) (*PushHandler, string, *auth.Service) {
 
 func TestPushSubscribe(t *testing.T) {
 	handler, sessionID, authService := setupPushTest(t)
-	body := `{"subscription":{"endpoint":"https://fcm.googleapis.com/send/abc","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`
+	body := `{"bindingId":"12345678-1234-1234-1234-123456789abc","subscription":{"endpoint":"https://fcm.googleapis.com/send/abc","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`
 	req := withUser(httptest.NewRequest(http.MethodPost, "/api/push/subscribe", strings.NewReader(body)), authService, sessionID)
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -70,17 +70,17 @@ func TestPushSubscribe_BadBody(t *testing.T) {
 // rejected before anything is stored.
 func TestPushSubscribe_RejectsDisallowedEndpoints(t *testing.T) {
 	cases := []struct {
-		name     string
-		body     string
+		name string
+		body string
 	}{
-		{"loopback http", `{"subscription":{"endpoint":"http://localhost/x","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`},
-		{"cloud metadata", `{"subscription":{"endpoint":"http://169.254.169.254/latest/meta-data","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`},
-		{"private ip", `{"subscription":{"endpoint":"http://10.0.0.5/x","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`},
-		{"internal hostname", `{"subscription":{"endpoint":"https://metadata.internal/latest/meta-data/","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`},
-		{"http scheme", `{"subscription":{"endpoint":"http://fcm.googleapis.com/x","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`},
-		{"not a url", `{"subscription":{"endpoint":"notaurl","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`},
-		{"empty endpoint", `{"subscription":{"endpoint":"","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`},
-		{"missing keys", `{"subscription":{"endpoint":"https://fcm.googleapis.com/fcm/send/abc","keys":{}}}`},
+		{"loopback http", `{"bindingId":"12345678-1234-1234-1234-123456789abc","subscription":{"endpoint":"http://localhost/x","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`},
+		{"cloud metadata", `{"bindingId":"12345678-1234-1234-1234-123456789abc","subscription":{"endpoint":"http://169.254.169.254/latest/meta-data","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`},
+		{"private ip", `{"bindingId":"12345678-1234-1234-1234-123456789abc","subscription":{"endpoint":"http://10.0.0.5/x","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`},
+		{"internal hostname", `{"bindingId":"12345678-1234-1234-1234-123456789abc","subscription":{"endpoint":"https://metadata.internal/latest/meta-data/","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`},
+		{"http scheme", `{"bindingId":"12345678-1234-1234-1234-123456789abc","subscription":{"endpoint":"http://fcm.googleapis.com/x","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`},
+		{"not a url", `{"bindingId":"12345678-1234-1234-1234-123456789abc","subscription":{"endpoint":"notaurl","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`},
+		{"empty endpoint", `{"bindingId":"12345678-1234-1234-1234-123456789abc","subscription":{"endpoint":"","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`},
+		{"missing keys", `{"bindingId":"12345678-1234-1234-1234-123456789abc","subscription":{"endpoint":"https://fcm.googleapis.com/fcm/send/abc","keys":{}}}`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -102,7 +102,7 @@ func TestPushUnsubscribe(t *testing.T) {
 	handler, sessionID, authService := setupPushTest(t)
 
 	// First subscribe
-	body := `{"subscription":{"endpoint":"https://fcm.googleapis.com/send/abc","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`
+	body := `{"bindingId":"12345678-1234-1234-1234-123456789abc","subscription":{"endpoint":"https://fcm.googleapis.com/send/abc","keys":{"p256dh":"BPUB","auth":"AUTH"}}}`
 	subReq := withUser(httptest.NewRequest(http.MethodPost, "/api/push/subscribe", strings.NewReader(body)), authService, sessionID)
 	subReq.Header.Set("Content-Type", "application/json")
 	subRec := httptest.NewRecorder()

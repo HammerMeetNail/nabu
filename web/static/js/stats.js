@@ -1,5 +1,5 @@
 import { apiFetch } from "./api.js";
-import { escapeHTML, localDateStr, formatVolume, mlToOz } from "./utils.js";
+import { escapeHTML, localDateStr, shiftDateStr, formatVolume, mlToOz } from "./utils.js";
 import { formatTimeAgo } from "./home.js";
 
 // The stats page renders volumes in the user's preferred unit. Volumes are
@@ -370,6 +370,8 @@ export function renderStatsPage(state) {
       </button>
     </div>
     ${state.stats?.customizeOpen ? renderCustomizePanel(state) : ""}
+    ${Object.values(stats.errors || {}).some(Boolean) ? '<p role="status" class="form-error">Some charts could not be refreshed. <button type="button" class="btn btn-sm" data-action="retry-stats">Retry charts</button></p>' : ''}
+    ${Object.values(stats.loading || {}).some(Boolean) ? '<p role="status" class="text-secondary">Loading charts…</p>' : ''}
     ${body}
   </div>`;
 }
@@ -843,8 +845,12 @@ export function renderBabyCareSection(state) {
   const memberMap = {};
   members.forEach(m => { memberMap[m.userId] = m; });
 
-  const feedBaby = babyTimeSeries.feedBaby;
-  const changeBaby = babyTimeSeries.changeBaby;
+  const placeholder = name => {
+    const chore = (state.chores || []).find(c => c.name === name);
+    return chore ? {choreName:chore.name,choreIcon:chore.icon,periods:[],byMember:[]} : null;
+  };
+  const feedBaby = babyTimeSeries.feedBaby || placeholder('Feed Baby');
+  const changeBaby = babyTimeSeries.changeBaby || placeholder('Change Baby');
   const feedingGaps = stats.feedingGaps || [];
   const explainerVisible = stats.feedingGapsExplainerVisible || false;
   const gapsStart = stats.feedingGapsStart || "";
@@ -859,7 +865,7 @@ export function renderBabyCareSection(state) {
     <div class="baby-care-columns">
       ${feedBaby ? renderBabyColumn(feedBaby, memberMap, feedBabyPeriod, "feed") : ""}
       ${changeBaby ? renderBabyColumn(changeBaby, memberMap, changeBabyPeriod, "change") : ""}
-      ${feedingGaps.length > 0 ? renderFeedingGapsColumn(feedingGaps, explainerVisible, gapsStart, gapsEnd) : ""}
+      ${feedBaby ? renderFeedingGapsColumn(feedingGaps, explainerVisible, gapsStart, gapsEnd) : ""}
     </div>
   </div>`;
 }
@@ -1240,10 +1246,7 @@ function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd) {
 
 function isQuickActive(dateStart, dateEnd, days) {
   if (!dateStart || !dateEnd) return days === 7;
-  const endDate = new Date(dateEnd + "T00:00:00");
-  const expectedStart = new Date(endDate);
-  expectedStart.setDate(expectedStart.getDate() - (days - 1));
-  return dateStart === expectedStart.toISOString().slice(0, 10);
+  return dateStart === shiftDateStr(dateEnd, -(days - 1));
 }
 
 function renderClusterGapScatter(gaps) {
@@ -1369,7 +1372,7 @@ function renderBabyColumn(ts, memberMap, period, type) {
 
   return `<div class="baby-care-column">
     <div class="baby-col-header">
-      <h4 class="baby-col-title">${ts.choreIcon} ${escapeHTML(ts.choreName)}</h4>
+      <h4 class="baby-col-title">${escapeHTML(ts.choreIcon)} ${escapeHTML(ts.choreName)}</h4>
       ${renderBabyPeriodToggle(period, type)}
     </div>
     ${membersHTML}

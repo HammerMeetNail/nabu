@@ -90,18 +90,18 @@ func (s *Service) IsActiveForDay(sch ChoreSchedule, date time.Time) bool {
 	if !sch.IsActive {
 		return false
 	}
-	if sch.RecurrenceEnd != nil && date.After(*sch.RecurrenceEnd) {
+	d := calendarDate(date)
+	// The selected end date is inclusive in the recipient's calendar.
+	if sch.RecurrenceEnd != nil && d.After(calendarDate(*sch.RecurrenceEnd)) {
 		return false
 	}
-
-	d := date.Truncate(24 * time.Hour)
 
 	switch sch.FrequencyType {
 	case "once":
 		if sch.StartDate == nil {
 			return false
 		}
-		sd := sch.StartDate.Time.UTC().Truncate(24 * time.Hour)
+		sd := calendarDate(sch.StartDate.Time)
 		return d.Equal(sd)
 
 	case "daily":
@@ -120,9 +120,9 @@ func (s *Service) IsActiveForDay(sch ChoreSchedule, date time.Time) bool {
 		if sch.IntervalDays <= 0 {
 			return false
 		}
-		origin := sch.CreatedAt.Truncate(24 * time.Hour)
+		origin := calendarDate(sch.CreatedAt.In(date.Location()))
 		if sch.StartDate != nil {
-			origin = sch.StartDate.Time.UTC().Truncate(24 * time.Hour)
+			origin = calendarDate(sch.StartDate.Time)
 		}
 		diff := int(d.Sub(origin).Hours() / 24)
 		return diff >= 0 && diff%sch.IntervalDays == 0
@@ -165,4 +165,11 @@ func (s *Service) GetSchedulesForDate(schedules []ChoreSchedule, date time.Time)
 		}
 	}
 	return out
+}
+
+// Map calendar components to a UTC ordinal; never truncate an instant to 24h.
+// This keeps day differences independent of timezone offsets and DST length.
+func calendarDate(t time.Time) time.Time {
+	y, m, d := t.Date()
+	return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
 }

@@ -30,16 +30,20 @@ var (
 	ErrAppleNoEmail        = errors.New("apple did not return a verified email")
 )
 
+type MembershipResolver func(context.Context, int64) (*int64, string, error)
+
 type Service struct {
-	store           Store
-	sessionDuration time.Duration
-	mailer          nabumail.Sender
-	auditLogger     audit.Logger
-	baseURL         string
-	oidcProvider    OIDCProvider
-	appleVerifier   AppleTokenVerifier
-	appleWebAuth    *AppleWebAuth
-	now             func() time.Time
+	store              Store
+	sessionDuration    time.Duration
+	mailer             nabumail.Sender
+	auditLogger        audit.Logger
+	baseURL            string
+	oidcProvider       OIDCProvider
+	appleVerifier      AppleTokenVerifier
+	appleWebAuth       *AppleWebAuth
+	now                func() time.Time
+	mailWake           chan struct{}
+	membershipResolver MembershipResolver
 }
 
 func NewService(store Store) *Service {
@@ -50,6 +54,7 @@ func NewService(store Store) *Service {
 		auditLogger:     audit.NopLogger{},
 		baseURL:         "http://localhost:8080",
 		now:             func() time.Time { return time.Now().UTC() },
+		mailWake:        make(chan struct{}, 1),
 	}
 }
 
@@ -80,13 +85,37 @@ func (s *Service) SetAuditLogger(logger audit.Logger) {
 	}
 }
 
+// PostgreSQL user reads already join canonical membership. Memory mode has
+// separate stores, so resolve current membership instead of trusting copies.
+func (s *Service) SetMembershipResolver(resolve MembershipResolver) {
+	if _, postgres := s.store.(*PostgresStore); !postgres {
+		s.membershipResolver = resolve
+	}
+}
+
+func (s *Service) profile(ctx context.Context, user User) (User, error) {
+	if s.membershipResolver == nil {
+		return user, nil
+	}
+	householdID, role, err := s.membershipResolver(ctx, user.ID)
+	if err != nil {
+		return User{}, err
+	}
+	user.HouseholdID, user.Role = householdID, role
+	return user, nil
+}
+
 func (s *Service) SetUserHousehold(ctx context.Context, userID, householdID int64, role string) error {
 	return s.store.SetUserHousehold(ctx, userID, householdID, role)
 }
 
 // GetUserByID exposes non-secret profile data to authorized internal services.
 func (s *Service) GetUserByID(ctx context.Context, userID int64) (User, error) {
-	return s.store.GetUserByID(ctx, userID)
+	user, err := s.store.GetUserByID(ctx, userID)
+	if err != nil {
+		return User{}, err
+	}
+	return s.profile(ctx, user)
 }
 
 func (s *Service) Register(ctx context.Context, email, password string) (User, Session, error) {
@@ -113,20 +142,22 @@ func (s *Service) Register(ctx context.Context, email, password string) (User, S
 // RegisterWithHash creates a user and session using a pre-computed password
 // hash, skipping the expensive bcrypt step. Useful for test setup.
 func (s *Service) RegisterWithHash(ctx context.Context, normalizedEmail, passwordHash string) (User, Session, error) {
-	user, err := s.store.CreateUser(ctx, normalizedEmail, passwordHash)
+	user, session, err := s.transactionalLogin(ctx, func(tx *Service) (User, error) {
+		user, err := tx.store.CreateUser(ctx, normalizedEmail, passwordHash)
+		if err != nil {
+			return User{}, err
+		}
+		if err := tx.queueVerificationEmail(ctx, user); err != nil {
+			return User{}, err
+		}
+		return user, nil
+	})
 	if err != nil {
 		return User{}, Session{}, err
 	}
-
-	session, err := s.newSession(ctx, user.ID)
-	if err != nil {
-		return User{}, Session{}, err
-	}
-
-	if err := s.sendVerificationEmail(ctx, user); err != nil {
-		return User{}, Session{}, err
-	}
-
+	// Account/session/token/mail commit together. SMTP failure cannot undo that
+	// commit or turn a usable registration into an apparent failed signup.
+	s.wakeMailOutbox()
 	return user, session, nil
 }
 
@@ -147,7 +178,11 @@ func (s *Service) Login(ctx context.Context, email, password string) (User, Sess
 		return User{}, Session{}, ErrInvalidCredentials
 	}
 
-	session, err := s.newSession(ctx, user.ID)
+	user, err = s.profile(ctx, user)
+	if err != nil {
+		return User{}, Session{}, err
+	}
+	session, err := s.newSession(ctx, user)
 	if err != nil {
 		return User{}, Session{}, err
 	}
@@ -197,47 +232,53 @@ func (s *Service) Authenticate(ctx context.Context, sessionToken string) (User, 
 	if now.Sub(session.LastSeenAt) > time.Minute {
 		_ = s.store.TouchSession(ctx, tokenHash, now)
 	}
-	return s.store.GetUserByID(ctx, session.UserID)
-}
-
-func (s *Service) VerifyEmail(ctx context.Context, token string) (User, error) {
-	tokenHash := hashToken(token)
-	authToken, err := s.store.ConsumeAuthToken(ctx, tokenHash, "verify")
-	if err != nil {
-		return User{}, ErrInvalidToken
-	}
-	if authToken.UserID == nil {
-		return User{}, ErrInvalidToken
-	}
-	user, err := s.store.VerifyEmail(ctx, *authToken.UserID)
+	user, err := s.store.GetUserByID(ctx, session.UserID)
 	if err != nil {
 		return User{}, err
 	}
-	s.logAudit(ctx, "auth.email_verified", map[string]string{"user_id": fmt.Sprintf("%d", user.ID)})
-	return user, nil
+	if user.AuthVersion != session.AuthVersion {
+		return User{}, ErrSessionNotFound
+	}
+	user.SessionHash = tokenHash
+	return s.profile(ctx, user)
+}
+
+func (s *Service) VerifyEmail(ctx context.Context, token string) (User, error) {
+	user, _, err := s.VerifyEmailAndLogin(ctx, token)
+	return user, err
+}
+
+func (s *Service) VerifyEmailAndLogin(ctx context.Context, token string) (User, Session, error) {
+	user, session, err := s.transactionalLogin(ctx, func(tx *Service) (User, error) {
+		user, err := tx.consumeEmailProof(ctx, token, "verify", false)
+		if err != nil {
+			return User{}, err
+		}
+		return tx.claimUnverifiedUser(ctx, user)
+	})
+	if err == nil {
+		s.logAudit(ctx, "auth.email_verified", map[string]string{"user_id": fmt.Sprintf("%d", user.ID)})
+	}
+	return user, session, err
 }
 
 func (s *Service) ResendVerification(ctx context.Context, userID int64) error {
-	user, err := s.store.GetUserByID(ctx, userID)
-	if err != nil || user.EmailVerified {
-		return nil
-	}
-	return s.sendVerificationEmail(ctx, user)
-}
-
-func (s *Service) sendVerificationEmail(ctx context.Context, user User) error {
-	token, err := s.createToken(ctx, &user.ID, user.Email, "verify", 24*time.Hour)
+	err := s.store.InTransaction(ctx, func(store Store) error {
+		user, err := store.GetUserByID(ctx, userID)
+		if err != nil {
+			return err
+		}
+		if user.EmailVerified {
+			return nil
+		}
+		tx := *s
+		tx.store = store
+		return tx.queueVerificationEmail(ctx, user)
+	})
 	if err != nil {
 		return err
 	}
-	if err := s.mailer.Send(ctx, nabumail.Message{
-		To:      user.Email,
-		Subject: "Verify your Nabu email",
-		Body:    emailVerificationTemplate(s.baseURL, token),
-	}); err != nil {
-		return err
-	}
-	s.logAudit(ctx, "auth.email_verification_sent", map[string]string{"user_id": fmt.Sprintf("%d", user.ID)})
+	s.wakeMailOutbox()
 	return nil
 }
 
@@ -275,39 +316,17 @@ func (s *Service) RequestMagicLink(ctx context.Context, email string) error {
 }
 
 func (s *Service) ConsumeMagicLink(ctx context.Context, token string) (User, Session, error) {
-	tokenHash := hashToken(token)
-	authToken, err := s.store.ConsumeAuthToken(ctx, tokenHash, "magic")
-	if err != nil {
-		return User{}, Session{}, ErrInvalidToken
-	}
-
-	if authToken.UserID == nil {
-		user, err := s.store.CreateUser(ctx, authToken.Email, "")
+	user, session, err := s.transactionalLogin(ctx, func(tx *Service) (User, error) {
+		user, err := tx.consumeEmailProof(ctx, token, "magic", true)
 		if err != nil {
-			return User{}, Session{}, err
+			return User{}, err
 		}
-		user, err = s.store.VerifyEmail(ctx, user.ID)
-		if err != nil {
-			return User{}, Session{}, err
-		}
-		session, err := s.newSession(ctx, user.ID)
-		if err != nil {
-			return User{}, Session{}, err
-		}
-		s.logAudit(ctx, "auth.login_succeeded", map[string]string{"method": "magic_link_signup", "user_id": fmt.Sprintf("%d", user.ID)})
-		return user, session, nil
+		return tx.claimUnverifiedUser(ctx, user)
+	})
+	if err == nil {
+		s.logAudit(ctx, "auth.login_succeeded", map[string]string{"method": "magic_link", "user_id": fmt.Sprintf("%d", user.ID)})
 	}
-
-	user, err := s.store.GetUserByID(ctx, *authToken.UserID)
-	if err != nil {
-		return User{}, Session{}, err
-	}
-	session, err := s.newSession(ctx, user.ID)
-	if err != nil {
-		return User{}, Session{}, err
-	}
-	s.logAudit(ctx, "auth.login_succeeded", map[string]string{"method": "magic_link", "user_id": fmt.Sprintf("%d", user.ID)})
-	return user, session, nil
+	return user, session, err
 }
 
 func (s *Service) RequestPasswordReset(ctx context.Context, email string) error {
@@ -341,40 +360,21 @@ func (s *Service) ResetPassword(ctx context.Context, token, newPassword string) 
 		return User{}, Session{}, ErrPasswordTooLong
 	}
 
-	tokenHash := hashToken(token)
-	authToken, err := s.store.ConsumeAuthToken(ctx, tokenHash, "reset")
-	if err != nil {
-		return User{}, Session{}, ErrInvalidToken
-	}
-	if authToken.UserID == nil {
-		return User{}, Session{}, ErrInvalidToken
-	}
-
 	passwordHash, err := hashPassword(newPassword)
 	if err != nil {
 		return User{}, Session{}, fmt.Errorf("hash password: %w", err)
 	}
-
-	if err := s.store.UpdatePassword(ctx, *authToken.UserID, passwordHash); err != nil {
-		return User{}, Session{}, err
+	user, session, err := s.transactionalLogin(ctx, func(tx *Service) (User, error) {
+		user, err := tx.consumeEmailProof(ctx, token, "reset", false)
+		if err != nil {
+			return User{}, err
+		}
+		return tx.replaceCredentials(ctx, user, passwordHash, true)
+	})
+	if err == nil {
+		s.logAudit(ctx, "auth.password_reset_completed", map[string]string{"user_id": fmt.Sprintf("%d", user.ID)})
 	}
-	if err := s.store.DeleteUserSessions(ctx, *authToken.UserID); err != nil {
-		return User{}, Session{}, err
-	}
-
-	user, err := s.store.GetUserByID(ctx, *authToken.UserID)
-	if err != nil {
-		return User{}, Session{}, err
-	}
-
-	session, err := s.rotatedSession(ctx, user.ID)
-	if err != nil {
-		return User{}, Session{}, err
-	}
-
-	s.logAudit(ctx, "auth.password_reset_completed", map[string]string{"user_id": fmt.Sprintf("%d", user.ID)})
-	s.logAudit(ctx, "auth.login_succeeded", map[string]string{"method": "password_reset", "user_id": fmt.Sprintf("%d", user.ID)})
-	return user, session, nil
+	return user, session, err
 }
 
 func (s *Service) ChangePassword(ctx context.Context, userID int64, currentPassword, newPassword string) (User, Session, error) {
@@ -390,32 +390,34 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, currentPassw
 		return User{}, Session{}, ErrInvalidCredentials
 	}
 	if passwordHash == "" {
-		return User{}, Session{}, errors.New("no password set")
-	}
-
-	if err := verifyPassword(passwordHash, currentPassword); err != nil {
+		actor, ok := audit.ActorFromContext(ctx)
+		if !ok || actor.UserID != userID || actor.AuthVersion != user.AuthVersion || !user.EmailVerified || currentPassword != "" {
+			return User{}, Session{}, ErrInvalidCredentials
+		}
+	} else if err := verifyPassword(passwordHash, currentPassword); err != nil {
 		return User{}, Session{}, ErrInvalidCredentials
 	}
-
 	newHash, err := hashPassword(newPassword)
 	if err != nil {
 		return User{}, Session{}, fmt.Errorf("hash password: %w", err)
 	}
-
-	if err := s.store.UpdatePassword(ctx, userID, newHash); err != nil {
-		return User{}, Session{}, err
+	updated, session, err := s.transactionalLogin(ctx, func(tx *Service) (User, error) {
+		current, err := tx.store.GetUserByID(ctx, userID)
+		if err != nil {
+			return User{}, err
+		}
+		// The password comparison happens outside the transaction. Reject it if
+		// email ownership or another password change won the race in the meantime.
+		if current.AuthVersion != user.AuthVersion {
+			return User{}, ErrInvalidCredentials
+		}
+		return tx.replaceCredentials(ctx, current, newHash, false)
+	})
+	if err == nil {
+		s.logAudit(ctx, "auth.password_changed", map[string]string{"user_id": fmt.Sprintf("%d", updated.ID)})
+		s.wakeMailOutbox()
 	}
-	if err := s.store.DeleteUserSessions(ctx, userID); err != nil {
-		return User{}, Session{}, err
-	}
-
-	session, err := s.rotatedSession(ctx, user.ID)
-	if err != nil {
-		return User{}, Session{}, err
-	}
-
-	s.logAudit(ctx, "auth.password_changed", map[string]string{"user_id": fmt.Sprintf("%d", user.ID)})
-	return user, session, nil
+	return updated, session, err
 }
 
 func (s *Service) GoogleAuthCodeURL(state, nonce string) (string, error) {
@@ -440,37 +442,7 @@ func (s *Service) CompleteGoogleOIDC(ctx context.Context, code, expectedNonce st
 		return User{}, Session{}, ErrOIDCEmailUnverified
 	}
 
-	existingUser, existingErr := s.store.FindUserByEmail(ctx, identity.Email)
-	switch existingErr {
-	case nil:
-		session, err := s.newSession(ctx, existingUser.ID)
-		if err != nil {
-			return User{}, Session{}, err
-		}
-		if !existingUser.EmailVerified {
-			existingUser, err = s.store.VerifyEmail(ctx, existingUser.ID)
-			if err != nil {
-				return User{}, Session{}, err
-			}
-		}
-		s.logAudit(ctx, "auth.login_succeeded", map[string]string{"method": "google_oidc", "user_id": fmt.Sprintf("%d", existingUser.ID)})
-		return existingUser, session, nil
-	default:
-		user, err := s.store.CreateUser(ctx, identity.Email, "")
-		if err != nil {
-			return User{}, Session{}, err
-		}
-		user, err = s.store.VerifyEmail(ctx, user.ID)
-		if err != nil {
-			return User{}, Session{}, err
-		}
-		session, err := s.newSession(ctx, user.ID)
-		if err != nil {
-			return User{}, Session{}, err
-		}
-		s.logAudit(ctx, "auth.login_succeeded", map[string]string{"method": "google_oidc", "user_id": fmt.Sprintf("%d", user.ID)})
-		return user, session, nil
-	}
+	return s.loginWithVerifiedEmail(ctx, identity.Email, "google_oidc")
 }
 
 // AppleWebAuthCodeURL returns the appleid.apple.com authorization URL for
@@ -504,44 +476,14 @@ func (s *Service) LoginWithApple(ctx context.Context, identityToken, nonce strin
 		return User{}, Session{}, ErrAppleNoEmail
 	}
 
-	existingUser, existingErr := s.store.FindUserByEmail(ctx, identity.Email)
-	switch existingErr {
-	case nil:
-		session, err := s.newSession(ctx, existingUser.ID)
-		if err != nil {
-			return User{}, Session{}, err
-		}
-		if !existingUser.EmailVerified {
-			existingUser, err = s.store.VerifyEmail(ctx, existingUser.ID)
-			if err != nil {
-				return User{}, Session{}, err
-			}
-		}
-		s.logAudit(ctx, "auth.login_succeeded", map[string]string{"method": "apple", "user_id": fmt.Sprintf("%d", existingUser.ID)})
-		return existingUser, session, nil
-	default:
-		user, err := s.store.CreateUser(ctx, identity.Email, "")
-		if err != nil {
-			return User{}, Session{}, err
-		}
-		user, err = s.store.VerifyEmail(ctx, user.ID)
-		if err != nil {
-			return User{}, Session{}, err
-		}
-		session, err := s.newSession(ctx, user.ID)
-		if err != nil {
-			return User{}, Session{}, err
-		}
-		s.logAudit(ctx, "auth.login_succeeded", map[string]string{"method": "apple", "user_id": fmt.Sprintf("%d", user.ID)})
-		return user, session, nil
-	}
+	return s.loginWithVerifiedEmail(ctx, identity.Email, "apple")
 }
 
-func (s *Service) newSession(ctx context.Context, userID int64) (Session, error) {
+func (s *Service) newSession(ctx context.Context, user User) (Session, error) {
 	token := randomToken(32)
 	tokenHash := hashToken(token)
 	now := s.now()
-	session, err := s.store.CreateSession(ctx, userID, tokenHash, now.Add(s.sessionDuration))
+	session, err := s.store.CreateSession(ctx, user.ID, user.AuthVersion, tokenHash, now.Add(s.sessionDuration))
 	if err != nil {
 		return Session{}, err
 	}
@@ -550,13 +492,6 @@ func (s *Service) newSession(ctx context.Context, userID int64) (Session, error)
 	_ = s.store.TouchSession(ctx, tokenHash, now)
 	session.LastSeenAt = now
 	return session, nil
-}
-
-func (s *Service) rotatedSession(ctx context.Context, userID int64) (Session, error) {
-	if err := s.store.DeleteUserSessions(ctx, userID); err != nil {
-		return Session{}, err
-	}
-	return s.newSession(ctx, userID)
 }
 
 func (s *Service) createToken(ctx context.Context, userID *int64, email, kind string, ttl time.Duration) (string, error) {
@@ -641,4 +576,11 @@ func passwordResetTemplate(baseURL, token string) string {
 	<p><a href="%s">Reset Password</a></p>
 	<p>Or copy this link: %s</p>
 	`, link, link)
+}
+
+// UserExists checks raw identity without resolving household membership. The
+// memory lifecycle coordinator calls this while holding its household lock.
+func (s *Service) UserExists(ctx context.Context, userID int64) error {
+	_, err := s.store.GetUserByID(ctx, userID)
+	return err
 }

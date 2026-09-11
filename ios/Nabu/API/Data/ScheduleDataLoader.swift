@@ -11,12 +11,15 @@ final class ScheduleDataLoader {
     }
 
     func loadSchedules() async {
+        let api = self.api.scoped()
+        let owner = state.beginOperation("loadSchedules")
         do {
             let data: SchedulesResponse = try await api.get("/api/schedules")
+            guard state.owns(owner) else { return }
             NSLog("[Nabu] ScheduleDataLoader.loadSchedules OK: \(data.schedules.count) schedules")
             state.schedules = data.schedules
         } catch {
-            NSLog("[Nabu] ScheduleDataLoader.loadSchedules ERROR: \(error.localizedDescription)")
+            NSLog("[Nabu] Request failed")
         }
     }
 }

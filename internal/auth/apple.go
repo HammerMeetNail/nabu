@@ -208,13 +208,15 @@ func (v *AppleVerifier) getJWK(ctx context.Context, kid string) (*rsa.PublicKey,
 }
 
 func (v *AppleVerifier) refreshJWKS(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, oauthTimeout)
+	defer cancel()
 	jwksURL := v.JWKsURL
 	if jwksURL == "" {
 		jwksURL = appleJWKsURL
 	}
 	client := v.httpClient
 	if client == nil {
-		client = http.DefaultClient
+		client = oauthHTTPClient
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, jwksURL, nil)

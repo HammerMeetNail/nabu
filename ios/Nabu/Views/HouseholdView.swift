@@ -13,9 +13,17 @@ struct HouseholdView: View {
     @State private var isSaving = false
     @State private var exportFile: ExportFile?
     @State private var isExporting = false
-    @State private var showingDeleteAccount = false
+    @State private var exportAllDates = true
+    @State private var exportStart = Calendar.current.date(byAdding: .month, value: -1, to: TestHooks.reviewDate ?? Date()) ?? Date()
+    @State private var exportEnd = TestHooks.reviewDate ?? Date()
+    @State private var exportError: String?
+    @State private var exportTask: Task<Void, Never>?
+    @State private var exportJob = UUID()
+    @State private var exportTempURL: URL?
+    @EnvironmentObject private var accountDeletion: AccountDeletionModel
     @State private var showingLeaveConfirm = false
     @State private var verificationSent = false
+	@State private var showingPassword = false
 
     private var canExportHousehold: Bool {
         let role = state.members.first(where: { $0.userId == state.user?.id })?.role ?? state.user?.role
@@ -36,13 +44,16 @@ struct HouseholdView: View {
                                 .foregroundColor(.secondary)
                         }
                         if !user.emailVerified {
-                            Button(verificationSent ? "Verification email sent" : "Resend verification email") {
+                            Button(verificationSent ? "Verification email queued" : "Resend verification email") {
                                 Task { await resendVerification() }
                             }
                             .disabled(verificationSent)
                         }
+                        Button(user.hasPassword == false ? "Set Password" : "Change Password") {
+                            showingPassword = true
+                        }
                         Button("Delete Account…", role: .destructive) {
-                            showingDeleteAccount = true
+                            accountDeletion.open(api: environment.apiClient)
                         }
                     }
                 }
@@ -62,8 +73,8 @@ struct HouseholdView: View {
                             VStack(alignment: .leading) {
                                 Text(household.name)
                                     .font(.headline)
-                                if let code = household.inviteCode {
-                                    Text("\(environment.baseURL.absoluteString)/join/\(code)")
+                                if state.user?.role == "owner", let code = household.inviteCode, !code.isEmpty {
+                                    Text("\(environment.baseURL.absoluteString)/join?code=\(code)")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
@@ -91,15 +102,20 @@ struct HouseholdView: View {
                 }
 
                 // Invites
-                if !state.invites.isEmpty {
+                if state.user?.role == "owner", !state.invites.isEmpty {
                     Section("Invites") {
                         ForEach(state.invites) { invite in
                             HStack {
                                 VStack(alignment: .leading) {
-                                    Text("\(environment.baseURL.absoluteString)/join/\(invite.code)")
+                                    Text("\(environment.baseURL.absoluteString)/join?code=\(invite.code)")
                                         .font(.system(.caption, design: .monospaced))
                                         .lineLimit(1)
                                         .minimumScaleFactor(0.7)
+                                    if let expires = invite.expiresAt {
+                                        Text("Expires \(expires.formatted(date: .abbreviated, time: .omitted))")
+                                            .font(.caption)
+                                            .foregroundColor(.secondary)
+                                    }
                                     Text("\(invite.usedCount)/\(invite.maxUses) used")
                                         .font(.caption)
                                         .foregroundColor(.secondary)
@@ -113,13 +129,19 @@ struct HouseholdView: View {
                     }
                 }
 
-                // Invite button
+                // Invite links are owner-controlled, single-use, and expiring.
+                if state.user?.role == "owner" {
                 Section {
                     Button {
                         Task { await createInvite() }
                     } label: {
-                        Label("Create Invite Code", systemImage: "person.badge.plus")
+                        Label("Create Single-Use Invite", systemImage: "person.badge.plus")
                     }
+                }
+
+                Text("New links expire after 7 days. Removing a member or changing a role revokes existing links.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
                 }
 
                 // Household actions
@@ -230,13 +252,31 @@ struct HouseholdView: View {
                     Text("How feed amounts are shown and entered. Stored values don't change.")
                 }
 
+                Section {
+                    Toggle("All dates", isOn: $exportAllDates).disabled(isExporting)
+                    if !exportAllDates {
+                        DatePicker("From", selection: $exportStart, displayedComponents: .date)
+                            .disabled(isExporting).accessibilityIdentifier("export-start-date")
+                        DatePicker("Through", selection: $exportEnd, displayedComponents: .date)
+                            .disabled(isExporting).accessibilityIdentifier("export-end-date")
+                    }
+                    if let exportError {
+                        Text(exportError).foregroundColor(.red).accessibilityIdentifier("export-error")
+                    }
+                    if isExporting { Button("Cancel export") { cancelExport() } }
+                } header: {
+                    Text("Export dates")
+                } footer: {
+                    Text("Each export can contain up to 10,000 records and 16 MB. Choose a smaller date range if needed.")
+                }
+
                 if canExportHousehold {
                     Section {
                         Button {
-                            Task { await exportHouseholdCSV() }
+                            startExport(household: true)
                         } label: {
                             HStack {
-                                Label("Export all data as CSV", systemImage: "square.and.arrow.up")
+                                Label("Export household data as CSV", systemImage: "square.and.arrow.up")
                                 if isExporting {
                                     Spacer()
                                     ProgressView()
@@ -247,14 +287,14 @@ struct HouseholdView: View {
                     } header: {
                         Text("Export")
                     } footer: {
-                        Text("Includes household data, chores, activity, schedules, notes, and members. Invite codes and account credentials are never included.")
+                        Text("Includes household details, chores, schedules, participants, and activity and notes within the selected dates. Invite codes and account credentials are never included.")
                     }
                 }
 
                 // Data export (same all-history window as the PWA's link)
                 Section {
                     Button {
-                        Task { await exportCSV() }
+                        startExport(household: false)
                     } label: {
                         HStack {
                             Label("Export logs as CSV", systemImage: "square.and.arrow.up")
@@ -266,7 +306,7 @@ struct HouseholdView: View {
                     }
                     .disabled(isExporting)
                 } footer: {
-                    Text("Download all activity as a CSV spreadsheet.")
+                    Text("Download activity within the selected dates as a CSV spreadsheet.")
                 }
 
                 // About (A5): the same privacy/support URLs App Store
@@ -289,8 +329,7 @@ struct HouseholdView: View {
                 Section {
                     Button("Sign Out", role: .destructive) {
                         Task {
-                            await auth.logout()
-                            state.reset()
+                            _ = await auth.logout()
                         }
                     }
                 }
@@ -300,17 +339,22 @@ struct HouseholdView: View {
                 await refreshHousehold()
             }
             // Warning haptics on destructive confirms (C3).
-            .sensoryFeedback(.warning, trigger: showingDeleteAccount) { _, new in new }
+            .sensoryFeedback(.warning, trigger: accountDeletion.isPresented) { _, new in new }
             .sensoryFeedback(.warning, trigger: showingLeaveConfirm) { _, new in new }
         }
         .onAppear {
             auth.configure(api: environment.apiClient)
         }
-        .sheet(item: $exportFile) { file in
+        .onChange(of: state.revision) { _, _ in
+            cancelExport()
+            clearExportFile()
+        }
+        .onDisappear { cancelExport() }
+        .sheet(item: $exportFile, onDismiss: clearExportFile) { file in
             ShareSheet(items: [file.url])
         }
-        .sheet(isPresented: $showingDeleteAccount) {
-            DeleteAccountSheet()
+        .sheet(isPresented: $showingPassword) {
+            PasswordChangeSheet()
         }
         .sheet(isPresented: $showingEdit) {
             NavigationStack {
@@ -364,7 +408,7 @@ struct HouseholdView: View {
             Button("OK") { inviteCode = nil }
         } message: {
             if let code = inviteCode {
-                Text("Share this code: \(code)")
+                Text("Share this code: \(code). It can be used once and expires after 7 days.")
             }
         }
     }
@@ -376,10 +420,13 @@ struct HouseholdView: View {
     }
 
     private func saveHousehold() async {
+        let owner = state.revision
+        let api = environment.apiClient.scoped()
         isSaving = true
         let body = UpdateHouseholdRequest(name: householdName, initials: householdInitials)
         do {
-            let resp: HouseholdResponse = try await environment.apiClient.patch("/api/household", body: body)
+            let resp: HouseholdResponse = try await api.patch("/api/household", body: body)
+            guard state.revision == owner else { return }
             state.household = resp.household
             showingEdit = false
         } catch {}
@@ -387,25 +434,34 @@ struct HouseholdView: View {
     }
 
     private func createInvite() async {
+        let owner = state.revision
+        let api = environment.apiClient.scoped()
         do {
-            let resp: InviteResponse = try await environment.apiClient.postEmpty("/api/household/invites")
+            let resp: InviteResponse = try await api.postEmpty("/api/household/invites")
+            guard state.revision == owner else { return }
             state.invites.append(resp.invite)
             inviteCode = resp.invite.code
         } catch {}
     }
 
     private func deleteInvite(_ invite: Invite) async {
+        let owner = state.revision
+        let api = environment.apiClient.scoped()
         do {
-            let _: StatusResponse = try await environment.apiClient.delete("/api/household/invites/\(invite.id)")
+            let _: StatusResponse = try await api.delete("/api/household/invites/\(invite.id)")
+            guard state.revision == owner else { return }
             state.invites.removeAll { $0.id == invite.id }
         } catch {}
     }
 
     private func updateMemberRole(_ member: Member, role: String) async {
-        let newRole = member.role == "member" ? "admin" : "member"
+        let owner = state.revision
+        let api = environment.apiClient.scoped()
+        let newRole = role
         let body = UpdateMemberRoleRequest(role: newRole)
         do {
-            let _: StatusResponse = try await environment.apiClient.patch("/api/household/members/\(member.userId)", body: body)
+            let _: StatusResponse = try await api.patch("/api/household/members/\(member.userId)", body: body)
+            guard state.revision == owner else { return }
             if let idx = state.members.firstIndex(where: { $0.userId == member.userId }) {
                 let updated = Member(userId: member.userId, email: member.email,
                                      displayName: member.displayName, avatarColor: member.avatarColor,
@@ -416,26 +472,33 @@ struct HouseholdView: View {
     }
 
     private func removeMember(_ member: Member) async {
+        let owner = state.revision
+        let api = environment.apiClient.scoped()
         do {
-            let _: StatusResponse = try await environment.apiClient.delete("/api/household/members/\(member.userId)")
+            let _: StatusResponse = try await api.delete("/api/household/members/\(member.userId)")
+            guard state.revision == owner else { return }
             await refreshHousehold()
         } catch {}
     }
 
     private func leaveHousehold() async {
+        let api = environment.apiClient.scoped()
         do {
-            let _: StatusResponse = try await environment.apiClient.postEmpty("/api/household/leave")
-            state.resetHouseholdScoped()
+            let _: StatusResponse = try await api.postEmpty("/api/household/leave")
         } catch {}
     }
 
     private func transferOwnership(to member: Member) async {
+        var api = environment.apiClient.scoped()
         let body = TransferOwnershipRequest(newOwnerId: member.userId)
         do {
-            let _: StatusResponse = try await environment.apiClient.post("/api/household/transfer", body: body)
+            let _: StatusResponse = try await api.post("/api/household/transfer", body: body)
+            api = environment.apiClient.scoped()
+            let owner = state.revision
             showingTransfer = false
             // Reload household data
-            let data: HouseholdResponse = try await environment.apiClient.get("/api/household")
+            let data: HouseholdResponse = try await api.get("/api/household")
+            guard state.revision == owner else { return }
             state.household = data.household
             state.members = data.members
             state.historicalMembers = data.historicalMembers
@@ -444,8 +507,11 @@ struct HouseholdView: View {
     }
 
     private func refreshHousehold() async {
+        let api = environment.apiClient.scoped()
+        let owner = state.revision
         do {
-            let data: HouseholdResponse = try await environment.apiClient.get("/api/household")
+            let data: HouseholdResponse = try await api.get("/api/household")
+            guard state.revision == owner else { return }
             state.household = data.household
             state.members = data.members
             state.historicalMembers = data.historicalMembers
@@ -453,44 +519,145 @@ struct HouseholdView: View {
         } catch {}
     }
 
-    private func exportCSV() async {
+    private func startExport(household: Bool) {
+        guard !isExporting else { return }
+        let owner = state.revision
+        let store = ActivityStore(api: environment.apiClient.scoped())
+        let job = UUID()
+        exportJob = job
+        exportError = nil
         isExporting = true
-        let store = ActivityStore(api: environment.apiClient)
-        if let url = try? await store.exportLogsCSV() {
-            exportFile = ExportFile(url: url)
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        let start = exportAllDates ? nil : formatter.string(from: exportStart)
+        let end = exportAllDates ? nil : formatter.string(from: exportEnd)
+        exportTask = Task {
+            defer {
+                if exportJob == job { isExporting = false; exportTask = nil }
+            }
+            do {
+                let url: URL
+                if household { url = try await store.exportHouseholdCSV(start: start, end: end) }
+                else { url = try await store.exportLogsCSV(start: start, end: end) }
+                guard state.revision == owner, exportJob == job, !Task.isCancelled else {
+                    try? FileManager.default.removeItem(at: url)
+                    return
+                }
+                clearExportFile()
+                exportTempURL = url
+                exportFile = ExportFile(url: url)
+            } catch {
+                guard state.revision == owner, exportJob == job, !Task.isCancelled else { return }
+                exportError = error.localizedDescription
+            }
         }
-        isExporting = false
     }
 
-    private func exportHouseholdCSV() async {
-        isExporting = true
-        let store = ActivityStore(api: environment.apiClient)
-        if let url = try? await store.exportHouseholdCSV() {
-            exportFile = ExportFile(url: url)
-        }
+    private func cancelExport() {
+        exportTask?.cancel()
+        exportTask = nil
+        exportJob = UUID()
         isExporting = false
+        exportError = nil
+    }
+
+    private func clearExportFile() {
+        if let url = exportTempURL { try? FileManager.default.removeItem(at: url) }
+        exportTempURL = nil
+        exportFile = nil
     }
 
     private func resendVerification() async {
-        let _: StatusResponse? = try? await environment.apiClient.postEmpty("/api/auth/email/verification/resend")
+        let owner = state.revision
+        let api = environment.apiClient.scoped()
+        let _: StatusResponse? = try? await api.postEmpty("/api/auth/email/verification/resend")
+        guard state.revision == owner else { return }
         verificationSent = true
     }
 
     private func activateHousehold(_ id: Int) async {
+        var api = environment.apiClient.scoped()
         do {
-            let _: StatusResponse = try await environment.apiClient.postEmpty("/api/households/\(id)/activate")
-            state.resetHouseholdScoped()
-            let data: HouseholdResponse = try await environment.apiClient.get("/api/household")
+            let _: StatusResponse = try await api.postEmpty("/api/households/\(id)/activate")
+            api = environment.apiClient.scoped()
+            let owner = state.revision
+            let data: HouseholdResponse = try await api.get("/api/household")
+            guard state.revision == owner else { return }
             state.household = data.household
             state.members = data.members
             state.historicalMembers = data.historicalMembers
             state.invites = data.invites
             state.activeHouseholdId = data.household.id
             // Reload chores for the newly activated household.
-            if let chores: ChoresResponse = try? await environment.apiClient.get("/api/chores") {
+            if let chores: ChoresResponse = try? await api.get("/api/chores") {
+                guard state.revision == owner else { return }
                 state.chores = chores.chores
             }
         } catch {}
+    }
+}
+
+struct PasswordChangeSheet: View {
+    @EnvironmentObject var state: AppState
+    @EnvironmentObject var environment: AppEnvironment
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var auth = AuthStore(api: APIClient(baseURL: URL(string: "http://localhost:8080")!))
+    @State private var current = ""
+    @State private var password = ""
+    @State private var confirmation = ""
+    @State private var validationError: String?
+
+    private var hasPassword: Bool { state.user?.hasPassword != false }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if hasPassword {
+                    SecureField("Current Password", text: $current)
+                        .textContentType(.password)
+                }
+                SecureField("New Password", text: $password)
+                    .textContentType(.newPassword)
+                SecureField("Confirm New Password", text: $confirmation)
+                    .textContentType(.newPassword)
+                if let error = validationError ?? auth.errorMessage {
+                    Text(error).foregroundColor(DesignColors.danger)
+                }
+            }
+            .navigationTitle(hasPassword ? "Change Password" : "Set Password")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.disabled(auth.isLoading)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { Task { await save() } }
+                        .disabled(auth.isLoading || password.isEmpty || confirmation.isEmpty || (hasPassword && current.isEmpty))
+                }
+            }
+            .interactiveDismissDisabled(auth.isLoading)
+            .onAppear { auth.configure(api: environment.apiClient) }
+        }
+    }
+
+    private func save() async {
+        let api = environment.apiClient.scoped()
+        validationError = nil
+        guard password == confirmation else {
+            validationError = "New passwords do not match"
+            return
+        }
+        guard (8...72).contains(password.utf8.count) else {
+            validationError = "Password must be between 8 and 72 bytes"
+            return
+        }
+        if let user = await auth.changePassword(current: hasPassword ? current : "", new: password) {
+            state.user = user
+            dismiss()
+        }
     }
 }
 
@@ -507,7 +674,9 @@ struct ShareSheet: UIViewControllerRepresentable {
     let items: [Any]
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: items, applicationActivities: nil)
+        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        controller.view.accessibilityIdentifier = "export-share-sheet"
+        return controller
     }
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
@@ -523,9 +692,8 @@ struct DeleteAccountSheet: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var environment: AppEnvironment
     @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var accountDeletion: AccountDeletionModel
     @State private var confirmText = ""
-    @State private var errorMessage: String?
-    @State private var isDeleting = false
 
     private var confirmed: Bool {
         confirmText.trimmingCharacters(in: .whitespaces) == "DELETE"
@@ -548,18 +716,18 @@ struct DeleteAccountSheet: View {
                         .textInputAutocapitalization(.characters)
 
                     Button(role: .destructive) {
-                        Task { await deleteAccount() }
+                        Task { await accountDeletion.delete(api: environment.apiClient) }
                     } label: {
-                        if isDeleting {
+                        if accountDeletion.isDeleting {
                             ProgressView()
                         } else {
                             Text("Delete My Account")
                                 .frame(maxWidth: .infinity)
                         }
                     }
-                    .disabled(!confirmed || isDeleting)
+                    .disabled(!confirmed || accountDeletion.isDeleting)
                 } footer: {
-                    if let message = errorMessage {
+                    if let message = accountDeletion.errorMessage {
                         Text(message)
                             .foregroundColor(.red)
                     }
@@ -569,29 +737,15 @@ struct DeleteAccountSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        if accountDeletion.matches(environment.apiClient) { state.currentTab = .settings }
+                        accountDeletion.cancel()
+                    }
                 }
             }
         }
     }
 
-    private func deleteAccount() async {
-        isDeleting = true
-        errorMessage = nil
-        do {
-            let _: StatusResponse = try await environment.apiClient.delete(
-                "/api/me", body: DeleteAccountRequest(confirm: "DELETE"))
-            // The server cleared the session cookie; drop local state so the
-            // app lands on the login screen.
-            dismiss()
-            state.reset()
-        } catch let APIError.serverError(_, message) {
-            errorMessage = message
-        } catch {
-            errorMessage = "Account deletion failed. Please try again."
-        }
-        isDeleting = false
-    }
 }
 
 // MARK: - Member Row

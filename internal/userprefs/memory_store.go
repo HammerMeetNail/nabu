@@ -2,12 +2,14 @@ package userprefs
 
 import (
 	"context"
+	"github.com/HammerMeetNail/nabu/internal/lifecycle"
 	"sync"
 )
 
 type memoryStore struct {
-	mu   sync.RWMutex
-	data map[int64]Preferences
+	deleted lifecycle.Tombstones
+	mu      sync.RWMutex
+	data    map[int64]Preferences
 }
 
 // NewMemoryStore returns an in-memory Store suitable for tests and the
@@ -56,6 +58,10 @@ func (s *memoryStore) Get(ctx context.Context, userID int64) (Preferences, error
 func (s *memoryStore) Upsert(ctx context.Context, userID int64, p Preferences) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if err := s.deleted.Check(userID, 0, 0, 0, 0); err != nil {
+		return err
+	}
+
 	cp := Preferences{
 		ChoreOrder:            make([]int64, len(p.ChoreOrder)),
 		HiddenHomeChoreIDs:    make([]int64, len(p.HiddenHomeChoreIDs)),
@@ -76,4 +82,11 @@ func (s *memoryStore) Upsert(ctx context.Context, userID int64, p Preferences) e
 	copy(cp.StatsWidgets, p.StatsWidgets)
 	s.data[userID] = cp
 	return nil
+}
+
+func (s *memoryStore) CleanupAccount(d *lifecycle.Deletion) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.data, d.UserID)
+	s.deleted.Mark(d)
 }

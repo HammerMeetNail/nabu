@@ -1,14 +1,7 @@
 import Foundation
 
-/// Offline log queue, ported from the PWA's `web/static/js/offline-queue.js`.
-///
-/// A `POST /api/logs` made while offline (e.g. a 3am feed on flaky reception)
-/// would otherwise fail and lose the log — the worst failure for the baby use
-/// case where the timestamp matters. This queue persists failed/offline log
-/// bodies (as JSON on disk; the PWA uses IndexedDB) and replays them when
-/// connectivity returns. Each queued item carries a client-generated
-/// idempotencyKey so replay is safe against duplicates (the server de-dups
-/// on it).
+/// An immutable journal. A request is durable before its first POST and is
+/// removed only after confirmed success or explicit discard by its owner.
 @MainActor
 final class OfflineLogQueue: ObservableObject {
     static let shared = OfflineLogQueue()
@@ -16,105 +9,125 @@ final class OfflineLogQueue: ObservableObject {
     struct Item: Codable, Equatable {
         let body: CreateLogRequest
         let queuedAt: Date
+        let origin: LogOrigin?
+        var failure: String?
+        var needsRetry: Bool?
     }
-
     @Published private(set) var items: [Item] = []
-
+    @Published private(set) var inFlight: Set<String> = []
+    @Published private(set) var storageUnavailable = false
     private let fileURL: URL
+    private let defaultOrigin: LogOrigin?
 
-    init(fileURL: URL? = nil) {
-        self.fileURL = fileURL ?? Self.defaultFileURL()
-        load()
-    }
-
-    private static func defaultFileURL() -> URL {
-        let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
-            ?? FileManager.default.temporaryDirectory
-        return dir.appendingPathComponent("nabu-offline-log-queue.json")
+    init(fileURL: URL? = nil, defaultOrigin: LogOrigin? = nil) {
+        let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        self.fileURL = fileURL ?? directory.appendingPathComponent("nabu-offline-log-queue.json")
+        self.defaultOrigin = defaultOrigin
+        reload()
     }
 
     var count: Int { items.count }
+    func reload() {
+        guard inFlight.isEmpty else { return }
+        guard FileManager.default.fileExists(atPath: fileURL.path) else {
+            storageUnavailable = false
+            return
+        }
+        do {
+            let decoded = try JSONDecoder().decode([Item].self, from: Data(contentsOf: fileURL))
+            items = decoded
+            storageUnavailable = false
+        } catch {
+            // Keep the original file and any last-good memory data. A locked
+            // or corrupt journal must never be overwritten by a new save.
+            storageUnavailable = true
+        }
+    }
+    func scopedItems(_ origin: LogOrigin) -> [Item] { items.filter { $0.origin == origin } }
+    func item(key: String, origin: LogOrigin) -> Item? {
+        items.first { $0.origin == origin && $0.body.idempotencyKey == key }
+    }
 
-    /// Stores a log body (which must include an idempotencyKey) for later
-    /// replay. Idempotent on the key, so re-enqueuing the same attempt
-    /// overwrites rather than duplicates.
     @discardableResult
-    func enqueue(_ body: CreateLogRequest) -> Bool {
-        guard let key = body.idempotencyKey, !key.isEmpty else { return false }
-        items.removeAll { $0.body.idempotencyKey == key }
-        items.append(Item(body: body, queuedAt: Date()))
-        persist()
-        return true
+    func enqueue(_ body: CreateLogRequest, origin: LogOrigin? = nil) -> Bool {
+        guard let origin = origin ?? defaultOrigin,
+              let key = body.idempotencyKey, !key.isEmpty else { return false }
+        if let existing = items.first(where: { $0.body.idempotencyKey == key }) {
+            return existing.origin == origin && existing.body == body
+        }
+        var next = items
+        next.append(Item(body: body, queuedAt: Date(), origin: origin))
+        return persist(next)
     }
 
-    func removeAll() {
-        items = []
-        persist()
+    /// Used only by explicit test/reset tooling. Normal identity changes hide
+    /// other origins and leave their recovery data untouched.
+    @discardableResult func removeAll() -> Bool {
+        guard inFlight.isEmpty else { return false }
+        return persist([])
     }
 
-    /// Attempts to POST every queued log via the given closure. On success
-    /// (including an idempotent replay hit) the item is removed. A permanent
-    /// client error (4xx other than 429) also removes the item to avoid an
-    /// infinite retry loop. A network failure stops the pass, leaving
-    /// remaining items for a later attempt. Returns the number successfully
-    /// synced.
-    func replay(post: (CreateLogRequest) async throws -> Void) async -> Int {
+    @discardableResult
+    func discard(key: String, origin: LogOrigin) -> Bool {
+        guard !inFlight.contains(key) else { return false }
+        return persist(items.filter { !($0.origin == origin && $0.body.idempotencyKey == key) })
+    }
+
+    func submit<T>(body: CreateLogRequest, origin: LogOrigin,
+                   isCurrent: () -> Bool,
+                   post: (CreateLogRequest) async throws -> T) async throws -> T {
+        guard isCurrent() else { throw APIError.contextChanged }
+        guard let key = body.idempotencyKey else { throw APIError.saveNotDurable }
+        guard !inFlight.contains(key) else { throw APIError.submissionInProgress }
+        guard enqueue(body, origin: origin) else { throw APIError.saveNotDurable }
+        inFlight.insert(key)
+        defer { inFlight.remove(key) }
+        do {
+            let response = try await post(body)
+            // Reconciliation always addresses this exact origin and key. If
+            // local removal fails, a later replay uses the same server key.
+            _ = persist(items.filter { !($0.origin == origin && $0.body.idempotencyKey == key) })
+            return response
+        } catch {
+            if let index = items.firstIndex(where: { $0.origin == origin && $0.body.idempotencyKey == key }) {
+                var next = items
+                next[index].failure = (error as? APIError)?.errorDescription ?? "Could not confirm this save."
+                next[index].needsRetry = !LogStore.isNetworkFailure(error)
+                _ = persist(next)
+            }
+            throw error
+        }
+    }
+
+    func replay(origin: LogOrigin? = nil, retryFailed: Bool = true,
+                isCurrent: () -> Bool = { true },
+                post: (CreateLogRequest) async throws -> Void) async -> Int {
+        guard let origin = origin ?? defaultOrigin else { return 0 }
+        let candidates = scopedItems(origin)
         var synced = 0
-        for item in items {
+        for item in candidates {
+            guard isCurrent() else { break }
+            guard let key = item.body.idempotencyKey,
+                  !inFlight.contains(key), self.item(key: key, origin: origin) != nil,
+                  retryFailed || item.needsRetry != true else { continue }
             do {
-                try await post(item.body)
-                remove(key: item.body.idempotencyKey)
+                try await submit(body: item.body, origin: origin, isCurrent: isCurrent, post: post)
                 synced += 1
-            } catch let error as APIError {
-                switch error {
-                case .serverError(let status, _), .httpError(let status):
-                    if (400..<500).contains(status) && status != 429 {
-                        // Permanent client error (e.g. the chore was deleted) — drop it.
-                        remove(key: item.body.idempotencyKey)
-                    }
-                    // 5xx / 429: keep and try again next time.
-                case .rateLimited:
-                    break // keep and try again next time
-                case .decodingError:
-                    // The HTTP request itself succeeded (2xx) — the log is on
-                    // the server, so treat as synced.
-                    remove(key: item.body.idempotencyKey)
-                    synced += 1
-                default:
-                    // Network-level failure — still offline; stop the pass.
-                    return synced
-                }
             } catch {
-                // Still offline — stop; keep the rest queued.
-                return synced
+                if LogStore.isNetworkFailure(error) { break }
             }
         }
         return synced
     }
 
-    private func remove(key: String?) {
-        guard let key = key else { return }
-        items.removeAll { $0.body.idempotencyKey == key }
-        persist()
-    }
-
-    private func load() {
-        guard let data = try? Data(contentsOf: fileURL),
-              let decoded = try? JSONDecoder().decode([Item].self, from: data) else {
-            items = []
-            return
-        }
-        items = decoded
-    }
-
-    private func persist() {
+    private func persist(_ next: [Item]) -> Bool {
+        guard !storageUnavailable else { return false }
         do {
-            let data = try JSONEncoder().encode(items)
-            try data.write(to: fileURL, options: .atomic)
-        } catch {
-            // Persistence is best-effort; the in-memory queue still replays
-            // within this session.
-        }
+            try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try JSONEncoder().encode(next).write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            items = next
+            return true
+        } catch { return false }
     }
 }
 

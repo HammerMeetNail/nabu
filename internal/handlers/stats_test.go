@@ -29,7 +29,7 @@ func setupStatsTest(t *testing.T) (*StatsHandler, string, *auth.Service) {
 
 	logStore := logsvc.NewMemoryStore()
 	choreStore := chore.NewMemoryStore()
-	statsService := stats.NewService(logStore, &testChoreStore{s: choreStore})
+	statsService := stats.NewService(logStore, &testChoreStore{s: choreStore}).WithMemberships(householdStore)
 	handler := NewStatsHandler(statsService, nil)
 
 	user, session := quickRegister(authService, "alice@example.com")
@@ -373,7 +373,7 @@ func setupStatsTestWithPrefs(t *testing.T) (*StatsHandler, string, *auth.Service
 
 	logStore := logsvc.NewMemoryStore()
 	choreStore := chore.NewMemoryStore()
-	statsService := stats.NewService(logStore, &testChoreStore{s: choreStore})
+	statsService := stats.NewService(logStore, &testChoreStore{s: choreStore}).WithMemberships(householdStore)
 
 	prefsStore := userprefs.NewMemoryStore()
 	handler := NewStatsHandler(statsService, prefsStore)
@@ -435,6 +435,16 @@ func TestStatsBusyHoursWithDates(t *testing.T) {
 
 func TestStatsBusyHoursWithFilters(t *testing.T) {
 	handler, sessionID, authService := setupStatsTest(t)
+	// The requested filter must identify a real, visible household chore.
+	cs := chore.NewMemoryStore()
+	if _, err := cs.CreateChore(context.Background(), chore.Chore{HouseholdID: 1, Name: "Dishes"}); err != nil {
+		t.Fatal(err)
+	}
+	hs := household.NewMemoryStore()
+	if _, err := hs.CreateHousehold(context.Background(), "Home", "H", 1); err != nil {
+		t.Fatal(err)
+	}
+	handler.service = stats.NewService(logsvc.NewMemoryStore(), &testChoreStore{s: cs}).WithMemberships(hs)
 	req := withUser(httptest.NewRequest(http.MethodGet,
 		"/api/stats/busy-hours?choreId=1&userId=2", nil), authService, sessionID)
 	rec := httptest.NewRecorder()
@@ -546,7 +556,7 @@ func TestStatsUserLocationValidTimezone(t *testing.T) {
 	householdService2 := household.NewService(householdStore2, authService2)
 	logStore2 := logsvc.NewMemoryStore()
 	choreStore2 := chore.NewMemoryStore()
-	statsService2 := stats.NewService(logStore2, &testChoreStore{s: choreStore2})
+	statsService2 := stats.NewService(logStore2, &testChoreStore{s: choreStore2}).WithMemberships(householdStore2)
 	handler2 := NewStatsHandler(statsService2, prefsStore)
 	user2, session2 := quickRegister(authService2, "tz@example.com")
 	if _, err := householdService2.CreateHousehold(
@@ -590,7 +600,7 @@ func TestStatsUserLocationInvalidTimezone(t *testing.T) {
 	householdService := household.NewService(householdStore, authService)
 	logStore := logsvc.NewMemoryStore()
 	choreStore := chore.NewMemoryStore()
-	statsService := stats.NewService(logStore, &testChoreStore{s: choreStore})
+	statsService := stats.NewService(logStore, &testChoreStore{s: choreStore}).WithMemberships(householdStore)
 	handler := NewStatsHandler(statsService, prefsStore)
 	user, session := quickRegister(authService, "badtz@example.com")
 	if _, err := householdService.CreateHousehold(

@@ -93,7 +93,7 @@ test.describe("Admin household data export", () => {
     await ownerPage.click('a[data-nav="settings"]');
     await ownerPage.waitForSelector(".settings-view", { timeout: 10000 });
     await expect(ownerPage.locator('[data-testid="household-export-section"]')).toBeVisible();
-    await expect(ownerPage.locator('a[href="/api/household/data"]')).toHaveText(/Export all data as CSV/);
+    await expect(ownerPage.locator('button[data-action="export-csv"][data-kind="household"]')).toHaveText(/Export household data as CSV/);
 
     const { page: memberPage, context: memberContext, csrf: memberCsrf } =
       await joinAsUser(browser, inviteCode);

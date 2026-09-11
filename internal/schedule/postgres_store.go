@@ -6,13 +6,73 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"github.com/HammerMeetNail/nabu/internal/readlimit"
+	"github.com/jackc/pgx/v5/pgconn"
 	"time"
 )
 
 // PostgresStore is the Postgres-backed implementation of Store.
 type PostgresStore struct {
 	db *sql.DB
+}
+
+func (s *PostgresStore) ApplyLogEffects(ctx context.Context, effects LogEffects) (bool, error) {
+	for attempt := 0; ; attempt++ {
+		applied, err := s.applyLogEffects(ctx, effects)
+		var pgerr *pgconn.PgError
+		if attempt >= 2 || ctx.Err() != nil || !errors.As(err, &pgerr) || (pgerr.Code != "40P01" && pgerr.Code != "40001") {
+			return applied, err
+		}
+	}
+}
+
+func (s *PostgresStore) applyLogEffects(ctx context.Context, effects LogEffects) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	// Acquire the chore before the effect ledger's log FK and follow-up rows,
+	// matching account/member cleanup and avoiding cross-domain lock cycles.
+	var choreID int64
+	if err := tx.QueryRowContext(ctx, `SELECT id FROM chores WHERE id=$1 AND household_id=$2 FOR NO KEY UPDATE`, effects.ChoreID, effects.HouseholdID).Scan(&choreID); err != nil {
+		return false, err
+	}
+	var id int64
+	err = tx.QueryRowContext(ctx, `INSERT INTO chore_log_effects (log_id)
+        SELECT id FROM chore_logs WHERE id=$1 AND household_id=$2 AND chore_id=$3
+        ON CONFLICT DO NOTHING RETURNING log_id`, effects.LogID, effects.HouseholdID, effects.ChoreID).Scan(&id)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if effects.UpdateFollowUp {
+		// Serialize different new logs for the same chore, as well as retries
+		// of one log, to preserve the single-follow-up invariant.
+		if _, err := tx.ExecContext(ctx, `UPDATE chores SET last_follow_up_minutes=$1 WHERE id=$2 AND household_id=$3`, effects.LastFollowUpMinutes, effects.ChoreID, effects.HouseholdID); err != nil {
+			return false, err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM chore_schedules WHERE household_id=$1 AND chore_id=$2 AND is_follow_up`, effects.HouseholdID, effects.ChoreID); err != nil {
+			return false, err
+		}
+		if effects.FollowUp != nil {
+			f := *effects.FollowUp
+			f.HouseholdID, f.ChoreID = effects.HouseholdID, effects.ChoreID
+			f.FrequencyType, f.TimePeriod = "once", PeriodAnytime
+			f.IsActive, f.IsFollowUp = true, true
+			if _, err := s.create(ctx, tx, f); err != nil {
+				return false, err
+			}
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // NewPostgresStore creates a new PostgresStore.
@@ -71,6 +131,14 @@ func (s *PostgresStore) scan(row rowScanner) (ChoreSchedule, error) {
 }
 
 func (s *PostgresStore) Create(ctx context.Context, sch ChoreSchedule) (ChoreSchedule, error) {
+	return s.create(ctx, s.db, sch)
+}
+
+type scheduleInserter interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func (s *PostgresStore) create(ctx context.Context, q scheduleInserter, sch ChoreSchedule) (ChoreSchedule, error) {
 	timesRaw := marshalJSONOrEmpty(sch.TimesOfDay)
 	daysRaw := marshalJSONOrNull(sch.DaysOfWeek)
 	mwRaw := marshalJSONOrNull(sch.MonthWeekday)
@@ -82,7 +150,7 @@ func (s *PostgresStore) Create(ctx context.Context, sch ChoreSchedule) (ChoreSch
 		startDateParam = fmt.Sprintf("%04d-%02d-%02d", y, m, d)
 	}
 
-	row := s.db.QueryRowContext(ctx, `
+	row := q.QueryRowContext(ctx, `
 		INSERT INTO chore_schedules
 		    (household_id, chore_id, frequency_type,
 		     time_period, specific_time, times_of_day, days_of_week,
@@ -108,7 +176,7 @@ func (s *PostgresStore) Get(ctx context.Context, id int64) (ChoreSchedule, error
 
 func (s *PostgresStore) ListByHousehold(ctx context.Context, householdID int64) ([]ChoreSchedule, error) {
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT `+scheduleColumns+` FROM chore_schedules WHERE household_id=$1 ORDER BY id`,
+		`SELECT `+scheduleColumns+` FROM chore_schedules WHERE household_id=$1 ORDER BY id`+readlimit.SQL(ctx),
 		householdID)
 	if err != nil {
 		return nil, err
@@ -121,6 +189,9 @@ func (s *PostgresStore) ListByHousehold(ctx context.Context, householdID int64) 
 			return nil, err
 		}
 		out = append(out, sch)
+	}
+	if err := readlimit.Check(ctx, len(out)); err != nil {
+		return nil, err
 	}
 	return out, rows.Err()
 }
@@ -165,7 +236,6 @@ func (s *PostgresStore) ListActiveWithTime(ctx context.Context) ([]ChoreSchedule
 		 FROM chore_schedules
 		 WHERE is_active = TRUE
 		   AND specific_time IS NOT NULL AND specific_time != ''
-		   AND (recurrence_end_date IS NULL OR recurrence_end_date >= CURRENT_DATE)
 		 ORDER BY id`)
 	if err != nil {
 		return nil, err

@@ -5,13 +5,34 @@ struct ContentView: View {
     @EnvironmentObject var environment: AppEnvironment
     @StateObject private var auth = AuthStore(api: APIClient(baseURL: URL(string: "http://localhost:8080")!))
     @StateObject private var dataLoader = DataLoader()
+    @StateObject private var accountDeletion = AccountDeletionModel()
     @State private var hasCheckedSession = false
     @State private var hasLoadedData = false
+    @State private var handledLinks: Set<URL> = []
 
     var body: some View {
         Group {
             if !hasCheckedSession {
                 SkeletonScreen()
+            } else if state.sessionPhase == .logoutPending {
+                VStack(spacing: 16) {
+                    Text("Sign-out is unfinished").font(.headline)
+                    Text("Your data is hidden. Retry to finish signing out on the server.")
+                    if !state.logoutIsDurable {
+                        Text("This device could not save the sign-out status. Keep the app open and retry.")
+                    }
+                    Button("Retry sign-out") { Task { _ = await auth.logout() } }
+                        .accessibilityIdentifier("retry-logout")
+                }.padding()
+            } else if state.sessionPhase == .checking || state.sessionPhase == .changing {
+                VStack(spacing: 16) {
+                    Text("Confirming your session")
+                    if state.sessionPhase == .changing { ProgressView() }
+                    else {
+                        Text("Reconnect and retry to continue.")
+                        Button("Retry") { Task { _ = await auth.loadSession() } }
+                    }
+                }.padding()
             } else if state.user == nil {
                 LoginView(auth: auth, apiBaseURL: environment.baseURL)
                     .onAppear { auth.configure(api: environment.apiClient) }
@@ -30,18 +51,23 @@ struct ContentView: View {
                 MainTabView(dataLoader: dataLoader)
             }
         }
+        .environmentObject(accountDeletion)
         .pageBackground()
+        .sheet(isPresented: $accountDeletion.isPresented, onDismiss: {
+            let returnToSettings = accountDeletion.matches(environment.apiClient)
+            accountDeletion.cancel()
+            if returnToSettings { state.currentTab = .settings }
+        }) {
+            DeleteAccountSheet().environmentObject(accountDeletion)
+        }
+        .onChange(of: state.revision) { _, _ in
+            accountDeletion.reconcile(api: environment.apiClient)
+        }
         .task {
             if !hasCheckedSession {
                 let args = ProcessInfo.processInfo.arguments
                 dataLoader.configure(api: environment.apiClient, state: state)
                 auth.configure(api: environment.apiClient)
-                // Restore a duration timer that survived relaunch, and show
-                // any still-queued offline logs as pending rows.
-                state.activeTimer = DurationTimer.load()
-                state.pendingLogs = OfflineLogQueue.shared.items.map {
-                    PendingLog(body: $0.body, fallbackUserId: nil)
-                }
                 if TestHooks.seedHomeForUITest {
                     hasCheckedSession = true
                     hasLoadedData = true
@@ -61,9 +87,8 @@ struct ContentView: View {
                     }
                     hasCheckedSession = true
                 } else {
-                    state.user = await auth.loadSession()
+                    _ = await auth.loadSession()
                     hasCheckedSession = true
-                    NSLog("[Nabu] ContentView: user=\(state.user?.email ?? "nil") householdId=\(state.user?.householdId ?? -1)")
                     if state.user?.householdId != nil {
                         await loadAppData()
                     }
@@ -72,9 +97,7 @@ struct ContentView: View {
         }
         .onChange(of: state.user) { oldUser, newUser in
             if newUser == nil {
-                state.reset()
                 hasLoadedData = false
-                Task { await auth.logout() }
             } else if newUser?.householdId != nil {
                 Task { await loadAppData() }
             }
@@ -107,7 +130,9 @@ struct ContentView: View {
     /// Handles a universal link or deep link — same endpoints and outcomes as
     /// the PWA's route handling for /verify-email, /magic-login, and /join.
     func handleIncomingURL(_ url: URL) async {
-        guard let link = DeepLink.parse(url) else { return }
+        guard let link = DeepLink.parse(url), !handledLinks.contains(url) else { return }
+        // onOpenURL and Handoff can deliver the same proof concurrently.
+        handledLinks.insert(url)
         switch link {
         case .verifyEmail(let token):
             let _: StatusResponse? = try? await environment.apiClient.get(
@@ -148,8 +173,10 @@ struct ContentView: View {
 
     private func consumePendingInvite(_ code: String) async {
         if let household = await auth.joinHousehold(code: code) {
+            let owner = state.revision
             state.pendingInviteCode = nil
             _ = await auth.seedDefaults()
+            guard state.revision == owner else { return }
             state.household = household
             state.activeHouseholdId = household.id
         }
@@ -158,7 +185,9 @@ struct ContentView: View {
     func loadAppData() async {
         guard state.user != nil else { return }
         NSLog("[Nabu] ContentView.loadAppData calling reloadAfterAuth")
+        let owner = state.revision
         await dataLoader.reloadAfterAuth()
+        guard state.revision == owner else { return }
         hasLoadedData = state.household != nil
         NSLog("[Nabu] ContentView.loadAppData done. hasLoadedData=\(hasLoadedData)")
     }
@@ -184,9 +213,11 @@ struct MainTabView: View {
 
     var body: some View {
         tabs
+            .id(state.revision)
             .overlay(alignment: .top) {
                 VStack(spacing: 6) {
                     TimerChipView()
+                    PendingSavesButton(dataLoader: dataLoader)
                     if state.isOffline {
                         OfflineBanner()
                             .transition(.move(edge: .top).combined(with: .opacity))
@@ -234,5 +265,74 @@ struct MainTabView: View {
                 .tag(MainTab.settings)
         }
         .tint(DesignColors.primary)
+    }
+}
+
+struct PendingSavesButton: View {
+    @EnvironmentObject var state: AppState
+    @EnvironmentObject var environment: AppEnvironment
+    @ObservedObject var dataLoader: DataLoader
+    @ObservedObject private var queue = OfflineLogQueue.shared
+    @State private var showingPending = false
+    @State private var discardKey: String?
+    @State private var storageError = false
+
+    var body: some View {
+        if queue.storageUnavailable {
+            VStack {
+                Text("Pending saves could not be read. Your device copy has been kept.").font(.caption)
+                Button("Retry reading saved data") { queue.reload() }
+            }
+        }
+        if let origin = environment.apiClient.identity.snapshot.origin {
+            let items = queue.scopedItems(origin)
+            if !items.isEmpty {
+                Button("\(items.count) pending save\(items.count == 1 ? "" : "s")") { showingPending = true }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("pending-saves")
+                    .sheet(isPresented: $showingPending) {
+                        NavigationStack {
+                            List {
+                                Section {
+                                    Text("These requests are saved on this device. Server confirmation is still pending.")
+                                    Button("Retry saves") { Task { await dataLoader.flushOfflineQueue(retryFailed: true) } }
+                                        .disabled(!queue.inFlight.isEmpty)
+                                }
+                                ForEach(queue.scopedItems(origin), id: \.body.idempotencyKey) { item in
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text(state.chores.first(where: { $0.id == item.body.choreId })?.name ?? "Chore save")
+                                            .font(.headline)
+                                        if let note = item.body.note, !note.isEmpty { Text(note) }
+                                        Text(item.failure ?? "Waiting for confirmation").font(.caption)
+                                        Button("Discard saved request", role: .destructive) { discardKey = item.body.idempotencyKey }
+                                            .disabled(queue.inFlight.contains(item.body.idempotencyKey ?? ""))
+                                    }
+                                }
+                                if storageError { Text("Could not remove this request from your device. Retry.").foregroundStyle(.red) }
+                            }
+                            .navigationTitle("Pending saves")
+                            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showingPending = false } } }
+                            .confirmationDialog("Discard this saved request?", isPresented: Binding(
+                                get: { discardKey != nil }, set: { if !$0 { discardKey = nil } }
+                            )) {
+                                Button("Discard", role: .destructive) {
+                                    guard let key = discardKey,
+                                          environment.apiClient.identity.snapshot.origin == origin else { return }
+                                    storageError = !queue.discard(key: key, origin: origin)
+                                    if !storageError {
+                                        state.pendingLogs.removeAll { $0.id == key }
+                                        if state.activeTimer?.idempotencyKey == key, DurationTimer.save(nil, origin: origin) {
+                                            state.activeTimer = nil
+                                        }
+                                    }
+                                    discardKey = nil
+                                }
+                            } message: {
+                                Text("This removes the device copy. A request whose response was lost may already exist on the server; check Activity before logging it again.")
+                            }
+                        }
+                    }
+            }
+        }
     }
 }

@@ -10,6 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/HammerMeetNail/nabu/internal/audit"
+	"github.com/HammerMeetNail/nabu/internal/chore"
 )
 
 var ErrNotFound = errors.New("log entry not found")
@@ -34,6 +35,8 @@ const (
 
 type Service struct {
 	store       Store
+	chores      *chore.Service
+	memberships chore.MembershipReader
 	now         func() time.Time
 	auditLogger audit.Logger
 }
@@ -172,39 +175,48 @@ func (s *Service) buildLog(householdID, userID, choreID int64, title *string, no
 // idempotency key so offline replay is safe. Returns (log, created) where
 // created is false when an existing log with the same key was returned. When
 // key is empty it behaves exactly like LogChore (always creates).
-func (s *Service) LogChoreIdempotent(ctx context.Context, householdID, userID, choreID int64, title *string, note string, indicators []string, indicatorVolumes map[string]int, date *time.Time, slotHour *int, completedAt *time.Time, volumeML *int, rating *int, durationSeconds *int, subject *string, idempotencyKey string) (ChoreLog, bool, error) {
-	if err := validateLogInput(title, note, indicators, indicatorVolumes, slotHour, rating, durationSeconds, subject); err != nil {
+func (s *Service) LogChoreIdempotent(ctx context.Context, input CreateInput) (ChoreLog, bool, error) {
+	if err := validateLogInput(input.Title, input.Note, input.Indicators, input.IndicatorVolumes, input.SlotHour, input.Rating, input.DurationSeconds, input.Subject); err != nil {
 		return ChoreLog{}, false, err
 	}
-	if idempotencyKey != "" {
-		if existing, err := s.store.FindLogByIdempotencyKey(ctx, householdID, idempotencyKey); err != nil {
+	if err := s.authorizeSubmission(ctx, input); err != nil {
+		return ChoreLog{}, false, err
+	}
+	fingerprint, err := input.fingerprint()
+	if err != nil {
+		return ChoreLog{}, false, err
+	}
+	if input.IdempotencyKey != "" {
+		if existing, err := s.store.FindLogByIdempotencyKey(ctx, input.HouseholdID, input.IdempotencyKey); err != nil {
 			return ChoreLog{}, false, err
 		} else if existing != nil {
-			return *existing, false, nil
+			return s.authorizedReplay(ctx, input, fingerprint, *existing)
 		}
 	}
-	entry := s.buildLog(householdID, userID, choreID, title, note, indicators, indicatorVolumes, date, slotHour, completedAt, volumeML, rating, durationSeconds, subject)
-	entry.IdempotencyKey = idempotencyKey
+	entry := s.buildLog(input.HouseholdID, input.UserID, input.ChoreID, input.Title, input.Note, input.Indicators, input.IndicatorVolumes, input.Date, input.SlotHour, input.CompletedAt, input.VolumeML, input.Rating, input.DurationSeconds, input.Subject)
+	entry.IdempotencyKey = input.IdempotencyKey
+	entry.IdempotencyActorID = input.ActorID
+	entry.IdempotencyHash = fingerprint
 	created, err := s.store.CreateLog(ctx, entry)
 	if err != nil {
-		// A concurrent replay may have won the unique-index race. Re-resolve by
-		// key and return that log instead of surfacing a duplicate-key error.
-		if idempotencyKey != "" {
-			if existing, ferr := s.store.FindLogByIdempotencyKey(ctx, householdID, idempotencyKey); ferr == nil && existing != nil {
-				return *existing, false, nil
+		// Both lookup paths apply identical request binding and current access
+		// checks. Never return the winner of a unique-index race unchecked.
+		if input.IdempotencyKey != "" {
+			if existing, ferr := s.store.FindLogByIdempotencyKey(ctx, input.HouseholdID, input.IdempotencyKey); ferr == nil && existing != nil {
+				return s.authorizedReplay(ctx, input, fingerprint, *existing)
 			}
 		}
 		return ChoreLog{}, false, err
 	}
 	s.logAudit(ctx, "log.created", map[string]string{
-		"household_id": idStr(householdID),
+		"household_id": idStr(input.HouseholdID),
 		"log_id":       idStr(created.ID),
-		"chore_id":     idStr(choreID),
+		"chore_id":     idStr(input.ChoreID),
 	})
 	return created, true, nil
 }
 
-func (s *Service) UpdateLog(ctx context.Context, logID int64, householdID int64, title *string, note string, indicators []string, indicatorVolumes map[string]int, volumeML *int, userID *int64, completedAt *time.Time, slotHour *int, logDate *time.Time, rating *int, durationSeconds *int, subject *string) error {
+func (s *Service) UpdateLog(ctx context.Context, logID int64, householdID int64, title *string, note string, indicators []string, indicatorVolumes map[string]int, volumeML *int, userID *int64, completedAt *time.Time, slotHour *int, logDate *time.Time, rating *int, durationSeconds *int, subject *string, patches ...Patch) error {
 	if err := validateLogInput(title, note, indicators, indicatorVolumes, slotHour, rating, durationSeconds, subject); err != nil {
 		return err
 	}
@@ -214,6 +226,29 @@ func (s *Service) UpdateLog(ctx context.Context, logID int64, householdID int64,
 	}
 	if log.HouseholdID != householdID {
 		return errors.New("log does not belong to your household")
+	}
+	var fields LogFields
+	if len(patches) > 0 {
+		fields = patches[0].Fields
+		if fields == nil {
+			fields = LogFields{}
+		}
+		if fields.includes("completedAt") && completedAt == nil || fields.includes("userId") && userID == nil {
+			return fmt.Errorf("%w: userId and completedAt cannot be null", ErrInvalidInput)
+		}
+		if s.chores != nil {
+			if _, err := s.chores.GetVisible(ctx, patches[0].ActorID, householdID, log.ChoreID); err != nil {
+				return ErrNotFound
+			}
+			if userID != nil && *userID != log.UserID {
+				if err := s.authorizeSubmission(ctx, CreateInput{HouseholdID: householdID, ActorID: patches[0].ActorID, UserID: *userID, ChoreID: log.ChoreID}); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	if volumeML != nil && (*volumeML < 0 || *volumeML > maxVolumeML) {
+		return fmt.Errorf("%w: amount must be between 0 and %d", ErrInvalidInput, maxVolumeML)
 	}
 	log.Note = note
 	log.Title = title
@@ -233,11 +268,14 @@ func (s *Service) UpdateLog(ctx context.Context, logID int64, householdID int64,
 		log.CompletedAt = completedAt.UTC()
 	}
 	log.SlotHour = slotHour
+	if fields != nil && fields.includes("date") {
+		log.LogDate = nil
+	}
 	if logDate != nil {
 		d := logDate.Format("2006-01-02")
 		log.LogDate = &d
 	}
-	if err := s.store.UpdateLog(ctx, log); err != nil {
+	if err := s.store.UpdateLog(ctx, log, fields); err != nil {
 		return err
 	}
 	s.logAudit(ctx, "log.updated", map[string]string{

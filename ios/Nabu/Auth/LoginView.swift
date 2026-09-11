@@ -78,7 +78,7 @@ struct LoginView: View {
                             // requires it at least as prominent as other
                             // third-party sign-in options, hence above Google.
                             SignInWithAppleButton(.signIn) { request in
-                                appleAuth.prepare(request)
+                                appleAuth.prepare(request, api: auth.api)
                             } onCompletion: { result in
                                 performAppleSignIn(result)
                             }

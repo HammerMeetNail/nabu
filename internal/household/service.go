@@ -2,6 +2,7 @@ package household
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"unicode/utf8"
@@ -12,17 +13,17 @@ import (
 )
 
 type Service struct {
-	store       Store
-	authStore   AuthStore
-	auditLogger audit.Logger
-	logStore    chorelog.Store
-	userStore   interface {
+	store         Store
+	inTransaction bool
+	auditLogger   audit.Logger
+	logStore      chorelog.Store
+	userStore     interface {
 		GetUserByID(context.Context, int64) (auth.User, error)
 	}
 }
 
 type AuthStore interface {
-	SetUserHousehold(ctx context.Context, userID, householdID int64, role string) error
+	SetMembershipResolver(auth.MembershipResolver)
 }
 
 // Per-field caps (audit finding #10). The server is the authority even though
@@ -48,11 +49,43 @@ func validateNameInitials(name, initials string) error {
 }
 
 func NewService(store Store, authStore AuthStore) *Service {
-	return &Service{
-		store:       store,
-		authStore:   authStore,
-		auditLogger: audit.NopLogger{},
+	if authStore != nil {
+		authStore.SetMembershipResolver(func(ctx context.Context, userID int64) (*int64, string, error) {
+			householdID, role, err := store.GetMembership(ctx, userID)
+			if errors.Is(err, ErrNotFound) {
+				return nil, "", nil
+			}
+			if err != nil {
+				return nil, "", err
+			}
+			return &householdID, role, nil
+		})
 	}
+	if memory, ok := store.(*MemoryStore); ok {
+		if users, ok := authStore.(interface {
+			UserExists(context.Context, int64) error
+		}); ok {
+			memory.userExists = users.UserExists
+		}
+	}
+	return &Service{store: store, auditLogger: audit.NopLogger{}}
+}
+
+func (s *Service) transaction(ctx context.Context, fn func(*Service) error) error {
+	var pending *audit.Recorder
+	err := s.store.InTransaction(ctx, func(store Store) error {
+		pending = audit.NewRecorder()
+		tx := *s
+		tx.store, tx.inTransaction, tx.auditLogger = store, true, pending
+		return fn(&tx)
+	})
+	if err != nil {
+		return err
+	}
+	for _, event := range pending.Events() {
+		s.auditLogger.Log(ctx, event.Event, event.Attrs)
+	}
+	return nil
 }
 
 // SetAuditLogger attaches a sink for household membership and configuration
@@ -85,6 +118,18 @@ func (s *Service) logAudit(ctx context.Context, event string, attrs map[string]s
 func formatID(id int64) string { return strconv.FormatInt(id, 10) }
 
 func (s *Service) CreateHousehold(ctx context.Context, name, initials string, ownerID int64) (Household, error) {
+	if !s.inTransaction {
+		var result Household
+		err := s.transaction(ctx, func(tx *Service) error {
+			var err error
+			result, err = tx.CreateHousehold(ctx, name, initials, ownerID)
+			return err
+		})
+		if err != nil {
+			return Household{}, err
+		}
+		return result, nil
+	}
 	if err := validateNameInitials(name, initials); err != nil {
 		return Household{}, err
 	}
@@ -96,29 +141,37 @@ func (s *Service) CreateHousehold(ctx context.Context, name, initials string, ow
 	if err != nil {
 		return Household{}, err
 	}
-	if s.authStore != nil {
-		_ = s.authStore.SetUserHousehold(ctx, ownerID, hh.ID, RoleOwner)
-	}
 	s.logAudit(ctx, "household.created", map[string]string{
 		"user_id":      formatID(ownerID),
 		"household_id": formatID(hh.ID),
-		"name":         name,
 	})
 	return hh, nil
 }
 
 func (s *Service) GetHousehold(ctx context.Context, userID int64) (Household, []Member, error) {
-	_, _, err := s.store.GetMembership(ctx, userID)
+	householdID, role, err := s.store.GetMembership(ctx, userID)
 	if err != nil {
-		return Household{}, nil, ErrNotFound
+		return Household{}, nil, err
 	}
-	hh, cerr := s.store.GetUserHousehold(ctx, userID)
+	hh, cerr := s.store.GetHousehold(ctx, householdID)
 	if cerr != nil {
 		return Household{}, nil, cerr
 	}
 	members, err := s.store.GetMembers(ctx, hh.ID)
 	if err != nil {
 		return hh, nil, err
+	}
+	// Read capabilities before the final authorization check. A revocation
+	// after this check rotates these already-read values; one before it denies.
+	currentID, currentRole, err := s.store.GetMembership(ctx, userID)
+	if err != nil {
+		return Household{}, nil, err
+	}
+	if currentID != householdID {
+		return Household{}, nil, ErrNotAuthorized
+	}
+	if role != RoleOwner || currentRole != RoleOwner {
+		hh.InviteCode = ""
 	}
 	return hh, members, nil
 }
@@ -176,6 +229,9 @@ func (s *Service) GetAdminHouseholdID(ctx context.Context, userID int64) (int64,
 }
 
 func (s *Service) UpdateHousehold(ctx context.Context, userID int64, name, initials string) error {
+	if !s.inTransaction {
+		return s.transaction(ctx, func(tx *Service) error { return tx.UpdateHousehold(ctx, userID, name, initials) })
+	}
 	if err := validateNameInitials(name, initials); err != nil {
 		return err
 	}
@@ -199,12 +255,23 @@ func (s *Service) UpdateHousehold(ctx context.Context, userID int64, name, initi
 	s.logAudit(ctx, "household.updated", map[string]string{
 		"user_id":      formatID(userID),
 		"household_id": formatID(hh.ID),
-		"name":         name,
 	})
 	return nil
 }
 
 func (s *Service) CreateInvite(ctx context.Context, userID int64) (Invite, error) {
+	if !s.inTransaction {
+		var result Invite
+		err := s.transaction(ctx, func(tx *Service) error {
+			var err error
+			result, err = tx.CreateInvite(ctx, userID)
+			return err
+		})
+		if err != nil {
+			return Invite{}, err
+		}
+		return result, nil
+	}
 	hhID, role, err := s.store.GetMembership(ctx, userID)
 	if err != nil {
 		return Invite{}, err
@@ -213,7 +280,7 @@ func (s *Service) CreateInvite(ctx context.Context, userID int64) (Invite, error
 		return Invite{}, ErrNotAuthorized
 	}
 	code := GenerateInviteCode()
-	invite, err := s.store.CreateInvite(ctx, hhID, userID, code, 0)
+	invite, err := s.store.CreateInvite(ctx, hhID, userID, code, 1)
 	if err != nil {
 		return Invite{}, err
 	}
@@ -233,10 +300,24 @@ func (s *Service) GetInvites(ctx context.Context, userID int64) ([]Invite, error
 	if role != RoleOwner {
 		return nil, ErrNotAuthorized
 	}
-	return s.store.GetInvites(ctx, hhID)
+	invites, err := s.store.GetInvites(ctx, hhID)
+	if err != nil {
+		return nil, err
+	}
+	currentID, currentRole, err := s.store.GetMembership(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if currentID != hhID || currentRole != RoleOwner {
+		return nil, ErrNotAuthorized
+	}
+	return invites, nil
 }
 
 func (s *Service) DeleteInvite(ctx context.Context, userID, inviteID int64) error {
+	if !s.inTransaction {
+		return s.transaction(ctx, func(tx *Service) error { return tx.DeleteInvite(ctx, userID, inviteID) })
+	}
 	actorHHID, role, err := s.store.GetMembership(ctx, userID)
 	if err != nil {
 		return err
@@ -263,6 +344,18 @@ func (s *Service) DeleteInvite(ctx context.Context, userID, inviteID int64) erro
 }
 
 func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode string) (Household, error) {
+	if !s.inTransaction {
+		var result Household
+		err := s.transaction(ctx, func(tx *Service) error {
+			var err error
+			result, err = tx.JoinHousehold(ctx, userID, inviteCode)
+			return err
+		})
+		if err != nil {
+			return Household{}, err
+		}
+		return result, nil
+	}
 	invite, err := s.store.GetInviteByCode(ctx, inviteCode)
 	if err != nil && err != ErrInviteNotFound && err != ErrInviteExpired {
 		return Household{}, err
@@ -281,6 +374,9 @@ func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode st
 		if memberErr == nil {
 			return Household{}, ErrAlreadyMember
 		}
+		if !errors.Is(memberErr, ErrNotMember) {
+			return Household{}, memberErr
+		}
 		members, membErr := s.store.GetMembers(ctx, hh.ID)
 		if membErr != nil {
 			return Household{}, membErr
@@ -291,14 +387,12 @@ func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode st
 		if addErr := s.store.AddMember(ctx, hh.ID, userID, RoleMember); addErr != nil {
 			return Household{}, addErr
 		}
-		if s.authStore != nil {
-			_ = s.authStore.SetUserHousehold(ctx, userID, hh.ID, RoleMember)
-		}
 		s.logAudit(ctx, "household.member_joined", map[string]string{
 			"user_id":       formatID(userID),
 			"household_id":  formatID(hh.ID),
 			"invite_method": "permanent_code",
 		})
+		hh.InviteCode = ""
 		return hh, nil
 	}
 
@@ -306,6 +400,9 @@ func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode st
 	_, memberErr := s.store.GetMembershipForHousehold(ctx, userID, invite.HouseholdID)
 	if memberErr == nil {
 		return Household{}, ErrAlreadyMember
+	}
+	if !errors.Is(memberErr, ErrNotMember) {
+		return Household{}, memberErr
 	}
 
 	members, err := s.store.GetMembers(ctx, invite.HouseholdID)
@@ -316,11 +413,8 @@ func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode st
 		return Household{}, fmt.Errorf("household is full")
 	}
 
-	// Consume the one-time invite BEFORE adding the member so an exhausted or
-	// expired code can never partially add a membership (the Postgres UPDATE
-	// enforces max_uses/expires_at atomically). A failure after a successful
-	// UseInvite (e.g. a raced duplicate member) burns one use — accepted; a
-	// full transactional rework of the store is out of scope.
+	// Consumption and membership insertion share this transaction. A failed
+	// insertion rolls back the use so a valid invitation remains recoverable.
 	if err := s.store.UseInvite(ctx, inviteCode); err != nil {
 		return Household{}, ErrInviteNotFound
 	}
@@ -332,14 +426,12 @@ func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode st
 	if err != nil {
 		return Household{}, err
 	}
-	if s.authStore != nil {
-		_ = s.authStore.SetUserHousehold(ctx, userID, hh.ID, RoleMember)
-	}
 	s.logAudit(ctx, "household.member_joined", map[string]string{
 		"user_id":       formatID(userID),
 		"household_id":  formatID(hh.ID),
 		"invite_method": "invite_code",
 	})
+	hh.InviteCode = ""
 	return hh, nil
 }
 
@@ -350,21 +442,20 @@ func (s *Service) ListUserHouseholds(ctx context.Context, userID int64) ([]House
 
 // SwitchHousehold switches the user's active household.
 func (s *Service) SwitchHousehold(ctx context.Context, userID, householdID int64) error {
-	if err := s.store.SetActiveHousehold(ctx, userID, householdID); err != nil {
+	if !s.inTransaction {
+		return s.transaction(ctx, func(tx *Service) error { return tx.SwitchHousehold(ctx, userID, householdID) })
+	}
+	// The membership check and pointer update share the lifecycle lock.
+	if _, err := s.store.GetMembershipForHousehold(ctx, userID, householdID); err != nil {
 		return err
 	}
-	// Keep auth store in sync
-	role, err := s.store.GetMembershipForHousehold(ctx, userID, householdID)
-	if err != nil {
-		return err
-	}
-	if s.authStore != nil {
-		_ = s.authStore.SetUserHousehold(ctx, userID, householdID, role)
-	}
-	return nil
+	return s.store.SetActiveHousehold(ctx, userID, householdID)
 }
 
 func (s *Service) UpdateMemberRole(ctx context.Context, actorUserID, targetUserID int64, newRole string) error {
+	if !s.inTransaction {
+		return s.transaction(ctx, func(tx *Service) error { return tx.UpdateMemberRole(ctx, actorUserID, targetUserID, newRole) })
+	}
 	actorHHID, actorRole, err := s.store.GetMembership(ctx, actorUserID)
 	if err != nil {
 		return err
@@ -373,15 +464,15 @@ func (s *Service) UpdateMemberRole(ctx context.Context, actorUserID, targetUserI
 		return ErrNotAuthorized
 	}
 	if newRole != RoleAdmin && newRole != RoleMember {
-		return fmt.Errorf("invalid role: %s", newRole)
+		return fmt.Errorf("%w: invalid role", ErrInvalidInput)
 	}
-	hhID, targetRole, err := s.store.GetMembership(ctx, targetUserID)
+	hhID := actorHHID
+	targetRole, err := s.store.GetMembershipForHousehold(ctx, targetUserID, hhID)
+	if errors.Is(err, ErrNotMember) {
+		return ErrNotAuthorized
+	}
 	if err != nil {
 		return err
-	}
-	// Prevent cross-household role manipulation.
-	if hhID != actorHHID {
-		return ErrNotAuthorized
 	}
 	if targetRole == RoleOwner {
 		members, err := s.store.GetMembers(ctx, hhID)
@@ -395,11 +486,16 @@ func (s *Service) UpdateMemberRole(ctx context.Context, actorUserID, targetUserI
 			}
 		}
 		if owners <= 1 {
-			return fmt.Errorf("cannot change the role of the last owner")
+			return ErrLastOwner
 		}
 	}
 	if err := s.store.UpdateMemberRole(ctx, hhID, targetUserID, newRole); err != nil {
 		return err
+	}
+	if newRole != targetRole {
+		if err := s.store.RevokeInvites(ctx, hhID); err != nil {
+			return err
+		}
 	}
 	s.logAudit(ctx, "household.member_role_changed", map[string]string{
 		"user_id":        formatID(actorUserID),
@@ -411,6 +507,9 @@ func (s *Service) UpdateMemberRole(ctx context.Context, actorUserID, targetUserI
 }
 
 func (s *Service) RemoveMember(ctx context.Context, actorUserID, targetUserID int64) error {
+	if !s.inTransaction {
+		return s.transaction(ctx, func(tx *Service) error { return tx.RemoveMember(ctx, actorUserID, targetUserID) })
+	}
 	actorHHID, actorRole, err := s.store.GetMembership(ctx, actorUserID)
 	if err != nil {
 		return err
@@ -419,15 +518,13 @@ func (s *Service) RemoveMember(ctx context.Context, actorUserID, targetUserID in
 		return ErrNotAuthorized
 	}
 	if actorUserID == targetUserID {
-		return fmt.Errorf("use leave instead of remove for self")
-	}
-	hhID, _, cerr := s.store.GetMembership(ctx, targetUserID)
-	if cerr != nil {
-		return cerr
-	}
-	// Prevent cross-household member removal.
-	if hhID != actorHHID {
 		return ErrNotAuthorized
+	}
+	hhID := actorHHID
+	if _, err := s.store.GetMembershipForHousehold(ctx, targetUserID, hhID); errors.Is(err, ErrNotMember) {
+		return ErrNotAuthorized
+	} else if err != nil {
+		return err
 	}
 	members, err := s.store.GetMembers(ctx, hhID)
 	if err != nil {
@@ -456,6 +553,9 @@ func (s *Service) RemoveMember(ctx context.Context, actorUserID, targetUserID in
 }
 
 func (s *Service) LeaveHousehold(ctx context.Context, userID int64) error {
+	if !s.inTransaction {
+		return s.transaction(ctx, func(tx *Service) error { return tx.LeaveHousehold(ctx, userID) })
+	}
 	hhID, role, err := s.store.GetMembership(ctx, userID)
 	if err != nil {
 		return err
@@ -490,6 +590,9 @@ func (s *Service) LeaveHousehold(ctx context.Context, userID int64) error {
 }
 
 func (s *Service) TransferOwnership(ctx context.Context, currentOwnerID, newOwnerID int64) error {
+	if !s.inTransaction {
+		return s.transaction(ctx, func(tx *Service) error { return tx.TransferOwnership(ctx, currentOwnerID, newOwnerID) })
+	}
 	hhID, role, err := s.store.GetMembership(ctx, currentOwnerID)
 	if err != nil {
 		return err
@@ -505,6 +608,9 @@ func (s *Service) TransferOwnership(ctx context.Context, currentOwnerID, newOwne
 		return err
 	}
 	if err := s.store.UpdateMemberRole(ctx, hhID, newOwnerID, RoleOwner); err != nil {
+		return err
+	}
+	if err := s.store.RevokeInvites(ctx, hhID); err != nil {
 		return err
 	}
 	s.logAudit(ctx, "household.ownership_transferred", map[string]string{
