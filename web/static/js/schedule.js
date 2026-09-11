@@ -26,8 +26,19 @@ export async function createSchedule(payload) {
   return data?.schedule;
 }
 
+// IDs can originate in drag data. Only interpolate a validated number so an
+// external payload cannot redirect an authenticated mutation to another path.
+function scheduleID(id) {
+  if (typeof id !== "number" && !(typeof id === "string" && /^[0-9]+$/.test(id))) {
+    throw new TypeError("Invalid schedule ID");
+  }
+  const value = Number(id);
+  if (!Number.isSafeInteger(value) || value <= 0) throw new TypeError("Invalid schedule ID");
+  return value;
+}
+
 export async function updateSchedule(id, payload) {
-  const { data } = await apiFetch(`/api/schedules/${id}`, {
+  const { data } = await apiFetch(`/api/schedules/${scheduleID(id)}`, {
     method: "PATCH",
     body: JSON.stringify(payload),
   });
@@ -35,7 +46,7 @@ export async function updateSchedule(id, payload) {
 }
 
 export async function deleteSchedule(id) {
-  await apiFetch(`/api/schedules/${id}`, { method: "DELETE" });
+  await apiFetch(`/api/schedules/${scheduleID(id)}`, { method: "DELETE" });
 }
 
 // ─── Recurrence helpers ───────────────────────────────────────────────────────

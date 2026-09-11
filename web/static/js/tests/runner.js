@@ -78,6 +78,39 @@ describe("API", () => {
   });
 });
 
+describe("Schedule request IDs", () => {
+  it("rejects malformed IDs before any authenticated request", async () => {
+    const { updateSchedule, deleteSchedule } = await import("../schedule.js");
+    const previousFetch = globalThis.fetch;
+    let requests = 0;
+    globalThis.fetch = async () => { requests++; throw new Error("Unexpected fetch"); };
+    try {
+      for (const id of ["../notification-preferences", "%2e%2e/chores", "1/../../chores",
+        "1?other=1", "1#fragment", "1\\..", "", " 1", "1e2", "0x10", "1.5",
+        null, undefined, true, {}, [1], 0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+        await assert.rejects(updateSchedule(id, { timePeriod: "anytime" }), /Invalid schedule ID/);
+        await assert.rejects(deleteSchedule(id), /Invalid schedule ID/);
+      }
+      assert.equal(requests, 0);
+    } finally { globalThis.fetch = previousFetch; }
+  });
+
+  it("uses numeric path segments for valid numeric and decimal-string IDs", async () => {
+    const { updateSchedule, deleteSchedule } = await import("../schedule.js");
+    const previousFetch = globalThis.fetch;
+    const requests = [];
+    globalThis.fetch = async (path, options) => {
+      requests.push([path, options.method]);
+      return { ok: true, headers: new Map() };
+    };
+    try {
+      await updateSchedule(42, { timePeriod: "anytime" });
+      await deleteSchedule("0042");
+      assert.deepEqual(requests, [["/api/schedules/42", "PATCH"], ["/api/schedules/42", "DELETE"]]);
+    } finally { globalThis.fetch = previousFetch; }
+  });
+});
+
 describe("Auth Views", () => {
   it("renders login view", async () => {
     const { renderLoginView } = await import("../auth.js");
