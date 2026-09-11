@@ -177,7 +177,7 @@ final class AppEnvironment: ObservableObject {
                 state.latestLogs = [:]
                 state.todayLogs = []
             }
-            if scenario == "recent-error" { state.recentAmounts[6] = [75] }
+            if scenario == "recent-error" { state.recentAmounts[6] = [75]; state.recentAmountUnits[6] = "g" }
             if scenario == "midnight" {
                 let prior = Calendar.current.startOfDay(for: TestHooks.reviewDate ?? now).addingTimeInterval(-60)
                 state.latestLogs[4] = ChoreLog(id: 104, householdId: 1, userId: 1, choreId: 4,
@@ -232,6 +232,7 @@ final class AppEnvironment: ObservableObject {
         var note = ""
         var indicators: [String] = []
         var volumeML: Int? = nil
+        var metricUnit: String?
         var slotHour: Int? = nil
         var userId = 1
         var durationSeconds: Int?
@@ -243,6 +244,7 @@ final class AppEnvironment: ObservableObject {
             note = json["note"] as? String ?? ""
             indicators = json["indicators"] as? [String] ?? []
             volumeML = json["volumeML"] as? Int
+            metricUnit = json["metricUnit"] as? String
             slotHour = json["hour"] as? Int
             userId = json["userId"] as? Int ?? 1
             durationSeconds = json["durationSeconds"] as? Int
@@ -253,7 +255,7 @@ final class AppEnvironment: ObservableObject {
             id: 9001, householdId: 1, userId: userId, choreId: choreId,
             completedAt: Date(), note: note, indicators: indicators,
             slotHour: slotHour, createdAt: Date(), volumeML: volumeML,
-            indicatorVolumes: indicatorVolumes, durationSeconds: durationSeconds
+            indicatorVolumes: indicatorVolumes, durationSeconds: durationSeconds, metricUnit: metricUnit
         )
         let response = LogResponse(log: log)
         let data = try! apiEncoder.encode(response)
@@ -465,6 +467,16 @@ final class ReviewUITestResponses {
             let date = todayISO()
             return try json(TodayResponse(logs: todayLogs, summary: DailySummary(date: date, totalChores: chores.count,
                 choresDone: todayLogs.count, byUser: [:], byCategory: [:]), date: date))
+        }
+        if path.hasPrefix("/api/logs/"), request.httpMethod == "PATCH", let current = lastLog, let body = request.httpBody {
+            var values = try JSONSerialization.jsonObject(with: apiEncoder.encode(current)) as! [String: Any]
+            let patch = try JSONSerialization.jsonObject(with: body) as! [String: Any]
+            values.merge(patch) { _, new in new }
+            let updated = try apiDecoder.decode(ChoreLog.self, from: JSONSerialization.data(withJSONObject: values))
+            lastLog = updated
+            todayLogs = todayLogs.map { $0.id == updated.id ? updated : $0 }
+            latestLogs[updated.choreId] = updated
+            return try json(StatusResponse(status: "ok"))
         }
         if path.hasPrefix("/api/logs/"), request.httpMethod == "DELETE", let id = Int(path.split(separator: "/").last ?? "") {
             todayLogs.removeAll { $0.id == id }

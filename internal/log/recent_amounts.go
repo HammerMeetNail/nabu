@@ -11,20 +11,28 @@ import (
 
 // RecentAmounts is a viewer-authorized source independent of Activity pages,
 // search results, the current calendar date, and the latest log's metric.
-func (s *Service) RecentAmounts(ctx context.Context, actorID, householdID, choreID int64) ([]int, error) {
+func (s *Service) RecentAmounts(ctx context.Context, actorID, householdID, choreID int64, units ...string) ([]int, error) {
 	if s.chores == nil || s.memberships == nil || actorID <= 0 {
 		return nil, ErrNotFound
 	}
-	if _, err := s.chores.GetVisible(ctx, actorID, householdID, choreID); err != nil {
+	c, err := s.chores.GetVisible(ctx, actorID, householdID, choreID)
+	if err != nil {
 		if errors.Is(err, chore.ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
 	}
-	return s.store.RecentAmounts(WithReadAccess(ctx, householdID, actorID, map[int64]struct{}{choreID: {}}), householdID, choreID)
+	unit := c.MetricUnit
+	if len(units) > 0 && units[0] != "" {
+		unit = units[0]
+		if err := validateUnit(unit); err != nil {
+			return nil, err
+		}
+	}
+	return s.store.RecentAmounts(WithReadAccess(ctx, householdID, actorID, map[int64]struct{}{choreID: {}}), householdID, choreID, unit)
 }
 
-func (s *MemoryStore) RecentAmounts(ctx context.Context, householdID, choreID int64) ([]int, error) {
+func (s *MemoryStore) RecentAmounts(ctx context.Context, householdID, choreID int64, units ...string) ([]int, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	logs := []ChoreLog{}
@@ -41,6 +49,9 @@ func (s *MemoryStore) RecentAmounts(ctx context.Context, householdID, choreID in
 	})
 	out, seen := []int{}, map[int]bool{}
 	for _, entry := range logs {
+		if len(units) > 0 && AmountUnit(entry.MetricUnit) != AmountUnit(units[0]) {
+			continue
+		}
 		values := []int{}
 		if entry.VolumeML != nil {
 			values = append(values, *entry.VolumeML)
@@ -66,12 +77,24 @@ func (s *MemoryStore) RecentAmounts(ctx context.Context, householdID, choreID in
 	return out, nil
 }
 
-func (s *PostgresStore) RecentAmounts(ctx context.Context, householdID, choreID int64) ([]int, error) {
+func (s *PostgresStore) RecentAmounts(ctx context.Context, householdID, choreID int64, units ...string) ([]int, error) {
 	out := []int{}
-	access, accessArgs := readAccessSQL(ctx, householdID, "l.chore_id", "l.household_id", 4)
+	unitFilter := ""
+	if len(units) > 0 {
+		unitFilter = " AND (CASE WHEN lower(trim(l.metric_unit)) IN ('','ml','oz') THEN 'mL' ELSE l.metric_unit END) = $4"
+	}
+	firstArg := 4
+	if len(units) > 0 {
+		firstArg = 5
+	}
+	access, accessArgs := readAccessSQL(ctx, householdID, "l.chore_id", "l.household_id", firstArg)
 	// At most three bounded results. The household/chore/time index walks newest
 	// first, skipping values already selected without fetching log text/metadata.
 	for len(out) < 3 {
+		args := []any{householdID, choreID, out}
+		if len(units) > 0 {
+			args = append(args, AmountUnit(units[0]))
+		}
 		var amount int
 		err := s.db.QueryRowContext(ctx, `
 			SELECT a.amount FROM chore_logs l
@@ -82,9 +105,9 @@ func (s *PostgresStore) RecentAmounts(ctx context.Context, householdID, choreID 
 				FROM jsonb_each_text(CASE WHEN jsonb_typeof(l.indicator_volumes) = 'object' THEN l.indicator_volumes ELSE '{}'::jsonb END)
 			) a
 			WHERE l.household_id=$1 AND l.chore_id=$2 AND a.amount > 0 AND a.amount <= 100000
-			  AND NOT (a.amount = ANY($3::int[]))`+access+`
+			  AND NOT (a.amount = ANY($3::int[]))`+unitFilter+access+`
 			ORDER BY l.completed_at DESC,l.id DESC,a.priority,a.label
-			LIMIT 1`, append([]any{householdID, choreID, out}, accessArgs...)...).Scan(&amount)
+			LIMIT 1`, append(args, accessArgs...)...).Scan(&amount)
 		if errors.Is(err, sql.ErrNoRows) {
 			break
 		}

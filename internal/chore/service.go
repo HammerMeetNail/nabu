@@ -385,7 +385,8 @@ var PredefinedChores = []Chore{
 	{Name: "Walk Dog", Icon: "🐕", Color: "#EF4444", Category: "care", SortOrder: 9},
 	{Name: "Make Bed", Icon: "🛏️", Color: "#14B8A6", Category: "cleaning", SortOrder: 10},
 	{Name: "Baby Bath", Icon: "🛀", Color: "#60A5FA", Category: "care", SortOrder: 11},
-	{Name: "Cat Meds", Icon: "💊", Color: "#A78BFA", Category: "care", SortOrder: 12},
+	{Name: "Cat Meds", Icon: "💊", Color: "#A78BFA", Category: "care", SortOrder: 12, HasVolumeML: true, MetricType: MetricAmount, MetricUnit: "mg"},
 	{Name: "Read Book", Icon: "📖", Color: "#8B5CF6", Category: "personal", SortOrder: 13, HasRating: true, MetricType: MetricRating},
+	{Name: "Baby Meds", Icon: "💊", Color: "#A78BFA", Category: "care", SortOrder: 15, HasVolumeML: true, MetricType: MetricAmount, MetricUnit: "mg"},
 	{Name: "Watch Movie", Icon: "🎬", Color: "#EF4444", Category: "personal", SortOrder: 14, HasRating: true, MetricType: MetricRating},
 }

@@ -4597,3 +4597,6 @@ body.sheet-open .timer-chip { visibility: hidden; }
 
 .notif-read .notif-title { font-weight: 400; color: var(--text-secondary); }
 .notif-retention { padding: 0.75rem; font-size: 0.8rem; }
+
+.indicator-row { flex-wrap: wrap; }
+.custom-amount-input { max-width: 140px; }

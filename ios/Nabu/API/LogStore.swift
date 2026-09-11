@@ -29,7 +29,7 @@ final class LogStore {
                    rating: Int? = nil, title: String? = nil,
                    durationSeconds: Int? = nil,
                    subject: String? = nil,
-                   idempotencyKey: String = UUID().uuidString) async throws -> CreateLogOutcome {
+                   idempotencyKey: String = UUID().uuidString, metricUnit: String? = nil) async throws -> CreateLogOutcome {
         let owner = self.owner
         guard api.identity.isCurrent(owner), let origin = owner.origin else { throw APIError.contextChanged }
         let body = offlineQueue.item(key: idempotencyKey, origin: origin)?.body ?? CreateLogRequest(
@@ -42,7 +42,7 @@ final class LogStore {
             rating: rating, title: title,
             durationSeconds: durationSeconds, subject: subject,
             // Idempotency key so an offline replay can't create a duplicate.
-            idempotencyKey: idempotencyKey
+            idempotencyKey: idempotencyKey, metricUnit: metricUnit
         )
         do {
             let response: LogResponse = try await offlineQueue.submit(body: body, origin: origin,
@@ -84,12 +84,12 @@ final class LogStore {
                    date: String? = nil, indicatorVolumes: [String: Int]? = nil,
                    rating: Int?? = nil, title: String?? = nil,
                    durationSeconds: Int?? = nil,
-                   subject: String?? = nil) async throws -> StatusResponse {
+                   subject: String?? = nil, metricUnit: String? = nil) async throws -> StatusResponse {
         let body = UpdateLogRequest(
             note: note, indicators: indicators, volumeML: volumeML,
             userId: userId, completedAt: completedAt, hour: hour, date: date,
             indicatorVolumes: indicatorVolumes,
-            rating: rating, title: title, durationSeconds: durationSeconds, subject: subject
+            rating: rating, title: title, durationSeconds: durationSeconds, subject: subject, metricUnit: metricUnit
         )
         return try await api.patch("/api/logs/\(logId)", body: body)
     }
@@ -100,14 +100,16 @@ final class LogStore {
 
     /// A failed refresh leaves the last good suggestions available. Requests
     /// from an earlier sheet or identity cannot replace the current cache.
-    func loadRecentAmounts(choreId: Int, state: AppState) async -> [Int]? {
+    func loadRecentAmounts(choreId: Int, state: AppState, unit: String? = nil) async -> [Int]? {
         guard api.identity.isCurrent(owner) else { return nil }
         let operation = state.beginOperation("recent-amounts:\(choreId)")
         do {
-            let response: RecentAmountsResponse = try await api.get("/api/logs/recent-amounts",
-                query: [URLQueryItem(name: "choreId", value: String(choreId))])
+            var query = [URLQueryItem(name: "choreId", value: String(choreId))]
+            if let unit { query.append(URLQueryItem(name: "unit", value: unit)) }
+            let response: RecentAmountsResponse = try await api.get("/api/logs/recent-amounts", query: query)
             guard !Task.isCancelled, api.identity.isCurrent(owner), state.owns(operation) else { return nil }
             state.recentAmounts[choreId] = response.amounts
+            state.recentAmountUnits[choreId] = unit
             return response.amounts
         } catch { return nil }
     }

@@ -66,9 +66,20 @@ enum VolumeUnits {
 
 /// Amount columns keep their configured unit; the mL/oz preference applies
 /// only to actual liquid-volume chores.
-func formatChoreAmount(_ value: Int, chore: Chore?, volumeUnit: String) -> String {
+func formatChoreAmount(_ value: Int, chore: Chore?, volumeUnit: String, metricUnit: String? = nil) -> String {
+    if let unit = metricUnit, !unit.isEmpty {
+        if ["ml", "oz"].contains(unit.lowercased()) { return VolumeUnits.formatVolume(value, unit: unit.lowercased()) }
+        return "\(value) \(unit)"
+    }
     guard let chore, !["", "ml", "oz"].contains(chore.metricUnit.lowercased()) else {
         return VolumeUnits.formatVolume(value, unit: volumeUnit)
     }
     return "\(value) \(chore.metricUnit)"
+}
+
+
+enum AmountUnits {
+    static let common = ["mL", "oz", "mg", "g", "kg", "lb", "tsp", "tbsp", "drops", "tablets", "units", "min"]
+    static func options(_ selected: String) -> [String] { common.contains(selected) || selected.isEmpty ? common : common + [selected] }
+    static func amounts(_ selected: Int?) -> [Int] { Array(Set(Array(0...200) + [250, 500, 750, 1000] + [selected].compactMap { $0 })).sorted() }
 }

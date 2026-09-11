@@ -65,6 +65,9 @@ struct WidgetCard: View {
             // widget's grain (PWA uses data[0].ts).
             if let ts = model.widgetTimeSeries[widget.id]?.first, !ts.periods.isEmpty {
                 let unit = Self.metricUnit(widget: widget, metricUnit: ts.metricUnit)
+                if widget.metric == "amount" {
+                    UnitAmountCharts(periods: ts.periods, fallback: unit, grain: StatsSections.widgetGrain(widget))
+                } else {
                 PeriodBarChart(
                     segments: PeriodBarData.valueSegments(ts.periods) { Double(Self.metricValue($0, metric: widget.metric)) },
                     periods: ts.periods,
@@ -76,6 +79,7 @@ struct WidgetCard: View {
                         return unit.isEmpty ? "\(v)" : "\(v) \(unit)"
                     }
                 )
+                }
             } else {
                 Text("No data").font(.caption).foregroundStyle(DesignColors.textSecondary)
             }
@@ -85,6 +89,18 @@ struct WidgetCard: View {
             let summaries = model.widgetSummaries[widget.id] ?? []
             let total = summaries.reduce(0) { $0 + Self.metricValue($1, metric: widget.metric) }
             let unit = Self.metricUnit(widget: widget, metricUnit: summaries.first?.metricUnit)
+            if widget.metric == "amount" {
+                let amounts = Dictionary(summaries.flatMap { summary in
+                    Array((summary.amountsByUnit ?? [summary.metricUnit ?? "": summary.totalML]).map { ($0.key, $0.value) })
+                }, uniquingKeysWith: +)
+                ForEach(amounts.keys.sorted(), id: \.self) { unit in
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text("\(amounts[unit] ?? 0)").font(.system(size: 34, weight: .bold)).foregroundStyle(DesignColors.primary)
+                        if !unit.isEmpty { Text(unit).font(.subheadline).foregroundStyle(DesignColors.textSecondary) }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                }
+            } else {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text("\(total)").font(.system(size: 34, weight: .bold))
                     .foregroundStyle(DesignColors.primary)
@@ -93,6 +109,7 @@ struct WidgetCard: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .center)
+            }
         }
     }
 

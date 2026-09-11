@@ -143,12 +143,24 @@ func (s *Service) aggregateSummary(ctx context.Context, householdID int64, ch Ch
 	if err != nil {
 		return nil, err
 	}
-	out := &ChoreSummary{ChoreID: ch.ID, MetricType: ch.MetricType, MetricUnit: ch.MetricUnit, ByMember: []LeaderboardEntry{}}
+	out := &ChoreSummary{ChoreID: ch.ID, MetricType: ch.MetricType, MetricUnit: ch.MetricUnit, ByMember: []LeaderboardEntry{}, AmountsByUnit: map[string]int{}}
+	members := map[int64]int{}
 	for _, r := range rows {
 		out.Count += r.Count
-		out.TotalML += r.TotalML
+		unit := r.Category
+		if unit == "" {
+			unit = ch.MetricUnit
+		}
+		unit = log.AmountUnit(unit)
+		out.AmountsByUnit[unit] += r.TotalML
+		if unit == log.AmountUnit(ch.MetricUnit) {
+			out.TotalML += r.TotalML
+		}
 		out.TotalDuration += r.Duration
-		out.ByMember = append(out.ByMember, LeaderboardEntry{UserID: r.UserID, Count: r.Count})
+		members[r.UserID] += r.Count
+	}
+	for id, count := range members {
+		out.ByMember = append(out.ByMember, LeaderboardEntry{UserID: id, Count: count})
 	}
 	sortLeaderboard(out.ByMember)
 	return out, nil

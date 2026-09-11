@@ -136,6 +136,7 @@ type ChoreTimeSeries struct {
 }
 
 type TimeSeriesPeriod struct {
+	AmountsByUnit     map[string]int `json:"amountsByUnit,omitempty"`
 	Start             string         `json:"start"`
 	End               string         `json:"end"`
 	Count             int            `json:"count"`
@@ -149,6 +150,7 @@ type TimeSeriesPeriod struct {
 // user-defined widgets (Phase 4) so a widget's period actually bounds the
 // numbers (unlike the year-scoped time-series byMember). "all" is true all-time.
 type ChoreSummary struct {
+	AmountsByUnit map[string]int     `json:"amountsByUnit,omitempty"`
 	ChoreID       int64              `json:"choreId"`
 	Count         int                `json:"count"`
 	TotalML       int                `json:"totalML"`
@@ -643,6 +645,9 @@ func (s *Service) GetChoreStats(ctx context.Context, householdID int64, loc *tim
 			for _, ind := range l.Indicators {
 				indicatorCounts[ind]++
 			}
+			if entryUnit(l, ch.MetricUnit) != log.AmountUnit(ch.MetricUnit) {
+				continue
+			}
 			if len(l.IndicatorVolumes) > 0 {
 				for _, vol := range l.IndicatorVolumes {
 					if vol <= 0 {
@@ -668,7 +673,7 @@ func (s *Service) GetChoreStats(ctx context.Context, householdID int64, loc *tim
 			TotalThisWeek:  weekCount,
 			TotalThisMonth: monthCount,
 			TotalInRange:   rangeCount,
-			HasVolume:      ch.HasVolumeML,
+			HasVolume:      ch.HasVolumeML && log.AmountUnit(ch.MetricUnit) == "mL",
 			HasIndicators:  len(ch.IndicatorLabels) > 0,
 		}
 
@@ -676,7 +681,7 @@ func (s *Service) GetChoreStats(ctx context.Context, householdID int64, loc *tim
 			cs.IndicatorCounts = indicatorCounts
 		}
 
-		if ch.HasVolumeML && volumeLogs > 0 {
+		if cs.HasVolume && volumeLogs > 0 {
 			avg := float64(totalVolume) / float64(volumeLogs)
 			cs.AvgVolume = &avg
 			for d := fetchStart; !d.After(now); d = d.AddDate(0, 0, 1) {
@@ -1015,6 +1020,7 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 	sort.Slice(memberEntries, func(i, j int) bool { return memberEntries[i].Count > memberEntries[j].Count })
 
 	type bucketData struct {
+		amountsByUnit     map[string]int
 		count             int
 		totalML           int
 		totalDuration     int
@@ -1033,19 +1039,26 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 				if l.DurationSeconds != nil {
 					periodData[i].totalDuration += *l.DurationSeconds
 				}
-				if len(l.IndicatorVolumes) > 0 {
-					for ind, vol := range l.IndicatorVolumes {
-						if vol <= 0 {
-							continue
+				if periodData[i].amountsByUnit == nil {
+					periodData[i].amountsByUnit = map[string]int{}
+				}
+				unit := entryUnit(l, ch.MetricUnit)
+				periodData[i].amountsByUnit[unit] += entryAmount(l)
+				if unit == log.AmountUnit(ch.MetricUnit) {
+					if len(l.IndicatorVolumes) > 0 {
+						for ind, vol := range l.IndicatorVolumes {
+							if vol <= 0 {
+								continue
+							}
+							periodData[i].totalML += vol
+							if periodData[i].volumeByIndicator == nil {
+								periodData[i].volumeByIndicator = map[string]int{}
+							}
+							periodData[i].volumeByIndicator[ind] += vol
 						}
-						periodData[i].totalML += vol
-						if periodData[i].volumeByIndicator == nil {
-							periodData[i].volumeByIndicator = map[string]int{}
-						}
-						periodData[i].volumeByIndicator[ind] += vol
+					} else if l.VolumeML != nil {
+						periodData[i].totalML += *l.VolumeML
 					}
-				} else if l.VolumeML != nil {
-					periodData[i].totalML += *l.VolumeML
 				}
 				for _, ind := range l.Indicators {
 					if periodData[i].indicators == nil {
@@ -1069,6 +1082,7 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 
 	for i, b := range buckets {
 		tp := TimeSeriesPeriod{
+			AmountsByUnit: periodData[i].amountsByUnit,
 			Start:         b.start.Format("2006-01-02"),
 			End:           b.end.Format("2006-01-02"),
 			Count:         periodData[i].count,
@@ -1187,22 +1201,12 @@ func (s *Service) GetFeedingGaps(ctx context.Context, householdID int64, choreID
 
 		hour := prev.Hour()
 
-		precedingVolume := 0
-		if len(feedLogs[i-1].IndicatorVolumes) > 0 {
-			for _, vol := range feedLogs[i-1].IndicatorVolumes {
-				precedingVolume += vol
-			}
-		} else if feedLogs[i-1].VolumeML != nil {
-			precedingVolume = *feedLogs[i-1].VolumeML
+		precedingVolume, followUpVolume := 0, 0
+		if log.AmountUnit(feedLogs[i-1].MetricUnit) == "mL" {
+			precedingVolume = entryAmount(feedLogs[i-1])
 		}
-
-		followUpVolume := 0
-		if len(feedLogs[i].IndicatorVolumes) > 0 {
-			for _, vol := range feedLogs[i].IndicatorVolumes {
-				followUpVolume += vol
-			}
-		} else if feedLogs[i].VolumeML != nil {
-			followUpVolume = *feedLogs[i].VolumeML
+		if log.AmountUnit(feedLogs[i].MetricUnit) == "mL" {
+			followUpVolume = entryAmount(feedLogs[i])
 		}
 
 		gaps = append(gaps, FeedingGap{
@@ -1277,10 +1281,11 @@ func (s *Service) GetChoreSummary(ctx context.Context, householdID, choreID int6
 	}
 
 	summary := &ChoreSummary{
-		ChoreID:    choreID,
-		MetricType: ch.MetricType,
-		MetricUnit: ch.MetricUnit,
-		ByMember:   []LeaderboardEntry{},
+		AmountsByUnit: map[string]int{},
+		ChoreID:       choreID,
+		MetricType:    ch.MetricType,
+		MetricUnit:    ch.MetricUnit,
+		ByMember:      []LeaderboardEntry{},
 	}
 	byMember := map[int64]int{}
 	for _, l := range logs {
@@ -1292,14 +1297,10 @@ func (s *Service) GetChoreSummary(ctx context.Context, householdID, choreID int6
 		}
 		summary.Count++
 		byMember[l.UserID]++
-		if len(l.IndicatorVolumes) > 0 {
-			for _, v := range l.IndicatorVolumes {
-				if v > 0 {
-					summary.TotalML += v
-				}
-			}
-		} else if l.VolumeML != nil && *l.VolumeML > 0 {
-			summary.TotalML += *l.VolumeML
+		unit := entryUnit(l, ch.MetricUnit)
+		summary.AmountsByUnit[unit] += entryAmount(l)
+		if unit == log.AmountUnit(ch.MetricUnit) {
+			summary.TotalML += entryAmount(l)
 		}
 		if l.DurationSeconds != nil {
 			summary.TotalDuration += *l.DurationSeconds
@@ -1381,4 +1382,24 @@ func (s *Service) visibleChoresForContext(ctx context.Context, householdID int64
 func logInRange(l log.ChoreLog, start, end time.Time, loc *time.Location) bool {
 	local := l.CompletedAt.In(loc)
 	return !local.Before(start) && local.Before(end)
+}
+
+func entryUnit(l log.ChoreLog, fallback string) string {
+	if l.MetricUnit != "" {
+		return log.AmountUnit(l.MetricUnit)
+	}
+	return log.AmountUnit(fallback)
+}
+func entryAmount(l log.ChoreLog) int {
+	total := 0
+	if len(l.IndicatorVolumes) > 0 {
+		for _, v := range l.IndicatorVolumes {
+			if v > 0 {
+				total += v
+			}
+		}
+	} else if l.VolumeML != nil && *l.VolumeML > 0 {
+		total = *l.VolumeML
+	}
+	return total
 }

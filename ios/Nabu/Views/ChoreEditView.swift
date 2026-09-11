@@ -102,7 +102,9 @@ struct ChoreEditView: View {
 
                     if metricType == "amount" {
                         HStack {
-                            Text("Unit")
+                            Menu("Unit") {
+                                ForEach(AmountUnits.common, id: \.self) { unit in Button(unit) { metricUnit = unit } }
+                            }.accessibilityIdentifier("chore-unit-presets")
                             TextField("mL", text: $metricUnit)
                                 .multilineTextAlignment(.trailing)
                                 .onChange(of: metricUnit) { _, newValue in

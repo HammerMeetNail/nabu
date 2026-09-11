@@ -1,7 +1,7 @@
 // web/static/js/schedule.js
 
 import { apiFetch } from "./api.js";
-import { isVolumeMetric, formatAmount } from './metrics.js';
+import { isVolumeMetric, formatAmount, amountUnitOptions, amountPresets } from './metrics.js';
 import { escapeHTML, volumeOptions, formatVolume } from "./utils.js";
 
 const MANAGE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>`;
@@ -386,30 +386,18 @@ export function renderConfigureScheduleSheet(chore, date, hour, presetTime, pres
 
 // ─── Render: log-with-indicators bottom sheet ────────────────────────────────
 
+export function renderAmountOptions(chore, selected = null, unit = "ml") {
+  const options = isVolumeMetric(chore) ? volumeOptions(unit, selected) : amountPresets(chore, selected).map(value => ({ml:value, label:formatAmount(value,chore,unit)}));
+  return `<option value=""${selected == null ? ' selected' : ''}>--</option>` + options.map(o => `<option value="${o.ml}"${o.ml === selected ? ' selected' : ''}>${escapeHTML(o.label)}</option>`).join('') + '<option value="custom">Other amount…</option>';
+}
+function customAmountInput(unit = "mL") {
+  return `<input class="custom-amount-input text-input" type="number" inputmode="numeric" min="0" max="100000" step="1" aria-label="Other amount (${escapeHTML(unit)})" placeholder="Amount (${escapeHTML(unit)})" hidden disabled required>`;
+}
 function renderIndicatorVolumeRow(label, on, selectedML = null, unit = "ml", chore = {hasVolumeML:true}) {
-  // Option values are always canonical mL; only the labels change by unit.
-  const optsHTML = volumeOptions(unit, selectedML).map(o => {
-    const sel = selectedML === o.ml ? " selected" : "";
-    return `<option value="${o.ml}"${sel}>${escapeHTML(o.label)}</option>`;
-  }).join("");
   return `<div class="indicator-row">
-    <button type="button"
-      class="log-chip${on ? " log-chip--on" : ""}"
-      data-action="toggle-indicator"
-      data-label="${escapeHTML(label)}"
-      aria-pressed="${on}">
-      ${escapeHTML(label)}
-    </button>
-    ${isVolumeMetric(chore) ? `<select class="indicator-volume-select select-input" aria-label="${escapeHTML(label)} volume"
-      data-indicator="${escapeHTML(label)}"
-      ${on ? "" : "style=\"display:none\""}>
-      <option value=""${selectedML == null ? " selected" : ""}>--</option>
-      ${optsHTML}
-    </select>` : `<input type="number" min="0" max="100000" step="1" inputmode="numeric"
-      class="indicator-volume-select text-input" data-indicator="${escapeHTML(label)}"
-      aria-label="${escapeHTML(label)} amount${chore.metricUnit ? ` (${escapeHTML(chore.metricUnit)})` : ''}"
-      value="${selectedML ?? ''}" ${on ? '' : 'style="display:none"'}>
-      <span class="indicator-amount-unit">${escapeHTML(chore.metricUnit || '')}</span>`}
+    <button type="button" class="log-chip${on ? ' log-chip--on' : ''}" data-action="toggle-indicator" data-label="${escapeHTML(label)}" aria-pressed="${on}">${escapeHTML(label)}</button>
+    <select class="indicator-volume-select select-input" aria-label="${escapeHTML(label)} amount" data-indicator="${escapeHTML(label)}" ${on ? '' : 'style="display:none"'}>${renderAmountOptions(chore,selectedML,unit)}</select>
+    ${customAmountInput(isVolumeMetric(chore) ? "mL" : chore.metricUnit)}
   </div>`;
 }
 
@@ -426,6 +414,9 @@ function renderIndicatorVolumeRow(label, on, selectedML = null, unit = "ml", cho
  * @param {object}      opts   { showWhen: bool, slotHour: number|null, cachedIndicators: string[]|null }
  */
 export function renderLogSheet(chore, log, date, members, currentUserId, cachedVolumeML = null, opts = {}) {
+  const selectedUnit = opts.metricUnit || log?.metricUnit || (isVolumeMetric(chore) ? (opts.volumeUnit === 'oz' ? 'oz' : 'mL') : chore.metricUnit || 'mL');
+  chore = {...chore, metricUnit:selectedUnit};
+  const unitSection = chore.hasVolumeML ? `<div class="sheet-volume-row"><label for="log-metric-unit" class="field-label">Unit</label><select id="log-metric-unit" class="select-input">${amountUnitOptions(selectedUnit).map(unit => `<option value="${escapeHTML(unit)}"${unit === selectedUnit ? ' selected' : ''}>${escapeHTML(unit)}</option>`).join('')}</select></div>` : '';
   const title = `${escapeHTML(chore.icon)} ${escapeHTML(chore.name)}`;
   const noteVal = log ? escapeHTML(log.note || "") : "";
   const titleVal = log?.title ? escapeHTML(log.title) : "";
@@ -439,8 +430,8 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
   const prevIndicators = (log ? null : (volumeTypeChore ? (opts.cachedIndicators || null) : null));
   const activeIndicators = new Set(log?.indicators || prevIndicators || (chore.indicatorDefaults || []));
   const logIndicatorVolumes = log?.indicatorVolumes || {};
-  const cachedIndicatorVolumes = (log ? null : (opts.cachedIndicatorVolumes || null));
-  const volumeUnit = opts.volumeUnit === "oz" ? "oz" : "ml";
+  const cachedIndicatorVolumes = (log || (opts.cachedMetricUnit && opts.cachedMetricUnit !== selectedUnit) ? null : (opts.cachedIndicatorVolumes || null));
+  const volumeUnit = selectedUnit.toLowerCase() === "oz" ? "oz" : "ml";
 
   const indicatorSection = (() => {
     const labels = chore.indicatorLabels || [];
@@ -482,15 +473,12 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
   // A plain volume input for amount-metric chores that have no indicator
   // labels (generalized Phase 3 amount chores). Feed Baby keeps its
   // per-indicator volume rows above.
-  const volumeOnlySection = (chore.hasVolumeML && (chore.indicatorLabels || []).length === 0)
-    ? (isVolumeMetric(chore) ? renderVolumeSelect(log ? (log.volumeML ?? null) : (cachedVolumeML ?? null), volumeUnit)
-      : `<div class="sheet-volume-row"><label for="log-volume" class="field-label">Amount${chore.metricUnit ? ` (${escapeHTML(chore.metricUnit)})` : ''}</label>
-        <input id="log-volume" class="text-input" type="number" min="0" max="100000" step="1" inputmode="numeric" value="${log?.volumeML ?? cachedVolumeML ?? ''}"></div>`)
-    : "";
+  const volumeOnlySection = chore.hasVolumeML && !(chore.indicatorLabels || []).length
+    ? `<div class="sheet-volume-row"><label for="log-volume" class="field-label">Amount (${escapeHTML(selectedUnit)})</label><select id="log-volume" class="select-input volume-select">${renderAmountOptions(chore, log?.volumeML ?? cachedVolumeML, volumeUnit)}</select>${customAmountInput(isVolumeMetric(chore) ? "mL" : chore.metricUnit)}</div>` : '';
 
   // Recent-value chips (Phase 5.3): tappable last-3 distinct amounts. Tapping
   // one fills the volume input(s). Only shown for amount chores with history.
-  const recentVolumeSection = chore.hasVolumeML ? `<div class="sheet-recent-volume-row">${renderRecentAmounts(chore,opts.recentVolumes || [],volumeUnit)}</div>` : '';
+  const recentVolumeSection = chore.hasVolumeML ? `<div class="sheet-recent-volume-row">${renderRecentAmounts(chore,opts.recentUnit && opts.recentUnit !== selectedUnit ? [] : opts.recentVolumes || [],volumeUnit)}</div>` : '';
 
   const durationInput = chore.metricType === 'duration' ? `<div class="sheet-duration-row">
     <label for="log-duration" class="field-label">Duration (seconds)</label>
@@ -636,6 +624,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
       </div>
       ${whenSection}
       ${subjectSection}
+      ${unitSection}
       ${recentVolumeSection}
       ${indicatorSection}
       ${volumeOnlySection}

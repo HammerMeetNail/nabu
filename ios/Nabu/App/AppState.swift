@@ -42,6 +42,7 @@ final class AppState: ObservableObject {
     @Published var todayLogs: [ChoreLog] = []
     @Published var schedules: [ChoreSchedule] = []
     @Published var recentAmounts: [Int: [Int]] = [:]
+    var recentAmountUnits: [Int: String] = [:]
     @Published var latestLogs: [Int: ChoreLog] = [:]
     @Published var notifications: [AppNotification] = []
     @Published var notificationCursor: String?
@@ -116,6 +117,7 @@ final class AppState: ObservableObject {
         schedules = []
         latestLogs = [:]
         recentAmounts = [:]
+        recentAmountUnits = [:]
         notifications = []
         notificationCursor = nil
         notificationLoading = false
@@ -164,6 +166,7 @@ final class AppState: ObservableObject {
         schedules = []
         latestLogs = [:]
         recentAmounts = [:]
+        recentAmountUnits = [:]
         choreOrder = []
         hiddenHomeChoreIDs = []
         historyChoreFilter = nil

@@ -239,6 +239,7 @@ struct BabyColumn: View {
                 Text("No data").font(.caption2).foregroundStyle(DesignColors.textSecondary)
             } else if type == "feed" {
                 VolumePeriodChart(periods: ts.periods, grain: period, volumeUnit: volumeUnit)
+                UnitAmountCharts(periods: ts.periods, fallback: "", grain: period, excludeLiquid: true)
             } else {
                 IndicatorPeriodChart(periods: ts.periods, grain: period)
             }
@@ -482,14 +483,7 @@ struct ChoreAnalyticsSection: View {
     private func metricChart(periods: [TimeSeriesPeriod], grain: String) -> some View {
         switch chore.metricType {
         case "amount":
-            let unit = chore.metricUnit
-            PeriodBarChart(
-                segments: PeriodBarData.valueSegments(periods) { Double($0.totalML ?? 0) },
-                periods: periods, grain: grain,
-                unitLabel: unit.isEmpty ? "amount" : unit,
-                seriesColors: ["value": DesignColors.primary],
-                summaryText: { p in "\(p.totalML ?? 0)\(unit.isEmpty ? "" : " " + unit)" }
-            )
+            UnitAmountCharts(periods: periods, fallback: chore.metricUnit, grain: grain)
         case "duration":
             PeriodBarChart(
                 segments: PeriodBarData.valueSegments(periods) { (Double($0.totalDuration ?? 0) / 60.0).rounded() },
@@ -510,6 +504,28 @@ struct ChoreAnalyticsSection: View {
                     summaryText: { p in "\(p.count)" }
                 )
             }
+        }
+    }
+}
+
+
+struct UnitAmountCharts: View {
+    let periods: [TimeSeriesPeriod]
+    let fallback: String
+    let grain: String
+    var excludeLiquid = false
+    private var units: [String] {
+        let found = Set(periods.flatMap { Array(($0.amountsByUnit ?? [:]).keys) }).filter { !excludeLiquid || $0 != "mL" }.sorted()
+        return found.isEmpty && !excludeLiquid ? [fallback] : found
+    }
+    var body: some View {
+        ForEach(units, id: \.self) { unit in
+            PeriodBarChart(
+                segments: PeriodBarData.valueSegments(periods) { Double($0.amountsByUnit?[unit] ?? ($0.amountsByUnit == nil ? $0.totalML ?? 0 : 0)) },
+                periods: periods, grain: grain, unitLabel: unit.isEmpty ? "amount" : unit,
+                seriesColors: ["value": DesignColors.primary],
+                summaryText: { p in "\(p.amountsByUnit?[unit] ?? (p.amountsByUnit == nil ? p.totalML ?? 0 : 0)) \(unit)" }
+            )
         }
     }
 }

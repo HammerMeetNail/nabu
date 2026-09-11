@@ -91,7 +91,7 @@ var householdExportColumns = []string{
 	"log_note",
 	"log_indicators",
 	"log_indicator_volumes",
-	"log_volume_ml",
+	"log_volume_ml", "log_metric_unit",
 	"log_rating",
 	"log_duration_seconds",
 	"log_subject",
@@ -312,6 +312,7 @@ func (h *ExportHandler) Data(w http.ResponseWriter, r *http.Request) {
 		row["log_indicators"] = jsonString(l.Indicators)
 		row["log_indicator_volumes"] = jsonString(l.IndicatorVolumes)
 		row["log_volume_ml"] = formatIntPtr(l.VolumeML)
+		row["log_metric_unit"] = l.MetricUnit
 		if l.Rating != nil {
 			row["log_rating"] = strconv.FormatFloat(float64(*l.Rating)/10, 'f', -1, 64)
 		}

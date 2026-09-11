@@ -1,10 +1,11 @@
+import { renderAmountOptions } from './schedule.js';
 import { createAppState, resetAuthedState } from "./state.js";
 import { bootstrapIdentity, checkIdentity, changeIdentity, contextSnapshot, contextIsCurrent, resultIsCurrent, ContextChangedError, sameOrigin, storedIdentity, onExternalIdentityChange, clearBrowserIdentity } from "./browser-context.js";
 import { loadActivity, prepareActivity, setActivityChoreFilter } from "./activity-data.js";
 import { captureScope } from "./request-scope.js";
 import { loadStatsPage, loadStatsResource, loadStatsWidgets } from "./stats-data.js";
 import { loadRecentAmounts } from './recent-amounts.js';
-import { formatAmount } from './metrics.js';
+import { formatAmount, entryMetric, entryVolumeUnit } from './metrics.js';
 import { newKey } from "./device-store.js";
 import { morphInnerHTML } from "./morph.js";
 import { createSheetController } from "./sheets.js";
@@ -456,7 +457,7 @@ function renderHistoryView() {
       const latestLogForChore = state.latestLogs[choreId] ?? null;
       const cachedIndicatorVolumes = latestLogForChore?.indicatorVolumes ?? null;
       const cachedIndicators = latestLogForChore?.indicators ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id) });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id), recentUnit:state.recentAmountUnits?.[chore.id], cachedMetricUnit:latestLogForChore?.metricUnit, metricUnit:state.activeSheetData?.metricUnit });
 
   return `<div class="sheet-overlay-wrapper">
         ${mainView}
@@ -482,7 +483,7 @@ function renderHomeViewWrapper() {
       const latestLogForChore = state.latestLogs[choreId] ?? null;
       const cachedIndicatorVolumes = latestLogForChore?.indicatorVolumes ?? null;
       const cachedIndicators = latestLogForChore?.indicators ?? null;
-      const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, null, { showWhen: true, cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id) });
+      const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, null, { showWhen: true, cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id), recentUnit:state.recentAmountUnits?.[chore.id], cachedMetricUnit:latestLogForChore?.metricUnit, metricUnit:state.activeSheetData?.metricUnit });
       return `<div class="sheet-overlay-wrapper">
         ${header}
         ${mainView}
@@ -600,7 +601,7 @@ function renderCalendarView() {
       const latestLogForChore = state.latestLogs[choreId] ?? null;
       const cachedIndicatorVolumes = latestLogForChore?.indicatorVolumes ?? null;
       const cachedIndicators = latestLogForChore?.indicators ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id) });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id), recentUnit:state.recentAmountUnits?.[chore.id], cachedMetricUnit:latestLogForChore?.metricUnit, metricUnit:state.activeSheetData?.metricUnit });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}
@@ -687,7 +688,7 @@ function renderScheduleView() {
       const latestLogForChore = state.latestLogs[choreId] ?? null;
       const cachedIndicatorVolumes = latestLogForChore?.indicatorVolumes ?? null;
       const cachedIndicators = latestLogForChore?.indicators ?? null;
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), scheduleId, slotTime, cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id) });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), scheduleId, slotTime, cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id), recentUnit:state.recentAmountUnits?.[chore.id], cachedMetricUnit:latestLogForChore?.metricUnit, metricUnit:state.activeSheetData?.metricUnit });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}
@@ -919,10 +920,13 @@ function ensureSheetRecentAmounts(root) {
   if (!chore?.hasVolumeML) return;
   draft.recentRequested = true;
   const scope = captureScope(state);
-  loadRecentAmounts(state,chore.id).then(scope.guard(() => {
-    if (!['log','home-log'].includes(state.activeSheet) || state.activeSheetData !== draft) return;
+  const unit = root.querySelector('#log-metric-unit')?.value || chore.metricUnit;
+  const previousUnit = state.recentAmountUnits?.[chore.id];
+  if (previousUnit !== unit) { const container = root.querySelector('.sheet-recent-volume-row'); if (container) container.innerHTML = ''; }
+  loadRecentAmounts(state,chore.id,unit).then(scope.guard(() => {
+    if (!['log','home-log'].includes(state.activeSheet) || state.activeSheetData !== draft || root.querySelector('#log-metric-unit')?.value !== unit) return;
     const container = root.querySelector('.sheet-recent-volume-row');
-    if (container) container.innerHTML = renderRecentAmounts(chore,recentVolumesForChore(chore.id),state.volumeUnit);
+    if (container) container.innerHTML = renderRecentAmounts({...chore,metricUnit:unit},state.recentAmountUnits?.[chore.id] === unit ? recentVolumesForChore(chore.id) : [],unit.toLowerCase());
     syncLogSaveControls(root);
   }));
 }
@@ -1783,7 +1787,10 @@ export async function init() {
       const row = actionEl.closest(".indicator-row");
       const volumeSelect = row?.querySelector(".indicator-volume-select");
       if (volumeSelect) {
-        volumeSelect.style.display = actionEl.classList.contains("log-chip--on") ? "" : "none";
+        const on = actionEl.classList.contains("log-chip--on");
+        volumeSelect.style.display = on ? "" : "none";
+        const custom = row.querySelector('.custom-amount-input');
+        if (custom) { custom.hidden = !on || volumeSelect.value !== 'custom'; custom.disabled = custom.hidden; }
       }
       return;
     }
@@ -2162,12 +2169,13 @@ export async function init() {
         const indicatorVolumes = {};
         document.querySelectorAll('.indicator-volume-select').forEach(select => {
           const indicator = select.dataset.indicator;
-          const val = select.value;
+          const val = select.value === 'custom' ? select.parentElement.querySelector('.custom-amount-input')?.value : select.value;
           if (indicator && val !== "" && indicators.includes(indicator)) {
             indicatorVolumes[indicator] = parseInt(val, 10);
           }
         });
-        const volumeVal = document.querySelector('#log-volume')?.value;
+        const volumeSelect = document.querySelector('#log-volume');
+        const volumeVal = volumeSelect?.value === 'custom' ? volumeSelect.parentElement.querySelector('.custom-amount-input')?.value : volumeSelect?.value;
         const volumeML = volumeVal && volumeVal !== "" ? parseInt(volumeVal, 10) : null;
         const durationInput = document.querySelector('#log-duration');
         const durationSeconds = durationInput?.value ? Number(durationInput.value) : null;
@@ -2218,6 +2226,8 @@ export async function init() {
         actionEl.dataset.readyLabel ||= actionEl.textContent;
         actionEl.textContent = "Saving…";
         const patch = { note };
+        const metricUnit = document.querySelector('#log-metric-unit')?.value;
+        if (metricUnit) patch.metricUnit = metricUnit;
         const original = logId ? findLogById(parseInt(logId,10)) : null;
         if ((chore?.indicatorLabels || []).length) patch.indicators = indicators;
         if (chore?.hasVolumeML && (chore?.indicatorLabels || []).length) patch.indicatorVolumes = indicatorVolumes;
@@ -2242,7 +2252,7 @@ export async function init() {
               const pad = n => String(n).padStart(2, "0");
               followUpTime = `${fu.getFullYear()}-${pad(fu.getMonth() + 1)}-${pad(fu.getDate())}T${pad(fu.getHours())}:${pad(fu.getMinutes())}`;
             }
-            return logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId, indicatorVolumes, followUpMinutes, followUpTime, rating, titleVal || null, durationSeconds, subject, { submission:draft.submission });
+            return logChore(choreId, note, date, indicators, slotHour, completedAt, volumeML, userId, indicatorVolumes, followUpMinutes, followUpTime, rating, titleVal || null, durationSeconds, subject, { submission:draft.submission, metricUnit });
           })();
         syncLogSaveControls(app);
         doLog.then(owned(async (data) => {
@@ -2705,13 +2715,15 @@ export async function init() {
         if (isNaN(ml)) break;
         // Fill the plain volume input if present.
         const plain = document.querySelector("#log-volume");
-        const chore = state.chores.find(c => c.id === state.activeSheetData?.choreId);
+        const chore = {...state.chores.find(c => c.id === state.activeSheetData?.choreId), metricUnit:document.querySelector('#log-metric-unit')?.value};
         const setAmount = input => {
           if (input.tagName === 'SELECT' && ![...input.options].some(o => o.value === String(ml))) {
             const option = document.createElement('option'); option.value = String(ml);
-            option.textContent = formatAmount(ml,chore || {},state.volumeUnit); input.appendChild(option);
+            option.textContent = formatAmount(ml,chore || {},chore.metricUnit?.toLowerCase() || state.volumeUnit); input.appendChild(option);
           }
           input.value = String(ml);
+          const custom = input.parentElement.querySelector('.custom-amount-input');
+          if (custom) { custom.hidden = true; custom.disabled = true; }
         };
         if (plain) setAmount(plain);
         // Fill only per-indicator volume selects whose type is already on.
@@ -3356,6 +3368,31 @@ export async function init() {
   // ── Frequency selector: show/hide weekday pill row ─────────────────────────
   // Uses "change" (not "click") because <select> fires "change" on selection.
   document.addEventListener("change", (e) => {
+    if (e.target.matches('#log-volume, .indicator-volume-select')) {
+      const custom = e.target.parentElement.querySelector('.custom-amount-input');
+      if (custom) { custom.hidden = e.target.value !== 'custom'; custom.disabled = custom.hidden; if (!custom.hidden) custom.focus(); }
+    }
+    if (e.target.id === 'log-metric-unit') {
+      const draft = state.activeSheetData, unit = e.target.value;
+      draft.metricUnit = unit;
+      const chore = {...state.chores.find(c => c.id === draft.choreId), metricUnit:unit};
+      const sheet = e.target.closest('.bottom-sheet');
+      sheet.querySelectorAll('#log-volume, .indicator-volume-select').forEach(select => {
+        const selected = select.value;
+        select.innerHTML = renderAmountOptions(chore, selected && selected !== 'custom' ? Number(selected) : null, unit.toLowerCase());
+        select.value = selected;
+      });
+      sheet.querySelectorAll('.custom-amount-input').forEach(input => {
+        const label = `Other amount (${['ml', 'oz'].includes(unit.toLowerCase()) ? 'mL' : unit})`;
+        input.setAttribute('aria-label', label); input.placeholder = label;
+      });
+      const label = sheet.querySelector('label[for="log-volume"]');
+      if (label) label.textContent = `Amount (${unit})`;
+      draft.recentRequested = false;
+      ensureSheetRecentAmounts(document.querySelector('#app'));
+      return;
+    }
+
     const actionEl = e.target.closest("[data-action]");
     if (actionEl?.dataset?.action === "export-range") {
       state.exportRange = {...(state.exportRange || {}), [actionEl.dataset.field]:actionEl.value};

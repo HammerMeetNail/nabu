@@ -73,8 +73,12 @@ func (s *PostgresStore) Aggregate(ctx context.Context, householdID int64, q Aggr
 	user, chore, category, date, weekday, hour := "0", "0", "''", "''", "0", "0"
 	join, group, metrics := "", "", "0,0"
 	switch q.Group {
-	case GroupUser, GroupMemberTotals:
+	case GroupUser:
 		user, group = "l.user_id", "l.user_id"
+	case GroupMemberTotals:
+		user = "l.user_id"
+		category = "l.metric_unit"
+		group = "l.user_id,l.metric_unit"
 	case GroupChore:
 		chore, group = "l.chore_id", "l.chore_id"
 	case GroupCategory:

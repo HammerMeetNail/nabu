@@ -48,14 +48,14 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         return app
     }
 
-    private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
+    private func reveal(_ element: XCUIElement, in app: XCUIApplication, requireHit: Bool = true) {
         for upward in [true, false] {
             for _ in 0..<12 {
-                if element.exists && element.isHittable { return }
+                if element.exists && (!requireHit || element.isHittable) { return }
                 if upward { app.swipeUp() } else { app.swipeDown() }
             }
         }
-        XCTAssertTrue(element.exists && element.isHittable, "Expected reachable control: \(element)")
+        XCTAssertTrue(element.exists && (!requireHit || element.isHittable), "Expected reachable control: \(element)")
     }
 
     private func waitForStableScreen(_ app: XCUIApplication) {
@@ -91,6 +91,37 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         waitForStableScreen(app)
     }
 
+    func testAmountUnitSelectorCancelAndSavedActivity() throws {
+        let app = launch("units")
+        openChore("Weigh flour", in: app)
+        app.buttons["log-unit-picker"].tap()
+        app.buttons["mg"].tap()
+        app.buttons["Cancel"].tap()
+        openChore("Weigh flour", in: app)
+        XCTAssertEqual(app.buttons["log-unit-picker"].label, "Unit, g")
+        app.buttons["log-unit-picker"].tap()
+        app.buttons["mg"].tap()
+        app.buttons["amount-picker"].tap()
+        app.buttons["5 mg"].tap()
+        try captureReviewScreen(app, named: "medication-unit-selector")
+        let save = app.buttons["save-log-button"]
+        reveal(save, in: app)
+        save.tap()
+        XCTAssertTrue(save.waitForNonExistence(timeout: 5))
+        app.tabBars.buttons["Activity"].tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "5 mg")).firstMatch.waitForExistence(timeout: 5))
+        app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "5 mg")).firstMatch.tap()
+        XCTAssertTrue(app.buttons["log-unit-picker"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons["log-unit-picker"].label, "Unit, mg")
+        app.buttons["log-unit-picker"].tap()
+        app.buttons["g"].tap()
+        reveal(save, in: app)
+        save.tap()
+        XCTAssertTrue(save.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "5 g")).firstMatch.waitForExistence(timeout: 5))
+
+    }
+
     func testGramEntryRecentChipAndFailedSaveRetainValuesForRetry() throws {
         let app = launch("amount")
         let chore = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Weigh flour")).firstMatch
@@ -98,6 +129,7 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         chore.tap()
         XCTAssertTrue(app.buttons["120 g"].waitForExistence(timeout: 5))
         app.buttons["120 g"].tap()
+        app.buttons["custom-amount-button"].tap()
         let amount = app.textFields["amount-input"]
         XCTAssertEqual(amount.value as? String, "120")
         try captureReviewScreen(app, named: "gram-recent")
@@ -106,10 +138,19 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         let save = app.buttons["save-log-button"]
         reveal(save, in: app)
         save.tap()
+        reveal(app.staticTexts["Could not save. Please retry."], in: app)
         XCTAssertTrue(app.staticTexts["Could not save. Please retry."].waitForExistence(timeout: 5))
+        try captureReviewScreen(app, named: "gram-save-error")
+        let form = app.collectionViews.firstMatch
+        XCTAssertTrue(form.exists)
+        for _ in 0..<8 {
+            if amount.exists { break }
+            form.swipeDown()
+        }
+        XCTAssertTrue(amount.exists)
         XCTAssertEqual(amount.value as? String, "37")
         XCTAssertFalse(amount.isEnabled)
-        try captureReviewScreen(app, named: "gram-save-error")
+        reveal(save, in: app)
         save.tap()
         XCTAssertTrue(chore.waitForExistence(timeout: 5))
         app.tabBars.buttons["Activity"].tap()
@@ -258,6 +299,7 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         let recent = app.buttons["12 reps"]
         reveal(recent, in: app)
         recent.tap()
+        app.buttons["custom-amount-button"].tap()
         let amount = app.textFields["amount-input"]
         reveal(amount, in: app)
         XCTAssertEqual(amount.value as? String, "12")
@@ -277,6 +319,7 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         for scenario in ["recent-empty", "recent-error"] {
             let app = launch(scenario)
             openChore("Weigh flour", in: app)
+            app.buttons["custom-amount-button"].tap()
             let input = app.textFields["amount-input"]
             reveal(input, in: app)
             XCTAssertTrue(input.isEnabled)

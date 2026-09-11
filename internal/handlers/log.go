@@ -194,9 +194,10 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Note             string         `json:"note"`
 		Indicators       []string       `json:"indicators"`
 		IndicatorVolumes map[string]int `json:"indicatorVolumes"`
-		Date             string         `json:"date"`            // optional ISO date "YYYY-MM-DD"; defaults to today
-		Hour             *int           `json:"hour"`            // optional calendar slot hour (0-23)
-		CompletedAt      string         `json:"completedAt"`     // optional RFC3339 timestamp for backdating
+		Date             string         `json:"date"`        // optional ISO date "YYYY-MM-DD"; defaults to today
+		Hour             *int           `json:"hour"`        // optional calendar slot hour (0-23)
+		CompletedAt      string         `json:"completedAt"` // optional RFC3339 timestamp for backdating
+		MetricUnit       *string        `json:"metricUnit"`
 		VolumeML         *int           `json:"volumeML"`        // optional volume in mL
 		Rating           *int           `json:"rating"`          // optional rating 0-50 (tenths of a star)
 		DurationSeconds  *int           `json:"durationSeconds"` // optional elapsed seconds for duration-metric chores
@@ -301,7 +302,7 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 	entry, created, err := h.service.LogChoreIdempotent(r.Context(), log.CreateInput{
 		HouseholdID: *user.HouseholdID, ActorID: user.ID, UserID: logUserID, ChoreID: req.ChoreID,
 		Title: req.Title, Note: req.Note, Indicators: req.Indicators, IndicatorVolumes: req.IndicatorVolumes,
-		Date: logDate, SlotHour: req.Hour, CompletedAt: logCompletedAt, VolumeML: req.VolumeML,
+		MetricUnit: stringValue(req.MetricUnit), Date: logDate, SlotHour: req.Hour, CompletedAt: logCompletedAt, VolumeML: req.VolumeML,
 		Rating: req.Rating, DurationSeconds: req.DurationSeconds, Subject: req.Subject,
 		IdempotencyKey: idemKey, FollowUpMinutes: req.FollowUpMinutes, FollowUpTime: req.FollowUpTime,
 	})
@@ -383,6 +384,7 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Note             string         `json:"note"`
 		Indicators       []string       `json:"indicators"`
 		IndicatorVolumes map[string]int `json:"indicatorVolumes"`
+		MetricUnit       *string        `json:"metricUnit"`
 		VolumeML         *int           `json:"volumeML"`
 		Rating           *int           `json:"rating"`          // optional rating 0-50 (tenths of a star)
 		DurationSeconds  *int           `json:"durationSeconds"` // optional elapsed seconds for duration-metric chores
@@ -473,7 +475,7 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 		logCompletedAt = &t
 	}
 
-	if err := h.service.UpdateLog(r.Context(), id, *user.HouseholdID, req.Title, req.Note, req.Indicators, req.IndicatorVolumes, req.VolumeML, userID, logCompletedAt, req.Hour, logDate, req.Rating, req.DurationSeconds, req.Subject, log.Patch{ActorID: user.ID, Fields: fields}); err != nil {
+	if err := h.service.UpdateLog(r.Context(), id, *user.HouseholdID, req.Title, req.Note, req.Indicators, req.IndicatorVolumes, req.VolumeML, userID, logCompletedAt, req.Hour, logDate, req.Rating, req.DurationSeconds, req.Subject, log.Patch{ActorID: user.ID, Fields: fields, MetricUnit: req.MetricUnit}); err != nil {
 		if errors.Is(err, log.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "log not found")
 			return
@@ -847,7 +849,7 @@ func (h *LogHandler) Export(w http.ResponseWriter, r *http.Request) {
 
 	buffer := &exportBuffer{ctx: r.Context()}
 	cw := csv.NewWriter(buffer)
-	_ = cw.Write([]string{"date", "time", "chore", "member", "title", "note", "volume_ml", "indicators", "indicator_volumes", "rating", "duration_seconds", "subject"})
+	_ = cw.Write([]string{"date", "time", "chore", "member", "title", "note", "volume_ml", "indicators", "indicator_volumes", "rating", "duration_seconds", "subject", "metric_unit"})
 	for _, l := range logs {
 		if filterChoreID != 0 && l.ChoreID != filterChoreID {
 			continue
@@ -895,6 +897,7 @@ func (h *LogHandler) Export(w http.ResponseWriter, r *http.Request) {
 			csvSafe(rating),
 			csvSafe(durationSec),
 			csvSafe(subject),
+			csvSafe(l.MetricUnit),
 		})
 	}
 	cw.Flush()
@@ -952,4 +955,11 @@ func (h *LogHandler) LatestPerChore(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"latestLogs": result})
+}
+
+func stringValue(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

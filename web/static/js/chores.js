@@ -1,3 +1,4 @@
+import { commonAmountUnits } from './metrics.js';
 import { escapeHTML } from "./utils.js";
 import { sortChoresByOrder } from "./preferences.js";
 
@@ -154,7 +155,7 @@ export function renderChoreSheet(chore, opts = {}) {
   const metricOptions = metricTypes.map(m =>
     `<option value="${m.value}"${m.value === metricType ? " selected" : ""}>${escapeHTML(m.label)}</option>`
   ).join("");
-  const unitPresets = ["mL", "oz", "g", "min"];
+  const unitPresets = commonAmountUnits;
   const metricSection = `
     <div class="chore-edit-field">
       <label class="chore-edit-label" for="chore-metric-type">
@@ -169,7 +170,7 @@ export function renderChoreSheet(chore, opts = {}) {
         <input id="chore-metric-unit" type="text" class="input" list="chore-metric-unit-list"
           value="${escapeHTML(metricUnit || "mL")}" maxlength="12" placeholder="mL" />
         <datalist id="chore-metric-unit-list">
-          ${unitPresets.map(u => `<option value="${u}"></option>`).join("")}
+          ${unitPresets.map(u => `<option value="${escapeHTML(u)}"></option>`).join("")}
         </datalist>
       </div>
     </div>`;

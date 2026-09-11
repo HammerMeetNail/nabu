@@ -916,13 +916,7 @@ export function renderChoreAnalyticsSection(chore, ts, members, period) {
 
   let chartHTML;
   if (metricType === "amount") {
-    const unit = chore.metricUnit || "";
-    chartHTML = renderSimpleMetricChart(periods, {
-      valueFn: p => p.totalML || 0,
-      unitLabel: unit,
-      fmt: v => `${v}${unit ? " " + unit : ""}`,
-      grain,
-    });
+    chartHTML = renderAmountCharts(periods, chore.metricUnit || "", grain);
   } else if (metricType === "duration") {
     chartHTML = renderSimpleMetricChart(periods, {
       valueFn: p => Math.round((p.totalDuration || 0) / 60),
@@ -949,6 +943,15 @@ export function renderChoreAnalyticsSection(chore, ts, members, period) {
     ${renderMemberList(ts?.byMember, memberMap)}
     <div class="baby-chart">${chartHTML}</div>
   </div>`;
+}
+
+function renderAmountCharts(periods, fallback, grain = 'daily', excludeLiquid = false) {
+  const units = [...new Set(periods.flatMap(p => Object.keys(p.amountsByUnit || {})))].filter(unit => !excludeLiquid || unit !== "mL").sort();
+  if (excludeLiquid && !units.length) return "";
+  return (units.length ? units : [fallback]).map(unit => renderSimpleMetricChart(periods, {
+    valueFn: p => p.amountsByUnit ? (p.amountsByUnit[unit] || 0) : (p.totalML || 0),
+    unitLabel: unit, fmt: v => `${v}${unit ? ' ' + unit : ''}`, grain,
+  })).join('');
 }
 
 // ─── User-defined widgets (Phase 4) ─────────────────────────────────────────
@@ -1041,7 +1044,7 @@ export function renderWidgetSection(widget, state) {
     const ts = data[0]?.ts;
     const periods = ts?.periods || [];
     const unit = widgetMetricUnit(widget, ts);
-    bodyHTML = renderSimpleMetricChart(periods, {
+    bodyHTML = widget.metric === "amount" ? renderAmountCharts(periods, unit) : renderSimpleMetricChart(periods, {
       valueFn: p => widgetMetricValue(p, widget.metric),
       unitLabel: unit || (widget.metric === "count" ? "count" : ""),
       fmt: v => `${v}${unit ? " " + unit : ""}`,
@@ -1053,6 +1056,11 @@ export function renderWidgetSection(widget, state) {
     data.forEach(d => { if (d.summary) total += widgetMetricValue(d.summary, widget.metric); });
     const unit = data.length ? widgetMetricUnit(widget, data[0].summary) : "";
     bodyHTML = `<div class="widget-big-number">${total}${unit ? ` <span class="widget-big-unit">${escapeHTML(unit)}</span>` : ""}</div>`;
+    if (widget.metric === 'amount') {
+      const amounts = new Map();
+      data.forEach(d => Object.entries(d.summary?.amountsByUnit || {[d.summary?.metricUnit || '']:d.summary?.totalML || 0}).forEach(([u,v]) => amounts.set(u,(amounts.get(u) || 0)+v)));
+      bodyHTML = [...amounts].map(([u,v]) => `<div class="widget-big-number">${v} <span class="widget-big-unit">${escapeHTML(u)}</span></div>`).join('');
+    }
   }
 
   // Period toggle for the period-scoped types (last-done has no period). It
@@ -1370,7 +1378,7 @@ function renderBabyColumn(ts, memberMap, period, type) {
   const isVolume = type === "feed";
   const membersHTML = renderMemberList(ts.byMember, memberMap);
   const chartHTML = isVolume
-    ? renderVolumeChart(ts.periods, period)
+    ? renderVolumeChart(ts.periods, period) + renderAmountCharts(ts.periods, "", period, true)
     : renderIndicatorChart(ts.periods, period);
 
   return `<div class="baby-care-column">

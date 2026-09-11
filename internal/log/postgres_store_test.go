@@ -19,9 +19,9 @@ func TestPostgresLogStore_CreateLog(t *testing.T) {
 	store := NewPostgresStore(db)
 
 	now := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
-	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO chore_logs (household_id, user_id, chore_id, completed_at, note, indicators, slot_hour, log_date, volume_ml, indicator_volumes, rating, title, idempotency_key, duration_seconds, subject, idempotency_actor_id, idempotency_hash) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`)).
-		WithArgs(int64(1), int64(1), int64(1), now, "", "[]", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), int64(0), "").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(1, now))
+	mock.ExpectQuery(regexp.QuoteMeta(`INSERT INTO chore_logs (household_id, user_id, chore_id, completed_at, note, indicators, slot_hour, log_date, volume_ml, indicator_volumes, rating, title, idempotency_key, duration_seconds, subject, idempotency_actor_id, idempotency_hash, metric_unit) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`)).
+		WithArgs(int64(1), int64(1), int64(1), now, "", "[]", sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), sqlmock.AnyArg(), int64(0), "", "").
+		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "metric_unit"}).AddRow(1, now, ""))
 
 	entry, err := store.CreateLog(context.Background(), ChoreLog{
 		HouseholdID: 1, UserID: 1, ChoreID: 1, CompletedAt: now,
@@ -44,8 +44,8 @@ func TestPostgresLogStore_GetLog(t *testing.T) {
 
 	now := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
 	mock.ExpectQuery(`SELECT`).WithArgs(int64(1)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "user_id", "chore_id", "completed_at", "coalesce_note", "coalesce_indicators", "slot_hour", "created_at", "log_date", "volume_ml", "indicator_volumes", "rating", "title", "duration_seconds", "subject"}).
-			AddRow(1, 1, 1, 1, now, "", "[]", nil, now, nil, nil, nil, nil, nil, nil, nil))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "user_id", "chore_id", "completed_at", "coalesce_note", "coalesce_indicators", "slot_hour", "created_at", "log_date", "volume_ml", "indicator_volumes", "rating", "title", "duration_seconds", "subject", "metric_unit"}).
+			AddRow(1, 1, 1, 1, now, "", "[]", nil, now, nil, nil, nil, nil, nil, nil, nil, ""))
 
 	entry, err := store.GetLog(context.Background(), 1)
 	if err != nil {
@@ -99,10 +99,10 @@ func TestPostgresLogStore_ListLogs(t *testing.T) {
 	store := NewPostgresStore(db)
 
 	now := time.Date(2024, 1, 15, 10, 0, 0, 0, time.UTC)
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date, volume_ml, indicator_volumes::text, rating, COALESCE(title,''), duration_seconds, subject FROM chore_logs WHERE household_id = $1 AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) >= $2::date AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) < $3::date ORDER BY completed_at`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date, volume_ml, indicator_volumes::text, rating, COALESCE(title,''), duration_seconds, subject, metric_unit FROM chore_logs WHERE household_id = $1 AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) >= $2::date AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) < $3::date ORDER BY completed_at`)).
 		WithArgs(int64(1), "2024-01-15", "2024-01-16").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "user_id", "chore_id", "completed_at", "note", "indicators", "slot_hour", "created_at", "log_date", "volume_ml", "indicator_volumes", "rating", "title", "duration_seconds", "subject"}).
-			AddRow(1, 1, 1, 1, now, "", "[]", nil, now, nil, nil, nil, nil, nil, nil, nil))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "user_id", "chore_id", "completed_at", "note", "indicators", "slot_hour", "created_at", "log_date", "volume_ml", "indicator_volumes", "rating", "title", "duration_seconds", "subject", "metric_unit"}).
+			AddRow(1, 1, 1, 1, now, "", "[]", nil, now, nil, nil, nil, nil, nil, nil, nil, ""))
 
 	logs, err := store.ListLogs(context.Background(), 1, now)
 	if err != nil {
@@ -150,8 +150,8 @@ func TestPostgresLogStore_LatestPerChore_TiebreakerInOrderBy(t *testing.T) {
 	// when the per-chore lookup selects one row.
 	mock.ExpectQuery("(?s).*ORDER BY completed_at DESC, id DESC.*").
 		WithArgs(int64(1)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "user_id", "chore_id", "completed_at", "coalesce_note", "coalesce_indicators", "slot_hour", "created_at", "log_date", "volume_ml", "indicator_volumes", "rating", "title", "duration_seconds", "subject"}).
-			AddRow(2, 1, 1, 5, now, "", "[]", nil, now, nil, nil, nil, nil, nil, nil, nil))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "user_id", "chore_id", "completed_at", "coalesce_note", "coalesce_indicators", "slot_hour", "created_at", "log_date", "volume_ml", "indicator_volumes", "rating", "title", "duration_seconds", "subject", "metric_unit"}).
+			AddRow(2, 1, 1, 5, now, "", "[]", nil, now, nil, nil, nil, nil, nil, nil, nil, ""))
 
 	result, err := store.LatestPerChore(context.Background(), 1)
 	if err != nil {
@@ -172,9 +172,9 @@ func TestPostgresLogStore_ListLogsRange(t *testing.T) {
 
 	start := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := time.Date(2024, 1, 8, 0, 0, 0, 0, time.UTC)
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date, volume_ml, indicator_volumes::text, rating, COALESCE(title,''), duration_seconds, subject FROM chore_logs WHERE household_id = $1 AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) >= $2::date AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) < $3::date ORDER BY completed_at`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, user_id, chore_id, completed_at, COALESCE(note,''), COALESCE(indicators,'[]'), slot_hour, created_at, log_date, volume_ml, indicator_volumes::text, rating, COALESCE(title,''), duration_seconds, subject, metric_unit FROM chore_logs WHERE household_id = $1 AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) >= $2::date AND COALESCE(log_date, (completed_at AT TIME ZONE 'UTC')::date) < $3::date ORDER BY completed_at`)).
 		WithArgs(int64(1), "2024-01-01", "2024-01-08").
-		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "user_id", "chore_id", "completed_at", "note", "indicators", "slot_hour", "created_at", "log_date", "volume_ml", "indicator_volumes", "rating", "title", "duration_seconds", "subject"}))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "user_id", "chore_id", "completed_at", "note", "indicators", "slot_hour", "created_at", "log_date", "volume_ml", "indicator_volumes", "rating", "title", "duration_seconds", "subject", "metric_unit"}))
 
 	logs, err := store.ListLogsRange(context.Background(), 1, start, end)
 	if err != nil {

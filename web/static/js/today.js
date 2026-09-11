@@ -1,6 +1,6 @@
 import { apiFetch } from "./api.js";
 import { escapeHTML } from "./utils.js";
-import { formatAmount } from "./metrics.js";
+import { formatAmount, entryMetric, entryVolumeUnit } from "./metrics.js";
 import { loadSchedulesForDate } from "./schedule.js";
 import { submitLog } from "./offline-queue.js";
 import { contextSnapshot, sameOrigin, ContextChangedError } from "./browser-context.js";
@@ -53,9 +53,10 @@ export async function loadMoreHistory(before) {
   return data;
 }
 
-export async function logChore(choreId, note, date = "", indicators = [], slotHour = null, completedAt = null, volumeML = null, userId = null, indicatorVolumes = {}, followUpMinutes = 0, followUpTime = null, rating = null, title = null, durationSeconds = null, subject = null, { submission = {} } = {}) {
+export async function logChore(choreId, note, date = "", indicators = [], slotHour = null, completedAt = null, volumeML = null, userId = null, indicatorVolumes = {}, followUpMinutes = 0, followUpTime = null, rating = null, title = null, durationSeconds = null, subject = null, { submission = {}, metricUnit } = {}) {
   if (submission.promise) return submission.promise;
   const body = { choreId, note, indicators };
+  if (metricUnit) body.metricUnit = metricUnit;
   if (Object.keys(indicatorVolumes).length > 0) body.indicatorVolumes = indicatorVolumes;
   if (date) body.date = date;
   if (slotHour !== null) body.hour = slotHour;
@@ -261,7 +262,8 @@ export function renderHistoryView(state) {
       .filter(label => !volKeys.has(label))
       .map(label => escapeHTML(label.split(' ')[0]));
     rawDayGroups[rawDayGroups.length - 1].rows.push({
-      chore: chore || { hasVolumeML: true },
+      chore: entryMetric(chore || { hasVolumeML: true }, l),
+      volumeUnit: entryVolumeUnit(l, volumeUnit),
       icon: chore?.icon || '',
       name: chore?.name || `Chore #${l.choreId}`,
       color: chore?.color || '#999',
@@ -363,10 +365,10 @@ export function renderHistoryView(state) {
       const rows = g.rows.map(r => {
         const indicatorVolParts = Object.entries(r.indicatorVolumes || {}).map(([label, ml]) => {
           const icon = escapeHTML(label.split(' ')[0]);
-          return `${icon} ${escapeHTML(formatAmount(ml, r.chore, volumeUnit))}`;
+          return `${icon} ${escapeHTML(formatAmount(ml, r.chore, r.volumeUnit))}`;
         });
         const indicatorVolStr = indicatorVolParts.length > 0 ? ` · ${indicatorVolParts.join(' ')}` : '';
-        const legacyVolumeStr = !indicatorVolParts.length && r.volumeML != null ? ` · ${escapeHTML(formatAmount(r.volumeML, r.chore, volumeUnit))}` : '';
+        const legacyVolumeStr = !indicatorVolParts.length && r.volumeML != null ? ` · ${escapeHTML(formatAmount(r.volumeML, r.chore, r.volumeUnit))}` : '';
         const indicatorIconsStr = r.indicatorIcons.length ? ` · ${r.indicatorIcons.join(' ')}` : '';
         const ratingStr = r.rating != null ? ` · ${renderStarRatingDisplay(r.rating)}` : '';
         const subjectStr = r.subject ? ` · <span class="hist-subject">${escapeHTML(r.subject)}</span>` : '';

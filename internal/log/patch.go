@@ -6,8 +6,9 @@ package log
 type LogFields map[string]bool
 
 type Patch struct {
-	ActorID int64
-	Fields  LogFields
+	MetricUnit *string
+	ActorID    int64
+	Fields     LogFields
 }
 
 func (f LogFields) includes(name string) bool { return f == nil || f[name] }
@@ -18,6 +19,9 @@ func fieldsOrAll(fields []LogFields) LogFields {
 	return nil
 }
 func mergeLog(existing, next ChoreLog, fields LogFields) ChoreLog {
+	if fields.includes("metricUnit") || (fields.includes("snapshotMetricUnit") && existing.MetricUnit == "") {
+		existing.MetricUnit = next.MetricUnit
+	}
 	if fields.includes("note") {
 		existing.Note = next.Note
 	}

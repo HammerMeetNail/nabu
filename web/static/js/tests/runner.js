@@ -1436,6 +1436,7 @@ describe("Activity amount units", () => {
       metricUnit: 'mg', indicatorLabels: ['Morning'] },
       { id: 2, indicators: ['Morning'], indicatorVolumes: { Morning: 25 } }, '2026-07-02', [], 1);
     assert.ok(html.includes('value="25"'));
-    assert.ok(html.includes('<span class="indicator-amount-unit">mg</span>'));
+    assert.ok(html.includes('<option value="mg" selected>mg</option>'));
+    assert.ok(html.includes('Other amount…'));
   });
 });

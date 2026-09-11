@@ -211,6 +211,7 @@ struct Chore: Codable, Identifiable, Equatable {
 // MARK: - ChoreLog
 
 struct ChoreLog: Codable, Identifiable, Equatable {
+    let metricUnit: String?
     let id: Int
     let householdId: Int
     let userId: Int
@@ -229,7 +230,8 @@ struct ChoreLog: Codable, Identifiable, Equatable {
     /// Subject tag (migration 039), e.g. which twin this log is about. nil = untagged.
     let subject: String?
 
-    init(id: Int, householdId: Int, userId: Int, choreId: Int, completedAt: Date, note: String, indicators: [String], slotHour: Int?, createdAt: Date, volumeML: Int?, indicatorVolumes: [String: Int]?, title: String? = nil, rating: Int? = nil, durationSeconds: Int? = nil, subject: String? = nil) {
+    init(id: Int, householdId: Int, userId: Int, choreId: Int, completedAt: Date, note: String, indicators: [String], slotHour: Int?, createdAt: Date, volumeML: Int?, indicatorVolumes: [String: Int]?, title: String? = nil, rating: Int? = nil, durationSeconds: Int? = nil, subject: String? = nil, metricUnit: String? = nil) {
+        self.metricUnit = metricUnit
         self.id = id
         self.householdId = householdId
         self.userId = userId
@@ -586,6 +588,7 @@ struct VolumePoint: Codable, Equatable {
 }
 
 struct TimeSeriesPeriod: Codable, Equatable {
+    var amountsByUnit: [String: Int]? = nil
     let start: String
     let end: String
     let count: Int
@@ -623,6 +626,7 @@ struct FeedingGap: Codable, Equatable {
 /// Period-scoped aggregate for one chore (`GET /api/stats/chores/{id}/summary`).
 /// Backs the total / member-split widget types.
 struct ChoreSummary: Codable, Equatable {
+    var amountsByUnit: [String: Int]? = nil
     let choreId: Int
     let count: Int
     let totalML: Int

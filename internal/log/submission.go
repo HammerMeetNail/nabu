@@ -17,6 +17,7 @@ var ErrIdempotencyConflict = errors.New("idempotency key belongs to another subm
 // CreateInput describes the original logical submission, including follow-up
 // effects. Its digest remains unchanged when the resulting log is later edited.
 type CreateInput struct {
+	MetricUnit                                  string `json:",omitempty"`
 	HouseholdID, ActorID, UserID, ChoreID       int64
 	Title, Subject                              *string
 	Note                                        string

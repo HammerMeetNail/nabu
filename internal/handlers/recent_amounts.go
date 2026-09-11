@@ -20,7 +20,11 @@ func (h *LogHandler) RecentAmounts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid chore")
 		return
 	}
-	amounts, err := h.service.RecentAmounts(r.Context(), user.ID, *user.HouseholdID, choreID)
+	amounts, err := h.service.RecentAmounts(r.Context(), user.ID, *user.HouseholdID, choreID, r.URL.Query().Get("unit"))
+	if errors.Is(err, log.ErrInvalidInput) {
+		writeError(w, http.StatusBadRequest, "invalid unit")
+		return
+	}
 	if errors.Is(err, log.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "chore not found")
 		return

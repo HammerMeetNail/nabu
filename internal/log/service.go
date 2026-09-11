@@ -182,6 +182,11 @@ func (s *Service) LogChoreIdempotent(ctx context.Context, input CreateInput) (Ch
 	if err := s.authorizeSubmission(ctx, input); err != nil {
 		return ChoreLog{}, false, err
 	}
+	if input.MetricUnit != "" {
+		if err := validateUnit(input.MetricUnit); err != nil {
+			return ChoreLog{}, false, err
+		}
+	}
 	fingerprint, err := input.fingerprint()
 	if err != nil {
 		return ChoreLog{}, false, err
@@ -194,6 +199,10 @@ func (s *Service) LogChoreIdempotent(ctx context.Context, input CreateInput) (Ch
 		}
 	}
 	entry := s.buildLog(input.HouseholdID, input.UserID, input.ChoreID, input.Title, input.Note, input.Indicators, input.IndicatorVolumes, input.Date, input.SlotHour, input.CompletedAt, input.VolumeML, input.Rating, input.DurationSeconds, input.Subject)
+	entry.MetricUnit, err = s.snapshotUnit(ctx, input.ActorID, input.HouseholdID, input.ChoreID, input.MetricUnit)
+	if err != nil {
+		return ChoreLog{}, false, err
+	}
 	entry.IdempotencyKey = input.IdempotencyKey
 	entry.IdempotencyActorID = input.ActorID
 	entry.IdempotencyHash = fingerprint
@@ -249,6 +258,36 @@ func (s *Service) UpdateLog(ctx context.Context, logID int64, householdID int64,
 	}
 	if volumeML != nil && (*volumeML < 0 || *volumeML > maxVolumeML) {
 		return fmt.Errorf("%w: amount must be between 0 and %d", ErrInvalidInput, maxVolumeML)
+	}
+	if len(patches) > 0 && fields.includes("metricUnit") {
+		if patches[0].MetricUnit == nil {
+			return fmt.Errorf("%w: unit cannot be null", ErrInvalidInput)
+		}
+		if err := validateUnit(*patches[0].MetricUnit); err != nil {
+			return err
+		}
+		log.MetricUnit, err = s.snapshotUnit(ctx, patches[0].ActorID, householdID, log.ChoreID, *patches[0].MetricUnit)
+		if err != nil {
+			return err
+		}
+	}
+	if log.MetricUnit == "" && ((fields.includes("volumeML") && volumeML != nil) || (fields.includes("indicatorVolumes") && len(indicatorVolumes) > 0)) {
+		actorID := log.UserID
+		if len(patches) > 0 {
+			actorID = patches[0].ActorID
+		}
+		log.MetricUnit, err = s.snapshotUnit(ctx, actorID, householdID, log.ChoreID, "")
+		if err != nil {
+			return err
+		}
+		if fields != nil {
+			copyFields := LogFields{}
+			for key, value := range fields {
+				copyFields[key] = value
+			}
+			copyFields["snapshotMetricUnit"] = true
+			fields = copyFields
+		}
 	}
 	log.Note = note
 	log.Title = title

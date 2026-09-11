@@ -73,7 +73,6 @@ struct HistoryListView: View {
     @EnvironmentObject var state: AppState
 
     @State private var selectedLog: ChoreLog?
-    @State private var selectedChore: Chore?
     @State private var editingNoteDate: DayNoteTarget?
     @State private var deletingLog: ChoreLog?
 
@@ -136,7 +135,7 @@ struct HistoryListView: View {
             await refresh()
         }
         .sheet(item: $selectedLog, onDismiss: { Task { await refresh() } }) { log in
-            if let chore = selectedChore {
+            if let chore = state.chores.first(where: { $0.id == log.choreId }) {
                 LogSheet(state: state, chore: chore, log: log, logStore: logStore)
             }
         }
@@ -192,7 +191,7 @@ struct HistoryListView: View {
                 volumeML: pending.volumeML,
                 indicatorVolumes: pending.indicatorVolumes.isEmpty ? nil : pending.indicatorVolumes,
                 title: pending.title, rating: pending.rating,
-                subject: pending.subject
+                subject: pending.subject, metricUnit: pending.metricUnit
             )
         }
     }
@@ -266,7 +265,6 @@ struct HistoryListView: View {
         Button {
             // Pending rows aren't yet on the server, so they're not tappable.
             guard !isPending else { return }
-            selectedChore = chore
             selectedLog = log
         } label: {
             HStack(spacing: 12) {
@@ -314,10 +312,10 @@ struct HistoryListView: View {
                         }
                         let volKeys = Set(log.indicatorVolumes?.keys.map { $0 } ?? [])
                         if volKeys.isEmpty, let volume = log.volumeML {
-                            Text("· \(formatChoreAmount(volume, chore: chore, volumeUnit: unit))")
+                            Text("· \(formatChoreAmount(volume, chore: chore, volumeUnit: unit, metricUnit: log.metricUnit))")
                         }
                         let volParts = (log.indicatorVolumes ?? [:]).sorted(by: { $0.key < $1.key }).map { k, v in
-                            "\(k.split(separator: " ").first ?? "") \(formatChoreAmount(v, chore: chore, volumeUnit: unit))"
+                            "\(k.split(separator: " ").first ?? "") \(formatChoreAmount(v, chore: chore, volumeUnit: unit, metricUnit: log.metricUnit))"
                         }
                         if !volParts.isEmpty {
                             Text("· \(volParts.joined(separator: " "))")

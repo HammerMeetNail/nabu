@@ -70,10 +70,11 @@ func TestPostgresAggregatesMatchAuthorizedMemorySemantics(t *testing.T) {
 	strp := func(s string) *string { return &s }
 	add := func(l chorelog.ChoreLog) {
 		t.Helper()
-		if _, err := pg.CreateLog(ctx, l); err != nil {
+		saved, err := pg.CreateLog(ctx, l)
+		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := mem.CreateLog(ctx, l); err != nil {
+		if _, err := mem.CreateLog(ctx, saved); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -115,6 +116,17 @@ func TestPostgresAggregatesMatchAuthorizedMemorySemantics(t *testing.T) {
 	// candidate; a canonical date outside the legacy year window is not.
 	add(chorelog.ChoreLog{HouseholdID: 1, UserID: 2, ChoreID: 10, CompletedAt: midday, LogDate: strp(now.AddDate(0, -3, 0).Format(time.DateOnly)), Indicators: []string{"a", "b"}, IndicatorVolumes: map[string]int{"a": 30, "b": 50}})
 	add(chorelog.ChoreLog{HouseholdID: 1, UserID: 2, ChoreID: 10, CompletedAt: midday, LogDate: strp(now.AddDate(-2, 0, 0).Format(time.DateOnly)), VolumeML: intp(999)})
+	add(chorelog.ChoreLog{HouseholdID: 1, UserID: 2, ChoreID: 10, CompletedAt: midday, VolumeML: intp(5), MetricUnit: "mg"})
+	add(chorelog.ChoreLog{HouseholdID: 1, UserID: 2, ChoreID: 10, CompletedAt: midday, VolumeML: intp(3), MetricUnit: "g"})
+	for _, service := range []*Service{sqlSvc, memorySvc} {
+		summary, err := service.GetChoreSummary(viewer, 1, 10, "all", ny)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if summary.AmountsByUnit["mg"] != 5 || summary.AmountsByUnit["g"] != 3 {
+			t.Fatalf("mixed units: %+v", summary)
+		}
+	}
 	for _, loc := range []*time.Location{time.UTC, ny, paris} {
 		t.Run(loc.String(), func(t *testing.T) {
 			for _, start := range []time.Time{time.Date(2026, 3, 8, 0, 0, 0, 0, loc), time.Date(2026, 11, 1, 0, 0, 0, 0, loc)} {
@@ -189,7 +201,7 @@ func TestPostgresAggregatesMatchAuthorizedMemorySemantics(t *testing.T) {
 					}
 					if id == 10 && period == "daily" {
 						last := got.Periods[len(got.Periods)-1]
-						if last.Count != 7 || last.TotalML != 680 || last.TotalDuration != 360 {
+						if last.Count != 9 || last.TotalML != 680 || last.TotalDuration != 360 {
 							t.Fatalf("today lost canonical-date or metric semantics: %+v", last)
 						}
 					}

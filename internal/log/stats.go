@@ -37,7 +37,7 @@ func (s *PostgresStore) StatsLogs(ctx context.Context, householdID int64, q Stat
 	if q.End != nil {
 		where += " AND l.completed_at < " + add(*q.End)
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT l.id,l.chore_id,l.user_id,l.completed_at,COALESCE(l.indicators,'[]'),l.volume_ml,l.indicator_volumes::text,l.duration_seconds
+	rows, err := s.db.QueryContext(ctx, `SELECT l.id,l.chore_id,l.user_id,l.completed_at,COALESCE(l.indicators,'[]'),l.volume_ml,l.indicator_volumes::text,l.duration_seconds,l.metric_unit
  FROM chore_logs l WHERE `+where, args...)
 	if err != nil {
 		return nil, err
@@ -49,7 +49,7 @@ func (s *PostgresStore) StatsLogs(ctx context.Context, householdID int64, q Stat
 		var indicators string
 		var volumes sql.NullString
 		var volume, duration sql.NullInt64
-		if err := rows.Scan(&l.ID, &l.ChoreID, &l.UserID, &l.CompletedAt, &indicators, &volume, &volumes, &duration); err != nil {
+		if err := rows.Scan(&l.ID, &l.ChoreID, &l.UserID, &l.CompletedAt, &indicators, &volume, &volumes, &duration, &l.MetricUnit); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(indicators), &l.Indicators)

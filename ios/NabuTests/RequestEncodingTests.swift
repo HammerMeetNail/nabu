@@ -13,6 +13,20 @@ final class RequestEncodingTests: XCTestCase {
         try! JSONSerialization.jsonObject(with: data) as! [String: Any]
     }
 
+    func testLogUnitEncodingAndLegacyQueueDecoding() throws {
+        let legacy = Data(#"{"choreId":1,"volumeML":5}"#.utf8)
+        let decoded = try apiDecoder.decode(CreateLogRequest.self, from: legacy)
+        XCTAssertNil(decoded.metricUnit)
+        let request = CreateLogRequest(choreId: 1, note: nil, indicators: nil, date: nil, hour: nil, completedAt: nil, volumeML: 5, userId: nil, indicatorVolumes: nil, followUpMinutes: nil, followUpTime: nil, metricUnit: "mg")
+        XCTAssertEqual(json(try apiEncoder.encode(request))["metricUnit"] as? String, "mg")
+        let patch = UpdateLogRequest(note: nil, indicators: nil, volumeML: nil, userId: nil, completedAt: nil, hour: nil, date: nil, indicatorVolumes: nil, metricUnit: "g")
+        let body = json(try apiEncoder.encode(patch))
+        XCTAssertEqual(body["metricUnit"] as? String, "g")
+        XCTAssertNil(body["volumeML"])
+        XCTAssertTrue(AmountUnits.options("reps").contains("reps"))
+        for unit in ["mL", "mg", "g"] { XCTAssertTrue(AmountUnits.common.contains(unit)) }
+    }
+
     // MARK: - Auth
 
     func testRegisterRequest() throws {

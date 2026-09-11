@@ -135,6 +135,7 @@ final class OfflineLogQueue: ObservableObject {
 /// "pending" badge (PWA Phase 2.1), reconciled (cleared) on the next
 /// successful replay.
 struct PendingLog: Identifiable, Equatable {
+    let metricUnit: String?
     let id: String // idempotencyKey
     let choreId: Int
     var userId: Int?
@@ -148,6 +149,7 @@ struct PendingLog: Identifiable, Equatable {
     let completedAt: Date
 
     init(body: CreateLogRequest, fallbackUserId: Int?) {
+        self.metricUnit = body.metricUnit
         self.id = body.idempotencyKey ?? UUID().uuidString
         self.choreId = body.choreId
         self.userId = body.userId ?? fallbackUserId

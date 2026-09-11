@@ -122,7 +122,7 @@ test.describe("Stats customize", () => {
     await page.waitForSelector(".stats-page");
 
     // Baby section should be visible without opening customize
-    await expect(page.locator("h3:has-text(\"Baby\")")).toBeVisible();
+    await expect(page.getByRole("heading", {name:"Baby", exact:true})).toBeVisible();
   });
 
   test("stats baby section can be hidden and re-shown", async ({ page }) => {
@@ -150,21 +150,21 @@ test.describe("Stats customize", () => {
     await page.waitForSelector(".home-grid", { timeout: 15000 });
     await page.click("a[data-nav=\"stats\"]");
     await page.waitForSelector(".stats-page");
-    await expect(page.locator("h3:has-text(\"Baby\")")).toBeVisible();
+    await expect(page.getByRole("heading", {name:"Baby", exact:true})).toBeVisible();
 
     await page.click("button[data-action=\"toggle-customize-stats\"]");
     const babyRow = page.locator(".customize-row[data-section=\"baby\"]");
     await babyRow.locator("input[type=\"checkbox\"]").uncheck();
-    await expect(page.locator("h3:has-text(\"Baby\")")).toHaveCount(0);
+    await expect(page.getByRole("heading", {name:"Baby", exact:true})).toHaveCount(0);
 
     await page.reload();
     await page.waitForSelector(".home-grid", { timeout: 15000 });
     await page.click("a[data-nav=\"stats\"]");
     await page.waitForSelector(".stats-page");
-    await expect(page.locator("h3:has-text(\"Baby\")")).toHaveCount(0);
+    await expect(page.getByRole("heading", {name:"Baby", exact:true})).toHaveCount(0);
 
     await page.click("button[data-action=\"toggle-customize-stats\"]");
     await babyRow.locator("input[type=\"checkbox\"]").check();
-    await expect(page.locator("h3:has-text(\"Baby\")")).toBeVisible();
+    await expect(page.getByRole("heading", {name:"Baby", exact:true})).toBeVisible();
   });
 });

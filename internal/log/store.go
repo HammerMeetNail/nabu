@@ -6,6 +6,7 @@ import (
 )
 
 type ChoreLog struct {
+	MetricUnit       string         `json:"metricUnit,omitempty"`
 	ID               int64          `json:"id"`
 	HouseholdID      int64          `json:"householdId"`
 	UserID           int64          `json:"userId"`
@@ -54,7 +55,7 @@ type Store interface {
 	// LatestPerChore returns the most recent log for each chore in the household.
 	// Keys are chore IDs; chores with no logs are absent from the map.
 	LatestPerChore(ctx context.Context, householdID int64) (map[int64]ChoreLog, error)
-	RecentAmounts(ctx context.Context, householdID, choreID int64) ([]int, error)
+	RecentAmounts(ctx context.Context, householdID, choreID int64, units ...string) ([]int, error)
 	// HistoryLogs returns logs between start and end (exclusive), ordered
 	// newest-first, and whether older logs exist before start.
 	HistoryLogs(ctx context.Context, householdID int64, start, end time.Time) (logs []ChoreLog, hasMore bool, err error)

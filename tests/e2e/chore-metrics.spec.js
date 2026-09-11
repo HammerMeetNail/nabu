@@ -87,7 +87,7 @@ for (const withIndicators of [true, false]) {
     await page.click(`.home-chore-card[data-home-chore-id="${chore.id}"]`);
     const input = page.locator(withIndicators ? '.indicator-volume-select' : '#log-volume');
     if (withIndicators) await page.click('[data-action="toggle-indicator"]');
-    await input.fill('25');
+    await input.selectOption('25');
     await page.click('[data-action="save-log"]');
     await expect(input).toHaveCount(0);
     await page.click('[data-nav="activity"]');
@@ -96,15 +96,15 @@ for (const withIndicators of [true, false]) {
     await expect(row).not.toContainText('mL');
     await row.click();
     await expect(input).toHaveValue('25');
-    const unitLabel = page.locator(withIndicators ? '.indicator-amount-unit' : 'label[for="log-volume"]');
+    const unitLabel = page.locator('#log-metric-unit');
     await expect(unitLabel).toBeVisible();
-    await expect(unitLabel).toContainText('mg');
-    await input.fill('30');
+    await expect(unitLabel).toHaveValue('mg');
+    await input.selectOption('30');
     await page.click('[data-action="close-sheet"].sheet-cancel-btn');
     await expect(row).toContainText('25 mg');
     await row.click();
     await expect(input).toHaveValue('25');
-    await input.fill('30');
+    await input.selectOption('30');
     await page.click('[data-action="save-log"]');
     await expect(input).toHaveCount(0);
     await page.reload();

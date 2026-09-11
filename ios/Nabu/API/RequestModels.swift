@@ -133,6 +133,7 @@ struct ReorderChoresRequest: Codable {
 
 struct CreateLogRequest: Codable, Equatable {
     let choreId: Int
+    let metricUnit: String?
     let note: String?
     let indicators: [String]?
     let date: String?
@@ -150,8 +151,9 @@ struct CreateLogRequest: Codable, Equatable {
     /// Client-generated token (≤64 chars) so offline replays de-dup server-side.
     let idempotencyKey: String?
 
-    init(choreId: Int, note: String?, indicators: [String]?, date: String?, hour: Int?, completedAt: String?, volumeML: Int?, userId: Int?, indicatorVolumes: [String: Int]?, followUpMinutes: Int?, followUpTime: String?, rating: Int? = nil, title: String? = nil, durationSeconds: Int? = nil, subject: String? = nil, idempotencyKey: String? = nil) {
+    init(choreId: Int, note: String?, indicators: [String]?, date: String?, hour: Int?, completedAt: String?, volumeML: Int?, userId: Int?, indicatorVolumes: [String: Int]?, followUpMinutes: Int?, followUpTime: String?, rating: Int? = nil, title: String? = nil, durationSeconds: Int? = nil, subject: String? = nil, idempotencyKey: String? = nil, metricUnit: String? = nil) {
         self.choreId = choreId
+        self.metricUnit = metricUnit
         self.note = note
         self.indicators = indicators
         self.date = date
@@ -176,11 +178,12 @@ struct CreateLogRequest: Codable, Equatable {
         case indicatorVolumes
         case followUpMinutes
         case followUpTime
-        case rating, title, durationSeconds, subject, idempotencyKey
+        case metricUnit, rating, title, durationSeconds, subject, idempotencyKey
     }
 }
 
 struct UpdateLogRequest: Codable {
+    let metricUnit: String?
     let note: String?
     let indicators: [String]?
     let volumeML: Int??
@@ -196,7 +199,8 @@ struct UpdateLogRequest: Codable {
     /// sends an explicit JSON null (clears the subject), matching the PWA.
     let subject: String??
 
-    init(note: String?, indicators: [String]?, volumeML: Int??, userId: Int?, completedAt: String?, hour: Int?, date: String?, indicatorVolumes: [String: Int]?, rating: Int?? = nil, title: String?? = nil, durationSeconds: Int?? = nil, subject: String?? = nil) {
+    init(note: String?, indicators: [String]?, volumeML: Int??, userId: Int?, completedAt: String?, hour: Int?, date: String?, indicatorVolumes: [String: Int]?, rating: Int?? = nil, title: String?? = nil, durationSeconds: Int?? = nil, subject: String?? = nil, metricUnit: String? = nil) {
+        self.metricUnit = metricUnit
         self.note = note
         self.indicators = indicators
         self.volumeML = volumeML
@@ -216,7 +220,7 @@ struct UpdateLogRequest: Codable {
         case volumeML = "volumeML"
         case userId
         case indicatorVolumes
-        case rating, title, durationSeconds, subject
+        case metricUnit, rating, title, durationSeconds, subject
     }
 }
 
