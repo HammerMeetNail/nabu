@@ -210,7 +210,7 @@ export function renderHistoryView(state) {
   // flat text search, so hide the filter FAB while searching.
   const filterFab = (chores.length > 0 && !searching) ? renderHistoryFilter(state) : '';
   const status = state.historyError ? `<p class="form-error" role="status">${escapeHTML(state.historyError)} <button class="btn btn-sm" data-action="retry-activity">Retry</button></p>`
-    : state.historyLoading ? '<p role="status" class="text-secondary">Loading activity…</p>' : '';
+    : state.historyLoading ? '<p role="status" class="sr-only">Loading activity…</p>' : '';
   const searchBar = renderHistorySearchBar(state) + status;
   const loadMore = state.historyHasMore && !searching
     ? `<div class="load-more-wrap"><button type="button" class="btn btn-secondary load-more-btn" data-action="load-more-history"${state._historyLoadingMore ? ' disabled' : ''}>${state._historyLoadingMore ? 'Loading…' : 'Load more'}</button></div>`

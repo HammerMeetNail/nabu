@@ -373,7 +373,7 @@ export function renderStatsPage(state) {
     <div class="stats-customization">${state.stats?.customizeOpen ? renderCustomizePanel(state) : ""}</div>
     <div class="stats-load-status">
       ${Object.values(stats.errors || {}).some(Boolean) ? '<p role="status" class="form-error">Some charts could not be refreshed. <button type="button" class="btn btn-sm" data-action="retry-stats">Retry charts</button></p>' : ''}
-      ${Object.values(stats.loading || {}).some(Boolean) ? '<p role="status" class="text-secondary">Loading charts…</p>' : ''}
+      ${Object.values(stats.loading || {}).some(Boolean) ? '<p role="status" class="sr-only">Loading charts…</p>' : ''}
     </div>
     <div class="stats-sections">${body}</div>
   </div>`;

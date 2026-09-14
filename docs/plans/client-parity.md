@@ -156,7 +156,7 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | Pull-to-refresh | `app.js` (`setupPullToRefresh`) | all tab views (`.refreshable`) | N/A (client UX) | Built | Native `.refreshable` on every tab's scroll view (Stats, Activity, Home, Schedule, Settings, Notifications), refetching that tab's data |
 | PWA manifest shortcuts / iOS quick actions | `manifest.webmanifest`, `app.js` (`?quicklog=`) | `App/AppDelegate.swift` (shortcuts + SceneDelegate), `Support/DeepLink.swift`, `DeepLinkTests.swift` | N/A (install surface) | Built | P6: iOS ships the native counterpart — Home-Screen quick actions Log Feed / Log Chore / Activity with the same three targets as the PWA's manifest shortcuts; `DeepLink` parses all four `?quicklog=` forms identically on both clients |
 | **Navigation** |
-| Five tabs | `app.js`, `nav-tabs-position.spec.js` | `App/NavigationModel.swift`, `NabuUITests.swift` | N/A (client routing) | Built | |
+| Five tabs | `app.js`, `nav-tabs-position.spec.js`, `nav-loading-layout.spec.js` | `App/NavigationModel.swift`, `NabuUITests.swift` | N/A (client routing) | Built | PWA Activity and Stats announce background loading to screen readers without visible loading text or a shifting content row. Native TabView and its tab-local loading indicators are unchanged; no API/model change. |
 | Tab order (Stats, Activity, Home, Schedule, Settings) | `app.js`, `nav-tabs-position.spec.js` | `App/NavigationModel.swift`, `NabuUITests.swift` | N/A (client routing) | Built | Same tab set/order as PWA |
 | **Log Member Attribution** |
 | Log by member | `schedule.js`, `log-member-attribution.spec.js` | `Views/HomeView.swift`, `Views/LogSheet.swift` | `/api/logs` | Built | |
