@@ -4,7 +4,9 @@ struct NotificationsView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var environment: AppEnvironment
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.dismiss) private var dismiss
     @State private var loader: NotificationDataLoader?
+    @State private var presentationID: UUID?
 
     var body: some View {
         NavigationStack {
@@ -57,6 +59,7 @@ struct NotificationsView: View {
                 }
             }
         }
+        .onAppear { presentationID = UUID() }
         .task {
             state.notificationPanelOpen = true
             // Freeze this screen's API identity; shared AppState operations also
@@ -65,12 +68,24 @@ struct NotificationsView: View {
             loader = current
             await current.loadNotifData()
         }
-        .onDisappear { state.notificationPanelOpen = false }
+        .onDisappear {
+            presentationID = nil
+            state.notificationPanelOpen = false
+        }
     }
 
     private func bulkAction(_ title: String, symbol: String, identifier: String,
                             disabled: Bool, action: NotificationDataLoader.Action) -> some View {
-        Button { Task { await loader?.mutate(action) } } label: {
+        Button {
+            let presentation = presentationID
+            Task {
+                let updated = await loader?.mutate(action) ?? false
+                guard updated, case .clearAll = action,
+                      let presentation, presentationID == presentation,
+                      !Task.isCancelled else { return }
+                dismiss()
+            }
+        } label: {
             Label(title, systemImage: symbol)
                 .font(.subheadline.weight(.semibold))
                 .frame(maxWidth: .infinity, minHeight: 48)

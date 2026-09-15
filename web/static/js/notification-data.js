@@ -31,7 +31,7 @@ export async function loadNotificationPage(state, {append = false} = {}) {
 }
 
 export async function mutateNotification(state, action, id) {
-  if (state.notificationMutating) return;
+  if (state.notificationMutating) return false;
   const scope = captureScope(state, "notifications");
   state.notificationMutating = true;
   state.notificationLoading = false;
@@ -43,15 +43,17 @@ export async function mutateNotification(state, action, id) {
     else if (action === "clear") await clearAllNotifications();
     else if (action === "delete") await deleteNotification(id);
     else await markRead(id);
-    if (!scope.current()) return;
+    if (!scope.current()) return false;
     const wasUnread = state.notifications.some(n => n.id === id && !n.isRead);
     state.notifications = action === "clear" ? [] : action === "delete" ? state.notifications.filter(n => n.id !== id)
       : state.notifications.map(n => action === "all" || n.id === id ? {...n, isRead:true} : n);
     if (action === "clear") state.notificationCursor = null;
     state.unreadNotifications = action === "all" || action === "clear" ? 0 : Math.max(0, state.unreadNotifications - (wasUnread ? 1 : 0));
     if (action === "all" || action === "clear") void clearAppBadge();
+    return true;
   } catch (err) {
     if (scope.current()) state.notificationError = err.message || "Could not update the notification. Please retry.";
+    return false;
   } finally {
     if (scope.current()) state.notificationMutating = false;
   }
