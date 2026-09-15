@@ -34,9 +34,12 @@ func claimFixture(t *testing.T, store Store) (*Service, User, Session, *mail.Mem
 		t.Fatal(err)
 	}
 	u, session, err := svc.RegisterWithHash(context.Background(), "claimed@example.invalid", string(hash))
-	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatal(err)
+	}
+	deliverInitialAuthMail(t, svc, u.ID)
+	if len(mailer.Messages()) != 1 {
+		t.Fatal("fixture registration did not deliver exactly one verification email")
 	}
 	svc.SetOIDCProvider(verifiedTestIdentity{email: u.Email})
 	svc.SetAppleVerifier(verifiedTestIdentity{email: u.Email})

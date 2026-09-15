@@ -255,6 +255,14 @@ role can create databases. Integration tests create a random database per test,
 then close and drop only that database; extension migrations stay isolated too.
 They never use `DATABASE_URL` as a fallback.
 
+Timing tests must work when PostgreSQL runs in a VM whose clock differs from
+the Go process. SQL `NOW()` and an application's injected clock are independent.
+Use persisted due times or explicit timestamps and advance the test clock;
+check both sides of retry, lease, and expiry boundaries with microsecond-aligned
+values. Avoid sleeps and arbitrary future offsets. Auth fixture delivery uses
+`deliverInitialAuthMail` for the first unattempted registration email, while
+outbox retry tests advance explicitly to the persisted retry deadline.
+
 Run the opt-in history workload with `NABU_PERF=1 TEST_DATABASE_URL=… go test -v
 -timeout 360s ./internal/log -run TestLocalHistoryWorkload`. Set
 `NABU_PERF_REPORT` to an absolute path outside the checkout (the default is

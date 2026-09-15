@@ -20,9 +20,46 @@ func failSessionInsert(t *testing.T, db *sql.DB) {
 	}
 }
 
+// Deliver a fixture's first registration email at its persisted due time.
+// PostgreSQL NOW() and the Go test process may use different machine clocks.
+// This helper must not bypass a retry delay, an active lease, or expiry.
+func deliverInitialAuthMail(t *testing.T, svc *Service, userID int64) time.Time {
+	t.Helper()
+	now := svc.now()
+	if store, ok := svc.store.(*PostgresStore); ok {
+		var expiresAt time.Time
+		var leaseUntil sql.NullTime
+		var attempts, rows int
+		err := store.db.QueryRow(`SELECT next_attempt, expires_at, lease_until, attempts, COUNT(*) OVER ()
+            FROM auth_mail_outbox WHERE user_id=$1`, userID).Scan(&now, &expiresAt, &leaseUntil, &attempts, &rows)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if rows != 1 || attempts != 0 || leaseUntil.Valid || !now.Before(expiresAt) {
+			t.Fatal("expected one unattempted, unleased, unexpired registration email")
+		}
+	}
+	originalClock := svc.now
+	svc.now = func() time.Time { return now }
+	defer func() { svc.now = originalClock }()
+	svc.DeliverPendingMail(context.Background())
+	return now
+}
+
 func TestPostgresRegistrationRollsBackAndCanRetry(t *testing.T) {
+	for _, clockSkew := range []time.Duration{-5 * time.Second, 0, 5 * time.Second} {
+		t.Run(clockSkew.String(), func(t *testing.T) {
+			checkPostgresRegistrationRollback(t, clockSkew)
+		})
+	}
+}
+
+func checkPostgresRegistrationRollback(t *testing.T, clockSkew time.Duration) {
+	t.Helper()
 	store := postgresClaimStore(t).(*PostgresStore)
 	svc := NewService(store)
+	applicationTime := time.Now().UTC().Add(clockSkew)
+	svc.now = func() time.Time { return applicationTime }
 	mailer := mail.NewMemorySender()
 	svc.SetMailer(mailer, "http://localhost:8080")
 	failSessionInsert(t, store.db)
@@ -46,9 +83,12 @@ func TestPostgresRegistrationRollsBackAndCanRetry(t *testing.T) {
 		t.Fatal(err)
 	}
 	u, session, err := svc.RegisterWithHash(ctx, "retry@example.invalid", "synthetic")
-	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatal(err)
+	}
+	deliverInitialAuthMail(t, svc, u.ID)
+	if !svc.now().Equal(applicationTime) {
+		t.Fatal("fixture delivery changed the application clock")
 	}
 	if got, err := svc.Authenticate(ctx, session.ID); err != nil || got.ID != u.ID {
 		t.Fatalf("retry not authenticated: %v", err)
@@ -91,29 +131,49 @@ func TestPostgresMailOutboxSurvivesFailureAndRestart(t *testing.T) {
 	svc := NewService(store)
 	svc.SetMailer(unavailableTestMailer{}, "http://localhost:8080")
 	u, session, err := svc.RegisterWithHash(context.Background(), "pending@example.invalid", "synthetic")
-	svc.DeliverPendingMail(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+	firstAttempt := deliverInitialAuthMail(t, svc, u.ID)
 	if _, err := svc.Authenticate(context.Background(), session.ID); err != nil {
 		t.Fatal(err)
 	}
-	var queued int
-	if err := store.db.QueryRow(`SELECT COUNT(*) FROM auth_mail_outbox WHERE user_id=$1`, u.ID).Scan(&queued); err != nil || queued != 1 {
-		t.Fatalf("mail was not retained: %d %v", queued, err)
+	var nextAttempt time.Time
+	var attempts int
+	var leaseUntil sql.NullTime
+	var leaseID string
+	if err := store.db.QueryRow(`SELECT next_attempt, attempts, lease_until, lease_id
+        FROM auth_mail_outbox WHERE user_id=$1`, u.ID).Scan(&nextAttempt, &attempts, &leaseUntil, &leaseID); err != nil {
+		t.Fatal(err)
+	}
+	if attempts != 1 || leaseUntil.Valid || leaseID != "" || !nextAttempt.Equal(firstAttempt.Add(time.Minute)) {
+		t.Fatal("failed delivery did not retain an unleased email with the first retry delay")
 	}
 	// A new service instance models a restart; persisted attempts and content
 	// must be sufficient to resume without the original HTTP request.
 	restarted := NewService(NewPostgresStore(store.db))
 	mailer := mail.NewMemorySender()
 	restarted.SetMailer(mailer, "http://localhost:8080")
-	restarted.now = func() time.Time { return time.Now().UTC().Add(5 * time.Minute) }
+	now := nextAttempt.Add(-time.Microsecond)
+	restarted.now = func() time.Time { return now }
+	restarted.DeliverPendingMail(context.Background())
+	if len(mailer.Messages()) != 0 {
+		t.Fatal("pending mail delivered before its retry deadline")
+	}
+	if err := store.db.QueryRow(`SELECT attempts FROM auth_mail_outbox WHERE user_id=$1`, u.ID).Scan(&attempts); err != nil || attempts != 1 {
+		t.Fatalf("early retry claimed the pending email: attempts=%d error=%v", attempts, err)
+	}
+	now = nextAttempt
 	restarted.DeliverPendingMail(context.Background())
 	if len(mailer.Messages()) != 1 {
 		t.Fatal("pending mail not delivered after restart")
 	}
 	if _, err := store.ClaimAuthMail(context.Background(), restarted.now(), restarted.now().Add(time.Minute), "probe"); !errors.Is(err, sql.ErrNoRows) {
 		t.Fatalf("delivered capability retained: %v", err)
+	}
+	var queued int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM auth_mail_outbox WHERE user_id=$1`, u.ID).Scan(&queued); err != nil || queued != 0 {
+		t.Fatalf("delivered email was not deleted: count=%d error=%v", queued, err)
 	}
 }
 
