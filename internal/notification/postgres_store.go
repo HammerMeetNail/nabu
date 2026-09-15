@@ -81,6 +81,11 @@ func (s *PostgresStore) DeleteNotification(ctx context.Context, id, userID int64
 	return err
 }
 
+func (s *PostgresStore) ClearAllNotifications(ctx context.Context, userID int64) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM notifications WHERE user_id = $1`, userID)
+	return err
+}
+
 func (s *PostgresStore) GetReminderPreferences(ctx context.Context, userID int64) (ReminderPreference, error) {
 	var p ReminderPreference
 	var rawTypes []byte

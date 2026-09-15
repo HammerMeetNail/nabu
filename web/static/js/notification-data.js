@@ -1,4 +1,4 @@
-import { loadNotifications, markRead, markAllRead, deleteNotification } from "./notifications.js";
+import { loadNotifications, markRead, markAllRead, deleteNotification, clearAllNotifications, clearAppBadge } from "./notifications.js";
 import { captureScope } from "./request-scope.js";
 
 // Refresh, append, and mutations share one sequence. A mutation invalidates
@@ -40,13 +40,16 @@ export async function mutateNotification(state, action, id) {
   state.notificationErrorAction = null;
   try {
     if (action === "all") await markAllRead();
+    else if (action === "clear") await clearAllNotifications();
     else if (action === "delete") await deleteNotification(id);
     else await markRead(id);
     if (!scope.current()) return;
     const wasUnread = state.notifications.some(n => n.id === id && !n.isRead);
-    state.notifications = action === "delete" ? state.notifications.filter(n => n.id !== id)
+    state.notifications = action === "clear" ? [] : action === "delete" ? state.notifications.filter(n => n.id !== id)
       : state.notifications.map(n => action === "all" || n.id === id ? {...n, isRead:true} : n);
-    state.unreadNotifications = action === "all" ? 0 : Math.max(0, state.unreadNotifications - (wasUnread ? 1 : 0));
+    if (action === "clear") state.notificationCursor = null;
+    state.unreadNotifications = action === "all" || action === "clear" ? 0 : Math.max(0, state.unreadNotifications - (wasUnread ? 1 : 0));
+    if (action === "all" || action === "clear") void clearAppBadge();
   } catch (err) {
     if (scope.current()) state.notificationError = err.message || "Could not update the notification. Please retry.";
   } finally {

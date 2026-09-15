@@ -139,6 +139,11 @@ export async function deleteNotification(id) {
   await apiFetch(`/api/notifications/${id}`, { method: "DELETE" });
 }
 
+/** Remove the current user's entire notification history. */
+export async function clearAllNotifications() {
+  await apiFetch("/api/notifications", { method: "DELETE" });
+}
+
 export async function loadChoreReminderPrefs() {
   const { response, data } = await apiFetch("/api/chore-reminder-prefs");
   if (!response.ok) return [];
@@ -189,16 +194,21 @@ export function renderNotificationPanel(notifications, state = {}) {
     <div class="notif-panel-handle" aria-hidden="true"></div>
     <div class="notif-panel-header">
       <span class="notif-panel-title">Notifications</span>
-      ${
-        unread > 0
-          ? `<button type="button" class="notif-mark-all-read text-button" data-action="mark-all-read"${disabled}>Mark all read</button>`
-          : ""
-      }
       <button type="button" class="notif-close icon-button" data-action="close-notifications" aria-label="Close">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <line x1="18" y1="6" x2="6" y2="18"></line>
           <line x1="6" y1="6" x2="18" y2="18"></line>
         </svg>
+      </button>
+    </div>
+    <div class="notif-panel-actions" role="group" aria-label="Notification actions">
+      <button type="button" class="btn btn-secondary notif-bulk-action" data-action="mark-all-read"${state.notificationMutating || unread === 0 ? ' disabled' : ''}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m4 12 5 5L20 6"/></svg>
+        <span>Mark all read</span>
+      </button>
+      <button type="button" class="btn btn-secondary notif-bulk-action" data-action="clear-all-notifications"${state.notificationMutating || (!notifications.length && !state.notificationCursor && unread === 0) ? ' disabled' : ''}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/></svg>
+        <span>Clear all</span>
       </button>
     </div>
     <button type="button" class="text-button" data-action="refresh-notifications"${busy ? ' disabled' : ''}>Refresh notifications</button>

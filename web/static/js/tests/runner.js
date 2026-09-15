@@ -1362,7 +1362,7 @@ describe('Notification feed ownership and recovery',()=>{
   it('rejects old page results after refresh, mutation and identity reset',async()=>{
     const {createAppState,resetAuthedState}=await import('../state.js');
     const {loadNotificationPage,mutateNotification}=await import('../notification-data.js');
-    for(const action of ['refresh','delete','reset']) {
+    for(const action of ['refresh','delete','clear','reset']) {
       const state=createAppState();
       let release;const gate=new Promise(resolve=>{release=resolve;});let reads=0,entered=false;
       globalThis.fetch=async(path,options)=>{
@@ -1372,7 +1372,7 @@ describe('Notification feed ownership and recovery',()=>{
       };
       await loadNotificationPage(state);const old=loadNotificationPage(state,{append:true});assert.equal(entered,true);
       try {
-        if(action==='delete') await mutateNotification(state,'delete',60);
+        if(action==='delete' || action==='clear') await mutateNotification(state,action,60);
         else if(action==='reset') resetAuthedState(state);
         else await loadNotificationPage(state);
       } finally {release();await old;}
@@ -1395,6 +1395,69 @@ describe('Notification feed ownership and recovery',()=>{
     try {await mutateNotification(state,'delete',60);await loadNotificationPage(state);assert.equal(calls,2);}
     finally {release();await old;}
     assert.deepEqual(state.notifications,[]);
+  });
+  it('clear all keeps data on failure, blocks duplicate actions, and resets the whole feed on retry', async () => {
+    const {createAppState} = await import('../state.js');
+    const {mutateNotification, loadNotificationPage} = await import('../notification-data.js');
+    const {renderNotificationPanel} = await import('../notifications.js');
+    const state = createAppState();
+    const rows = [{id: 1, isRead: true}, {id: 2, isRead: false}];
+    Object.assign(state, {notifications: rows, unreadNotifications: 25, notificationCursor: 'older'});
+    globalThis.fetch = async () => new Response('{"error":"Clear failed"}', {status: 500, headers: {'Content-Type': 'application/json'}});
+    await mutateNotification(state, 'clear');
+    assert.equal(state.notifications, rows);
+    assert.equal(state.notificationCursor, 'older');
+    assert.equal(state.unreadNotifications, 25);
+    assert.equal(state.notificationError, 'Clear failed');
+    assert.equal(state.notificationMutating, false);
+    let release, calls = 0;
+    const gate = new Promise(resolve => { release = resolve; });
+    globalThis.fetch = async (path, options) => {
+      calls++;
+      assert.equal(path, '/api/notifications');
+      assert.equal(options.method, 'DELETE');
+      await gate;
+      return new Response('{"status":"deleted"}', {headers: {'Content-Type': 'application/json'}});
+    };
+    const pending = mutateNotification(state, 'clear');
+    try {
+      assert.equal(calls, 1);
+      const root = document.createElement('div');
+      root.innerHTML = renderNotificationPanel(rows, state);
+      assert.equal(root.querySelector('[data-action="mark-all-read"]').disabled, true);
+      assert.equal(root.querySelector('[data-action="clear-all-notifications"]').disabled, true);
+      await mutateNotification(state, 'clear');
+      await mutateNotification(state, 'all');
+      await loadNotificationPage(state);
+      assert.equal(calls, 1);
+    } finally { release(); await pending; }
+    assert.deepEqual(state.notifications, []);
+    assert.equal(state.notificationCursor, null);
+    assert.equal(state.unreadNotifications, 0);
+    assert.equal(state.notificationError, null);
+    assert.equal(state.notificationMutating, false);
+  });
+  it('late clear success or failure cannot replace state after an account reset', async () => {
+    const {createAppState, resetAuthedState} = await import('../state.js');
+    const {mutateNotification} = await import('../notification-data.js');
+    for (const status of [200, 500]) {
+      const state = createAppState();
+      state.notifications = [{id: 1, isRead: false}];
+      let release, entered = false;
+      const gate = new Promise(resolve => { release = resolve; });
+      globalThis.fetch = async () => { entered = true; await gate; return new Response(status === 200 ? '{"status":"deleted"}' : '{"error":"Old error"}', {status, headers: {'Content-Type': 'application/json'}}); };
+      const pending = mutateNotification(state, 'clear');
+      try {
+        assert.equal(entered, true);
+        resetAuthedState(state);
+        Object.assign(state, {notifications: [{id: 99}], notificationCursor: 'new', unreadNotifications: 7});
+      } finally { release(); await pending; }
+      assert.deepEqual(state.notifications, [{id: 99}]);
+      assert.equal(state.notificationCursor, 'new');
+      assert.equal(state.unreadNotifications, 7);
+      assert.equal(state.notificationError, null);
+      assert.equal(state.notificationMutating, false);
+    }
   });
   it('preserves rows and cursor on errors; read pages still offer older access and escape metadata',async()=>{
     const {createAppState}=await import('../state.js');

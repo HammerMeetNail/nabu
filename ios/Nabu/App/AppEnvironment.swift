@@ -504,7 +504,12 @@ final class ReviewUITestResponses {
             }
             let unread = [3,4].filter { !deletedNotices.contains($0) && !readNotices.contains($0) }.count
             return try json(NotificationsResponse(notifications: rows, unreadCount: unread,
-                                                  nextCursor: older ? nil : "older-fixture"))
+                                                  nextCursor: older || [3,4].allSatisfy({ deletedNotices.contains($0) }) ? nil : "older-fixture"))
+        }
+        if path == "/api/notifications", request.httpMethod == "DELETE" {
+            if attempt == 1 { return try failed("Could not clear notifications.") }
+            deletedNotices.formUnion([1,2,3,4])
+            return try json(StatusResponse(status: "deleted"))
         }
         if path.hasPrefix("/api/notifications/") {
             if path == "/api/notifications/read-all" { readNotices.formUnion([3,4]) }

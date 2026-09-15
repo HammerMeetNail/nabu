@@ -3,6 +3,7 @@ import SwiftUI
 struct NotificationsView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var environment: AppEnvironment
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var loader: NotificationDataLoader?
 
     var body: some View {
@@ -33,15 +34,26 @@ struct NotificationsView: View {
             .listStyle(.plain)
             .refreshable { await loader?.loadNotifData() }
             .navigationTitle("Notifications")
+            .safeAreaInset(edge: .top, spacing: 0) {
+                let layout = dynamicTypeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(spacing: 8))
+                    : AnyLayout(HStackLayout(spacing: 8))
+                layout {
+                    bulkAction("Mark all read", symbol: "checkmark", identifier: "notifications-mark-all-read",
+                               disabled: state.unreadNotifications == 0, action: .all)
+                    bulkAction("Clear all", symbol: "trash", identifier: "notifications-clear-all",
+                               disabled: state.notifications.isEmpty && state.notificationCursor == nil && state.unreadNotifications == 0,
+                               action: .clearAll)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(.bar, ignoresSafeAreaEdges: [])
+            }
             .toolbar {
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     Button("Refresh") { Task { await loader?.loadNotifData() } }
                         .disabled(state.notificationLoading || state.notificationMutating)
                         .accessibilityLabel("Refresh notifications")
-                    if state.unreadNotifications > 0 {
-                        Button("Mark All Read") { Task { await loader?.mutate(.all) } }
-                            .disabled(state.notificationMutating)
-                    }
                 }
             }
         }
@@ -54,6 +66,19 @@ struct NotificationsView: View {
             await current.loadNotifData()
         }
         .onDisappear { state.notificationPanelOpen = false }
+    }
+
+    private func bulkAction(_ title: String, symbol: String, identifier: String,
+                            disabled: Bool, action: NotificationDataLoader.Action) -> some View {
+        Button { Task { await loader?.mutate(action) } } label: {
+            Label(title, systemImage: symbol)
+                .font(.subheadline.weight(.semibold))
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.bordered)
+        .disabled(disabled || state.notificationMutating)
+        .accessibilityIdentifier(identifier)
     }
 }
 

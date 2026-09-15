@@ -199,7 +199,7 @@ final class NotificationOwnershipTests: XCTestCase {
     }
 
     func testRefreshOrMutationInvalidatesPendingNotificationPage() async throws {
-        for mutation in [false, true] {
+        for action in ["refresh", "delete", "clear"] {
             let state = AppState()
             let gate = NativeResponseGate()
             var api = APIClient(baseURL: URL(string: "http://localhost:9999")!)
@@ -216,14 +216,104 @@ final class NotificationOwnershipTests: XCTestCase {
             await loader.loadNotifData()
             let old = Task { await loader.loadNotifData(append: true) }
             await gate.waitUntilPaused()
-            if mutation { await loader.mutate(.delete(60)) } else { await loader.loadNotifData() }
+            if action == "delete" { await loader.mutate(.delete(60)) }
+            else if action == "clear" { await loader.mutate(.clearAll) }
+            else { await loader.loadNotifData() }
             await gate.release()
             await old.value
-            XCTAssertEqual(state.notifications.map(\.id), mutation ? [] : [70])
-            XCTAssertEqual(state.notificationCursor, mutation ? "first" : "current")
+            XCTAssertEqual(state.notifications.map(\.id), action == "refresh" ? [70] : [])
+            XCTAssertEqual(state.notificationCursor, action == "refresh" ? "current" : action == "delete" ? "first" : nil)
+            if action == "clear" { XCTAssertEqual(state.unreadNotifications, 0) }
             XCTAssertFalse(state.notificationLoadingMore)
             XCTAssertFalse(state.notificationMutating)
             XCTAssertNil(state.notificationError)
+        }
+    }
+
+    func testClearAllFailureRetryAndDuplicateSuppression() async throws {
+        let state = AppState()
+        var api = APIClient(baseURL: URL(string: "http://localhost:9999")!)
+        let gate = NativeResponseGate()
+        var attempts = 0
+        var reads = 0
+        var cleared = false
+        api.mockAsyncHandler = { request in
+            if request.httpMethod == "GET" {
+                reads += 1
+                return try self.response(request, cleared ? [] : [60], cursor: cleared ? nil : "older")
+            }
+            XCTAssertEqual(request.httpMethod, "DELETE")
+            XCTAssertEqual(request.url?.path, "/api/notifications")
+            attempts += 1
+            if attempts == 1 { throw URLError(.notConnectedToInternet) }
+            await gate.pause()
+            cleared = true
+            return (Data(#"{"status":"deleted"}"#.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let loader = NotificationDataLoader(api: api, state: state)
+        await loader.loadNotifData()
+        state.unreadNotifications = 25
+        await loader.mutate(.clearAll)
+        XCTAssertEqual(state.notifications.map(\.id), [60])
+        XCTAssertEqual(state.notificationCursor, "older")
+        XCTAssertEqual(state.unreadNotifications, 25)
+        XCTAssertNotNil(state.notificationError)
+        XCTAssertFalse(state.notificationMutating)
+        let pending = Task { await loader.mutate(.clearAll) }
+        await gate.waitUntilPaused()
+        XCTAssertTrue(state.notificationMutating)
+        await loader.mutate(.clearAll)
+        await loader.mutate(.all)
+        await loader.loadNotifData()
+        XCTAssertEqual(attempts, 2)
+        XCTAssertEqual(reads, 1)
+        await gate.release()
+        await pending.value
+        XCTAssertTrue(state.notifications.isEmpty)
+        XCTAssertNil(state.notificationCursor)
+        XCTAssertEqual(state.unreadNotifications, 0)
+        XCTAssertNil(state.notificationError)
+        XCTAssertFalse(state.notificationMutating)
+        await loader.loadNotifData()
+        XCTAssertEqual(reads, 2)
+        XCTAssertTrue(state.notifications.isEmpty)
+        XCTAssertNil(state.notificationCursor)
+        XCTAssertEqual(state.unreadNotifications, 0)
+    }
+
+    func testLateClearSuccessAndFailureCannotPublishAfterIdentityChangeOrReset() async throws {
+        for change in ["identity", "reset"] {
+            for status in [200, 500] {
+                let identity = ClientIdentity()
+                let user = User(id: 1, householdId: 1, email: "test@nabu.local", displayName: "Test",
+                                avatarColor: "#112233", emailVerified: true, role: "owner", createdAt: Date())
+                identity.accept(user)
+                let state = AppState()
+                state.adopt(identity.snapshot)
+                let gate = NativeResponseGate()
+                var api = APIClient(baseURL: URL(string: "http://localhost:9999")!, identity: identity)
+                api.mockAsyncHandler = { request in
+                    await gate.pause()
+                    return (Data((status == 200 ? #"{"status":"deleted"}"# : #"{"error":"Old failure"}"#).utf8),
+                            HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
+                }
+                let loader = NotificationDataLoader(api: api, state: state)
+                let pending = Task { await loader.mutate(.clearAll) }
+                await gate.waitUntilPaused()
+                if change == "identity" { identity.accept(nil) }
+                else { state.reset() }
+                state.notifications = [AppNotification(id: 99, userId: 2, type: "chore_logged", title: "Replacement", body: "", isRead: false, createdAt: Date())]
+                state.notificationCursor = "new"
+                state.unreadNotifications = 7
+                state.notificationMutating = false
+                await gate.release()
+                await pending.value
+                XCTAssertEqual(state.notifications.map(\.id), [99])
+                XCTAssertEqual(state.notificationCursor, "new")
+                XCTAssertEqual(state.unreadNotifications, 7)
+                XCTAssertNil(state.notificationError)
+                XCTAssertFalse(state.notificationMutating)
+            }
         }
     }
 

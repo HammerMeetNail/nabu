@@ -74,3 +74,13 @@ func (h *NotificationHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
+
+// ClearAll removes only the authenticated recipient's notification history.
+func (h *NotificationHandler) ClearAll(w http.ResponseWriter, r *http.Request) {
+	user, _ := middleware.CurrentUser(r.Context())
+	if err := h.service.ClearAll(r.Context(), user.ID); err != nil {
+		writeServerError(w, "failed to clear notifications", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
