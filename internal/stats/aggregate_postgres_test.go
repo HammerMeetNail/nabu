@@ -200,9 +200,18 @@ func TestPostgresAggregatesMatchAuthorizedMemorySemantics(t *testing.T) {
 						t.Fatalf("time series %d/%s: got=%+v want=%+v", id, period, got, want)
 					}
 					if id == 10 && period == "daily" {
-						last := got.Periods[len(got.Periods)-1]
-						if last.Count != 9 || last.TotalML != 680 || last.TotalDuration != 360 {
-							t.Fatalf("today lost canonical-date or metric semantics: %+v", last)
+						// New York noon can be yesterday in the queried timezone.
+						// Assert the seeded date, which is not always the final bucket.
+						fixtureDay := midday.In(loc).Format(time.DateOnly)
+						var bucket *TimeSeriesPeriod
+						for i := range got.Periods {
+							if got.Periods[i].Start == fixtureDay {
+								bucket = &got.Periods[i]
+								break
+							}
+						}
+						if bucket == nil || bucket.Count != 9 || bucket.TotalML != 680 || bucket.TotalDuration != 360 {
+							t.Fatalf("fixture day %s lost canonical-date or metric semantics: %+v", fixtureDay, bucket)
 						}
 					}
 				}
