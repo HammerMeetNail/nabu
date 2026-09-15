@@ -476,7 +476,17 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	mux.HandleFunc("/api/logs/latest-per-chore", method(http.MethodGet, middleware.RequireAuth(logHandler.LatestPerChore)))
 	mux.HandleFunc("/api/logs/recent-amounts", method(http.MethodGet, middleware.RequireAuth(logHandler.RecentAmounts)))
 
-	mux.HandleFunc("/api/notifications", method(http.MethodGet, middleware.RequireAuth(notifHandler.List)))
+	mux.HandleFunc("/api/notifications", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			notifHandler.List(w, r)
+		case http.MethodDelete:
+			notifHandler.ClearAll(w, r)
+		default:
+			w.Header().Set("Allow", "GET, DELETE")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+	}))
 	mux.HandleFunc("/api/notifications/read-all", method(http.MethodPost, middleware.RequireAuth(notifHandler.MarkAllRead)))
 	mux.HandleFunc("/api/notifications/{id}/read", method(http.MethodPost, middleware.RequireAuth(notifHandler.MarkRead)))
 	mux.HandleFunc("/api/notifications/{id}", method(http.MethodDelete, middleware.RequireAuth(notifHandler.Delete)))

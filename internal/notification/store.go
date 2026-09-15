@@ -37,6 +37,7 @@ type Store interface {
 	MarkRead(ctx context.Context, id, userID int64) error
 	MarkAllRead(ctx context.Context, userID int64) error
 	DeleteNotification(ctx context.Context, id, userID int64) error
+	ClearAllNotifications(ctx context.Context, userID int64) error
 	GetReminderPreferences(ctx context.Context, userID int64) (ReminderPreference, error)
 	UpdateReminderPreferences(ctx context.Context, prefs ReminderPreference) error
 }
@@ -150,6 +151,23 @@ func (s *MemoryStore) DeleteNotification(_ context.Context, id, userID int64) er
 			return nil
 		}
 	}
+	return nil
+}
+
+func (s *MemoryStore) ClearAllNotifications(ctx context.Context, userID int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	kept := s.notifs[:0]
+	for _, n := range s.notifs {
+		if n.UserID != userID {
+			kept = append(kept, n)
+		}
+	}
+	clear(s.notifs[len(kept):])
+	s.notifs = kept
 	return nil
 }
 

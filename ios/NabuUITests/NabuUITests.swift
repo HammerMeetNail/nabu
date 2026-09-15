@@ -190,11 +190,48 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         app.buttons["Delete"].tap()
         XCTAssertTrue(app.staticTexts["Older notice 3"].waitForNonExistence(timeout: 5))
         XCTAssertFalse(more.exists)
-        app.buttons["Mark All Read"].tap()
-        XCTAssertTrue(app.buttons["Mark All Read"].waitForNonExistence(timeout: 5))
+        app.buttons["notifications-mark-all-read"].tap()
+        let readFinished = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            !app.buttons["notifications-mark-all-read"].isEnabled && app.buttons["notifications-clear-all"].isEnabled
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [readFinished], timeout: 5), .completed)
         app.buttons["Refresh notifications"].tap()
         XCTAssertTrue(app.staticTexts["Read notice 1"].waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["Mark All Read"].exists)
+        XCTAssertFalse(app.buttons["notifications-mark-all-read"].isEnabled)
+    }
+
+    func testNotificationBulkActionsAreLargeAndClearAllRetries() throws {
+        let app = launch("notifications")
+        app.tabBars.buttons["Settings"].tap()
+        let notifications = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Notifications")).firstMatch
+        reveal(notifications, in: app)
+        notifications.tap()
+        XCTAssertTrue(app.staticTexts["Read notice 1"].waitForExistence(timeout: 5))
+        let markAll = app.buttons["notifications-mark-all-read"]
+        let clearAll = app.buttons["notifications-clear-all"]
+        XCTAssertTrue(app.staticTexts["Notifications"].isHittable)
+        XCTAssertTrue(markAll.isHittable)
+        XCTAssertTrue(clearAll.isHittable)
+        XCTAssertGreaterThanOrEqual(markAll.frame.height, 48)
+        XCTAssertGreaterThanOrEqual(clearAll.frame.height, 48)
+        XCTAssertEqual(markAll.frame.width, clearAll.frame.width, accuracy: 1)
+        XCTAssertEqual(markAll.frame.height, clearAll.frame.height, accuracy: 1)
+        try captureReviewScreen(app, named: "notification-bulk-actions")
+        clearAll.tap()
+        XCTAssertTrue(app.staticTexts["Could not clear notifications."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Read notice 1"].exists)
+        XCTAssertTrue(clearAll.isEnabled)
+        markAll.tap()
+        let readFinished = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in !markAll.isEnabled && clearAll.isEnabled }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [readFinished], timeout: 5), .completed)
+        XCTAssertTrue(clearAll.isEnabled)
+        clearAll.tap()
+        XCTAssertTrue(app.staticTexts["No notifications"].waitForExistence(timeout: 5))
+        XCTAssertFalse(clearAll.isEnabled)
+        XCTAssertFalse(app.buttons["notifications-load-more"].exists)
+        XCTAssertFalse(markAll.isEnabled)
+        XCTAssertFalse(clearAll.isEnabled)
+        try captureReviewScreen(app, named: "notification-cleared")
     }
 
     func testExportRangeErrorCancelAndShareRecovery() throws {

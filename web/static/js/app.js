@@ -1927,7 +1927,9 @@ export async function init() {
       case "more-notifications":
         e.preventDefault(); void loadNotifData({append:true}); break;
       case "mark-all-read":
-        e.preventDefault(); clearAppBadge(); void updateNotification("all"); break;
+        e.preventDefault(); void updateNotification("all"); break;
+      case "clear-all-notifications":
+        e.preventDefault(); void updateNotification("clear"); break;
       case "dismiss-notification":
         e.preventDefault(); void updateNotification("delete", Number(actionEl.dataset.notifId)); break;
       case "mark-notif-read":

@@ -154,6 +154,11 @@ func (s *Service) Delete(ctx context.Context, id, userID int64) error {
 	return s.store.DeleteNotification(ctx, id, userID)
 }
 
+// ClearAll removes the recipient's entire history, including read and older rows.
+func (s *Service) ClearAll(ctx context.Context, userID int64) error {
+	return s.store.ClearAllNotifications(ctx, userID)
+}
+
 // NotifyChoreLogged creates a "chore_logged" notification for every household
 // member except the one attributed on the log and the one who performed the
 // action.  It also sends a Web Push to each recipient if a PushSender is

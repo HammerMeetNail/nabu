@@ -443,6 +443,29 @@ func srvRegister(t *testing.T, srv http.Handler) string {
 	return ""
 }
 
+func TestNotificationClearAllRouteRequiresSessionAndCSRF(t *testing.T) {
+	srv := newTestSrv(t)
+	if closer, ok := srv.(io.Closer); ok {
+		t.Cleanup(func() { _ = closer.Close() })
+	}
+	session := srvRegister(t, srv)
+	for _, tc := range []struct {
+		method, csrf, session string
+		status                int
+	}{
+		{http.MethodDelete, "tok", "", http.StatusUnauthorized},
+		{http.MethodDelete, "", session, http.StatusForbidden},
+		{http.MethodDelete, "tok", session, http.StatusOK},
+		{http.MethodGet, "", session, http.StatusOK},
+		{http.MethodPost, "tok", session, http.StatusMethodNotAllowed},
+	} {
+		rec := srvRequest(srv, tc.method, "/api/notifications", "", tc.csrf, tc.session)
+		if rec.Code != tc.status {
+			t.Errorf("%s expected %d, got %d: %s", tc.method, tc.status, rec.Code, rec.Body.String())
+		}
+	}
+}
+
 // newTestSrv is a convenience wrapper that creates a NewServer with the
 // minimum required env vars set for the test.
 func newTestSrv(t *testing.T) http.Handler {

@@ -38,7 +38,7 @@ final class NotificationDataLoader {
         }
     }
 
-    enum Action { case read(Int), delete(Int), all }
+    enum Action { case read(Int), delete(Int), all, clearAll }
     func mutate(_ action: Action) async {
         guard !state.notificationMutating else { return }
         let api = self.api.scoped()
@@ -56,12 +56,16 @@ final class NotificationDataLoader {
             case .read(let id): let _: StatusResponse = try await api.postEmpty("/api/notifications/\(id)/read")
             case .delete(let id): let _: StatusResponse = try await api.delete("/api/notifications/\(id)")
             case .all: let _: StatusResponse = try await api.postEmpty("/api/notifications/read-all")
+            case .clearAll: let _: StatusResponse = try await api.delete("/api/notifications")
             }
             guard owns() else { return }
             let id: Int?
-            switch action { case .read(let value), .delete(let value): id = value; case .all: id = nil }
+            switch action { case .read(let value), .delete(let value): id = value; case .all, .clearAll: id = nil }
             let wasUnread = state.notifications.contains { $0.id == id && !$0.isRead }
             switch action {
+            case .clearAll:
+                state.notifications = []
+                state.notificationCursor = nil
             case .delete(let value): state.notifications.removeAll { $0.id == value }
             case .read, .all:
                 state.notifications = state.notifications.map { row in
