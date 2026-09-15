@@ -277,6 +277,14 @@ Name spec files after the feature/area: `<area>-<feature>.spec.js` (e.g. `home-r
 
 **Run one Go test invocation at a time.** `go test ./...` runs package test binaries in parallel, and the `auth` package spends ~25s pegging a core on bcrypt (cost 13). Launching overlapping `go test`/`go build`/`go vet` processes (or two `./...` runs at once) starves the cheap packages and can trip their timeout — this looks like a hang or a spurious `stats`/`userprefs` failure but is pure contention. If you see a package time out, re-run it in isolation (`go test ./internal/<pkg>/`) before believing it's a real failure. `make test-go` and CI pin an explicit `-timeout` so a genuine hang fails fast and legibly instead of silently consuming the default 10 minutes.
 
+**Keep database timing tests independent of machine clocks.** macOS and a Podman PostgreSQL VM can differ by milliseconds. SQL `NOW()` defaults and Go `time.Now()` or an injected service clock are separate clock sources.
+
+- Do not assume a freshly inserted job is already due according to the application clock. Read its persisted due time for initial fixture delivery, or set explicit fixture timestamps and advance an injected clock.
+- Use timestamps rounded to microseconds for PostgreSQL. Assert immediately before and exactly at due, retry, lease, and expiry boundaries.
+- Do not advance past a retry delay or lease to make a fixture deliver. `deliverInitialAuthMail` in `internal/auth/claim_postgres_test.go` accepts only one unattempted, unleased, unexpired initial registration job and restores the service clock afterward.
+- Fix clock assumptions directly; do not hide failures with sleeps, wider timeouts, arbitrary future offsets, or disabled database coverage.
+- Diagnose suspected skew by tightly bracketing `clock_timestamp()` with host timestamps. Running tests and PostgreSQL in the same VM can confirm the cause; committed tests must also work when they use different clocks.
+
 ## Key invariants — do not break
 
 These caused hard-to-diagnose production bugs and are covered by E2E tests:
