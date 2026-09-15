@@ -1404,7 +1404,7 @@ describe('Notification feed ownership and recovery',()=>{
     const rows = [{id: 1, isRead: true}, {id: 2, isRead: false}];
     Object.assign(state, {notifications: rows, unreadNotifications: 25, notificationCursor: 'older'});
     globalThis.fetch = async () => new Response('{"error":"Clear failed"}', {status: 500, headers: {'Content-Type': 'application/json'}});
-    await mutateNotification(state, 'clear');
+    assert.equal(await mutateNotification(state, 'clear'), false);
     assert.equal(state.notifications, rows);
     assert.equal(state.notificationCursor, 'older');
     assert.equal(state.unreadNotifications, 25);
@@ -1426,11 +1426,11 @@ describe('Notification feed ownership and recovery',()=>{
       root.innerHTML = renderNotificationPanel(rows, state);
       assert.equal(root.querySelector('[data-action="mark-all-read"]').disabled, true);
       assert.equal(root.querySelector('[data-action="clear-all-notifications"]').disabled, true);
-      await mutateNotification(state, 'clear');
-      await mutateNotification(state, 'all');
+      assert.equal(await mutateNotification(state, 'clear'), false);
+      assert.equal(await mutateNotification(state, 'all'), false);
       await loadNotificationPage(state);
       assert.equal(calls, 1);
-    } finally { release(); await pending; }
+    } finally { release(); assert.equal(await pending, true); }
     assert.deepEqual(state.notifications, []);
     assert.equal(state.notificationCursor, null);
     assert.equal(state.unreadNotifications, 0);
@@ -1451,7 +1451,7 @@ describe('Notification feed ownership and recovery',()=>{
         assert.equal(entered, true);
         resetAuthedState(state);
         Object.assign(state, {notifications: [{id: 99}], notificationCursor: 'new', unreadNotifications: 7});
-      } finally { release(); await pending; }
+      } finally { release(); assert.equal(await pending, false); }
       assert.deepEqual(state.notifications, [{id: 99}]);
       assert.equal(state.notificationCursor, 'new');
       assert.equal(state.unreadNotifications, 7);

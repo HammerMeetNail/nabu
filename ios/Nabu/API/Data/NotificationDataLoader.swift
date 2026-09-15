@@ -39,10 +39,11 @@ final class NotificationDataLoader {
     }
 
     enum Action { case read(Int), delete(Int), all, clearAll }
-    func mutate(_ action: Action) async {
-        guard !state.notificationMutating else { return }
+    @discardableResult
+    func mutate(_ action: Action) async -> Bool {
+        guard !state.notificationMutating else { return false }
         let api = self.api.scoped()
-        guard api.identity.isCurrent(api.requestContext) else { return }
+        guard api.identity.isCurrent(api.requestContext) else { return false }
         let owner = state.beginOperation("notifications")
         func owns() -> Bool { state.owns(owner) && api.identity.isCurrent(api.requestContext) }
         state.notificationMutating = true
@@ -58,7 +59,7 @@ final class NotificationDataLoader {
             case .all: let _: StatusResponse = try await api.postEmpty("/api/notifications/read-all")
             case .clearAll: let _: StatusResponse = try await api.delete("/api/notifications")
             }
-            guard owns() else { return }
+            guard owns() else { return false }
             let id: Int?
             switch action { case .read(let value), .delete(let value): id = value; case .all, .clearAll: id = nil }
             let wasUnread = state.notifications.contains { $0.id == id && !$0.isRead }
@@ -75,8 +76,10 @@ final class NotificationDataLoader {
             }
             if id == nil { state.unreadNotifications = 0 }
             else if wasUnread { state.unreadNotifications = max(0, state.unreadNotifications - 1) }
+            return true
         } catch {
             if owns() { state.notificationError = error.localizedDescription }
+            return false
         }
     }
 

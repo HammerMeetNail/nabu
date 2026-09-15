@@ -1,5 +1,7 @@
 import {test, expect} from '@playwright/test';
-import {fixture, register, headers, postLog} from './review-fixtures.js';
+import {fixture, register, headers, postLog, deferred, observeModuleCalls} from './review-fixtures.js';
+
+test.use({serviceWorkers: 'block'});
 
 test('notification bulk actions have matching large targets and clear all history with retry and persistence', async ({page, browser}) => {
   const owner = await fixture(page);
@@ -48,6 +50,7 @@ test('notification bulk actions have matching large targets and clear all histor
       : route.continue());
     await clearAll.click();
     await expect(member.getByTestId('notification-error')).toHaveText('Could not clear notifications. Please retry.');
+    await expect(member.locator('#notif-panel-container')).toHaveJSProperty('hidden', false);
     await expect(member.locator('.notif-item')).toHaveCount(50);
     await expect(member.locator('[data-action="more-notifications"]')).toBeEnabled();
     await expect(clearAll).toBeEnabled();
@@ -61,6 +64,11 @@ test('notification bulk actions have matching large targets and clear all histor
     expect((await notifications()).unreadCount).toBe(0);
     await expect(clearAll).toBeEnabled();
     await clearAll.click();
+    await expect(member.locator('#notif-panel-container')).toHaveJSProperty('hidden', true);
+    if (process.env.NABU_NOTIFICATION_SCREENSHOTS) {
+      await member.screenshot({path: `${process.env.NABU_NOTIFICATION_SCREENSHOTS}/notification-clear-closed.png`});
+    }
+    await member.locator('#notifications-bell').click();
     await expect(member.locator('.notif-empty')).toHaveText('No notifications');
     await expect(clearAll).toBeDisabled();
     await expect(markAll).toBeDisabled();
@@ -83,10 +91,44 @@ test('notification bulk actions have matching large targets and clear all histor
     await expect(member.locator('.notif-item')).toHaveCount(1);
     await expect(markAll).toBeEnabled();
     await clearAll.click();
-    await expect(member.locator('.notif-empty')).toBeVisible();
+    await expect(member.locator('#notif-panel-container')).toHaveJSProperty('hidden', true);
     await expect(member.locator('#notification-badge')).toBeHidden();
     expect((await notifications()).unreadCount).toBe(0);
   } finally {
     await context.close();
+  }
+});
+
+test('a pending clear stays open and cannot close a reopened notification drawer', async ({page}) => {
+  const joinMutation = await observeModuleCalls(page, 'app', 'updateNotification', {exported: false});
+  const entered = deferred(), release = deferred();
+  await page.route('**/api/notifications', async route => {
+    if (route.request().method() === 'DELETE') {
+      entered.resolve();
+      await release.promise;
+      await route.fulfill({json: {status: 'deleted'}});
+    } else {
+      await route.fulfill({json: {notifications: [{id: 1, title: 'Pending clear notice', body: '', isRead: false}], unreadCount: 1}});
+    }
+  });
+  await fixture(page);
+  await page.locator('#notifications-bell').click();
+  await expect(page.locator('.notif-item')).toHaveCount(1);
+  await page.getByRole('button', {name: 'Clear all', exact: true}).click();
+  try {
+    await entered.promise;
+    await expect(page.locator('#notif-panel-container')).toHaveJSProperty('hidden', false);
+    await expect(page.getByRole('button', {name: 'Clear all', exact: true})).toBeDisabled();
+    await page.locator('#notif-panel').getByRole('button', {name: 'Close', exact: true}).click();
+    await expect(page.locator('#notif-panel-container')).toHaveJSProperty('hidden', true);
+    await page.locator('#notifications-bell').click();
+    await expect(page.locator('#notif-panel-container')).toHaveJSProperty('hidden', false);
+    release.resolve();
+    await joinMutation();
+    await expect(page.locator('#notif-panel-container')).toHaveJSProperty('hidden', false);
+    await expect(page.locator('.notif-empty')).toHaveText('No notifications');
+  } finally {
+    release.resolve();
+    await joinMutation();
   }
 });

@@ -253,7 +253,8 @@ final class NotificationOwnershipTests: XCTestCase {
         let loader = NotificationDataLoader(api: api, state: state)
         await loader.loadNotifData()
         state.unreadNotifications = 25
-        await loader.mutate(.clearAll)
+        let failed = await loader.mutate(.clearAll)
+        XCTAssertFalse(failed)
         XCTAssertEqual(state.notifications.map(\.id), [60])
         XCTAssertEqual(state.notificationCursor, "older")
         XCTAssertEqual(state.unreadNotifications, 25)
@@ -262,13 +263,16 @@ final class NotificationOwnershipTests: XCTestCase {
         let pending = Task { await loader.mutate(.clearAll) }
         await gate.waitUntilPaused()
         XCTAssertTrue(state.notificationMutating)
-        await loader.mutate(.clearAll)
-        await loader.mutate(.all)
+        let duplicate = await loader.mutate(.clearAll)
+        let competing = await loader.mutate(.all)
+        XCTAssertFalse(duplicate)
+        XCTAssertFalse(competing)
         await loader.loadNotifData()
         XCTAssertEqual(attempts, 2)
         XCTAssertEqual(reads, 1)
         await gate.release()
-        await pending.value
+        let clearedSuccessfully = await pending.value
+        XCTAssertTrue(clearedSuccessfully)
         XCTAssertTrue(state.notifications.isEmpty)
         XCTAssertNil(state.notificationCursor)
         XCTAssertEqual(state.unreadNotifications, 0)
@@ -307,7 +311,8 @@ final class NotificationOwnershipTests: XCTestCase {
                 state.unreadNotifications = 7
                 state.notificationMutating = false
                 await gate.release()
-                await pending.value
+                let applied = await pending.value
+                XCTAssertFalse(applied)
                 XCTAssertEqual(state.notifications.map(\.id), [99])
                 XCTAssertEqual(state.notificationCursor, "new")
                 XCTAssertEqual(state.unreadNotifications, 7)

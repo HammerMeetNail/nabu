@@ -984,6 +984,8 @@ async function loadDayNotesData() {
   }
 }
 
+let notificationPanelIntent = 0;
+
 function renderNotifPanel() {
   const container = document.querySelector("#notif-panel-container");
   if (container && !container.hidden) container.innerHTML = renderNotificationPanel(state.notifications, state);
@@ -997,10 +999,12 @@ async function loadNotifData(options) {
   renderNotifPanel();
 }
 async function updateNotification(action, id) {
+  const panelIntent = notificationPanelIntent;
   const pending = mutateNotification(state, action, id);
   renderNotifPanel();
-  await pending;
+  const updated = await pending;
   updateTopBar();
+  if (updated && action === "clear" && panelIntent === notificationPanelIntent) closeNotifPanel();
   renderNotifPanel();
 }
 
@@ -1214,6 +1218,7 @@ function renderTimerChip() {
 }
 
 function closeNotifPanel() {
+  notificationPanelIntent++;
   const container = document.querySelector("#notif-panel-container");
   if (container && !container.hidden) {
     container.hidden = true;
@@ -1914,6 +1919,7 @@ export async function init() {
 
       case "open-notifications": {
         e.preventDefault();
+        notificationPanelIntent++;
         clearAppBadge();
         const container = document.querySelector("#notif-panel-container");
         if (container) { container.hidden = false; renderNotifPanel(); }
