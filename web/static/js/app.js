@@ -891,8 +891,10 @@ function loadAllStatsData() {
     if (frame !== null || !scope.current() || state.currentRoute !== '/stats') return;
     frame = requestAnimationFrame(() => { frame = null; renderCurrentStats(); });
   });
+  // The Today card owns its read; Home no longer preloads calendar data.
+  const today = loadStatsTodayCount().then(renderCurrentStats);
   renderCurrentStats();
-  return pending.finally(() => {
+  return Promise.all([pending, today]).finally(() => {
     if (frame !== null) cancelAnimationFrame(frame);
     renderCurrentStats();
   });
@@ -930,14 +932,15 @@ function ensureSheetRecentAmounts(root) {
   }));
 }
 
-function countTodayLogs() {
-  if (!state.todayLogs) return 0;
-  const today = new Date();
-  const todayStr = localDateStr(today);
-  return state.todayLogs.filter(l => {
-    const d = l.completedAt ? new Date(l.completedAt) : null;
-    return d ? localDateStr(d) === todayStr : false;
-  }).length;
+async function loadStatsTodayCount() {
+  const scope = captureScope(state, 'stats-today-count', () => todayISO(0));
+  const date = todayISO(0);
+  try {
+    const data = await loadToday(date);
+    if (!scope.current()) return;
+    state.stats.todayCount = (data.logs || []).filter(log =>
+      log.completedAt && localDateStr(new Date(log.completedAt)) === date).length;
+  } catch { /* Keep the last confirmed count if the refresh fails. */ }
 }
 
 function renderStatsPageView() {
@@ -961,7 +964,9 @@ function renderStatsPageView() {
 
 async function loadLatestLogsData() {
   const contextScope = captureScope(state, "latest-logs");
-  if (!state.household) return;
+  // The confirmed session already identifies the household. This read can
+  // start alongside household metadata during bootstrap.
+  if (!state.user?.householdId) return;
   try {
     const data = await withCurrentContext(loadLatestLogs(), contextScope);
     state.latestLogs = data?.latestLogs || {};
@@ -1385,13 +1390,25 @@ async function reloadAfterAuth() {
   startNotifPoll();
   maybeSubscribePush().catch(() => {});
   state.activeTimer = loadTimer(scope.origin);
-  await withCurrentContext(Promise.all([loadHouseholdData(),loadPreferences(state),hydratePendingLogs()]), contextScope);
+  // These reads depend on the confirmed identity, not on each other's data.
+  // Keep all Home data in the initial barrier so its first render includes
+  // the saved order, hidden chores, recent logs and pending work.
+  await withCurrentContext(Promise.all([
+    loadHouseholdData(), loadPreferences(state), hydratePendingLogs(),
+    state.user.householdId ? loadChoreData() : undefined,
+    loadLatestLogsData(),
+  ]), contextScope);
   if (!scope.current()) return;
   await withCurrentContext(syncTimezone(state), contextScope);
   if (!scope.current() || !state.household) return;
-  await withCurrentContext(loadChoreData(), contextScope);
-  if (!scope.current()) return;
-  await withCurrentContext(Promise.all([loadLatestLogsData(),loadNotifData(),reloadViewData()]), contextScope);
+  // Notifications update their own panel/badge and must not delay Home.
+  void loadNotifData().catch(() => {});
+  const route = state.currentRoute || window.location.pathname || "/";
+  if (["/activity", "/stats", "/schedule"].includes(route)) {
+    // Date-grouped views still load after timezone synchronization. Home
+    // needs neither today's calendar logs nor schedules; navigation loads them.
+    await withCurrentContext(reloadViewData(), contextScope);
+  }
 }
 
 
@@ -1721,7 +1738,6 @@ export async function init() {
       }
       if (state.currentRoute === "/stats") {
         state.stats = state.stats || {};
-        state.stats.todayCount = countTodayLogs();
         loadAllStatsData();
         return;
       }
