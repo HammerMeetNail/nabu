@@ -3,7 +3,7 @@ import UIKit
 import SnapshotTesting
 
 private extension XCTestCase {
-    func captureReviewScreen(_ app: XCUIApplication, named name: String,
+    func captureReviewScreen(_ app: XCUIApplication, named name: String, element: XCUIElement? = nil,
                              file: StaticString = #filePath, testName: String = #function, line: UInt = #line) throws {
         guard UIDevice.current.systemVersion.hasPrefix("26.") else { return }
         let recording = ProcessInfo.processInfo.environment["NABU_RECORD_SNAPSHOTS"] == "1"
@@ -12,7 +12,7 @@ private extension XCTestCase {
         // still fails the test and must be fixed before the gate can pass.
         continueAfterFailure = true
         defer { continueAfterFailure = previous }
-        assertSnapshot(of: app.screenshot().image,
+        assertSnapshot(of: (element ?? app).screenshot().image,
                        as: .image(precision: 0.99, perceptualPrecision: 0.98),
                        named: name, record: recording, file: file, testName: testName, line: line)
     }
@@ -91,6 +91,156 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         waitForStableScreen(app)
     }
 
+    private func adjustNumber(_ value: String, in wheel: XCUIElement) {
+        // A long native wheel gesture can settle one or two rows beyond its
+        // target. Correct from the observed row before confirming the choice.
+        for _ in 0..<3 {
+            wheel.adjust(toPickerWheelValue: value)
+            if wheel.value as? String == value { break }
+        }
+        XCTAssertEqual(wheel.value as? String, value)
+    }
+
+    private func chooseNumber(_ value: String, from button: XCUIElement, in app: XCUIApplication) {
+        reveal(button, in: app)
+        button.tap()
+        let wheel = app.pickerWheels.firstMatch
+        XCTAssertTrue(wheel.waitForExistence(timeout: 5))
+        adjustNumber(value, in: wheel)
+        app.buttons["number-choice-done"].tap()
+        XCTAssertTrue(wheel.waitForNonExistence(timeout: 5))
+    }
+
+    func testFeedBabyNumberChoicesCancelToggleAndSave() throws {
+        let app = launch("midnight")
+        openChore("Feed Baby", in: app)
+        let formula = app.buttons["Choose Formula amount"]
+        XCTAssertTrue(formula.waitForExistence(timeout: 5))
+        let inputs = app.textFields.matching(identifier: "indicator-amount-input")
+        XCTAssertEqual(inputs.firstMatch.value as? String, "120")
+        formula.tap()
+        let wheel = app.pickerWheels.firstMatch
+        XCTAssertTrue(wheel.waitForExistence(timeout: 5))
+        XCTAssertEqual(wheel.value as? String, "120 mL")
+        adjustNumber("135 mL", in: wheel)
+        try captureReviewScreen(app, named: "feed-number-wheel", element: wheel)
+        app.buttons["number-choice-cancel"].tap()
+        XCTAssertTrue(wheel.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(inputs.firstMatch.value as? String, "120")
+        chooseNumber("135 mL", from: formula, in: app)
+        XCTAssertEqual(inputs.firstMatch.value as? String, "135")
+        reveal(app.buttons["Breast"], in: app)
+        app.buttons["Breast"].tap()
+        chooseNumber("30 mL", from: app.buttons["Choose Breast amount"], in: app)
+        reveal(app.buttons["Formula"], in: app)
+        app.buttons["Formula"].tap()
+        XCTAssertFalse(formula.exists)
+        app.buttons["Formula"].tap()
+        XCTAssertEqual(inputs.firstMatch.value as? String, "135")
+        XCTAssertEqual(inputs.element(boundBy: 1).value as? String, "30")
+        try captureReviewScreen(app, named: "feed-number-fields")
+        let save = app.buttons["save-log-button"]
+        reveal(save, in: app)
+        save.tap()
+        XCTAssertTrue(save.waitForNonExistence(timeout: 5))
+        // Reopening uses the saved latest log, including each type's amount.
+        openChore("Feed Baby", in: app)
+        reveal(app.buttons["Choose Breast amount"], in: app)
+        XCTAssertEqual(inputs.firstMatch.value as? String, "135")
+        XCTAssertEqual(inputs.element(boundBy: 1).value as? String, "30")
+    }
+
+    func testCustomNumberChoicesUnitsExactValuesAndEdit() throws {
+        let app = launch("units")
+        openChore("Weigh flour", in: app)
+        let input = app.textFields["amount-input"]
+        app.buttons["120 g"].tap()
+        let choices = app.buttons["Choose amount"]
+        choices.tap()
+        XCTAssertEqual(app.pickerWheels.firstMatch.value as? String, "120 g")
+        app.buttons["number-choice-cancel"].tap()
+        input.tap()
+        input.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3) + "12345")
+        choices.tap()
+        XCTAssertEqual(app.pickerWheels.firstMatch.value as? String, "12345 g")
+        app.buttons["number-choice-done"].tap()
+        app.buttons["log-unit-picker"].tap()
+        app.buttons["tablets"].tap()
+        XCTAssertEqual(input.value as? String, "12345")
+        chooseNumber("2 tablets", from: choices, in: app)
+        XCTAssertEqual(input.value as? String, "2")
+        let save = app.buttons["save-log-button"]
+        reveal(save, in: app)
+        save.tap()
+        XCTAssertTrue(save.waitForNonExistence(timeout: 5))
+        app.tabBars.buttons["Activity"].tap()
+        let row = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "2 tablets")).firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+        XCTAssertEqual(input.value as? String, "2")
+        app.buttons["log-unit-picker"].tap()
+        app.buttons["oz"].tap()
+        chooseNumber("2.5 oz", from: choices, in: app)
+        XCTAssertEqual(input.value as? String, "2.5")
+        reveal(save, in: app)
+        save.tap()
+        XCTAssertTrue(save.waitForNonExistence(timeout: 5))
+        let ounceRow = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "2.5 oz")).firstMatch
+        XCTAssertTrue(ounceRow.waitForExistence(timeout: 5))
+        ounceRow.tap()
+        let exactText = input.value as? String ?? ""
+        XCTAssertEqual((Double(exactText) ?? -1) * 29.5735, 74, accuracy: 0.03)
+        choices.tap()
+        XCTAssertEqual(app.pickerWheels.firstMatch.value as? String, "\(exactText) oz")
+        app.buttons["number-choice-cancel"].tap()
+        chooseNumber("0 oz", from: choices, in: app)
+        XCTAssertEqual(input.value as? String, "0")
+        reveal(save, in: app)
+        save.tap()
+        XCTAssertTrue(save.waitForNonExistence(timeout: 5))
+        let zeroRow = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "0 oz")).firstMatch
+        XCTAssertTrue(zeroRow.waitForExistence(timeout: 5))
+        zeroRow.tap()
+        XCTAssertEqual(Double(input.value as? String ?? ""), 0)
+        chooseNumber("No value", from: choices, in: app)
+        XCTAssertEqual(input.value as? String, "Amount")
+        reveal(save, in: app)
+        save.tap()
+        XCTAssertTrue(save.waitForNonExistence(timeout: 5))
+        let emptyRow = app.staticTexts["Weigh flour"].firstMatch
+        XCTAssertTrue(emptyRow.waitForExistence(timeout: 5))
+        emptyRow.tap()
+        XCTAssertEqual(input.value as? String, "Amount")
+    }
+
+    func testDurationNumberChoicesKeepExactSecondsAtLargeText() throws {
+        let app = launch("timer-retry", accessibilitySize: true)
+        openChore("Nap", in: app)
+        let input = app.textFields["duration-seconds"]
+        let choices = app.buttons["Choose duration"]
+        chooseNumber("5 min", from: choices, in: app)
+        XCTAssertEqual(input.value as? String, "300")
+        input.tap()
+        input.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3) + "301")
+        app.buttons["amount-keyboard-done"].tap()
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        choices.tap()
+        XCTAssertEqual(app.pickerWheels.firstMatch.value as? String, "301 sec")
+        try captureReviewScreen(app, named: "duration-number-wheel-large-text", element: app.pickerWheels.firstMatch)
+        app.buttons["number-choice-done"].tap()
+        XCTAssertEqual(input.value as? String, "301")
+        let save = app.buttons["save-log-button"]
+        reveal(save, in: app)
+        save.tap()
+        XCTAssertTrue(save.waitForNonExistence(timeout: 5))
+        app.tabBars.buttons["Activity"].tap()
+        let nap = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Nap")).firstMatch
+        XCTAssertTrue(nap.waitForExistence(timeout: 5))
+        nap.tap()
+        reveal(input, in: app)
+        XCTAssertEqual(input.value as? String, "301")
+    }
+
     func testAmountUnitSelectorCancelAndSavedActivity() throws {
         let app = launch("units")
         openChore("Weigh flour", in: app)
@@ -107,7 +257,6 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         app.buttons["L"].tap()
         XCTAssertEqual(app.textFields["amount-input"].value as? String, "200")
         app.buttons["amount-keyboard-done"].tap()
-        try captureReviewScreen(app, named: "medication-unit-selector")
         let save = app.buttons["save-log-button"]
         reveal(save, in: app)
         save.tap()
@@ -117,6 +266,11 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "200 L")).firstMatch.tap()
         XCTAssertTrue(app.buttons["log-unit-picker"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.buttons["log-unit-picker"].label, "Unit, L")
+        // Capture the saved unit in a freshly opened form. Keep the live
+        // activity timestamp outside this unit-control snapshot.
+        waitForStableScreen(app)
+        try captureReviewScreen(app, named: "medication-unit-selector",
+                                element: app.cells.containing(.button, identifier: "log-unit-picker").firstMatch)
         app.buttons["log-unit-picker"].tap()
         app.buttons["g"].tap()
         reveal(save, in: app)

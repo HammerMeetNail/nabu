@@ -69,10 +69,23 @@ ${exported?'export ':''}function ${symbol}(...args) {
     delete responseHeaders['content-length'];delete responseHeaders['content-encoding'];
     await route.fulfill({response,headers:responseHeaders,body});
   });
-  return async()=>page.evaluate(async name=>{
-    const calls=globalThis.__reviewModuleCalls?.[name];
-    if(!calls?.length) throw new Error(`No observed calls to ${name}`);
-    let count=0;
-    do {count=calls.length;await Promise.all(calls.slice());} while(count!==calls.length);
-  },symbol);
+  return async()=>{
+    // Retain the join in a remote object until Playwright finishes awaiting it.
+    // Chromium can otherwise collect the temporary evaluation promise and
+    // report "Promise was collected", surfaced by Playwright as navigation.
+    const waiter=await page.evaluateHandle(name=>{
+      const calls=globalThis.__reviewModuleCalls?.[name];
+      if(!calls?.length) throw new Error(`No observed calls to ${name}`);
+      const pending=(async()=>{
+        let count=0;
+        do {count=calls.length;await Promise.all(calls.slice());} while(count!==calls.length);
+      })();
+      // The original promise still rejects when joined below. Mark it handled
+      // during the protocol round trip that obtains this retaining handle.
+      pending.catch(()=>{});
+      return {pending};
+    },symbol);
+    try {await waiter.evaluate(({pending})=>pending);}
+    finally {await waiter.dispose();}
+  };
 }

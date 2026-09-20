@@ -93,3 +93,61 @@ enum AmountUnits {
         return Int(number)
     }
 }
+
+/// Mirrors web/static/js/number-input.js. Values are displayed numbers; the
+/// existing save path remains the only place that converts oz to canonical mL.
+enum ActivityNumberChoices {
+    enum Kind { case amount, duration }
+
+    struct Option: Equatable {
+        let value: String
+        let label: String
+    }
+
+    private static func maximum(unit: String, kind: Kind) -> Double {
+        if kind == .duration { return 86400 }
+        if unit.lowercased() == "oz" { return (VolumeUnits.mlToOz(100000) * 1000).rounded() / 1000 }
+        return 100000
+    }
+
+    private static func numberText(_ number: Double) -> String {
+        number == number.rounded() ? String(Int(number)) : String(number)
+    }
+
+    static func selection(for text: String, unit: String = "", kind: Kind = .amount) -> String {
+        guard let number = Double(text.replacingOccurrences(of: ",", with: ".")),
+              number.isFinite, number >= 0, number <= maximum(unit: unit, kind: kind) else { return "" }
+        return numberText(number)
+    }
+
+    static func options(unit: String = "", kind: Kind = .amount, currentText: String = "") -> [Option] {
+        var numbers: [Double] = []
+        func add(_ start: Double, _ end: Double, _ step: Double) {
+            numbers.append(contentsOf: stride(from: start, through: end, by: step))
+        }
+        if kind == .duration {
+            add(0, 45, 15)
+            add(60, 3540, 60)
+            add(3600, 86400, 3600)
+        } else if unit.lowercased() == "oz" {
+            add(0, 16, 0.5)
+        } else if unit.lowercased() == "ml" {
+            add(0, 300, 5)
+            add(325, 1000, 25)
+        } else {
+            add(0, 20, 1)
+            add(25, 100, 5)
+            add(125, 1000, 25)
+        }
+        if let selected = Double(selection(for: currentText, unit: unit, kind: kind)) { numbers.append(selected) }
+        return [Option(value: "", label: "No value")] + Set(numbers).sorted().map { number in
+            let value = numberText(number)
+            let label: String
+            if kind != .duration { label = unit.isEmpty ? value : "\(value) \(unit)" }
+            else if number > 0 && number.truncatingRemainder(dividingBy: 3600) == 0 { label = "\(numberText(number / 3600)) hr" }
+            else if number > 0 && number.truncatingRemainder(dividingBy: 60) == 0 { label = "\(numberText(number / 60)) min" }
+            else { label = "\(value) sec" }
+            return Option(value: value, label: label)
+        }
+    }
+}

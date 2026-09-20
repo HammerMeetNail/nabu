@@ -1,8 +1,9 @@
 // web/static/js/schedule.js
 
 import { apiFetch } from "./api.js";
-import { isVolumeMetric, formatAmount, amountUnitOptions, amountInputValue, amountInputMax } from './metrics.js';
+import { isVolumeMetric, formatAmount, amountUnitOptions, amountInputValue } from './metrics.js';
 import { escapeHTML, volumeOptions, formatVolume } from "./utils.js";
+import { renderNumberInput } from './number-input.js';
 
 const MANAGE_ICON = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>`;
 
@@ -386,10 +387,10 @@ export function renderConfigureScheduleSheet(chore, date, hour, presetTime, pres
 
 // ─── Render: log-with-indicators bottom sheet ────────────────────────────────
 
-function renderIndicatorVolumeRow(label, on, selectedML = null, unit = "ml", chore = {hasVolumeML:true}) {
+function renderIndicatorVolumeRow(label, on, selectedML = null, unit = "mL") {
   return `<div class="indicator-row">
     <button type="button" class="log-chip${on ? ' log-chip--on' : ''}" data-action="toggle-indicator" data-label="${escapeHTML(label)}" aria-pressed="${on}">${escapeHTML(label)}</button>
-    <input type="number" inputmode="decimal" class="indicator-volume-select text-input" aria-label="${escapeHTML(label)} amount" data-indicator="${escapeHTML(label)}" min="0" max="${amountInputMax(unit)}" step="${unit === 'oz' ? 'any' : '1'}" value="${escapeHTML(amountInputValue(selectedML, unit))}" ${on ? '' : 'style="display:none" disabled'}>
+    ${renderNumberInput({className: 'indicator-volume-select', label: `${label} amount`, pickerLabel: `Choose ${label} amount`, indicator: label, unit, value: amountInputValue(selectedML, unit), disabled: !on})}
   </div>`;
 }
 
@@ -438,7 +439,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
         // older log or a recent-chip fill) must never be shown.
         const volume = log ? (logIndicatorVolumes[label] ?? null)
           : (prevIndicatorSet.has(label) ? ((cachedIndicatorVolumes?.[label]) ?? null) : null);
-        return renderIndicatorVolumeRow(label, on, volume, volumeUnit, chore);
+        return renderIndicatorVolumeRow(label, on, volume, selectedUnit);
       }).join("");
       return `<div class="sheet-indicator-row sheet-indicator-amounts">
         <div class="indicator-amount-fields">
@@ -473,7 +474,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     ? `<div class="sheet-amount-row">
         <div class="sheet-amount-field">
           <label for="log-volume" class="field-label">Amount</label>
-          <input id="log-volume" class="text-input volume-select" type="number" inputmode="decimal" min="0" max="${amountInputMax(selectedUnit)}" step="${selectedUnit === 'oz' ? 'any' : '1'}" value="${escapeHTML(amountInputValue(log?.volumeML ?? cachedVolumeML, selectedUnit))}">
+          ${renderNumberInput({id: 'log-volume', className: 'volume-select', label: 'Amount', pickerLabel: 'Choose amount', unit: selectedUnit, value: amountInputValue(log?.volumeML ?? cachedVolumeML, selectedUnit)})}
         </div>
         <div class="sheet-amount-field">${unitField}</div>
       </div>` : '';
@@ -484,7 +485,7 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
 
   const durationInput = chore.metricType === 'duration' ? `<div class="sheet-duration-row">
     <label for="log-duration" class="field-label">Duration (seconds)</label>
-    <input id="log-duration" class="text-input" type="number" inputmode="numeric" min="0" max="86400" step="1" value="${log?.durationSeconds ?? ''}">
+    ${renderNumberInput({id: 'log-duration', label: 'Duration (seconds)', pickerLabel: 'Choose duration', kind: 'duration', value: log?.durationSeconds ?? ''})}
   </div>` : '';
 
   // Duration timer start (Phase 5.2): for duration-metric chores, offer a

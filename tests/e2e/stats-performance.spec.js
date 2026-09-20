@@ -5,8 +5,10 @@ test.use({serviceWorkers:'block'});
 
 for (const resource of ['overview','time-series']) {
   test(`Stats renders ready charts while ${resource} is pending and stays usable`,async({page})=>{
-    const joinLoads=await observeModuleCalls(page,'stats-data','loadStatsResource');
+    const joinLoads=await observeModuleCalls(page,'app','loadAllStatsData',{exported:false});
     const {chore}=await fixture(page);
+    // A tab switch must retain this document, even while chart reads finish.
+    const originalDocument=await page.evaluateHandle(()=>document);
     await postLog(page,chore,{volumeML:120});
     const entered=deferred(),release=deferred();
     const path=resource==='overview' ? '**/api/stats/overview' : `**/api/stats/chores/${chore.id}/time-series?*`;
@@ -33,12 +35,13 @@ for (const resource of ['overview','time-series']) {
       await joinLoads();
       await expect(page.locator('.stats-page')).not.toContainText('Loading charts');
       await expect(page.locator('.chore-stat-card')).toHaveCount(1);
-    } finally {release.resolve();await joinLoads();}
+      expect(await originalDocument.evaluate(original=>original===document)).toBe(true);
+    } finally {release.resolve();try {await joinLoads();} finally {await originalDocument.dispose();}}
   });
 }
 
 test('Stats preserves focused period controls when loading finishes and a recap appears',async({page})=>{
-  const joinLoads=await observeModuleCalls(page,'stats-data','loadStatsResource');
+  const joinLoads=await observeModuleCalls(page,'app','loadAllStatsData',{exported:false});
   const {chore}=await fixture(page,{metricType:'none'});
   await postLog(page,chore);
   const saved=await page.request.patch('/api/preferences',{headers:await headers(page),data:{statsSectionOrder:['recap','categories','chores']}});

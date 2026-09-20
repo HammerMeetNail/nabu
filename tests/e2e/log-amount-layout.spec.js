@@ -37,6 +37,8 @@ for (const [name, metricUnit] of [['Baby Meds', 'mg'], ['Bottle', 'mL']]) {
 
     await amount.fill('37');
     await amount.press('Tab');
+    await expect(page.getByRole('combobox', {name: 'Choose amount', exact: true})).toBeFocused();
+    await page.keyboard.press('Tab');
     await expect(unit).toBeFocused();
     await unit.selectOption('capsules');
     await expect(amount).toHaveValue('37');
@@ -135,6 +137,8 @@ test('medication with custom types keeps one inline unit and preserves toggled a
   await expect(unit).toBeVisible();
   await expect(unit).toHaveCount(1);
   await evening.press('Tab');
+  await expect(page.getByRole('combobox', {name: 'Choose Evening dose amount', exact: true})).toBeFocused();
+  await page.keyboard.press('Tab');
   await expect(unit).toBeFocused();
   await page.getByRole('button', {name: 'Morning dose', exact: true}).click();
   await expect(morning).toHaveValue('2');
