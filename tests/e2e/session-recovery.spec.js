@@ -1,6 +1,37 @@
 import {test,expect} from '@playwright/test';
 import {fixture,headers,postLog,signIn,deferred} from './review-fixtures.js';
 
+async function observeStartupConfirmation(page) {
+  // Home can render before bootstrap registers foreground recovery and starts
+  // its journal session check. Observe that check without disabling the SW.
+  await page.addInitScript(() => {
+    const addEventListener = document.addEventListener;
+    document.addEventListener = function(type, listener, options) {
+      addEventListener.call(this, type, listener, options);
+      if (type === 'visibilitychange') window.foregroundRecoveryReady = true;
+    };
+    const fetch = window.fetch;
+    window.fetch = async function(input, options) {
+      const response = await fetch.call(this, input, options);
+      const url = input instanceof Request ? input.url : input;
+      if (window.foregroundRecoveryReady && new URL(url, location.href).pathname === '/api/me') {
+        window.foregroundBootstrapResponseReceived = true;
+      }
+      return response;
+    };
+  });
+  return async () => {
+    await page.waitForFunction(() => window.foregroundBootstrapResponseReceived === true && !document.hidden);
+    // The response alone is not enough: drain the identity lock to wait for
+    // response consumption and publication of the confirmed session.
+    await page.evaluate(async () => {
+      const suffix = new URL(document.querySelector('script[src*="/static/js/app.js"]').src).search;
+      const {withBrowserLock} = await import(`/static/js/device-store.js${suffix}`);
+      await withBrowserLock('nabu-identity', () => {});
+    });
+  };
+}
+
 async function queueRow(page,chore,note='Saved before session expired',holdReplay=false) {
   return page.evaluate(async ({choreId,note,holdReplay})=>{
     const suffix=new URL(document.querySelector('script[src*="/static/js/app.js"]').src).search;
@@ -88,7 +119,11 @@ test('session expiry hides account data and keeps its queue until that account r
 
 test('foreground confirms session before polling, push or journal replay',async({page})=>{
   await page.clock.install();
+  const joinStartupConfirmation=await observeStartupConfirmation(page);
   const {chore}=await fixture(page);
+  // Advancing the clock early can abort the startup read at its 15 s deadline.
+  await joinStartupConfirmation();
+  await expect(page.locator('.home-grid')).toBeVisible();
   await page.clock.runFor(29000);
   await queueRow(page,chore);
   const entered=deferred(),release=deferred();
@@ -193,37 +228,14 @@ test('a context mismatch during foreground confirmation fences the old account i
 });
 
 test('an active page hides data when foreground identity storage cannot be read',async({page})=>{
-  // History can render before bootstrap finishes registering foreground
-  // recovery. Wait for the listener before injecting its storage failure.
-  await page.addInitScript(() => {
-    const addEventListener = document.addEventListener;
-    document.addEventListener = function(type, listener, options) {
-      addEventListener.call(this, type, listener, options);
-      if (type === 'visibilitychange') window.foregroundRecoveryReady = true;
-    };
-    const fetch = window.fetch;
-    window.fetch = async function(input, options) {
-      const response = await fetch.call(this, input, options);
-      const url = input instanceof Request ? input.url : input;
-      if (window.foregroundRecoveryReady && new URL(url, location.href).pathname === '/api/me') {
-        window.foregroundBootstrapResponseReceived = true;
-      }
-      return response;
-    };
-  });
+  const joinStartupConfirmation=await observeStartupConfirmation(page);
   const {chore}=await fixture(page);
   await postLog(page,chore,{note:'Private foreground history'});
   await page.goto('/activity');
   await expect(page.locator('.hist-row')).toContainText('Private foreground history');
-  // Bootstrap starts a queue session check after registering the listener.
-  // Let its response arrive, then drain its identity lock so our foreground
-  // event cannot reuse an already-running check that read storage earlier.
-  await page.waitForFunction(() => window.foregroundBootstrapResponseReceived === true && !document.hidden);
-  await page.evaluate(async () => {
-    const suffix = new URL(document.querySelector('script[src*="/static/js/app.js"]').src).search;
-    const {withBrowserLock} = await import(`/static/js/device-store.js${suffix}`);
-    await withBrowserLock('nabu-identity', () => {});
-  });
+  // The foreground event must not reuse a check that read storage before
+  // this test's failure injection.
+  await joinStartupConfirmation();
   await page.evaluate(()=>{
     window.originalIdentityOpen=IDBFactory.prototype.open;
     IDBFactory.prototype.open=function(name,...args){if(name==='nabu-device') throw new Error('authority unavailable');return window.originalIdentityOpen.call(this,name,...args);};
