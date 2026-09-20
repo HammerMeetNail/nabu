@@ -802,8 +802,8 @@ describe("Log sheet: prefill from latest log (type + volume)", () => {
     // Breast chip on with its volume; formula off.
     assert.match(html, /data-label="🤱 breast"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-label="🤱 breast"/);
     assert.match(html, /data-label="🍼 formula"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🍼 formula"/);
-    const breastSel = html.match(/data-indicator="🤱 breast"[^>]*>/)?.[0] || "";
-    assert.ok(breastSel.includes('value="95"'), "breast volume preselected");
+    const field = JSDOM.fragment(html).querySelector('input[data-indicator="🤱 breast"]');
+    assert.equal(field.value, '95', "breast volume preselected");
   });
 
   it("does not prefill a volume for a type absent from the previous selection", async () => {
@@ -814,9 +814,8 @@ describe("Log sheet: prefill from latest log (type + volume)", () => {
       // Polluted cache: a stale breast volume the user never selected.
       cachedIndicatorVolumes: { "🍼 formula": 150, "🤱 breast": 150 },
     });
-    const breastSel = html.match(/data-indicator="🤱 breast"[^>]*>/)?.[0] || "";
-    assert.ok(!breastSel.includes('value="150"'), "breast stale volume must not be preselected");
-    assert.match(breastSel, /value=""/);
+    const field = JSDOM.fragment(html).querySelector('input[data-indicator="🤱 breast"]');
+    assert.equal(field.value, '', "breast stale volume must not be preselected");
     // Breast chip must be off.
     assert.match(html, /data-label="🤱 breast"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🤱 breast"/);
   });
@@ -830,8 +829,8 @@ describe("Log sheet: prefill from latest log (type + volume)", () => {
     });
     assert.match(html, /data-label="🍼 formula"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-label="🍼 formula"/);
     assert.match(html, /data-label="🤱 breast"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🤱 breast"/);
-    const formulaSel = html.match(/data-indicator="🍼 formula"[^>]*>/)?.[0] || "";
-    assert.ok(formulaSel.includes('value=""'), "no volume when nothing cached");
+    const field = JSDOM.fragment(html).querySelector('input[data-indicator="🍼 formula"]');
+    assert.equal(field.value, '', "no volume when nothing cached");
   });
 
   it("never echoes the previous selection for plain chip chores (e.g. Laundry)", async () => {
@@ -1518,5 +1517,46 @@ describe('Independent amount entry', () => {
     assert.equal(storedAmount(amountInputMax('oz'),'oz'),100000);
     assert.ok(Number(amountInputValue(100000,'oz')) <= amountInputMax('oz'));
     assert.equal(storedAmount('', 'mg'),null);
+  });
+});
+
+describe('Activity number selectors', () => {
+  it('offers displayed-unit values while retaining exact amounts outside the presets', async () => {
+    const {renderLogSheet} = await import('../schedule.js');
+    const {amountInputValue, storedAmount} = await import('../metrics.js');
+    for (const [unit, stored] of [['mL', 12345], ['oz', 37], ['mg', 0]]) {
+      const root = JSDOM.fragment(renderLogSheet({id: 1, name: 'Amount', hasVolumeML: true, metricUnit: unit},
+        {volumeML: stored, metricUnit: unit}, '', [], 1));
+      const input = root.querySelector('#log-volume');
+      const picker = root.querySelector('[data-action="pick-number"]');
+      assert.equal(input.value, amountInputValue(stored, unit));
+      assert.equal(picker.value, input.value);
+      assert.equal(storedAmount(picker.value, unit), stored);
+      assert.ok(picker.querySelector('option[value=""]'), 'blank remains distinct from zero');
+      assert.ok(picker.querySelector('option[value="0"]'));
+      if (unit === 'oz') assert.equal(picker.querySelector('option[value="2.5"]').textContent, '2.5 oz');
+    }
+  });
+
+  it('escapes indicator names and custom units in picker labels and choices', async () => {
+    const {renderLogSheet} = await import('../schedule.js');
+    const label = '<img src=x onerror="alert(1)">', unit = '<svg onload="alert(2)">';
+    const root = JSDOM.fragment(renderLogSheet({id: 1, name: 'Custom', hasVolumeML: true,
+      metricUnit: unit, indicatorLabels: [label], indicatorDefaults: [label]}, null, '', [], 1));
+    assert.equal(root.querySelectorAll('img, [onload], [onerror]').length, 0);
+    const picker = root.querySelector('[data-action="pick-number"]');
+    assert.equal(picker.getAttribute('aria-label'), `Choose ${label} amount`);
+    assert.equal(picker.querySelector('option[value="2"]').textContent, `2 ${unit}`);
+  });
+
+  it('keeps exact duration seconds and offers a bounded set of readable choices', async () => {
+    const {renderLogSheet} = await import('../schedule.js');
+    const root = JSDOM.fragment(renderLogSheet({id: 1, name: 'Walk', metricType: 'duration'},
+      {durationSeconds: 301}, '', [], 1));
+    const picker = root.querySelector('[data-action="pick-number"]');
+    assert.equal(picker.value, '301');
+    assert.equal(picker.querySelector('option[value="300"]').textContent, '5 min');
+    assert.equal(picker.querySelector('option[value="86400"]').textContent, '24 hr');
+    assert.ok([...picker.options].every(option => Number(option.value) <= 86400));
   });
 });

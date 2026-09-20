@@ -5,6 +5,7 @@ import { captureScope } from "./request-scope.js";
 import { loadStatsPage, loadStatsResource, loadStatsWidgets } from "./stats-data.js";
 import { loadRecentAmounts } from './recent-amounts.js';
 import { formatAmount, entryMetric, entryVolumeUnit, amountInputValue, storedAmount, amountInputMax } from './metrics.js';
+import { syncNumberInput, setNumberInputEnabled } from './number-input.js';
 import { newKey } from "./device-store.js";
 import { morphInnerHTML } from "./morph.js";
 import { createSheetController } from "./sheets.js";
@@ -1808,8 +1809,7 @@ export async function init() {
       const volumeSelect = row?.querySelector(".indicator-volume-select");
       if (volumeSelect) {
         const on = actionEl.classList.contains("log-chip--on");
-        volumeSelect.style.display = on ? "" : "none";
-        volumeSelect.disabled = !on;
+        setNumberInputEnabled(volumeSelect, on);
       }
       return;
     }
@@ -2740,6 +2740,7 @@ export async function init() {
         const chore = {...state.chores.find(c => c.id === state.activeSheetData?.choreId), metricUnit:document.querySelector('#log-metric-unit')?.value};
         const setAmount = input => {
           input.value = amountInputValue(ml, chore.metricUnit);
+          syncNumberInput(input);
         };
         if (plain) setAmount(plain);
         // Fill only per-indicator volume selects whose type is already on.
@@ -2749,7 +2750,6 @@ export async function init() {
           const chip = row.querySelector("[data-action='toggle-indicator']");
           if (!select || !chip || chip.getAttribute("aria-pressed") !== "true") return;
           setAmount(select);
-          select.style.display = "";
         });
         actionEl.classList.add("volume-recent-chip--active");
         break;
@@ -3383,7 +3383,15 @@ export async function init() {
 
   // ── Frequency selector: show/hide weekday pill row ─────────────────────────
   // Uses "change" (not "click") because <select> fires "change" on selection.
+  document.addEventListener('input', (e) => {
+    if (e.target.matches('.number-input input')) syncNumberInput(e.target);
+  });
   document.addEventListener("change", (e) => {
+    if (e.target.matches('[data-action="pick-number"]')) {
+      const input = e.target.closest('.number-input').querySelector('input');
+      input.value = e.target.value;
+      return;
+    }
     if (e.target.id === 'log-metric-unit') {
       const draft = state.activeSheetData, unit = e.target.value;
       draft.metricUnit = unit;
@@ -3392,6 +3400,8 @@ export async function init() {
       sheet.querySelectorAll('#log-volume, .indicator-volume-select').forEach(input => {
         input.step = unit.toLowerCase() === 'oz' ? 'any' : '1';
         input.max = amountInputMax(unit);
+        input.inputMode = unit.toLowerCase() === 'oz' ? 'decimal' : 'numeric';
+        syncNumberInput(input, unit);
       });
       draft.recentRequested = false;
       ensureSheetRecentAmounts(document.querySelector('#app'));

@@ -6,6 +6,47 @@ import XCTest
 /// identical labels for the same canonical mL values.
 final class VolumeUnitsTests: XCTestCase {
 
+    func testActivityNumberChoicesMatchPWARangesAndUnits() {
+        let ml = ActivityNumberChoices.options(unit: "mL")
+        XCTAssertEqual(ml.count, 90) // blank + 0...300 by 5 + 325...1000 by 25
+        XCTAssertEqual(ml.first, .init(value: "", label: "No value"))
+        XCTAssertEqual(ml[1], .init(value: "0", label: "0 mL"))
+        XCTAssertEqual(ml.last, .init(value: "1000", label: "1000 mL"))
+        let oz = ActivityNumberChoices.options(unit: "oz")
+        XCTAssertEqual(oz.count, 34)
+        XCTAssertTrue(oz.contains(.init(value: "2.5", label: "2.5 oz")))
+        for unit in AmountUnits.common + ["reps", "<custom>"] where !["mL", "oz"].contains(unit) {
+            let choices = ActivityNumberChoices.options(unit: unit)
+            XCTAssertEqual(choices.count, 74)
+            XCTAssertTrue(choices.contains(.init(value: "2", label: "2 \(unit)")))
+        }
+    }
+
+    func testActivityNumberChoicesPreserveExactValuesAndCanonicalConversion() {
+        for (unit, stored) in [("mL", 12345), ("oz", 37), ("mg", 0)] {
+            let text = AmountUnits.inputText(stored, unit: unit)
+            let selected = ActivityNumberChoices.selection(for: text, unit: unit)
+            let choices = ActivityNumberChoices.options(unit: unit, currentText: text)
+            XCTAssertTrue(choices.contains { $0.value == selected })
+            XCTAssertEqual(AmountUnits.storedAmount(selected, unit: unit), stored)
+        }
+        XCTAssertEqual(ActivityNumberChoices.selection(for: "2,5", unit: "oz"), "2.5")
+        for value in ["", "-1", "nan", "inf", "100001"] {
+            XCTAssertEqual(ActivityNumberChoices.selection(for: value, unit: "mg"), "")
+        }
+        XCTAssertEqual(ActivityNumberChoices.selection(for: "4000", unit: "oz"), "")
+    }
+
+    func testActivityDurationChoicesPreserveExactSecondsAndBounds() {
+        let choices = ActivityNumberChoices.options(kind: .duration, currentText: "301")
+        XCTAssertEqual(choices.count, 89) // blank, 87 presets, exact custom value
+        XCTAssertTrue(choices.contains(.init(value: "300", label: "5 min")))
+        XCTAssertTrue(choices.contains(.init(value: "301", label: "301 sec")))
+        XCTAssertEqual(choices.last, .init(value: "86400", label: "24 hr"))
+        XCTAssertTrue(choices.allSatisfy { $0.value.isEmpty || Double($0.value)! <= 86400 })
+        XCTAssertEqual(ActivityNumberChoices.selection(for: "86401", kind: .duration), "")
+    }
+
     func testIndependentAmountTextAndStoredUnits() {
         for unit in ["mcg", "mg", "g", "mL", "L", "drops", "tablets", "capsules", "puffs", "units"] {
             XCTAssertEqual(AmountUnits.inputText(200, unit: unit), "200")

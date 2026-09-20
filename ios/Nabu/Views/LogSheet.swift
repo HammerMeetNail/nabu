@@ -109,9 +109,16 @@ struct LogSheet: View {
 
                 if chore.metricType == "duration" {
                     Section("Duration (seconds)") {
-                        TextField("Optional", value: $durationSeconds, format: .number)
-                            .keyboardType(.numberPad)
-                            .accessibilityIdentifier("duration-seconds")
+                        HStack {
+                            TextField("Optional", value: $durationSeconds, format: .number)
+                                .keyboardType(.numberPad)
+                                .focused($focusedAmount, equals: "duration")
+                                .accessibilityIdentifier("duration-seconds")
+                            NumberChoiceButton(text: Binding(
+                                get: { durationSeconds.map(String.init) ?? "" },
+                                set: { durationSeconds = Int($0) }
+                            ), title: "Choose duration", kind: .duration) { focusedAmount = nil }
+                        }
                     }
                 }
                 if !isEditing && chore.metricType == "duration" {
@@ -263,14 +270,19 @@ struct LogSheet: View {
     private var recentVolumeValues: [Int] { recentAmounts }
 
     private func volumePicker(id: String = "plain") -> some View {
-        TextField("Amount", text: Binding(
+        let text = Binding(
             get: { hasIndicators ? (indicatorAmountTexts[id] ?? "") : amountText },
             set: { if hasIndicators { indicatorAmountTexts[id] = $0 } else { amountText = $0 } }
-        ))
-        .keyboardType(.decimalPad)
-        .focused($focusedAmount, equals: id)
-        .accessibilityLabel("Amount")
-        .accessibilityIdentifier(hasIndicators ? "indicator-amount-input" : "amount-input")
+        )
+        return HStack(spacing: 4) {
+            TextField("Amount", text: text)
+                .keyboardType(.decimalPad)
+                .focused($focusedAmount, equals: id)
+                .accessibilityLabel("Amount")
+                .accessibilityIdentifier(hasIndicators ? "indicator-amount-input" : "amount-input")
+            NumberChoiceButton(text: text, title: hasIndicators ? "Choose \(id) amount" : "Choose amount",
+                               unit: selectedUnit) { focusedAmount = nil }
+        }
     }
 
     private func loadAmountTexts() {
@@ -546,6 +558,59 @@ struct LogSheet: View {
 }
 
 // MARK: - Star rating
+
+private struct NumberChoiceButton: View {
+    @Binding var text: String
+    let title: String
+    var unit = ""
+    var kind: ActivityNumberChoices.Kind = .amount
+    let onOpen: () -> Void
+    @State private var isPresented = false
+    @State private var selection = ""
+
+    var body: some View {
+        Button {
+            onOpen()
+            selection = ActivityNumberChoices.selection(for: text, unit: unit, kind: kind)
+            isPresented = true
+        } label: {
+            Image(systemName: "chevron.down")
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .accessibilityLabel(title)
+        .sheet(isPresented: $isPresented) {
+            NavigationStack {
+                Picker(title, selection: $selection) {
+                    ForEach(ActivityNumberChoices.options(unit: unit, kind: kind, currentText: text), id: \.value) { option in
+                        Text(option.label).tag(option.value)
+                    }
+                }
+                .pickerStyle(.wheel)
+                .accessibilityIdentifier("number-choice-wheel")
+                .padding(.horizontal)
+                .navigationTitle(title)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel") { isPresented = false }
+                            .accessibilityIdentifier("number-choice-cancel")
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") {
+                            text = selection
+                            isPresented = false
+                        }
+                        .accessibilityIdentifier("number-choice-done")
+                    }
+                }
+            }
+            .presentationDetents([.height(320)])
+            .presentationDragIndicator(.visible)
+        }
+    }
+}
 
 /// 0–50 rating ("tenths of stars", half-star resolution) matching the PWA's
 /// star-rating slider. Tap or drag across the stars to set the value.
