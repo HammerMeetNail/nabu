@@ -83,7 +83,13 @@ func (s *Scheduler) tick(parent context.Context) (err error) {
 		}
 		r.Due++
 		date := day.Format("2006-01-02")
-		if quietAt(c.Preferences, now) || slices.Contains(c.SentDates, date) {
+		// Suppression is cumulative: the user's global quiet hours, the
+		// household-level window on the chore, and the user's per-chore
+		// window each independently silence the reminder.
+		if quietAt(c.Preferences, now) ||
+			inQuietWindow(now, c.Preferences.Timezone, c.ChoreQuietStart, c.ChoreQuietEnd) ||
+			inQuietWindow(now, c.Preferences.Timezone, c.UserQuietStart, c.UserQuietEnd) ||
+			slices.Contains(c.SentDates, date) {
 			r.Skipped++
 			return nil
 		}
@@ -168,7 +174,18 @@ func (s *Scheduler) tick(parent context.Context) (err error) {
 				continue
 			}
 			up, _ := s.userPrefs.Get(ctx, uid)
-			if err := process(candidate{Schedule: sch, UserID: uid, LeadMinutes: s.getLeadMinutes(ctx, uid, sch.ChoreID), Preferences: pref, UserTimezone: up.Timezone}); err != nil {
+			chPref, _ := s.store.GetChoreReminderPref(ctx, uid, sch.ChoreID)
+			if err := process(candidate{
+				Schedule:        sch,
+				UserID:          uid,
+				LeadMinutes:     s.getLeadMinutes(ctx, uid, sch.ChoreID),
+				Preferences:     pref,
+				UserTimezone:    up.Timezone,
+				ChoreQuietStart: ch.QuietHoursStart,
+				ChoreQuietEnd:   ch.QuietHoursEnd,
+				UserQuietStart:  chPref.QuietHoursStart,
+				UserQuietEnd:    chPref.QuietHoursEnd,
+			}); err != nil {
 				return err
 			}
 			if r.Candidates >= maxCandidates || r.Reminded+r.Failed >= maxDeliveries {

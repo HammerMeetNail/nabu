@@ -49,10 +49,10 @@ func (s *Service) logAudit(ctx context.Context, event string, attrs map[string]s
 func idStr(id int64) string { return strconv.FormatInt(id, 10) }
 
 func (s *Service) CreateChore(ctx context.Context, householdID int64, userID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool, metricType, metricUnit string, subjects []string) (Chore, error) {
-	return s.CreateChoreWithVisibility(ctx, householdID, userID, name, icon, color, category, indicatorLabels, indicatorDefaults, followUpEnabled, metricType, metricUnit, subjects, VisibilityHousehold)
+	return s.CreateChoreWithVisibility(ctx, householdID, userID, name, icon, color, category, indicatorLabels, indicatorDefaults, followUpEnabled, metricType, metricUnit, subjects, VisibilityHousehold, "", "")
 }
 
-func (s *Service) CreateChoreWithVisibility(ctx context.Context, householdID int64, userID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool, metricType, metricUnit string, subjects []string, visibility string) (Chore, error) {
+func (s *Service) CreateChoreWithVisibility(ctx context.Context, householdID int64, userID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool, metricType, metricUnit string, subjects []string, visibility string, quietHoursStart, quietHoursEnd string) (Chore, error) {
 	if name == "" {
 		return Chore{}, fmt.Errorf("name must not be empty")
 	}
@@ -92,6 +92,15 @@ func (s *Service) CreateChoreWithVisibility(ctx context.Context, householdID int
 			return Chore{}, err
 		}
 	}
+	// A quiet window is only meaningful with both bounds; reject partial or
+	// malformed windows rather than storing a silently dead config.
+	if quietHoursStart != "" || quietHoursEnd != "" {
+		if !QuietHoursComplete(quietHoursStart, quietHoursEnd) {
+			return Chore{}, fmt.Errorf("invalid quiet hours")
+		}
+	} else {
+		quietHoursStart, quietHoursEnd = "", ""
+	}
 	created, err := s.store.CreateChore(ctx, Chore{
 		HouseholdID:       householdID,
 		Name:              name,
@@ -107,6 +116,8 @@ func (s *Service) CreateChoreWithVisibility(ctx context.Context, householdID int
 		MetricUnit:        metricUnit,
 		Subjects:          subjects,
 		Visibility:        visibility,
+		QuietHoursStart:   quietHoursStart,
+		QuietHoursEnd:     quietHoursEnd,
 	})
 	if err != nil {
 		return Chore{}, err
@@ -127,13 +138,15 @@ func (s *Service) GetChore(ctx context.Context, choreID int64) (Chore, error) {
 }
 
 func (s *Service) UpdateChore(ctx context.Context, choreID int64, householdID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool, metricType, metricUnit *string, subjects *[]string) error {
-	_, err := s.UpdateChoreWithVisibility(ctx, choreID, householdID, name, icon, color, category, indicatorLabels, indicatorDefaults, followUpEnabled, metricType, metricUnit, subjects, nil, 0)
+	_, err := s.UpdateChoreWithVisibility(ctx, choreID, householdID, name, icon, color, category, indicatorLabels, indicatorDefaults, followUpEnabled, metricType, metricUnit, subjects, nil, 0, nil, nil)
 	return err
 }
 
 // UpdateChoreWithVisibility is the visibility-aware update path. visibility may be nil (unchanged).
 // userID is the actor for access checks; when 0, visibility checks are skipped for backward compat.
-func (s *Service) UpdateChoreWithVisibility(ctx context.Context, choreID int64, householdID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool, metricType, metricUnit *string, subjects *[]string, visibility *string, userID int64) (Chore, error) {
+// quietHoursStart/quietHoursEnd may be nil (unchanged); an explicit "" clears the
+// household-level quiet window.
+func (s *Service) UpdateChoreWithVisibility(ctx context.Context, choreID int64, householdID int64, name, icon, color, category string, indicatorLabels, indicatorDefaults []string, followUpEnabled *bool, metricType, metricUnit *string, subjects *[]string, visibility *string, userID int64, quietHoursStart, quietHoursEnd *string) (Chore, error) {
 	existing, err := s.store.GetChore(ctx, choreID)
 	if err != nil {
 		return Chore{}, err
@@ -214,6 +227,21 @@ func (s *Service) UpdateChoreWithVisibility(ctx context.Context, choreID int64, 
 			s2 = []string{}
 		}
 		existing.Subjects = s2
+	}
+	// Household-level quiet window: either bound may be updated independently
+	// (PATCH semantics), but both must be well-formed when present. An empty
+	// value clears the stored bound.
+	if quietHoursStart != nil {
+		if *quietHoursStart != "" && !ValidQuietTime(*quietHoursStart) {
+			return Chore{}, fmt.Errorf("invalid quiet hours")
+		}
+		existing.QuietHoursStart = *quietHoursStart
+	}
+	if quietHoursEnd != nil {
+		if *quietHoursEnd != "" && !ValidQuietTime(*quietHoursEnd) {
+			return Chore{}, fmt.Errorf("invalid quiet hours")
+		}
+		existing.QuietHoursEnd = *quietHoursEnd
 	}
 	if err := s.store.UpdateChore(ctx, existing); err != nil {
 		return Chore{}, err

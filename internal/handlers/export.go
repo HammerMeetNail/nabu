@@ -81,6 +81,8 @@ var householdExportColumns = []string{
 	"chore_metric_unit",
 	"chore_subjects",
 	"chore_visibility",
+	"chore_quiet_hours_start",
+	"chore_quiet_hours_end",
 	"log_id",
 	"log_user_id",
 	"log_chore_id",
@@ -294,6 +296,8 @@ func (h *ExportHandler) Data(w http.ResponseWriter, r *http.Request) {
 		row["chore_metric_unit"] = c.MetricUnit
 		row["chore_subjects"] = jsonString(c.Subjects)
 		row["chore_visibility"] = c.Visibility
+		row["chore_quiet_hours_start"] = c.QuietHoursStart
+		row["chore_quiet_hours_end"] = c.QuietHoursEnd
 		write(row)
 	}
 

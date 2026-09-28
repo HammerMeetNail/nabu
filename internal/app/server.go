@@ -195,7 +195,9 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	if db != nil {
 		reminderStore = reminder.NewPostgresStore(db)
 	} else {
-		reminderStore = reminder.NewMemoryStore()
+		// Attach schedule/chore lookups so the in-memory reminder delivery log
+		// (ListRecentReminders) can resolve chore names and icons.
+		reminderStore = reminder.NewMemoryStore().WithStores(scheduleStore, choreStore)
 	}
 
 	if db == nil {
@@ -306,6 +308,7 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	dayNoteService := daynote.NewService(dayNoteStore)
 	dayNoteHandler := handlers.NewDayNoteHandler(dayNoteService)
 	reminderSnoozeHandler := handlers.NewReminderSnoozeHandler(scheduleStore, choreStore, userPrefsStore).WithHouseholdStore(householdStore)
+	reminderLogHandler := handlers.NewReminderLogHandler(reminderStore)
 	statsService := stats.NewService(logStore, &choreStatsAdapter{choreStore}).WithMemberships(householdStore)
 	statsHandler := handlers.NewStatsHandler(statsService, userPrefsStore)
 	exportHandler := handlers.NewExportHandler(householdService, householdStore, choreStore, logService, scheduleStore, dayNoteService)
@@ -552,6 +555,7 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	mux.HandleFunc("/api/day-notes/{date}", method(http.MethodPut, middleware.RequireAuth(dayNoteHandler.Set)))
 
 	mux.HandleFunc("/api/reminders/snooze", method(http.MethodPost, middleware.RequireAuth(reminderSnoozeHandler.Snooze)))
+	mux.HandleFunc("/api/reminders/log", method(http.MethodGet, middleware.RequireAuth(reminderLogHandler.List)))
 
 	mux.HandleFunc("/api/schedules", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {

@@ -59,6 +59,29 @@ func validateChoreInput(name, icon, color, category string, indicatorLabels, ind
 	return 0, ""
 }
 
+// validateQuietHours checks a household-level quiet window on a chore. Either
+// both bounds are empty (no window) or both are well-formed "HH:MM" values.
+func validateQuietHours(start, end string) (int, string) {
+	if start == "" && end == "" {
+		return 0, ""
+	}
+	if !chore.QuietHoursComplete(start, end) {
+		return http.StatusBadRequest, "quiet hours require both a start and end time"
+	}
+	return 0, ""
+}
+
+// validateQuietHoursPtr is the PATCH variant: nil means unchanged, an explicit
+// value must be empty (clear) or a well-formed "HH:MM".
+func validateQuietHoursPtr(start, end *string) (int, string) {
+	for _, v := range []*string{start, end} {
+		if v != nil && *v != "" && !chore.ValidQuietTime(*v) {
+			return http.StatusBadRequest, "quiet hours must be an HH:MM time"
+		}
+	}
+	return 0, ""
+}
+
 // validateMetric checks a metric type against the closed allowlist and caps the
 // unit label. An empty metricType is allowed (treated as "none" downstream).
 func validateMetric(metricType, metricUnit string) (int, string) {
@@ -157,12 +180,18 @@ func (h *ChoreHandler) Create(w http.ResponseWriter, r *http.Request) {
 		MetricUnit        string   `json:"metricUnit"`
 		Subjects          []string `json:"subjects"`
 		Visibility        *string  `json:"visibility"`
+		QuietHoursStart   string   `json:"quietHoursStart"`
+		QuietHoursEnd     string   `json:"quietHoursEnd"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 
+	if code, msg := validateQuietHours(req.QuietHoursStart, req.QuietHoursEnd); code != 0 {
+		writeError(w, code, msg)
+		return
+	}
 	if code, msg := validateChoreInput(req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults); code != 0 {
 		writeError(w, code, msg)
 		return
@@ -184,13 +213,13 @@ func (h *ChoreHandler) Create(w http.ResponseWriter, r *http.Request) {
 		vis = *req.Visibility
 	}
 
-	created, err := h.service.CreateChoreWithVisibility(r.Context(), *user.HouseholdID, user.ID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults, req.FollowUpEnabled, req.MetricType, req.MetricUnit, req.Subjects, vis)
+	created, err := h.service.CreateChoreWithVisibility(r.Context(), *user.HouseholdID, user.ID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults, req.FollowUpEnabled, req.MetricType, req.MetricUnit, req.Subjects, vis, req.QuietHoursStart, req.QuietHoursEnd)
 	if err != nil {
 		if errors.Is(err, chore.ErrNotAdmin) {
 			writeError(w, http.StatusForbidden, "admin access required")
 			return
 		}
-		if strings.Contains(err.Error(), "invalid visibility") {
+		if strings.Contains(err.Error(), "invalid visibility") || strings.Contains(err.Error(), "invalid quiet hours") {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
@@ -249,9 +278,15 @@ func (h *ChoreHandler) Update(w http.ResponseWriter, r *http.Request) {
 		MetricUnit        *string   `json:"metricUnit"`
 		Subjects          *[]string `json:"subjects"`
 		Visibility        *string   `json:"visibility"`
+		QuietHoursStart   *string   `json:"quietHoursStart"`
+		QuietHoursEnd     *string   `json:"quietHoursEnd"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if code, msg := validateQuietHoursPtr(req.QuietHoursStart, req.QuietHoursEnd); code != 0 {
+		writeError(w, code, msg)
 		return
 	}
 
@@ -299,7 +334,7 @@ func (h *ChoreHandler) Update(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	updated, err := h.service.UpdateChoreWithVisibility(r.Context(), id, *user.HouseholdID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults, req.FollowUpEnabled, req.MetricType, req.MetricUnit, req.Subjects, req.Visibility, user.ID)
+	updated, err := h.service.UpdateChoreWithVisibility(r.Context(), id, *user.HouseholdID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults, req.FollowUpEnabled, req.MetricType, req.MetricUnit, req.Subjects, req.Visibility, user.ID, req.QuietHoursStart, req.QuietHoursEnd)
 	if err != nil {
 		if errors.Is(err, chore.ErrNotAdmin) {
 			writeError(w, http.StatusForbidden, "admin access required")
@@ -309,7 +344,7 @@ func (h *ChoreHandler) Update(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "chore not found")
 			return
 		}
-		if strings.Contains(err.Error(), "invalid visibility") || strings.Contains(err.Error(), "invalid metric type") {
+		if strings.Contains(err.Error(), "invalid visibility") || strings.Contains(err.Error(), "invalid metric type") || strings.Contains(err.Error(), "invalid quiet hours") {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}

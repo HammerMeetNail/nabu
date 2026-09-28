@@ -1560,3 +1560,47 @@ describe('Activity number selectors', () => {
     assert.ok([...picker.options].every(option => Number(option.value) <= 86400));
   });
 });
+
+describe("Chore quiet hours", () => {
+  it("chore sheet renders the household quiet hours section with stored values when editing", async () => {
+    const { renderChoreSheet } = await import("../chores.js");
+    const html = renderChoreSheet({ id: 1, name: "Feed", icon: "🍼", color: "#000", quietHoursStart: "22:00", quietHoursEnd: "07:00" });
+    assert.ok(html.includes("Quiet hours (everyone)"));
+    assert.ok(html.includes('id="chore-quiet-start"'));
+    assert.ok(html.includes('value="22:00"'));
+    assert.ok(html.includes('id="chore-quiet-end"'));
+    assert.ok(html.includes('value="07:00"'));
+  });
+
+  it("chore sheet omits the household quiet hours section when adding a new chore", async () => {
+    const { renderChoreSheet } = await import("../chores.js");
+    const html = renderChoreSheet(null);
+    assert.ok(!html.includes('id="chore-quiet-start"'));
+    assert.ok(!html.includes("Quiet hours (everyone)"));
+  });
+
+  it("chore sheet renders per-user quiet hours only when the reminder is enabled", async () => {
+    const { renderChoreSheet } = await import("../chores.js");
+    const on = renderChoreSheet({ id: 1, name: "Feed", icon: "🍼", color: "#000" }, {
+      scheduleReminderEnabled: true,
+      reminderPref: { choreId: 1, enabled: true, leadMinutes: 10, quietHoursStart: "23:00", quietHoursEnd: "05:00" },
+    });
+    assert.ok(on.includes("My quiet hours"));
+    assert.ok(on.includes('data-action="change-chore-quiet"'));
+    assert.ok(on.includes('value="23:00"'));
+    assert.ok(on.includes('value="05:00"'));
+
+    const off = renderChoreSheet({ id: 1, name: "Feed", icon: "🍼", color: "#000" }, {
+      scheduleReminderEnabled: true,
+      reminderPref: { choreId: 1, enabled: false, leadMinutes: 10 },
+    });
+    assert.ok(!off.includes("My quiet hours"));
+    assert.ok(!off.includes("change-chore-quiet"));
+  });
+
+  it("escapes stored quiet hours values in the chore sheet", async () => {
+    const { renderChoreSheet } = await import("../chores.js");
+    const html = renderChoreSheet({ id: 1, name: "Feed", icon: "🍼", color: "#000", quietHoursStart: '<img src=x onerror=alert(1)>' });
+    assert.ok(!html.includes("<img src=x"));
+  });
+});
