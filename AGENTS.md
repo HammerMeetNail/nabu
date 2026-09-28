@@ -14,7 +14,7 @@ After pushing a `v*` tag, always launch a subagent to watch CI to completion and
 
 ## Required review before commit, push, and deploy
 
-**Invoke the installed `nabu-pr-review` skill at each commit, push, and deployment checkpoint.** Load it through the host's skill discovery and follow its `SKILL.md`; this applies to Codex, OpenCode, OpenCode2, and Claude Code. This is an agent workflow requirement, not an installed Git or CI hook.
+**Invoke the installed `nabu-pr-review` skill at each commit, push, and deployment checkpoint.** Load it through the host's skill discovery and follow its `SKILL.md`; this applies to Codex, OpenCode, OpenCode2, and Claude Code. This is an agent workflow requirement, not an installed Git or CI hook. The versioned skill source is `.agents/skills/nabu-pr-review/`; keep installed copies synchronized when changing it.
 
 - **Before commit:** stage the intended files and review the full proposed branch change from the target branch's merge base through the staged tree. Record the base commit and `git write-tree` ID. Use the skill's native-host workflow for this uncommitted snapshot; its local runner requires a clean checkout at a commit, so do not create a temporary commit to bypass this checkpoint.
 - **Before push:** review the outgoing branch/PR scope from its target merge base through the exact HEAD to be pushed. Verify that HEAD's tree matches the reviewed content and record its commit ID.
