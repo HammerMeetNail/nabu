@@ -8,9 +8,23 @@ Use the Task tool to launch subagents for codebase exploration, CI babysitting, 
 
 **Subagent scope limits**: Subagents handle well-defined, standalone tasks: monitoring CI, verifying production deploys, searching the codebase for patterns, or reading files in bulk. If a subagent encounters complexity, ambiguity, or a task that requires design decisions, it must stop and report back to the primary agent — never re-implement features, make design choices, or produce code changes. Kick the work back.
 
-**Mandatory delegation to the `git-ops` subagent**: commit, push, and `gh pr create` are mechanical, no-design-decision tasks and MUST be delegated to the `git-ops` subagent once the primary session has staged-ready changes. Do not run `git commit`, `git push`, or `gh pr create` inline in the primary session. The primary session is still responsible for the worktree setup, the pre-push build/test/lint checklist, deciding the commit message intent, and choosing the correct client-parity statement — hand those to the subagent as input. The subagent refuses to edit code or make design decisions; if anything is ambiguous it reports back.
+**Mandatory delegation to the `git-ops` subagent**: commit, push, and `gh pr create` are mechanical, no-design-decision tasks and MUST be delegated to the `git-ops` subagent once the primary session has staged-ready changes. Do not run `git commit`, `git push`, or `gh pr create` inline in the primary session. The primary session is still responsible for the worktree setup, the pre-push build/test/lint checklist, the required review below, deciding the commit message intent, and choosing the correct client-parity statement — hand those to the subagent as input, including the review record and reviewed base/tree IDs. The subagent verifies that the pending commit or push still matches that review scope. It refuses to edit code or make design decisions; if anything is ambiguous it reports back.
 
 After pushing a `v*` tag, always launch a subagent to watch CI to completion and verify production. Do not wait for the user to ask.
+
+## Required review before commit, push, and deploy
+
+**Invoke the installed `nabu-pr-review` skill at each commit, push, and deployment checkpoint.** Load it through the host's skill discovery and follow its `SKILL.md`; this applies to Codex, OpenCode, OpenCode2, and Claude Code. This is an agent workflow requirement, not an installed Git or CI hook.
+
+- **Before commit:** stage the intended files and review the full proposed branch change from the target branch's merge base through the staged tree. Record the base commit and `git write-tree` ID. Use the skill's native-host workflow for this uncommitted snapshot; its local runner requires a clean checkout at a commit, so do not create a temporary commit to bypass this checkpoint.
+- **Before push:** review the outgoing branch/PR scope from its target merge base through the exact HEAD to be pushed. Verify that HEAD's tree matches the reviewed content and record its commit ID.
+- **Before deploy:** after the merge to `main`, review the exact merged release candidate against the last successfully deployed revision, including merge resolutions and integration changes. Record both revisions and verify the candidate is on `origin/main` before creating or pushing a release tag. A branch review alone does not cover a different release scope.
+
+Complete the relevant focused passes and a fresh, independent evidence audit. Scale the review to the change: documentation-only edits need a focused workflow/consistency review, not an application-wide audit. Preserve findings, dispositions, validation limits, and the reviewed revisions/tree in a record outside the repository. The lead verifies the evidence and resolves confirmed blocking defects before proceeding; model confidence, severity labels, a runner exit code, or a passing test suite alone do not establish review completion. If the skill or independent audit is unavailable, or a pass fails, report the review as incomplete.
+
+At a later checkpoint, invoke the skill and check whether completed evidence can be reused: the base, tree/content, intended behavior, and covered scope must all match. A commit ID change alone does not invalidate an identical staged-tree review. Edits, changed bases, rebases, conflict resolutions, or a broader release scope require refreshed affected passes and an independent audit; do not rerun an unchanged review merely to obtain a better verdict. Retain unresolved questions and evidence-backed dispositions in the handoff.
+
+This review supplements the build/test, client-parity, and deployment requirements below. It does not authorize a commit, push, merge, or deploy beyond the user's requested scope.
 
 ## Git worktrees
 
@@ -39,10 +53,10 @@ The main checkout at the workspace root stays clean and is only used for referen
 
 **Standard deploy flow:**
 
-1. Create a worktree branch, make changes, run tests.
-2. Commit and push the branch.
+1. Create a worktree branch, make changes, run tests, and complete the pre-commit `nabu-pr-review` checkpoint.
+2. Delegate the commit and push, completing the pre-push review checkpoint for the outgoing HEAD.
 3. Open a PR and merge it to `main` (or merge locally and push `main`).
-4. After the merge lands on `origin/main`, fetch and tag on `main`:
+4. After the merge lands on `origin/main`, fetch/update `main` and complete the pre-deploy `nabu-pr-review` checkpoint for the merged release candidate before tagging. The tag push is delegated to `git-ops`:
    ```bash
    git fetch origin
    git checkout main && git pull origin main
@@ -257,10 +271,11 @@ Name spec files after the feature/area: `<area>-<feature>.spec.js` (e.g. `home-r
 
 ## Pre-push checklist — never skip these
 
-**Before pushing a branch for review or tagging for deploy, run all of these locally in the worktree.** CI runs the same checks; failures here mean failures there.
+**Before pushing a branch for review or tagging for deploy, complete all of these locally in the worktree.** The agent performs the skill review. Run the command checks even when CI's path filters would skip validation for a documentation-only change.
 
 | Step | Command | Catches |
 |------|---------|---------|
+| Review | Invoke `nabu-pr-review` for the applicable checkpoint above | Source defects, unsupported findings, incomplete review coverage |
 | Build | `go build ./...` | Compile errors from signature changes |
 | Vet | `go vet ./...` | Suspicious code |
 | Go tests | `make test-go` | Broken unit tests, missing DB column references |
