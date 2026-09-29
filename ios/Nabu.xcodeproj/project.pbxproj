@@ -86,6 +86,7 @@
 		B100000000000000000001B7 /* DurationTimerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000001A7 /* DurationTimerTests.swift */; };
 		B100000000000000000001B8 /* OfflineLogQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000001A8 /* OfflineLogQueueTests.swift */; };
 		B100000000000000000001B9 /* RecentVolumesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000001A9 /* RecentVolumesTests.swift */; };
+		B100000000000000000001BA /* SubjectPrefillTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000001AA /* SubjectPrefillTests.swift */; };
 		B300000000000000000003B1 /* PushRegistration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000003F1 /* PushRegistration.swift */; };
 		B300000000000000000003B2 /* DeepLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000003F2 /* DeepLink.swift */; };
 		B300000000000000000003B3 /* PushRegistrationController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000003F3 /* PushRegistrationController.swift */; };
@@ -184,6 +185,7 @@
 		A100000000000000000001A7 /* DurationTimerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DurationTimerTests.swift; sourceTree = "<group>"; };
 		A100000000000000000001A8 /* OfflineLogQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineLogQueueTests.swift; sourceTree = "<group>"; };
 		A100000000000000000001A9 /* RecentVolumesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentVolumesTests.swift; sourceTree = "<group>"; };
+		A100000000000000000001AA /* SubjectPrefillTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubjectPrefillTests.swift; sourceTree = "<group>"; };
 		A300000000000000000003F1 /* PushRegistration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistration.swift; sourceTree = "<group>"; };
 		A300000000000000000003F2 /* DeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLink.swift; sourceTree = "<group>"; };
 		A300000000000000000003F3 /* PushRegistrationController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistrationController.swift; sourceTree = "<group>"; };
@@ -330,6 +332,7 @@
 				A100000000000000000001A7 /* DurationTimerTests.swift */,
 				A100000000000000000001A8 /* OfflineLogQueueTests.swift */,
 				A100000000000000000001A9 /* RecentVolumesTests.swift */,
+				A100000000000000000001AA /* SubjectPrefillTests.swift */,
 				A200000000000000000002F7 /* StatsSectionsTests.swift */,
 				A200000000000000000002F8 /* IndicatorColorTests.swift */,
 				A200000000000000000002F9 /* StatsModelTests.swift */,
@@ -647,6 +650,7 @@
 				B100000000000000000001B7 /* DurationTimerTests.swift in Sources */,
 				B100000000000000000001B8 /* OfflineLogQueueTests.swift in Sources */,
 				B100000000000000000001B9 /* RecentVolumesTests.swift in Sources */,
+				B100000000000000000001BA /* SubjectPrefillTests.swift in Sources */,
 				B200000000000000000002B7 /* StatsSectionsTests.swift in Sources */,
 				B200000000000000000002B8 /* IndicatorColorTests.swift in Sources */,
 				B200000000000000000002B9 /* StatsModelTests.swift in Sources */,

@@ -404,7 +404,7 @@ function renderIndicatorVolumeRow(label, on, selectedML = null, unit = "mL") {
  * @param {number}      currentUserId  Current auth user's ID
  * @param {number|null} cachedVolumeML Volume from previous log or null (DEPRECATED; use cachedIndicatorVolumes)
  * @param {object}      cachedIndicatorVolumes Map of indicator label -> volume mL (from latest log)
- * @param {object}      opts   { showWhen: bool, slotHour: number|null, cachedIndicators: string[]|null }
+ * @param {object}      opts   { showWhen: bool, slotHour: number|null, cachedIndicators: string[]|null, cachedSubject: string|null }
  */
 export function renderLogSheet(chore, log, date, members, currentUserId, cachedVolumeML = null, opts = {}) {
   const selectedUnit = opts.metricUnit || log?.metricUnit || (isVolumeMetric(chore) ? (opts.volumeUnit === 'oz' ? 'oz' : 'mL') : chore.metricUnit || 'mL');
@@ -503,7 +503,10 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
 
   // Subject picker (Phase 5.5): single-select chips for chores with subjects.
   const subjectSection = ((chore.subjects || []).length > 0) ? (() => {
-    const current = log?.subject ?? null;
+    // Editing a log echoes the log's own subject; a new log echoes the
+    // latest log's subject (opts.cachedSubject) so the previously selected
+    // subject (e.g. a cat) is preselected on the next entry.
+    const current = log ? (log.subject ?? null) : (opts.cachedSubject ?? null);
     const chips = chore.subjects.map(s => {
       const on = current === s;
       return `<button type="button" class="subject-chip${on ? " subject-chip--on" : ""}"
