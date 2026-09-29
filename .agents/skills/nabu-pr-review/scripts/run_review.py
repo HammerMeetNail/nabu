@@ -223,8 +223,30 @@ def session_runtime(session: dict) -> tuple[list[str], dict | None]:
     return models, session["info"].get("tokens")
 
 
+def model_selection(value: str) -> tuple[str, str | None]:
+    identity, separator, variant = value.partition("#")
+    provider, slash, name = identity.partition("/")
+    if not provider or not slash or not name or any(c.isspace() for c in value) or (separator and (not variant or "#" in variant)):
+        raise ValueError("Model must be provider/model or provider/model#variant")
+    return identity, variant if separator else None
+
+
+def verify_selection(session: dict, requested: str | None) -> list[dict]:
+    actual = [m["model"] for m in session["messages"] if m.get("type") == "assistant"]
+    if requested is not None:
+        identity, variant = model_selection(requested)
+        if not actual or any(m["providerID"] + "/" + m["id"] != identity or
+                             (variant is not None and m.get("variant") != variant) for m in actual):
+            raise RuntimeError(f"Requested model/variant was not used: {requested}")
+    # Preserve both identity and variant, without repeating one entry per turn.
+    return [json.loads(value) for value in sorted({json.dumps(m, sort_keys=True) for m in actual})]
+
+
 def run_model(cli: str, repo: Path, out: Path, name: str, prompt: str,
-              body: str, expect_model: str | None, timeout: int, reuse: bool = False) -> dict:
+              body: str, expect_model: str | None, timeout: int, reuse: bool = False,
+              model: str | None = None) -> dict:
+    if model is not None:
+        model_selection(model)
     verify_cli(cli)
     directory = out / name
     task = directory / "prompt.md"
@@ -232,6 +254,9 @@ def run_model(cli: str, repo: Path, out: Path, name: str, prompt: str,
             f"Nabu review {name}", "--file", str(task),
             "Perform the attached bounded review task. Load nabu-pr-review with the skill tool. "
             "Use the configured default model and return the required JSON record."]
+    if model is not None:
+        argv[2:2] = ["--model", model]
+        argv[-1] = argv[-1].replace("configured default model", "explicitly selected model and variant")
     started = time.monotonic()
     if directory.exists():
         if not reuse or task.read_text() != prompt or json.loads((directory / "command.json").read_text()) != argv:
@@ -287,10 +312,11 @@ def run_model(cli: str, repo: Path, out: Path, name: str, prompt: str,
                        stderr=subprocess.PIPE, text=True, check=True)
     session = json.loads((directory / "session.json").read_text())
     models, tokens = session_runtime(session)
+    selections = verify_selection(session, model)
     if not models or (expect_model and models != [expect_model]):
         raise RuntimeError(f"{name}: unexpected actual models: {models}")
     write_json(directory / "runtime.json", {"session_id": sid, "actual_models": models,
-               "tokens": tokens, "exact_native_skill_body": True, "final_assistant_completed": True})
+               "tokens": tokens, "actual_selections": selections, "requested_model": model, "exact_native_skill_body": True, "final_assistant_completed": True})
     record = parse_record(texts[-1])
     write_json(directory / "record.json", record)
     print(f"COMPLETE {name}: {round(time.monotonic() - started, 1)}s", flush=True)
@@ -332,11 +358,19 @@ def main() -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--cli", default="opencode2", help="OpenCode2/v2 executable or compatible alias; older OpenCode uses the native skill workflow")
     parser.add_argument("--expect-model")
+    parser.add_argument("--model", help="Explicit provider/model#variant; otherwise preserve the configured default")
     parser.add_argument("--passes", help="Comma-separated focused passes; a source-only omission pass always runs first")
     parser.add_argument("--timeout", type=int, default=900, help="Per-client process deadline in seconds")
     parser.add_argument("--prepare-only", action="store_true", help="Prepare scope/manifest without invoking a model")
     parser.add_argument("--resume", action="store_true", help="Revalidate and reuse completed original responses; never retry a failed model process")
     args = parser.parse_args()
+    if args.model is not None:
+        try:
+            identity, _ = model_selection(args.model)
+        except ValueError as exc:
+            parser.error(str(exc))
+        if args.expect_model and args.expect_model != identity:
+            parser.error("--model and --expect-model disagree")
     repo, out = args.repo.resolve(), args.out.resolve()
     skill = Path(__file__).resolve().parents[1]
     base = git(repo, "rev-parse", "--verify", "--end-of-options", args.base + "^{commit}").strip()
@@ -359,10 +393,10 @@ def main() -> int:
               for p in sorted(skill.rglob("*")) if p.is_file() and "__pycache__" not in p.parts}
     manifest = {"status": "prepared", "repo": str(repo), "base": base, "head": head,
                 "intent": args.intent, "changed_files": paths, "passes": ["omissions", *chosen],
-                "skill_files": hashes, "model_override": False, "cli": args.cli}
+                "skill_files": hashes, "model_override": args.model is not None, "requested_model": args.model, "cli": args.cli}
     if args.resume:
         previous = json.loads((out / "manifest.json").read_text())
-        for key in ("repo", "base", "head", "intent", "changed_files", "passes", "cli"):
+        for key in ("repo", "base", "head", "intent", "changed_files", "passes", "cli", "requested_model"):
             if previous.get(key) != manifest[key]:
                 parser.error(f"Resume scope changed: {key}")
         old_guidance = {k: v for k, v in previous["skill_files"].items() if not k.startswith("scripts/")}
@@ -402,7 +436,7 @@ def main() -> int:
                       + (skill / "references/discovery.md").read_text() + "\n\n"
                       + (skill / "references" / (name + ".md")).read_text() + "\n\n"
                       + (skill / "references/record-format.md").read_text())
-            record = run_model(args.cli, repo, out, name, prompt, body, args.expect_model, args.timeout, args.resume)
+            record = run_model(args.cli, repo, out, name, prompt, body, args.expect_model, args.timeout, args.resume, args.model)
             validate_pass(record, name, source)
             records[name] = record
             if (git(repo, "rev-parse", "HEAD").strip() != head or
@@ -419,7 +453,7 @@ def main() -> int:
                   + (skill / "references/audit.md").read_text() + "\n\n"
                   + (skill / "references/record-format.md").read_text() + "\n\nCandidate records:\n"
                   + json.dumps(records, indent=2, ensure_ascii=False))
-        audit = run_model(args.cli, repo, out, "audit", prompt, body, args.expect_model, args.timeout, args.resume)
+        audit = run_model(args.cli, repo, out, "audit", prompt, body, args.expect_model, args.timeout, args.resume, args.model)
         validate_audit(audit, expected_ids, source)
         if (git(repo, "rev-parse", "HEAD").strip() != head or
                 git(repo, "status", "--porcelain=v1", "--untracked-files=all") != before):

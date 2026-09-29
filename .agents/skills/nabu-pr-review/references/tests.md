@@ -11,6 +11,9 @@ Add ordering edges only when code establishes them (await, transaction boundary,
 joined task, signal after the target, etc.). Wall-clock closeness does not add an
 edge. A background worker can run before the test begins polling. Being in one
 loop/batch does not imply later work completed before an earlier signal.
+An elapsed-time estimate, sleep, or timeout budget is not a completion barrier;
+only an observed signal whose source ordering follows the target work can prove
+that work completed before the assertion.
 
 If an allowed ordering makes broken behavior pass, keep that counterexample
 unless a cited guard rules it out. Do not call it negligible as a substitute for

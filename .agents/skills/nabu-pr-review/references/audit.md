@@ -29,6 +29,15 @@ time interval, or older similar defect does not do that. New reachability of an
 old mechanism counts as newly exposed when the new flow violates its contract.
 Check product impact before reducing a finding to a missing-test observation.
 
+For each candidate, state the necessary premise that would make its trigger a
+contract violation. Independently trace the ordinary writer and the relevant
+guard or ordering in source; do not inherit those facts from the candidate's
+report. Dismiss only when that evidence refutes the premise for the stated
+scenario. If the premise remains plausible and unrefuted, keep the candidate
+unresolved. A test can rebut only the same inputs, configuration, and ordering
+it actually exercises and asserts; evidence for a neighboring scenario does not
+dispose of the candidate.
+
 For confirmation, re-walk the causal path. Check live versus historical fields,
 actual defaults and fallback branches, lost draft ownership, and event ordering
 when relevant. Verify arithmetic using actual predicates and a specified date,

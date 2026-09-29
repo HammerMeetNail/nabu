@@ -50,6 +50,16 @@ another agent, read sibling reports, or infer an expected finding count.
    must agree with those records. Schema checks establish completeness of records,
    not the truth of the model's source interpretation.
 
+If an audit cannot complete its record within the available context/output budget,
+or a disposition contradicts cited evidence or another disposition, preserve the
+original result and isolate the disputed claim for a fresh bounded audit. Supply
+the claim, its contract evidence, and directly coupled source needed to distinguish
+competing explanations; withhold prior verdicts and expected labels. Keep unaffected
+decisions intact. If the focused audit still cannot resolve the evidence, retain
+the question as unresolved and seek independent review or an authorized
+discriminating probe. Report the original failure and follow-up separately; a
+successful retry does not validate the original review.
+
 | Changed behavior | Focused pass |
 | --- | --- |
 | Resource reads/writes, joins, sessions, ownership or visibility | [access.md](references/access.md) |
@@ -69,13 +79,20 @@ inventing a comparison. The helper below requires reachable local commits.
 When using the local OpenCode2/default-model workflow, the bundled helper runs
 a source-only omission pass first, selected focused passes in fresh sessions,
 then a fresh audit of all candidates, and renders the findings
-from the audit record. It does not override model settings or edit source:
+from the audit record. It preserves the configured default model unless an
+explicit `--model` is supplied, and does not edit source or provider settings:
 
 ```sh
 python3 <skill-dir>/scripts/run_review.py \
   --repo <clean-review-worktree> --base <commit> --head <commit> \
   --intent '<intended behavior>' --out <new-directory-outside-repo>
 ```
+
+To select an installed model variant for this run, append
+`--model provider/model#variant` (for example, the configured local model's
+`#xhigh` variant). This does not change the client's saved default. The runner
+checks every assistant turn's reported model and, when named, variant; a mismatch
+leaves the review incomplete. Resume requires the same explicit selection.
 
 Use an absolute skill-directory path resolved by the host. The default executable
 is `opencode2`; `--cli` accepts an OpenCode2/v2-compatible executable or alias.

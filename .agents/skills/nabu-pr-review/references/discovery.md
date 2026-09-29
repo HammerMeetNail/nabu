@@ -40,3 +40,16 @@ Establish a reachable contract violation before assigning provisional priority.
 Do not end discovery because the affected data seems unimportant, nor escalate
 hypothetical consequences without evidence. A no-finding result is legitimate;
 there is no minimum number of scenarios or findings and no exhaustive-safety claim.
+
+Keep each source packet centered on one operation: its changed lines, ordinary
+caller/writer, relevant guard or storage path, and observable consumer. Expand
+only to resolve a named dependency. Summarize verified facts with source locations
+before moving to another operation instead of accumulating whole unrelated files.
+A fresh audit receives candidate evidence, not the discovery session's full history.
+
+For a disputed causal claim, construct the smallest discriminating counterexample:
+concrete initial values, actions/interleaving, expected result, and actual result.
+Use a narrow deterministic probe when execution is authorized and static tracing
+cannot settle it; otherwise record the untested prediction and limitation. Identify
+what observation would refute the claim before interpreting the result. Preserve
+producer completion and exit status; an unrun probe is not evidence of execution.

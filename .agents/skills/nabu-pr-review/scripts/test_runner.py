@@ -80,6 +80,21 @@ class Protocol(unittest.TestCase):
         for updates in [{'finish':'length'},{'finish':'tool-calls'},{'time':{}},{'error':{'message':'failed'}}]:
             with self.subTest(updates=updates),self.assertRaises(RuntimeError):
                 m.session_runtime(dict(session,messages=[dict(assistant,**updates)]))
+    def test_explicit_variant_checks_every_assistant_turn(self):
+        medium = dict(providerID='fixture', id='static', variant='medium')
+        xhigh = dict(medium, variant='xhigh')
+        session = dict(messages=[dict(type='assistant', model=xhigh)])
+        self.assertEqual(m.verify_selection(session, 'fixture/static#xhigh'), [xhigh])
+        self.assertEqual(m.verify_selection(session, None), [xhigh])
+        for model in [medium, dict(providerID='other', id='static', variant='xhigh'),
+                      dict(providerID='fixture', id='static')]:
+            session['messages'].insert(0, dict(type='assistant', model=model))
+            with self.assertRaisesRegex(RuntimeError, 'was not used'):
+                m.verify_selection(session, 'fixture/static#xhigh')
+            session['messages'].pop(0)
+        for value in ['', 'fixture', '/static', 'fixture/', 'fixture/static#', 'fixture/static#x#y']:
+            with self.assertRaises(ValueError): m.model_selection(value)
+
     def test_old_cli_rejected_before_inference(self):
         with tempfile.TemporaryDirectory(prefix='nabu-cli-check-') as directory:
             fake=Path(directory)/'opencode'
@@ -167,13 +182,18 @@ f=json.loads((Path(__file__).parent/'fixture.json').read_text())
 if sys.argv[1:]==['session','--help']:
  print('  export    Export session data as JSON')
 elif sys.argv[1:3]==['session','export']:
- print(json.dumps({'info':{'tokens':{}},'messages':[{'type':'assistant','model':{'providerID':'fixture','id':'static'},'finish':'stop','time':{'completed':1}}]}))
+ print((Path(sys.argv[3])/'fake-session.json').read_text())
 elif sys.argv[1]=='run':
+ (Path(__file__).parent/'last-argv.json').write_text(json.dumps(sys.argv[1:]))
  task=Path(sys.argv[sys.argv.index('--file')+1])
  if (Path(__file__).parent/'hold').exists():time.sleep(120)
+ sid=str(task.parent)
+ session={'info':{'tokens':{}},'messages':[{'type':'assistant','model':f.get('model',{'providerID':'fixture','id':'static'}),'finish':'stop','time':{'completed':1}}]}
+ (task.parent/'fake-session.json').write_text(json.dumps(session))
+ with (Path(__file__).parent/'runs.txt').open('a') as ledger:ledger.write(json.dumps({'task':sid,'argv':sys.argv[1:]})+'\\n')
  rec={'decisions':[],'audit_questions':[],'checks_run':[]} if task.parent.name=='audit' else f['record']
- print(json.dumps({'type':'tool_use','sessionID':'fixture','part':{'tool':'skill','state':{'output':f['body']}}}))
- print(json.dumps({'type':'text','sessionID':'fixture','part':{'text':json.dumps(rec)}}))
+ print(json.dumps({'type':'tool_use','sessionID':sid,'part':{'tool':'skill','state':{'output':f['body']}}}))
+ print(json.dumps({'type':'text','sessionID':sid,'part':{'text':json.dumps(rec)}}))
 ''')
             fake.chmod(0o700)
             argv=['python3',str(RUNNER),'--repo',str(REPO),'--base',BASE,'--head',HEAD,'--intent','protocol fixture','--passes','behavior','--cli',str(fake),'--expect-model','fixture/static']
@@ -181,9 +201,46 @@ elif sys.argv[1]=='run':
             done=json.loads((root/'complete/manifest.json').read_text())
             self.assertEqual(done['status'],'completed');self.assertEqual(done['confirmed'],0)
             self.assertTrue((root/'complete/review.md').exists())
+            self.assertNotIn('--model', json.loads((root/'last-argv.json').read_text()))
+            fixture_data=json.loads(fixture.read_text())
+            fixture_data['model']=dict(providerID='fixture',id='static',variant='xhigh')
+            fixture.write_text(json.dumps(fixture_data))
+            empty_selection=subprocess.run(argv+['--model','','--out',str(root/'empty-selection')],capture_output=True,text=True)
+            self.assertNotEqual(empty_selection.returncode,0)
+            self.assertFalse((root/'empty-selection').exists())
+            explicit=argv+['--model','fixture/static#xhigh','--out',str(root/'explicit')]
+            subprocess.run(explicit,check=True,capture_output=True,text=True)
+            called=json.loads((root/'last-argv.json').read_text())
+            self.assertEqual(called[called.index('--model')+1], 'fixture/static#xhigh')
+            explicit_calls=[json.loads(line)['argv'] for line in (root/'runs.txt').read_text().splitlines()[-3:]]
+            self.assertEqual(len(explicit_calls),3)
+            for call in explicit_calls:
+                self.assertEqual(call[call.index('--model')+1], 'fixture/static#xhigh')
+            runtime=json.loads((root/'explicit/audit/runtime.json').read_text())
+            self.assertEqual(runtime['requested_model'],'fixture/static#xhigh')
+            self.assertEqual(runtime['actual_selections'],[fixture_data['model']])
+            runs_before=(root/'runs.txt').read_bytes()
+            subprocess.run(explicit+['--resume'],check=True,capture_output=True,text=True)
+            self.assertEqual((root/'runs.txt').read_bytes(),runs_before)
+            changed=argv+['--model','fixture/static#medium','--out',str(root/'explicit'),'--resume']
+            refused=subprocess.run(changed,capture_output=True,text=True)
+            self.assertNotEqual(refused.returncode,0)
+            self.assertIn('Resume scope changed: requested_model',refused.stderr)
+            fixture_data['model']['variant']='medium'
+            fixture.write_text(json.dumps(fixture_data))
+            mismatch=subprocess.run(argv+['--model','fixture/static#xhigh','--out',str(root/'mismatch')],capture_output=True,text=True)
+            self.assertNotEqual(mismatch.returncode,0)
+            self.assertIn('Requested model/variant was not used',mismatch.stderr)
+            self.assertEqual(json.loads((root/'mismatch/manifest.json').read_text())['status'],'incomplete')
+            self.assertFalse((root/'mismatch/review.md').exists())
+            legacy=json.loads((root/'complete/manifest.json').read_text())
+            legacy.pop('requested_model')
+            (root/'complete/manifest.json').write_text(json.dumps(legacy))
+            runs_before=(root/'runs.txt').read_bytes()
             original=(root/'complete/behavior/events.jsonl').read_bytes()
             subprocess.run(argv+['--out',str(root/'complete'),'--resume'],check=True,capture_output=True,text=True)
             self.assertEqual(original,(root/'complete/behavior/events.jsonl').read_bytes())
+            self.assertEqual((root/'runs.txt').read_bytes(),runs_before)
             exit_path=root/'complete/behavior/exit.json'
             terminal=json.loads(exit_path.read_text());terminal['status']='interrupted';terminal['exit_code']=0
             exit_path.write_text(json.dumps(terminal))
