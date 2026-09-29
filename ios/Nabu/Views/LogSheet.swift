@@ -1,5 +1,16 @@
 import SwiftUI
 
+/// The subject to preselect when opening a *new* log sheet: echo the
+/// latest log's subject when it is still one of the chore's subjects
+/// (e.g. the previously selected cat on Cat Meds). A subject that was
+/// removed from the chore, or a latest log without a subject, preselects
+/// nothing. PWA parity with `renderLogSheet`'s `cachedSubject`.
+func initialSubjectForNewLog(_ chore: Chore, latestLogs: [Int: ChoreLog]) -> String? {
+    guard !chore.subjects.isEmpty else { return nil }
+    guard let latest = latestLogs[chore.id], let subject = latest.subject, !subject.isEmpty else { return nil }
+    return chore.subjects.contains(subject) ? subject : nil
+}
+
 struct LogSheet: View {
     @Environment(\.dismiss) private var dismiss
     let state: AppState
@@ -421,6 +432,9 @@ struct LogSheet: View {
             } else {
                 selectedIndicators = chore.indicatorDefaults
             }
+            // Echo the latest log's subject (e.g. the previously selected
+            // cat) so the next entry starts with it preselected — PWA parity.
+            selectedSubject = initialSubjectForNewLog(chore, latestLogs: state.latestLogs)
             let totalMins = chore.lastFollowUpMinutes
             followUpDays = totalMins / 1440
             followUpHours = (totalMins % 1440) / 60

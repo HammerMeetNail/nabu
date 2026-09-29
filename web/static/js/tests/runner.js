@@ -697,6 +697,38 @@ describe("Subject tagging (Phase 5.5)", () => {
     assert.match(html, /data-subject="Bob"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-subject="Bob"/);
   });
 
+  it("new log sheet preselects the cached (latest log's) subject", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const html = renderLogSheet(
+      { id: 1, icon: "🍼", name: "Feed", color: "#000", subjects: ["Alice", "Bob"] },
+      null, "2026-07-02", [], 1, null, { volumeUnit: "ml", cachedSubject: "Bob" });
+    // Bob (the previous log's subject) is on; Alice is not.
+    assert.match(html, /data-subject="Bob"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-subject="Bob"/);
+    assert.match(html, /data-subject="Alice"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-subject="Alice"/);
+  });
+
+  it("new log sheet preselects nothing without a cached subject", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const html = renderLogSheet(
+      { id: 1, icon: "🍼", name: "Feed", color: "#000", subjects: ["Alice", "Bob"] },
+      null, "2026-07-02", [], 1, null, { volumeUnit: "ml" });
+    // Subject chips render, but none is preselected.
+    assert.ok(html.includes('data-subject="Alice"'));
+    assert.ok(html.includes('data-subject="Bob"'));
+    assert.ok(!/data-subject="Alice"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-subject="Alice"/.test(html), "Alice must not be preselected");
+    assert.ok(!/data-subject="Bob"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-subject="Bob"/.test(html), "Bob must not be preselected");
+  });
+
+  it("editing prefers the log's own subject over the cached subject", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const html = renderLogSheet(
+      { id: 1, icon: "🍼", name: "Feed", color: "#000", subjects: ["Alice", "Bob"] },
+      { id: 9, subject: "Alice", indicators: [] }, "2026-07-02", [], 1, null,
+      { volumeUnit: "ml", cachedSubject: "Bob" });
+    assert.match(html, /data-subject="Alice"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-subject="Alice"/);
+    assert.match(html, /data-subject="Bob"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-subject="Bob"/);
+  });
+
   it("log sheet caps title and note inputs to the server limits", async () => {
     const { renderLogSheet } = await import("../schedule.js");
     const html = renderLogSheet(
