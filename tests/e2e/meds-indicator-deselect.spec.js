@@ -6,6 +6,7 @@
 // forcing users to keep a med selected and enter 0 as the quantity.
 
 import { test, expect } from '@playwright/test';
+import { rerender } from './review-fixtures.js';
 
 function uniqueEmail() {
   return `e2e-medsclear-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@test.com`;
@@ -69,9 +70,10 @@ test('new log sheet lets every echoed med be deselected and saved with none sele
   await page.locator(amChip).click();
   await expect(page.locator(amChip)).not.toHaveClass(/log-chip--on/);
   await expect(page.locator('.indicator-volume-select[data-indicator="am"]')).toBeHidden();
-  // Let any late re-render settle, then confirm the deselection sticks
-  // (a re-render must not re-echo the previously submitted med).
-  await page.waitForTimeout(800);
+  // Force a full re-render of the open sheet while the med is deselected:
+  // the in-progress selection must survive, and the previously submitted
+  // med must not be re-echoed from the latest log.
+  await rerender(page);
   await expect(page.locator(amChip)).not.toHaveClass(/log-chip--on/);
 
   // Save with no med selected: must succeed, not block with a validation toast.

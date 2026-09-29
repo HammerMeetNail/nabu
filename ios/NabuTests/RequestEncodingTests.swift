@@ -239,6 +239,45 @@ final class RequestEncodingTests: XCTestCase {
         XCTAssertEqual(omitted["note"] as? String, "only note")
     }
 
+    func testZeroIndicatorSaveWireContract() throws {
+        // A volume+indicator chore (e.g. Cat Meds) can be saved with every
+        // indicator deselected. Pin the wire contract LogSheet.saveLog relies
+        // on when selectedIndicators is empty: the create path sends an empty
+        // indicators array and omits indicatorVolumes (nil), while the update
+        // path sends an empty array plus an empty indicatorVolumes map. The
+        // server accepts both as "no meds selected".
+        let create = CreateLogRequest(
+            choreId: 1,
+            note: nil,
+            indicators: [],
+            date: "2024-12-25",
+            hour: 12,
+            completedAt: "2024-12-25T12:00:00Z",
+            volumeML: 20,
+            userId: nil,
+            indicatorVolumes: nil,
+            followUpMinutes: nil,
+            followUpTime: nil,
+            metricUnit: "mL")
+        let created = json(try apiEncoder.encode(create))
+        XCTAssertEqual(created["indicators"] as? [String], [])
+        XCTAssertNil(created["indicatorVolumes"], "create with no selected indicators omits indicatorVolumes")
+
+        let update = UpdateLogRequest(
+            note: nil,
+            indicators: [],
+            volumeML: .some(20),
+            userId: nil,
+            completedAt: "2024-12-25T12:00:00Z",
+            hour: 12,
+            date: "2024-12-25",
+            indicatorVolumes: [:],
+            metricUnit: "mL")
+        let updated = json(try apiEncoder.encode(update))
+        XCTAssertEqual(updated["indicators"] as? [String], [])
+        XCTAssertEqual((updated["indicatorVolumes"] as? [String: Int])?.count, 0)
+    }
+
     // MARK: - Preferences
 
     func testPatchUserPreferencesPartial() throws {

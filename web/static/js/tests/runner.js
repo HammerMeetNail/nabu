@@ -852,6 +852,25 @@ describe("Log sheet: prefill from latest log (type + volume)", () => {
     // And no per-indicator volume selects render for non-volume chores.
     assert.ok(!html.includes("indicator-volume-select"), "no volume pickers for chip-only chore");
   });
+
+  it("keeps every indicator off when cachedIndicators is an empty array", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const html = renderLogSheet(feedChore, null, "2026-07-02", [], 1, null, {
+      volumeUnit: "ml",
+      // The user deselected every indicator in the open sheet: the
+      // in-progress selection is an empty array (not null) and must win
+      // over the latest log's echo, including its stale per-indicator
+      // volumes.
+      cachedIndicators: [],
+      cachedIndicatorVolumes: { "🍼 formula": 50, "🤱 breast": 95 },
+    });
+    assert.match(html, /data-label="🍼 formula"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🍼 formula"/);
+    assert.match(html, /data-label="🤱 breast"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🤱 breast"/);
+    const formula = JSDOM.fragment(html).querySelector('input[data-indicator="🍼 formula"]');
+    assert.equal(formula.value, '', "stale formula volume must not be preselected");
+    const breast = JSDOM.fragment(html).querySelector('input[data-indicator="🤱 breast"]');
+    assert.equal(breast.value, '', "stale breast volume must not be preselected");
+  });
 });
 
 describe("Stats: user-defined widgets (Phase 4)", () => {
