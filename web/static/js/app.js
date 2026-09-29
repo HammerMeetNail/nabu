@@ -456,7 +456,7 @@ function renderHistoryView() {
       const log = logId ? ((state.historyLogs || []).find(l => l.id === logId) || null) : null;
       const latestLogForChore = state.latestLogs[choreId] ?? null;
       const cachedIndicatorVolumes = latestLogForChore?.indicatorVolumes ?? null;
-      const cachedIndicators = latestLogForChore?.indicators ?? null;
+      const cachedIndicators = state.activeSheetData?.indicatorSelection ?? (latestLogForChore?.indicators ?? null);
       const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id), recentUnit:state.recentAmountUnits?.[chore.id], cachedMetricUnit:latestLogForChore?.metricUnit, metricUnit:state.activeSheetData?.metricUnit });
 
   return `<div class="sheet-overlay-wrapper">
@@ -482,7 +482,7 @@ function renderHomeViewWrapper() {
     if (chore) {
       const latestLogForChore = state.latestLogs[choreId] ?? null;
       const cachedIndicatorVolumes = latestLogForChore?.indicatorVolumes ?? null;
-      const cachedIndicators = latestLogForChore?.indicators ?? null;
+      const cachedIndicators = state.activeSheetData?.indicatorSelection ?? (latestLogForChore?.indicators ?? null);
       const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, null, { showWhen: true, cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id), recentUnit:state.recentAmountUnits?.[chore.id], cachedMetricUnit:latestLogForChore?.metricUnit, metricUnit:state.activeSheetData?.metricUnit });
       return `<div class="sheet-overlay-wrapper">
         ${header}
@@ -600,7 +600,7 @@ function renderCalendarView() {
       const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
       const latestLogForChore = state.latestLogs[choreId] ?? null;
       const cachedIndicatorVolumes = latestLogForChore?.indicatorVolumes ?? null;
-      const cachedIndicators = latestLogForChore?.indicators ?? null;
+      const cachedIndicators = state.activeSheetData?.indicatorSelection ?? (latestLogForChore?.indicators ?? null);
       const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id), recentUnit:state.recentAmountUnits?.[chore.id], cachedMetricUnit:latestLogForChore?.metricUnit, metricUnit:state.activeSheetData?.metricUnit });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
@@ -687,7 +687,7 @@ function renderScheduleView() {
       const log = logId ? (allLogs.find(l => l.id === logId) || null) : null;
       const latestLogForChore = state.latestLogs[choreId] ?? null;
       const cachedIndicatorVolumes = latestLogForChore?.indicatorVolumes ?? null;
-      const cachedIndicators = latestLogForChore?.indicators ?? null;
+      const cachedIndicators = state.activeSheetData?.indicatorSelection ?? (latestLogForChore?.indicators ?? null);
       const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), scheduleId, slotTime, cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id), recentUnit:state.recentAmountUnits?.[chore.id], cachedMetricUnit:latestLogForChore?.metricUnit, metricUnit:state.activeSheetData?.metricUnit });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
@@ -1811,6 +1811,15 @@ export async function init() {
         const on = actionEl.classList.contains("log-chip--on");
         setNumberInputEnabled(volumeSelect, on);
       }
+      // Record the in-progress selection so a re-render of the open sheet
+      // preserves it instead of re-echoing the latest log's indicators
+      // (which would silently re-select a med the user just deselected).
+      const sheet = actionEl.closest(".bottom-sheet");
+      if (sheet && state.activeSheetData) {
+        state.activeSheetData.indicatorSelection = [...sheet.querySelectorAll(".log-chip--on[data-action='toggle-indicator']")]
+          .map(el => el.dataset.label)
+          .filter(Boolean);
+      }
       return;
     }
 
@@ -2208,14 +2217,10 @@ export async function init() {
         const ratingVal = ratingEl?.dataset?.rating;
         const rating = ratingVal && ratingVal !== "0" ? parseInt(ratingVal, 10) : null;
 
-        // Require volume AND indicator for chores that have both features.
+        // Indicators are optional: a volume chore may be logged with every
+        // indicator deselected (e.g. "Cat Meds" when no med was given today).
+        // Unselected indicators are simply omitted from the saved log.
         const chore = (state.chores || []).find(c => c.id === choreId);
-        if (chore && chore.hasVolumeML && (chore.indicatorLabels || []).length > 0) {
-          if (Object.keys(indicatorVolumes).length === 0 || indicators.length === 0) {
-            showToast("Select a volume and food type", "error");
-            break;
-          }
-        }
 
         let date        = actionEl.dataset.date || "";
         let completedAt = actionEl.dataset.completedAt || null;

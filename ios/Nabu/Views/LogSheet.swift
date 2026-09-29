@@ -457,18 +457,9 @@ struct LogSheet: View {
         let dateStr = dateFormatter.string(from: whenDate)
         let hour = Calendar.current.component(.hour, from: whenDate)
 
-        // For chores with both indicators and volume: require at least one
-        // indicator selected with a volume set.
-        if chore.hasVolumeML && hasIndicators {
-            let activeVolumes = indicatorVolumes.filter { k, _ in
-                selectedIndicators.contains(k)
-            }.compactMapValues { $0 }
-            if activeVolumes.isEmpty || selectedIndicators.isEmpty {
-                errorMessage = "Select an amount and type"
-                isSaving = false
-                return
-            }
-        }
+        // Indicators are optional: a volume chore may be logged with every
+        // indicator deselected (e.g. "Cat Meds" when no med was given today).
+        // Unselected indicators are simply omitted from the saved log.
 
         // Only send volumes for selected indicators
         let activeVolumes: [String: Int] = indicatorVolumes.filter { k, _ in
