@@ -2,8 +2,25 @@ package chore
 
 import (
 	"context"
+	"regexp"
 	"time"
 )
+
+// quietTimeRE matches 24h "HH:MM" (00:00–23:59).
+var quietTimeRE = regexp.MustCompile(`^([01]\d|2[0-3]):[0-5]\d$`)
+
+// ValidQuietTime reports whether s is a well-formed "HH:MM" time-of-day
+// (empty is handled by callers; a quiet window only exists when both bounds
+// are provided).
+func ValidQuietTime(s string) bool {
+	return quietTimeRE.MatchString(s)
+}
+
+// QuietHoursComplete reports whether the (start, end) pair is a usable quiet
+// window: both bounds set and well-formed.
+func QuietHoursComplete(start, end string) bool {
+	return start != "" && end != "" && ValidQuietTime(start) && ValidQuietTime(end)
+}
 
 type Chore struct {
 	ID                  int64     `json:"id"`
@@ -38,6 +55,11 @@ type Chore struct {
 	// visible to all household members; "admins" is visible only to owners and
 	// admins (private household tasks).
 	Visibility string `json:"visibility"`
+	// QuietHoursStart/QuietHoursEnd ("HH:MM", empty = unset) define the
+	// household-level quiet window for this chore: schedule reminders are
+	// suppressed for every member whose local time falls inside the window.
+	QuietHoursStart string `json:"quietHoursStart,omitempty"`
+	QuietHoursEnd   string `json:"quietHoursEnd,omitempty"`
 }
 
 // Metric type constants for Chore.MetricType.

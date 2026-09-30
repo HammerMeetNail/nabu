@@ -2631,6 +2631,10 @@ export async function init() {
           const followUpEnabled = followUpEnabledEl?.checked;
           const body = { name, icon, color, indicatorLabels, indicatorDefaults, followUpEnabled, metricType, metricUnit, subjects };
           if (isAdmin && visibility) body.visibility = visibility;
+          // Household-level quiet window (per chore, per household). Empty
+          // inputs clear the stored window.
+          body.quietHoursStart = document.querySelector("#chore-quiet-start")?.value || "";
+          body.quietHoursEnd = document.querySelector("#chore-quiet-end")?.value || "";
           apiFetch(`/api/chores/${choreId}`, {
             method: "PATCH",
             body: JSON.stringify(body),
@@ -3527,6 +3531,25 @@ export async function init() {
           render(app);
         }))
         .catch(() => {});
+    }
+    if (actionEl?.dataset?.action === "change-chore-quiet") {
+      const choreId = parseInt(actionEl.dataset.choreId, 10);
+      if (!choreId) return;
+      const field = actionEl.dataset.field;
+      const value = actionEl.value || "";
+      // Partial PATCH: the server preserves enabled/leadMinutes/other bound.
+      const update = field === "start" ? { quietHoursStart: value } : { quietHoursEnd: value };
+      saveChoreReminderPref(choreId, update)
+        .then(owned(updated => {
+          const idx = (state.choreReminderPrefs || []).findIndex(p => p.choreId === choreId);
+          if (idx >= 0) {
+            state.choreReminderPrefs[idx] = updated;
+          } else {
+            state.choreReminderPrefs = [...(state.choreReminderPrefs || []), updated];
+          }
+          render(app);
+        }))
+        .catch(owned(() => showToast("Failed to save quiet hours", "error")));
     }
     if (actionEl?.dataset?.action === "change-default-reminder-lead") {
       const leadMinutes = parseInt(actionEl.value, 10);

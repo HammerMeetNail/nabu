@@ -111,6 +111,21 @@ export function renderChoreSheet(chore, opts = {}) {
   const reminderEnabled = reminderPref?.enabled ?? false;
   const reminderLead = reminderPref?.leadMinutes ?? defaultLeadMinutes;
 
+  const myQuietSection = reminderEnabled ? `
+        <div class="mt-2">
+          <label class="chore-edit-hint">My quiet hours — silence <em>your</em> reminders for this chore</label>
+          <div class="chore-quiet-hours-row">
+            <input type="time" class="input" data-action="change-chore-quiet" data-chore-id="${choreId}"
+              data-field="start" value="${escapeHTML(reminderPref?.quietHoursStart || '')}"
+              aria-label="My quiet hours start" />
+            <span class="chore-quiet-hours-sep">–</span>
+            <input type="time" class="input" data-action="change-chore-quiet" data-chore-id="${choreId}"
+              data-field="end" value="${escapeHTML(reminderPref?.quietHoursEnd || '')}"
+              aria-label="My quiet hours end" />
+          </div>
+        </div>
+  ` : '';
+
   const reminderSection = scheduleReminderEnabled && !isNew ? `
     <div class="chore-edit-field">
       <label class="chore-edit-label">
@@ -129,7 +144,26 @@ export function renderChoreSheet(chore, opts = {}) {
             ${leadTimes.map(m => `<option value="${m}"${m === reminderLead ? ' selected' : ''}>${m} min before</option>`).join("")}
           </select>
         </div>
+        ${myQuietSection}
       ` : ''}
+    </div>
+  ` : '';
+
+  // Household-level quiet window (per chore, per household): silences this
+  // chore's reminders for every member during the window. Saved on the chore.
+  const quietHoursSection = !isNew ? `
+    <div class="chore-edit-field">
+      <label class="chore-edit-label">
+        Quiet hours (everyone)
+        <span class="chore-edit-hint">Silence this chore's reminders for all household members</span>
+      </label>
+      <div class="chore-quiet-hours-row">
+        <input type="time" class="input" id="chore-quiet-start"
+          value="${escapeHTML(chore?.quietHoursStart || '')}" aria-label="Quiet hours start" />
+        <span class="chore-quiet-hours-sep">–</span>
+        <input type="time" class="input" id="chore-quiet-end"
+          value="${escapeHTML(chore?.quietHoursEnd || '')}" aria-label="Quiet hours end" />
+      </div>
     </div>
   ` : '';
 
@@ -290,6 +324,8 @@ export function renderChoreSheet(chore, opts = {}) {
     ${visibilitySection}
 
     ${reminderSection}
+
+    ${quietHoursSection}
 
     <div class="chore-sheet-footer">
       <div class="chore-sheet-footer-left">${deleteOrRestore}</div>
