@@ -371,8 +371,12 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 			w.Header().Set("Referrer-Policy", "no-referrer")
 			w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 			user, ok := middleware.CurrentUser(r.Context())
-			if !ok || r.Header.Get("Authorization") != "" {
+			if r.Header.Get("Authorization") != "" {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			if !ok {
+				http.Redirect(w, r, "/login?next=%2Foperator", http.StatusFound)
 				return
 			}
 			if !operatorService.IsOwner(user) {

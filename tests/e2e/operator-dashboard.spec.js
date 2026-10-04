@@ -43,7 +43,9 @@ test("operator dashboard and scoped key lifecycle", async ({ browser }) => {
   const outsider = await outsiderContext.newPage();
   const keyContext = await browser.newContext();
   try {
-    expect((await owner.goto("/operator")).status()).toBe(401);
+    expect((await owner.goto("/operator")).status()).toBe(200);
+    await expect(owner).toHaveURL(/\/login\?next=%2Foperator$/);
+    await expect(owner.locator("#login-form")).toBeVisible();
     await register(owner, email);
     const profile = (await (await owner.request.get("/api/me")).json()).user;
     expect(profile.id, "start with a fresh stack so this configured owner is user 1").toBe(1);
@@ -90,6 +92,25 @@ test("operator dashboard and scoped key lifecycle", async ({ browser }) => {
     await expect(owner.locator("#users-body")).toContainText(email);
     await expect(owner.locator("#households-body")).toContainText("Operator test household");
     await expect(owner.locator("#overview")).toContainText("Registered users");
+    await owner.emulateMedia({ colorScheme: "dark" });
+    await expect(owner.locator("html")).toHaveCSS("color-scheme", "dark");
+    await expect(owner.locator("section").first()).toHaveCSS("background-color", "rgb(24, 28, 39)");
+    await owner.emulateMedia({ colorScheme: "light" });
+    await expect(owner.locator("html")).toHaveCSS("color-scheme", "light");
+    await expect(owner.locator("section").first()).toHaveCSS("background-color", "rgb(255, 255, 255)");
+    const loginContext = await browser.newContext();
+    try {
+      const loginPage = await loginContext.newPage();
+      await loginPage.goto("/operator");
+      await expect(loginPage).toHaveURL(/\/login\?next=%2Foperator$/);
+      await loginPage.locator("#login-email").fill(email);
+      await loginPage.locator("#login-password").fill(password);
+      await loginPage.locator("#login-form button[type=submit]").click();
+      await expect(loginPage).toHaveURL(/\/operator$/);
+      await expect(loginPage.getByRole("heading", { name: "App dashboard" })).toBeVisible();
+    } finally {
+      await loginContext.close();
+    }
     if (process.env.OPERATOR_SCREENSHOT) {
       await owner.screenshot({ path: process.env.OPERATOR_SCREENSHOT, fullPage: true });
     }

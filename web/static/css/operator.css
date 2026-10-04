@@ -45,3 +45,25 @@ td.number { text-align: right; }
 .issued-key input { flex: 1; min-width: 180px; font-family: ui-monospace, monospace; }
 .danger { background: #a93636; }
 @media (max-width: 600px) { .operator-header { align-items: center; } section { padding: 1rem; } .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } .chart-day { min-width: 7px; } #key-form > * { width: 100%; } }
+
+/* Match the app's system theme while keeping this page's standalone layout. */
+@media (prefers-color-scheme: dark) {
+  :root { color-scheme: dark; color: #e6edf3; background: #0e1117; }
+  button:not(.danger) { background: #4dabce; color: #0e1117; }
+  button:not(.danger):hover { background: #71c0dc; }
+  .danger { background: #b53b3b; }
+  .eyebrow { color: #adb6c2; }
+  .back-link { color: #7ac8e6; }
+  section { background: #181c27; border-color: #2a3042; box-shadow: 0 1px 4px #0006; }
+  .section-head span, small, .note { color: #a9b2bd; }
+  #message { color: #ff9b9b; }
+  .card { background: #202635; border-color: #3a4258; }
+  .card span, .legend, th { color: #c3cbd4; }
+  select, input { background: #181c27; border-color: #657286; color: #e6edf3; }
+  .chart { border-color: #657286; }
+  .bar.registrations, .swatch.registrations { background: #4dabce; }
+  .bar.authors, .swatch.authors { background: #c866a0; }
+  th, td { border-color: #2a3042; }
+  tbody tr:hover { background: #252b39; }
+  .issued-key { border-color: #c866a0; }
+}

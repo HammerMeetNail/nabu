@@ -19,8 +19,9 @@ OPERATOR_OWNER_USER_ID=1 make local-fresh
 OPERATOR_E2E=1 MAILPIT_URL=http://localhost:8025 pnpm exec playwright test tests/e2e/operator-dashboard.spec.js
 ```
 
-Open `http://localhost:8080/operator` after the test and sign in as
-`operator-e2e@nabu.local` / `operator-local-password`. The test verifies the
+Open `http://localhost:8080/operator` after the test; an anonymous visit sends
+you to sign in as `operator-e2e@nabu.local` / `operator-local-password`. Password
+or configured OAuth sign-in returns to the dashboard. The test verifies the
 account through Mailpit and sets a reusable password, so the report is ready
 to inspect after the test. It also checks
 that an anonymous user and another registered user cannot enter the page,
