@@ -52,6 +52,17 @@ test("operator dashboard and scoped key lifecycle", async ({ browser }) => {
     await expect(owner.getByRole("heading", { name: "Email Verified!" })).toBeVisible();
 
     const ownerCsrf = await csrf(owner);
+    // Verification of a registration claim clears its old password. Set one
+    // through the authenticated flow so this fixture can be used after E2E.
+    const passwordSetup = await owner.request.post("/api/auth/password", {
+      headers: { "X-CSRF-Token": ownerCsrf },
+      data: { current_password: "", new_password: password },
+    });
+    expect(passwordSetup.status()).toBe(200);
+    const reusableLogin = await owner.request.post("/api/auth/login", {
+      headers: { "X-CSRF-Token": ownerCsrf }, data: { email, password },
+    });
+    expect(reusableLogin.status()).toBe(200);
     const household = await owner.request.post("/api/household", {
       headers: { "X-CSRF-Token": ownerCsrf }, data: { name: "Operator test household" },
     });

@@ -21,7 +21,8 @@ OPERATOR_E2E=1 MAILPIT_URL=http://localhost:8025 pnpm exec playwright test tests
 
 Open `http://localhost:8080/operator` after the test and sign in as
 `operator-e2e@nabu.local` / `operator-local-password`. The test verifies the
-account through Mailpit, so the report is ready to inspect. It also checks
+account through Mailpit and sets a reusable password, so the report is ready
+to inspect after the test. It also checks
 that an anonymous user and another registered user cannot enter the page,
 that a key cannot be created without a valid CSRF token, and that scoped and
 revoked keys behave as expected. To save a browser image outside the repo, set
