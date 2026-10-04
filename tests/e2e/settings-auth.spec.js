@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
-const BASE = "http://localhost:8080";
-const MAILPIT = "http://localhost:8025";
+const BASE = process.env.BASE_URL || "http://localhost:8080";
+const MAILPIT = process.env.MAILPIT_URL || "http://localhost:8025";
 
 function uniqueEmail() {
   return `e2e-sa-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@test.com`;

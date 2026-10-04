@@ -6,6 +6,7 @@ import (
 )
 
 func TestLoadDefaults(t *testing.T) {
+	t.Setenv("OPERATOR_OWNER_USER_ID", "")
 	t.Setenv("PORT", "")
 	t.Setenv("APP_ENV", "")
 	t.Setenv("APP_BASE_URL", "")
@@ -33,6 +34,30 @@ func TestLoadDefaults(t *testing.T) {
 	}
 	if cfg.IsProduction() {
 		t.Fatal("expected IsProduction() = false")
+	}
+	if cfg.OperatorOwnerUserID != 0 {
+		t.Fatalf("operator dashboard enabled by default: %d", cfg.OperatorOwnerUserID)
+	}
+}
+
+func TestOperatorOwnerConfigurationFailsClosed(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("DATABASE_URL", "postgres://localhost/nabu")
+	t.Setenv("OPERATOR_OWNER_USER_ID", "42")
+	cfg, err := Load()
+	if err != nil || cfg.OperatorOwnerUserID != 42 {
+		t.Fatalf("valid operator ID rejected: %+v, %v", cfg, err)
+	}
+	for _, invalid := range []string{"-1", "0", "someone@example.com", "9223372036854775808"} {
+		t.Setenv("OPERATOR_OWNER_USER_ID", invalid)
+		if _, err := Load(); err == nil {
+			t.Fatalf("accepted invalid operator ID %q", invalid)
+		}
+	}
+	t.Setenv("OPERATOR_OWNER_USER_ID", "42")
+	t.Setenv("DATABASE_URL", "")
+	if _, err := Load(); err == nil {
+		t.Fatal("operator dashboard started without persistent database")
 	}
 }
 

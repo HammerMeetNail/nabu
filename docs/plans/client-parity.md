@@ -166,6 +166,7 @@ test that actually runs in CI (see the iOS CI lane in `.github/workflows/ci.yaml
 | **Log Member Attribution** |
 | Log by member | `schedule.js`, `log-member-attribution.spec.js` | `Views/HomeView.swift`, `Views/LogSheet.swift` | `/api/logs` | Built | |
 | **Security** |
+| Platform operator dashboard | `operator.js`, `operator-dashboard.spec.js` | — | `/api/operator/v1/*` | N/A | Separate, configured platform-owner reporting surface for registrations and activity; read-only scoped keys never enter the iOS client. Household members and household owners receive no operator access. |
 | Escaping user content | `utils.js`, `security-escape.spec.js` | SwiftUI `Text` (auto-escapes) | N/A (client rendering) | Built | SwiftUI does not interpret markup, so HTML-escaping is not applicable |
 | CSRF protection | `api.js` | `API/CSRFTokenProvider.swift`, `APIContractTests.swift` | All state-changing endpoints | Built | |
 | **Schedule Reminders** |

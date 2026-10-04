@@ -33,6 +33,7 @@ import (
 	"github.com/HammerMeetNail/nabu/internal/mail"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
 	"github.com/HammerMeetNail/nabu/internal/notification"
+	"github.com/HammerMeetNail/nabu/internal/operator"
 	"github.com/HammerMeetNail/nabu/internal/push"
 	"github.com/HammerMeetNail/nabu/internal/reminder"
 	"github.com/HammerMeetNail/nabu/internal/schedule"
@@ -342,6 +343,14 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	if err := joinLimiter.SetTrustedProxies(cfg.TrustedProxyCIDRs); err != nil {
 		panic("invalid trusted proxy configuration")
 	}
+	var operatorLimiter *middleware.RateLimiter
+	if cfg.OperatorOwnerUserID > 0 {
+		operatorLimiter = middleware.NewRateLimiter(120, time.Minute)
+		operatorLimiter.SetMaxClients(cfg.RateLimitMaxClients)
+		if err := operatorLimiter.SetTrustedProxies(cfg.TrustedProxyCIDRs); err != nil {
+			panic("invalid trusted proxy configuration")
+		}
+	}
 
 	mux.HandleFunc("/health", handlers.Health)
 	var probe func(context.Context) error
@@ -349,6 +358,38 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 		probe = db.PingContext
 	}
 	mux.HandleFunc("/ready", handlers.Readiness(probe))
+	// The platform operator is an explicit account ID, never a household role.
+	// Leave the page and API unregistered until an operator is configured.
+	if cfg.OperatorOwnerUserID > 0 {
+		if db == nil {
+			panic("operator dashboard requires PostgreSQL")
+		}
+		operatorService := operator.NewService(db, cfg.OperatorOwnerUserID)
+		operatorHandler := handlers.NewOperatorHandler(operatorService, auditLog)
+		mux.HandleFunc("/operator", method(http.MethodGet, func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("Referrer-Policy", "no-referrer")
+			w.Header().Set("X-Robots-Tag", "noindex, nofollow")
+			user, ok := middleware.CurrentUser(r.Context())
+			if !ok || r.Header.Get("Authorization") != "" {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			if !operatorService.IsOwner(user) {
+				http.Error(w, "forbidden", http.StatusForbidden)
+				return
+			}
+			renderOperator(w)
+		}))
+		mux.HandleFunc("/api/operator/v1/summary", method(http.MethodGet, operatorHandler.Summary))
+		mux.HandleFunc("/api/operator/v1/activity", method(http.MethodGet, operatorHandler.Activity))
+		mux.HandleFunc("/api/operator/v1/users", method(http.MethodGet, operatorHandler.Users))
+		mux.HandleFunc("/api/operator/v1/households", method(http.MethodGet, operatorHandler.Households))
+		mux.HandleFunc("/api/operator/v1/keys", operatorHandler.Keys)
+		mux.HandleFunc("/api/operator/v1/keys/{id}", method(http.MethodDelete, operatorHandler.RevokeKey))
+	} else {
+		mux.HandleFunc("/operator", http.NotFound)
+	}
 
 	mux.HandleFunc("/api/auth/register", method(http.MethodPost, authHandler.Register))
 	mux.HandleFunc("/api/auth/login", method(http.MethodPost, authHandler.Login))
@@ -667,6 +708,9 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	handler = middleware.CSRF("nabu_csrf", cfg.ServerSecure)(handler)
 	handler = rateLimiter.Middleware("/api/auth")(handler)
 	handler = joinLimiter.Middleware("/api/household/join")(handler)
+	if operatorLimiter != nil {
+		handler = operatorLimiter.Middleware("/api/operator/")(handler)
+	}
 	// Engage the global per-IP backstop only when client IPs are reliably
 	// attributable (trusted proxy configured); otherwise it would key every
 	// request to the proxy's single IP and could 429 the whole user base.
@@ -675,6 +719,9 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	}
 
 	limiters := []*middleware.RateLimiter{rateLimiter, joinLimiter}
+	if operatorLimiter != nil {
+		limiters = append(limiters, operatorLimiter)
+	}
 	if globalRateLimiter != nil {
 		limiters = append(limiters, globalRateLimiter)
 	}
@@ -735,6 +782,15 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 var indexTmpl = template.Must(template.ParseFS(webassets.Assets, "templates/index.html"))
+
+var operatorTmpl = template.Must(template.ParseFS(webassets.Assets, "templates/operator.html"))
+
+func renderOperator(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := operatorTmpl.Execute(w, struct{ Version string }{Version: version.Version}); err != nil {
+		log.Printf("operator template failed: %v", err)
+	}
+}
 
 func renderIndex(w http.ResponseWriter, cfg config.Config) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")

@@ -20,6 +20,7 @@ services:
       PORT: "8080"
       APP_BASE_URL: "http://localhost:8080"
       DATABASE_URL: "postgres://nabu:nabu@postgres:5432/nabu?sslmode=disable"
+      OPERATOR_OWNER_USER_ID: "${OPERATOR_OWNER_USER_ID:-}"
       SMTP_HOST: "mailpit"
       SMTP_PORT: "1025"
       SMTP_FROM: "no-reply@nabu.local"

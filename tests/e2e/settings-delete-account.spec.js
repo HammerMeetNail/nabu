@@ -3,7 +3,7 @@ import {deferred,observeModuleCalls} from './review-fixtures.js';
 
 test.use({serviceWorkers:'block'});
 
-const BASE = "http://localhost:8080";
+const BASE = process.env.BASE_URL || "http://localhost:8080";
 
 function uniqueEmail() {
   return `e2e-da-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@test.com`;
