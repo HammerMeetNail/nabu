@@ -21,6 +21,7 @@ services:
       - APP_BASE_URL=https://nabu-app.com
       - SERVER_SECURE=true
       - DATABASE_URL=postgres://nabu:${DB_PASSWORD}@nabu_postgres_1:5432/nabu?sslmode=disable
+      - OPERATOR_OWNER_USER_ID=${OPERATOR_OWNER_USER_ID:-}
       - SMTP_HOST=smtp.resend.com
       - SMTP_PORT=587
       - SMTP_USER=resend
@@ -28,7 +29,6 @@ services:
       - SMTP_FROM=noreply@yearofbingo.com
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-      - OPERATOR_OWNER_USER_ID=${OPERATOR_OWNER_USER_ID:-}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
       - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
       - VAPID_SUBJECT=${VAPID_SUBJECT}

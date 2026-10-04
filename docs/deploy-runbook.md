@@ -16,6 +16,23 @@ value leaves `/operator` disabled. This is an account ID, not an API key; check
 the account it identifies before setting the secret. The tag-triggered deploy
 passes the value to the app.
 
+Changing or clearing the GitHub secret does not change the running app. Cut a
+tag on `main`, wait for a successful deploy and restart, then confirm `/ready`
+returns 200 before treating the new owner setting as active. A failed rollout
+can restore the previous environment and keep the former owner authorized.
+After rotation, use an authorized test path to confirm the new owner can read
+`/api/operator/v1/summary`, while the former owner's session is denied (403)
+and each former-owner bearer key is denied (401). After clearing the setting,
+confirm the operator route is unavailable. Do not print keys in deploy logs.
+
+Disable and key revocation are separate operations. While the route is disabled,
+keys cannot reach it, but re-enabling the same owner can make an unexpired,
+unrevoked key usable again if its auth version still matches. Revoke keys from
+the owner dashboard before rotation, or have a database administrator set
+`operator_api_keys.revoked_at` for that owner's active keys. Verify denial after
+the successful rollout; do not treat a failed deploy as completed rotation or
+revocation.
+
 ## 1. Watch the CI run
 
 After pushing a `v*` tag, monitor the pipeline to completion and verify production. Do not wait for the user to ask. (A cheaper subagent may be delegated to this.)
