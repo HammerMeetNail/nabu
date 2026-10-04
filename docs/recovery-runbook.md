@@ -139,6 +139,14 @@ cleanup when observable. The incident procedure must inventory those resources
 and their private directories afterward. Never use a broad container-name pattern
 or global volume prune to clean them up.
 
+Until this verifier is adopted, the scheduled legacy logical-restore verifier is
+deployed from `scripts/verify-backup-legacy.sh`. Its PostgreSQL container and named
+data volume carry `io.hammermeetnail.backup-verifier.service=nabu` and matching
+run labels. A new run holds the Nabu verifier lock while it reconciles only those
+labeled resources. Review the exact labels and run state before any manual cleanup;
+do not prune host-wide volumes. The local cleanup regression is
+`python3 tests/ops/legacy-verifier-volume.py scripts/verify-backup-legacy.sh nabu`.
+
 ## PITR, cutover and rollback
 
 For physical recovery, select a completed full/differential backup and a UTC

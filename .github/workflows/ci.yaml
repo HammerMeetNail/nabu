@@ -560,6 +560,8 @@ jobs:
           scp compose.server.deploy.yaml ssh.yearofbingo.com:/opt/nabu/compose.next.yaml
           scp scripts/backup.sh scripts/restore.sh scripts/notify-email.sh scripts/recovery.py scripts/recovery-status.py scripts/recovery-job.sh ssh.yearofbingo.com:/opt/nabu/scripts/
           scp scripts/verify-backup.sh ssh.yearofbingo.com:/opt/nabu/scripts/verify-backup.next.sh
+          scp scripts/verify-backup-legacy.sh ssh.yearofbingo.com:/opt/nabu/scripts/verify-backup-legacy.next.sh
+          scp scripts/verify-backup-resources.sh ssh.yearofbingo.com:/opt/nabu/scripts/verify-backup-resources.next.sh
           scp scripts/wait-ready.sh scripts/deploy-local.sh ssh.yearofbingo.com:/opt/nabu/scripts/
 
           # Deploy
@@ -572,10 +574,18 @@ jobs:
             # in /etc/nabu; deployments never replace that configuration.
             # Preserve the existing scheduled verifier until its replacement has
             # explicit config, a fresh verified restore, and working monitoring.
+            mv scripts/verify-backup-resources.next.sh scripts/verify-backup-resources.sh
             if systemctl is-active --quiet nabu-recovery-check.timer && scripts/verify-backup.next.sh --check-config; then
               mv scripts/verify-backup.next.sh scripts/verify-backup.sh
+            elif grep -Fq 'recovery.py" restore-dump' scripts/verify-backup.sh; then
+              echo "Adopted recovery verifier retained; recovery configuration needs attention."
+            elif grep -Fq 'TEST_CONTAINER="nabu-backup-verify"' scripts/verify-backup.sh || \
+                 grep -Fq 'verify_setup nabu' scripts/verify-backup.sh; then
+              mv scripts/verify-backup-legacy.next.sh scripts/verify-backup.sh
+              echo "Recovery verifier adoption pending; leak-safe legacy verifier installed. See docs/recovery-runbook.md."
             else
-              echo "Recovery verifier adoption pending; existing scheduled verifier retained. See docs/recovery-runbook.md."
+              echo "Unknown installed backup verifier; refusing to replace it." >&2
+              exit 1
             fi
 
             # Write .env with all secrets
