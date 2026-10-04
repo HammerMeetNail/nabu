@@ -613,6 +613,10 @@ func TestAllowedPostAuthRedirect(t *testing.T) {
 		{"/settings", "/settings"},
 		{"/", "/"},
 		{"//evil.example", ""},
+		{"/\\evil.example", ""},
+		{"/%5cevil.example", ""},
+		{"/%2fevil.example", ""},
+		{"/%0d%0aevil.example", ""},
 		{"https://evil.example", ""},
 		{"http://localhost:8080/settings", ""},
 		{"javascript:alert(1)", ""},
@@ -633,6 +637,8 @@ func TestAuthGoogleLoginRedirectCookie(t *testing.T) {
 	}{
 		{"unsafe https", "https://evil.example", false},
 		{"scheme-relative", "//evil.example", false},
+		{"backslash-relative", "/\\evil.example", false},
+		{"escaped-backslash", "/%5cevil.example", false},
 		{"javascript", "javascript:alert(1)", false},
 		{"empty", "", false},
 		{"same-origin path", "/settings", true},
@@ -874,10 +880,12 @@ func TestAuthAppleWebCallbackRedirectCookieHonored(t *testing.T) {
 func TestAuthAppleWebCallbackRedirectCookieUnsafeFallsBack(t *testing.T) {
 	handler, _ := setupAppleWebHandler(t)
 	for name, cookieVal := range map[string]string{
-		"full URL":   "http://localhost:8080/settings",
-		"evil URL":   "https://evil.example",
-		"scheme-rel": "//evil.example/settings",
-		"javascript": "javascript:alert(1)",
+		"full URL":          "http://localhost:8080/settings",
+		"evil URL":          "https://evil.example",
+		"scheme-rel":        "//evil.example/settings",
+		"escaped-backslash": "/%5cevil.example/settings",
+		"escaped-slash":     "/%2fevil.example/settings",
+		"javascript":        "javascript:alert(1)",
 	} {
 		t.Run(name, func(t *testing.T) {
 			rec := postAppleCallback(handler, url.Values{"state": {"mystate"}, "id_token": {"apple-token"}},

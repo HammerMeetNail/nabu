@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/subtle"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/HammerMeetNail/nabu/internal/auth"
@@ -244,17 +245,23 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 }
 
 // allowedPostAuthRedirect reports whether a post-login redirect target is
-// safe: same-origin absolute paths (but not protocol-relative "//...") or
+// safe: same-origin absolute paths (including escaped path characters) or
 // the native app's custom scheme callback. Anything else returns "" so the
 // caller falls back to the app base URL.
 func allowedPostAuthRedirect(target string) string {
 	if target == "nabu://callback" {
 		return target
 	}
-	if strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "//") {
-		return target
+	if !strings.HasPrefix(target, "/") || strings.HasPrefix(target, "//") ||
+		strings.ContainsAny(target, "\\\x00\r\n\t") {
+		return ""
 	}
-	return ""
+	parsed, err := url.Parse(target)
+	if err != nil || parsed.IsAbs() || parsed.Host != "" ||
+		strings.HasPrefix(parsed.Path, "//") || strings.ContainsAny(parsed.Path, "\\\x00\r\n\t") {
+		return ""
+	}
+	return target
 }
 
 func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
