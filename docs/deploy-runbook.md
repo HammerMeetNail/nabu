@@ -8,6 +8,14 @@ Push a `v*` tag on `main` (e.g. `git tag v0.1.7 && git push origin v0.1.7`). CI 
 
 Production URL: `https://nabu-app.com`. Production test account: `verify@yearofbingo.com` / `test123456`.
 
+When the operator dashboard is enabled, set the GitHub Actions secret
+`OPERATOR_OWNER_USER_ID` to the positive database user ID of the intended,
+verified operator account before cutting a release tag. The deploy job writes
+it to `/opt/nabu/.env`, and production Compose passes it to the app. An unset
+value leaves `/operator` disabled. This is an account ID, not an API key; check
+the account it identifies before setting the secret. The tag-triggered deploy
+passes the value to the app.
+
 ## 1. Watch the CI run
 
 After pushing a `v*` tag, monitor the pipeline to completion and verify production. Do not wait for the user to ask. (A cheaper subagent may be delegated to this.)
