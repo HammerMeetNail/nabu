@@ -160,8 +160,12 @@ test("operator dashboard and scoped key lifecycle", async ({ browser }) => {
 
     await owner.locator('#key-form input[name="name"]').fill("Dashboard full access");
     await owner.locator('#key-form select[name="scope"]').selectOption("full");
+    await owner.locator('#key-form select[name="days"]').selectOption("7");
     await owner.locator("#key-form button[type=submit]").click();
     await expect(owner.locator("#issued-key")).toBeVisible();
+    await expect(owner.locator('#key-form input[name="name"]')).toHaveValue("");
+    await expect(owner.locator('#key-form select[name="scope"]')).toHaveValue("summary");
+    await expect(owner.locator('#key-form select[name="days"]')).toHaveValue("30");
     const fullToken = await owner.locator("#token").inputValue();
     expect(fullToken).toMatch(/^nabu_op_/);
     await owner.locator("#dismiss-key").click();
@@ -188,6 +192,66 @@ test("operator dashboard and scoped key lifecycle", async ({ browser }) => {
     await ownerContext.close();
     await outsiderContext.close();
     await keyContext.close();
+  }
+});
+
+test("operator key issuance preserves a newer form draft", async ({ browser }) => {
+  const context = await browser.newContext();
+  const entered = deferred(), release = deferred(), completed = deferred();
+  let dashboard;
+  let createdKey;
+  try {
+    dashboard = await context.newPage();
+    await signInOwner(dashboard);
+    await dashboard.goto("/operator");
+    await expect(dashboard.locator("#users-body")).toContainText(email);
+    await dashboard.route("**/api/operator/v1/keys", async route => {
+      if (route.request().method() !== "POST") return route.continue();
+      try {
+        const response = await route.fetch();
+        createdKey = (await response.json()).key;
+        entered.resolve();
+        await release.promise;
+        await route.fulfill({ response });
+      } finally { completed.resolve(); }
+    });
+    await dashboard.locator('#key-form input[name="name"]').fill("Draft A");
+    await dashboard.locator('#key-form select[name="scope"]').selectOption("summary");
+    await dashboard.locator('#key-form select[name="days"]').selectOption("30");
+    await dashboard.locator("#key-form button[type=submit]").click();
+    await entered.promise;
+    expect(createdKey).toBeDefined();
+    await dashboard.locator('#key-form input[name="name"]').fill("Draft B");
+    await dashboard.locator('#key-form select[name="scope"]').selectOption("full");
+    await dashboard.locator('#key-form select[name="days"]').selectOption("7");
+    await finishHeldResponses(dashboard, ["issue-key"], () => release.resolve(), [completed]);
+    await expect(dashboard.locator('#key-form input[name="name"]')).toHaveValue("Draft B");
+    await expect(dashboard.locator('#key-form select[name="scope"]')).toHaveValue("full");
+    await expect(dashboard.locator('#key-form select[name="days"]')).toHaveValue("7");
+    await expect(dashboard.locator("#issued-key")).toBeVisible();
+    expect(await dashboard.locator("#token").inputValue()).toMatch(/^nabu_op_/);
+    const keyRow = dashboard.locator("#keys-body tr").filter({ hasText: "Draft A" });
+    await expect(keyRow).toContainText("Summary");
+    const keys = (await (await dashboard.request.get("/api/operator/v1/keys")).json()).keys;
+    const persisted = keys.find(key => key.id === createdKey.id);
+    expect(persisted.name).toBe("Draft A");
+    expect(persisted.scope).toBe("summary");
+    const expires = new Date(persisted.createdAt);
+    expires.setUTCDate(expires.getUTCDate() + 30);
+    expect(new Date(persisted.expiresAt).getTime()).toBe(expires.getTime());
+    expect(keys.some(key => key.name === "Draft B")).toBe(false);
+  } finally {
+    release.resolve();
+    try {
+      // Drain any active route before cleanup, including when an assertion fails.
+      if (dashboard) await dashboard.unrouteAll({ behavior: "wait" });
+      if (createdKey) {
+        const revoked = await context.request.delete(`/api/operator/v1/keys/${createdKey.id}`, {
+          headers: { "X-CSRF-Token": await csrf(dashboard) },
+        });
+        expect(revoked.status()).toBe(204);
+      }
+    } finally { await context.close(); }
   }
 });
 

@@ -328,7 +328,8 @@ document.querySelector("#key-form").addEventListener("submit", async event => {
     const token = document.querySelector("#token");
     token.value = data.token;
     document.querySelector("#issued-key").hidden = false;
-    form.reset();
+    const draft = new FormData(form);
+    if (["name", "scope", "days"].every(name => draft.get(name) === values.get(name))) form.reset();
     setMessage("Key created. Copy it now; it cannot be recovered.");
     await loadKeys();
   } catch (err) { showError(err, ticket); }
