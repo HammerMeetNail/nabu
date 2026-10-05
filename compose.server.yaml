@@ -21,6 +21,7 @@ services:
       - APP_BASE_URL=https://nabu-app.com
       - SERVER_SECURE=true
       - DATABASE_URL=postgres://nabu:${DB_PASSWORD}@nabu_postgres_1:5432/nabu?sslmode=disable
+      - OPERATOR_OWNER_USER_ID=${OPERATOR_OWNER_USER_ID:-}
       - SMTP_HOST=smtp.resend.com
       - SMTP_PORT=587
       - SMTP_USER=resend

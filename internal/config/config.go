@@ -19,20 +19,23 @@ func invalidConfig(format string, args ...any) error {
 }
 
 type Config struct {
-	Port               string
-	AppEnv             string
-	AppBaseURL         string
-	ServerSecure       bool
-	DatabaseURL        string
-	DBMaxOpenConns     int
-	DBMaxIdleConns     int
-	SMTPHost           string
-	SMTPPort           string
-	SMTPUser           string
-	SMTPPass           string
-	SMTPFrom           string
-	GoogleClientID     string
-	GoogleClientSecret string
+	Port         string
+	AppEnv       string
+	AppBaseURL   string
+	ServerSecure bool
+	DatabaseURL  string
+	// OperatorOwnerUserID enables the private platform dashboard for one
+	// verified account. Zero disables it; household owner roles never imply it.
+	OperatorOwnerUserID int64
+	DBMaxOpenConns      int
+	DBMaxIdleConns      int
+	SMTPHost            string
+	SMTPPort            string
+	SMTPUser            string
+	SMTPPass            string
+	SMTPFrom            string
+	GoogleClientID      string
+	GoogleClientSecret  string
 	// AppleClientIDs are the audiences accepted on Sign in with Apple
 	// identity tokens: the iOS bundle ID and, if the web flow is added
 	// later, the Services ID. Comma-separated; empty disables the endpoint.
@@ -83,6 +86,14 @@ func Load() (Config, error) {
 		APNSTeamID:         getenv("APNS_TEAM_ID", ""),
 		APNSBundleID:       getenv("APNS_BUNDLE_ID", ""),
 	}
+	ownerID := strings.TrimSpace(os.Getenv("OPERATOR_OWNER_USER_ID"))
+	if ownerID != "" {
+		parsed, parseErr := strconv.ParseInt(ownerID, 10, 64)
+		if parseErr != nil || parsed < 1 {
+			return Config{}, invalidConfig("OPERATOR_OWNER_USER_ID must be a positive integer")
+		}
+		cfg.OperatorOwnerUserID = parsed
+	}
 
 	var err error
 	cfg.ServerSecure, err = strconv.ParseBool(getenv("SERVER_SECURE", "false"))
@@ -121,6 +132,9 @@ func (c Config) Validate() error {
 	// available for development (APP_ENV != production).
 	if c.IsProduction() && strings.TrimSpace(c.DatabaseURL) == "" {
 		return invalidConfig("DATABASE_URL must be set when APP_ENV=production")
+	}
+	if c.OperatorOwnerUserID < 0 || (c.OperatorOwnerUserID > 0 && strings.TrimSpace(c.DatabaseURL) == "") {
+		return invalidConfig("OPERATOR_OWNER_USER_ID requires a positive user ID and DATABASE_URL")
 	}
 	if port, err := strconv.Atoi(c.Port); err != nil || port < 1 || port > 65535 {
 		return invalidConfig("PORT must be an integer from 1 to 65535")

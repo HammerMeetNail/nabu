@@ -39,12 +39,15 @@ async function setupWithChores(page) {
 
 async function postLog(page, csrf, choreId, opts = {}) {
   const { indicators = [], volumeML, hour } = opts;
+  // The browser host and the PostgreSQL VM can differ by a few seconds.
+  // Use the app's clock so a new completion is inside its current stats window.
+  const serverTime = new Date((await page.request.get("/health")).headers().date);
   const body = {
     choreId,
     note: "",
     indicators,
-    date: new Date().toISOString().slice(0, 10),
-    completedAt: new Date().toISOString(),
+    date: serverTime.toISOString().slice(0, 10),
+    completedAt: serverTime.toISOString(),
   };
   if (hour !== undefined) body.hour = hour;
   if (volumeML !== undefined) body.volumeML = volumeML;

@@ -198,7 +198,7 @@ func (s *MemoryStore) SetUserHousehold(_ context.Context, userID, householdID in
 	return nil
 }
 
-func (s *MemoryStore) CreateSession(_ context.Context, userID, authVersion int64, tokenHash string, expiresAt time.Time) (Session, error) {
+func (s *MemoryStore) CreateSession(_ context.Context, userID, authVersion int64, tokenHash string, expiresAt, authenticatedAt time.Time) (Session, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -208,12 +208,13 @@ func (s *MemoryStore) CreateSession(_ context.Context, userID, authVersion int64
 	}
 	now := time.Now().UTC()
 	session := Session{
-		ID:          randomToken(32),
-		UserID:      userID,
-		AuthVersion: authVersion,
-		ExpiresAt:   expiresAt,
-		LastSeenAt:  now,
-		CreatedAt:   now,
+		ID:              randomToken(32),
+		UserID:          userID,
+		AuthVersion:     authVersion,
+		ExpiresAt:       expiresAt,
+		LastSeenAt:      now,
+		CreatedAt:       now,
+		AuthenticatedAt: authenticatedAt,
 	}
 	s.sessionsByHash[tokenHash] = session
 	return session, nil

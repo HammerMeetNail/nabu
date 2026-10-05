@@ -274,10 +274,78 @@ jobs:
       - name: Run E2E tests
         run: ./scripts/e2e.sh
 
+  e2e-operator:
+    name: Enabled Operator E2E
+    runs-on: ubuntu-latest
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.tests == 'true'
+    services:
+      postgres:
+        image: docker.io/postgres:17-alpine
+        env:
+          POSTGRES_DB: nabu
+          POSTGRES_USER: nabu
+          POSTGRES_PASSWORD: nabu
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U nabu -d nabu"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+      mailpit:
+        image: axllent/mailpit:v1.27
+        ports:
+          - 1025:1025
+          - 8025:8025
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - name: Install pnpm
+        run: corepack enable pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            playwright-${{ runner.os }}-
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install chromium
+      - name: Run enabled operator browser tests
+        env:
+          DATABASE_URL: postgres://nabu:nabu@localhost:5432/nabu?sslmode=disable
+          OPERATOR_OWNER_USER_ID: "1"
+          APP_BASE_URL: http://localhost:8080
+          SMTP_HOST: 127.0.0.1
+          SMTP_PORT: "1025"
+          SMTP_USER: ""
+          SMTP_PASS: ""
+          MAILPIT_URL: http://localhost:8025
+          OPERATOR_E2E: "1"
+          RATE_LIMIT_AUTH_MAX: "1000"
+          RATE_LIMIT_GLOBAL_MAX: "1000000"
+          RATE_LIMIT_JOIN_MAX: "1000"
+        run: |
+          go build -o /tmp/nabu-operator-e2e ./cmd/server
+          /tmp/nabu-operator-e2e > /tmp/nabu-operator-e2e-server.log 2>&1 &
+          app_pid=$!
+          trap 'kill "$app_pid" 2>/dev/null || true' EXIT
+          ./scripts/wait-for-stack.sh
+          pnpm exec playwright test --config playwright.config.js tests/e2e/operator-dashboard.spec.js --workers=1
+
   build-image:
     name: Build Image (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
-    needs: [changes, secrets, lint, test-go, test-js, e2e]
+    needs: [changes, secrets, lint, test-go, test-js, e2e, e2e-operator]
     if: >
       needs.changes.outputs.code == 'true' &&
       needs.secrets.result == 'success' &&
@@ -285,6 +353,7 @@ jobs:
       needs.test-go.result == 'success' &&
       needs.test-js.result == 'success' &&
       needs.e2e.result == 'success' &&
+      needs.e2e-operator.result == 'success' &&
       github.actor != 'dependabot[bot]'
     strategy:
       matrix:

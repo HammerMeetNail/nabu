@@ -56,6 +56,24 @@ async function withServer(request, run, overrides={}) {
   }
 }
 
+test('OAuth return paths cannot become cross-origin after browser normalization',async({request})=>{
+  await withServer(request,async url=>{
+    for(const [target,allowed] of [
+      ['/operator',true],
+      ['/\\evil.example',false],
+      ['/%5cevil.example',false],
+      ['/%2fevil.example',false],
+    ]) {
+      const response=await request.get(`${url}/api/auth/google/login?redirect=${encodeURIComponent(target)}`,{maxRedirects:0});
+      expect(response.status()).toBe(302);
+      const redirectCookie=response.headersArray().find(header=>header.name.toLowerCase()==='set-cookie' && header.value.startsWith('nabu_oidc_redirect='));
+      expect(redirectCookie,target).toBeDefined();
+      expect(redirectCookie.value.startsWith('nabu_oidc_redirect=/operator;'),target).toBe(allowed);
+      if(!allowed) expect(redirectCookie.value,target).toContain('Max-Age=0');
+    }
+  },{GOOGLE_CLIENT_ID:'test-client',GOOGLE_CLIENT_SECRET:'test-secret',RATE_LIMIT_AUTH_MAX:'30'});
+});
+
 test('resource path changes share one API allowance and auth retains its stricter budget',async({request})=>{
   await withServer(request,async url=>{
     const headers={'X-Forwarded-For':'203.0.113.10'};

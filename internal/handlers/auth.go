@@ -3,6 +3,7 @@ package handlers
 import (
 	"crypto/subtle"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/HammerMeetNail/nabu/internal/auth"
@@ -244,17 +245,25 @@ func (h *AuthHandler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 }
 
 // allowedPostAuthRedirect reports whether a post-login redirect target is
-// safe: same-origin absolute paths (but not protocol-relative "//...") or
+// safe: same-origin absolute paths (including escaped path characters) or
 // the native app's custom scheme callback. Anything else returns "" so the
 // caller falls back to the app base URL.
 func allowedPostAuthRedirect(target string) string {
 	if target == "nabu://callback" {
 		return target
 	}
-	if strings.HasPrefix(target, "/") && !strings.HasPrefix(target, "//") {
-		return target
+	if target == "" || target[0] != '/' || (len(target) > 1 && (target[1] == '/' || target[1] == '\\')) ||
+		strings.ContainsAny(target, "\\\x00\r\n\t") {
+		return ""
 	}
-	return ""
+	parsed, err := url.Parse(target)
+	if err != nil || parsed.IsAbs() || parsed.Host != "" ||
+		parsed.Path == "" || parsed.Path[0] != '/' ||
+		(len(parsed.Path) > 1 && (parsed.Path[1] == '/' || parsed.Path[1] == '\\')) ||
+		strings.ContainsAny(parsed.Path, "\\\x00\r\n\t") {
+		return ""
+	}
+	return target
 }
 
 func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
@@ -280,6 +289,8 @@ func (h *AuthHandler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 
 	if redirect := allowedPostAuthRedirect(r.URL.Query().Get("redirect")); redirect != "" {
 		h.setOIDCCookie(w, "nabu_oidc_redirect", redirect, 600)
+	} else {
+		h.setOIDCCookie(w, "nabu_oidc_redirect", "", -1)
 	}
 
 	http.Redirect(w, r, url, http.StatusFound)
@@ -292,6 +303,9 @@ func (h *AuthHandler) GoogleCallback(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid state parameter")
 		return
 	}
+	h.setOIDCCookie(w, "nabu_oidc_state", "", -1)
+	h.setOIDCCookie(w, "nabu_oidc_nonce", "", -1)
+	h.setOIDCCookie(w, "nabu_oidc_redirect", "", -1)
 
 	code := r.URL.Query().Get("code")
 	if code == "" {
@@ -382,6 +396,8 @@ func (h *AuthHandler) AppleWebLogin(w http.ResponseWriter, r *http.Request) {
 
 	if redirect := allowedPostAuthRedirect(r.URL.Query().Get("redirect")); redirect != "" {
 		h.setAppleWebCookie(w, "nabu_apple_redirect", redirect, 600)
+	} else {
+		h.setAppleWebCookie(w, "nabu_apple_redirect", "", -1)
 	}
 
 	http.Redirect(w, r, url, http.StatusFound)
@@ -401,6 +417,9 @@ func (h *AuthHandler) AppleWebCallback(w http.ResponseWriter, r *http.Request) {
 	// Apple posts error=user_cancelled_authorize when the user backs out;
 	// no session is created, so just return to the app.
 	if r.PostFormValue("error") != "" {
+		h.setAppleWebCookie(w, "nabu_apple_state", "", -1)
+		h.setAppleWebCookie(w, "nabu_apple_nonce", "", -1)
+		h.setAppleWebCookie(w, "nabu_apple_redirect", "", -1)
 		http.Redirect(w, r, h.appBaseURL, http.StatusSeeOther)
 		return
 	}
@@ -411,6 +430,9 @@ func (h *AuthHandler) AppleWebCallback(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid state parameter")
 		return
 	}
+	h.setAppleWebCookie(w, "nabu_apple_state", "", -1)
+	h.setAppleWebCookie(w, "nabu_apple_nonce", "", -1)
+	h.setAppleWebCookie(w, "nabu_apple_redirect", "", -1)
 
 	identityToken := r.PostFormValue("id_token")
 	if identityToken == "" {

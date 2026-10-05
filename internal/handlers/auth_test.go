@@ -613,6 +613,10 @@ func TestAllowedPostAuthRedirect(t *testing.T) {
 		{"/settings", "/settings"},
 		{"/", "/"},
 		{"//evil.example", ""},
+		{"/\\evil.example", ""},
+		{"/%5cevil.example", ""},
+		{"/%2fevil.example", ""},
+		{"/%0d%0aevil.example", ""},
 		{"https://evil.example", ""},
 		{"http://localhost:8080/settings", ""},
 		{"javascript:alert(1)", ""},
@@ -627,15 +631,17 @@ func TestAllowedPostAuthRedirect(t *testing.T) {
 
 func TestAuthGoogleLoginRedirectCookie(t *testing.T) {
 	cases := []struct {
-		name       string
-		redirect   string
-		wantCookie bool
+		name     string
+		redirect string
+		want     string
 	}{
-		{"unsafe https", "https://evil.example", false},
-		{"scheme-relative", "//evil.example", false},
-		{"javascript", "javascript:alert(1)", false},
-		{"empty", "", false},
-		{"same-origin path", "/settings", true},
+		{"unsafe https", "https://evil.example", ""},
+		{"scheme-relative", "//evil.example", ""},
+		{"backslash-relative", "/\\evil.example", ""},
+		{"escaped-backslash", "/%5cevil.example", ""},
+		{"javascript", "javascript:alert(1)", ""},
+		{"empty", "", ""},
+		{"same-origin path", "/settings", "/settings"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -646,16 +652,105 @@ func TestAuthGoogleLoginRedirectCookie(t *testing.T) {
 			if rec.Code != http.StatusFound {
 				t.Fatalf("status = %d, want 302", rec.Code)
 			}
-			found := false
-			for _, c := range rec.Result().Cookies() {
-				if c.Name == "nabu_oidc_redirect" {
-					found = true
-				}
+			cookie := responseCookie(rec, "nabu_oidc_redirect")
+			if cookie == nil || cookie.Value != tc.want || cookie.Path != "/api/auth/google" {
+				t.Fatalf("redirect cookie = %+v, want %q", cookie, tc.want)
 			}
-			if found != tc.wantCookie {
-				t.Errorf("nabu_oidc_redirect cookie set = %v, want %v", found, tc.wantCookie)
+			if tc.want == "" && cookie.MaxAge != -1 {
+				t.Errorf("unsafe or absent redirect was not cleared: %+v", cookie)
 			}
 		})
+	}
+}
+
+func responseCookie(rec *httptest.ResponseRecorder, name string) *http.Cookie {
+	for _, cookie := range rec.Result().Cookies() {
+		if cookie.Name == name {
+			return cookie
+		}
+	}
+	return nil
+}
+
+func applyResponseCookies(jar map[string]*http.Cookie, rec *httptest.ResponseRecorder) {
+	for _, cookie := range rec.Result().Cookies() {
+		if cookie.MaxAge < 0 {
+			delete(jar, cookie.Name)
+		} else {
+			jar[cookie.Name] = cookie
+		}
+	}
+}
+
+func cookieValues(jar map[string]*http.Cookie) []*http.Cookie {
+	result := make([]*http.Cookie, 0, len(jar))
+	for _, cookie := range jar {
+		result = append(result, cookie)
+	}
+	return result
+}
+
+type fakeGoogleProvider struct{ identity auth.OIDCIdentity }
+
+func (*fakeGoogleProvider) Enabled() bool { return true }
+func (*fakeGoogleProvider) AuthCodeURL(string, string) string {
+	return "https://accounts.example.test/authorize"
+}
+func (p *fakeGoogleProvider) ExchangeCode(context.Context, string, string) (auth.OIDCIdentity, error) {
+	return p.identity, nil
+}
+
+func TestAuthGoogleSequentialLoginDoesNotReuseOperatorRedirect(t *testing.T) {
+	handler, svc := setupAuthHandler(t)
+	provider := &fakeGoogleProvider{identity: auth.OIDCIdentity{Subject: "owner", Email: "owner@example.com", EmailVerified: true}}
+	svc.SetOIDCProvider(provider)
+	jar := map[string]*http.Cookie{}
+	start := func(target string) {
+		req := httptest.NewRequest(http.MethodGet, "/api/auth/google/login"+target, nil)
+		for _, cookie := range jar {
+			req.AddCookie(cookie)
+		}
+		rec := httptest.NewRecorder()
+		handler.GoogleLogin(rec, req)
+		if rec.Code != http.StatusFound {
+			t.Fatalf("start status = %d", rec.Code)
+		}
+		applyResponseCookies(jar, rec)
+	}
+	callback := func() string {
+		req := httptest.NewRequest(http.MethodGet, "/api/auth/google/callback?state="+jar["nabu_oidc_state"].Value+"&code=synthetic", nil)
+		for _, cookie := range jar {
+			req.AddCookie(cookie)
+		}
+		rec := httptest.NewRecorder()
+		handler.GoogleCallback(rec, req)
+		if rec.Code != http.StatusFound {
+			t.Fatalf("callback status = %d: %s", rec.Code, rec.Body.String())
+		}
+		applyResponseCookies(jar, rec)
+		return rec.Header().Get("Location")
+	}
+	start("?redirect=%2Foperator")
+	if got := callback(); got != "/operator" {
+		t.Fatalf("owner redirect = %q", got)
+	}
+	logoutReq := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	logoutReq.AddCookie(jar["nabu_session"])
+	logoutRec := httptest.NewRecorder()
+	handler.Logout(logoutRec, logoutReq)
+	if logoutRec.Code != http.StatusOK {
+		t.Fatalf("logout status = %d", logoutRec.Code)
+	}
+	applyResponseCookies(jar, logoutRec)
+	provider.identity = auth.OIDCIdentity{Subject: "other", Email: "other@example.com", EmailVerified: true}
+	start("")
+	if got := callback(); got != "http://localhost:8080" {
+		t.Fatalf("ordinary account inherited operator redirect: %q", got)
+	}
+	for _, name := range []string{"nabu_oidc_state", "nabu_oidc_nonce", "nabu_oidc_redirect"} {
+		if jar[name] != nil {
+			t.Fatalf("callback retained %s", name)
+		}
 	}
 }
 
@@ -817,8 +912,11 @@ func TestAuthAppleWebCallbackUserCancelled(t *testing.T) {
 	if loc := rec.Header().Get("Location"); loc != "http://localhost:8080" {
 		t.Fatalf("Location = %q", loc)
 	}
-	if len(rec.Result().Cookies()) != 0 {
-		t.Fatal("cancelled sign-in must not set cookies")
+	for _, name := range []string{"nabu_apple_state", "nabu_apple_nonce", "nabu_apple_redirect"} {
+		cookie := responseCookie(rec, name)
+		if cookie == nil || cookie.Value != "" || cookie.MaxAge != -1 || cookie.Path != "/api/auth/apple/web" {
+			t.Fatalf("cancelled sign-in did not clear %s: %+v", name, cookie)
+		}
 	}
 }
 
@@ -874,10 +972,12 @@ func TestAuthAppleWebCallbackRedirectCookieHonored(t *testing.T) {
 func TestAuthAppleWebCallbackRedirectCookieUnsafeFallsBack(t *testing.T) {
 	handler, _ := setupAppleWebHandler(t)
 	for name, cookieVal := range map[string]string{
-		"full URL":   "http://localhost:8080/settings",
-		"evil URL":   "https://evil.example",
-		"scheme-rel": "//evil.example/settings",
-		"javascript": "javascript:alert(1)",
+		"full URL":          "http://localhost:8080/settings",
+		"evil URL":          "https://evil.example",
+		"scheme-rel":        "//evil.example/settings",
+		"escaped-backslash": "/%5cevil.example/settings",
+		"escaped-slash":     "/%2fevil.example/settings",
+		"javascript":        "javascript:alert(1)",
 	} {
 		t.Run(name, func(t *testing.T) {
 			rec := postAppleCallback(handler, url.Values{"state": {"mystate"}, "id_token": {"apple-token"}},
@@ -906,6 +1006,53 @@ func TestAuthAppleWebCallbackRedirectCookieCustomScheme(t *testing.T) {
 	}
 	if loc := rec.Header().Get("Location"); loc != "nabu://callback" {
 		t.Fatalf("Location = %q", loc)
+	}
+}
+
+func TestAuthAppleSequentialLoginDoesNotReuseOperatorRedirect(t *testing.T) {
+	handler, verifier := setupAppleWebHandler(t)
+	jar := map[string]*http.Cookie{}
+	start := func(target string) {
+		req := httptest.NewRequest(http.MethodGet, "/api/auth/apple/web/login"+target, nil)
+		for _, cookie := range jar {
+			req.AddCookie(cookie)
+		}
+		rec := httptest.NewRecorder()
+		handler.AppleWebLogin(rec, req)
+		if rec.Code != http.StatusFound {
+			t.Fatalf("start status = %d", rec.Code)
+		}
+		applyResponseCookies(jar, rec)
+	}
+	callback := func() string {
+		rec := postAppleCallback(handler, url.Values{"state": {jar["nabu_apple_state"].Value}, "id_token": {"synthetic"}}, cookieValues(jar)...)
+		if rec.Code != http.StatusSeeOther {
+			t.Fatalf("callback status = %d: %s", rec.Code, rec.Body.String())
+		}
+		applyResponseCookies(jar, rec)
+		return rec.Header().Get("Location")
+	}
+	start("?redirect=%2Foperator")
+	if got := callback(); got != "/operator" {
+		t.Fatalf("owner redirect = %q", got)
+	}
+	logoutReq := httptest.NewRequest(http.MethodPost, "/api/auth/logout", nil)
+	logoutReq.AddCookie(jar["nabu_session"])
+	logoutRec := httptest.NewRecorder()
+	handler.Logout(logoutRec, logoutReq)
+	if logoutRec.Code != http.StatusOK {
+		t.Fatalf("logout status = %d", logoutRec.Code)
+	}
+	applyResponseCookies(jar, logoutRec)
+	verifier.identity = auth.OIDCIdentity{Subject: "other", Email: "other@privaterelay.appleid.com", EmailVerified: true}
+	start("")
+	if got := callback(); got != "http://localhost:8080" {
+		t.Fatalf("ordinary account inherited operator redirect: %q", got)
+	}
+	for _, name := range []string{"nabu_apple_state", "nabu_apple_nonce", "nabu_apple_redirect"} {
+		if jar[name] != nil {
+			t.Fatalf("callback retained %s", name)
+		}
 	}
 }
 

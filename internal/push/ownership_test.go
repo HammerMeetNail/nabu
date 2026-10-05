@@ -42,7 +42,7 @@ func newDeviceUser(t *testing.T, f deviceFixture, email string, hashes ...string
 		t.Fatal(err)
 	}
 	for _, hash := range hashes {
-		if _, err := f.auth.CreateSession(context.Background(), u.ID, u.AuthVersion, hash, time.Now().Add(time.Hour)); err != nil {
+		if _, err := f.auth.CreateSession(context.Background(), u.ID, u.AuthVersion, hash, time.Now().Add(time.Hour), time.Now()); err != nil {
 			t.Fatal(err)
 		}
 	}

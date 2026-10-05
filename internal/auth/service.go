@@ -182,7 +182,7 @@ func (s *Service) Login(ctx context.Context, email, password string) (User, Sess
 	if err != nil {
 		return User{}, Session{}, err
 	}
-	session, err := s.newSession(ctx, user)
+	session, err := s.newSession(ctx, user, s.now())
 	if err != nil {
 		return User{}, Session{}, err
 	}
@@ -401,7 +401,13 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, currentPassw
 	if err != nil {
 		return User{}, Session{}, fmt.Errorf("hash password: %w", err)
 	}
-	updated, session, err := s.transactionalLogin(ctx, func(tx *Service) (User, error) {
+	// Setting a password on a claimed passwordless account uses only the
+	// existing session, so it must not start a fresh operator-key proof window.
+	proofAt := s.now()
+	if passwordHash == "" {
+		proofAt = time.Time{}
+	}
+	updated, session, err := s.transactionalLoginWithProof(ctx, func(tx *Service) (User, error) {
 		current, err := tx.store.GetUserByID(ctx, userID)
 		if err != nil {
 			return User{}, err
@@ -412,7 +418,7 @@ func (s *Service) ChangePassword(ctx context.Context, userID int64, currentPassw
 			return User{}, ErrInvalidCredentials
 		}
 		return tx.replaceCredentials(ctx, current, newHash, false)
-	})
+	}, proofAt)
 	if err == nil {
 		s.logAudit(ctx, "auth.password_changed", map[string]string{"user_id": fmt.Sprintf("%d", updated.ID)})
 		s.wakeMailOutbox()
@@ -479,11 +485,11 @@ func (s *Service) LoginWithApple(ctx context.Context, identityToken, nonce strin
 	return s.loginWithVerifiedEmail(ctx, identity.Email, "apple")
 }
 
-func (s *Service) newSession(ctx context.Context, user User) (Session, error) {
+func (s *Service) newSession(ctx context.Context, user User, authenticatedAt time.Time) (Session, error) {
 	token := randomToken(32)
 	tokenHash := hashToken(token)
 	now := s.now()
-	session, err := s.store.CreateSession(ctx, user.ID, user.AuthVersion, tokenHash, now.Add(s.sessionDuration))
+	session, err := s.store.CreateSession(ctx, user.ID, user.AuthVersion, tokenHash, now.Add(s.sessionDuration), authenticatedAt)
 	if err != nil {
 		return Session{}, err
 	}

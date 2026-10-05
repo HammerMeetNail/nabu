@@ -1348,6 +1348,10 @@ async function recoverIdentity(error, route = "/", afterAdopt = () => {}) {
   if (error.confirmed) await reloadAfterAuth();
   if (scope.current()) render(document.querySelector("#app"));
 }
+function operatorLoginDestination() {
+  if (window.location.pathname !== "/login") return null;
+  return new URL(window.location.href).searchParams.get("next") === "/operator" ? "/operator" : null;
+}
 async function doLogout() {
   if (state.logoutBusy) return;
   const ticket = ++identityUIRevision, app = document.querySelector("#app");
@@ -1357,7 +1361,9 @@ async function doLogout() {
       if (ticket !== identityUIRevision) return;
       adoptUser(null); state.logoutPending = true; state.logoutBusy = true; state.logoutDurable = durable; render(app);
     });
-    if (resultIsCurrent(result) && ticket === identityUIRevision) adoptUser(null);
+    // A failed advisory mirror write must not hide a completed sign-out. The
+    // durable device record and server session have already been updated.
+    if (result.identity?.revision === contextSnapshot()?.revision && ticket === identityUIRevision) adoptUser(null);
   } catch (err) {
     const identity = contextSnapshot();
     if (ticket !== identityUIRevision) return;
@@ -1375,6 +1381,8 @@ async function doLogin(form) {
     const result = await handleLogin(form.querySelector("#login-email").value, form.querySelector("#login-password").value);
     if (!resultIsCurrent(result)) return;
     if (result.ok && result.user) {
+      const destination = operatorLoginDestination();
+      if (destination) { window.location.assign(destination); return; }
       if (!await finishIdentity(result)) return;
       if (state._pendingInviteCode && !state.household) await doJoinWithCode(state._pendingInviteCode);
     } else if (form.isConnected) setError("#login-error",result.data?.error || "Invalid email or password");
@@ -1652,6 +1660,11 @@ export async function init() {
     state.activeTimer = loadTimer(contextSnapshot());
   } catch { state.user = null; state.sessionUnconfirmed = true; }
 
+  if (state.user && operatorLoginDestination()) {
+    window.location.replace("/operator");
+    return;
+  }
+
   if (state.user) {
     maybeSubscribePush().catch(() => {});
   }
@@ -1852,9 +1865,10 @@ export async function init() {
     switch (action) {
       case "google-signin":
       case "apple-signin": {
-        const oauthURL = action === "apple-signin"
+        const oauthPath = action === "apple-signin"
           ? "/api/auth/apple/web/login"
           : "/api/auth/google/login";
+        const oauthURL = oauthPath + (operatorLoginDestination() ? "?redirect=%2Foperator" : "");
         if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
           Notification.requestPermission().then(owned(() => {
             window.location.href = oauthURL;
