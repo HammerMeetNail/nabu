@@ -589,6 +589,7 @@ jobs:
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          OPERATOR_OWNER_USER_ID: ${{ secrets.OPERATOR_OWNER_USER_ID }}
           APNS_AUTH_KEY_P8: ${{ secrets.APNS_AUTH_KEY_P8 }}
           APNS_KEY_ID: ${{ secrets.APNS_KEY_ID }}
           APNS_TEAM_ID: ${{ secrets.APNS_TEAM_ID }}
@@ -606,6 +607,15 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
         run: |
+          python3 - << 'PY'
+          import os
+          import re
+
+          owner_id = os.environ.get("OPERATOR_OWNER_USER_ID", "")
+          if owner_id and (not re.fullmatch(r"[1-9][0-9]*", owner_id) or
+                           len(owner_id) > 19 or int(owner_id) > 9223372036854775807):
+              raise SystemExit("OPERATOR_OWNER_USER_ID must be a positive 64-bit user ID")
+          PY
           mkdir -p ~/.ssh
           echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
@@ -664,6 +674,7 @@ jobs:
           SMTP_PASS=${SMTP_PASS}
           GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
           GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+          OPERATOR_OWNER_USER_ID=${OPERATOR_OWNER_USER_ID}
           APNS_AUTH_KEY_P8=${APNS_AUTH_KEY_P8}
           APNS_KEY_ID=${APNS_KEY_ID}
           APNS_TEAM_ID=${APNS_TEAM_ID}
