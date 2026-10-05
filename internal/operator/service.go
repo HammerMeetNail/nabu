@@ -246,13 +246,14 @@ func (s *Service) AuthenticateKey(ctx context.Context, token, requiredScope stri
 	if len(parts) != 2 || len(parts[0]) != 16 || len(parts[1]) != 43 {
 		return Access{}, ErrInvalidKey
 	}
+	var verifiedID string
 	var stored []byte
 	var scope string
 	var ownerID, version int64
 	var expires time.Time
 	var revoked sql.NullTime
-	err := s.db.QueryRowContext(ctx, `SELECT token_hash, scope, owner_user_id, auth_version, expires_at, revoked_at
-		FROM operator_api_keys WHERE id = $1`, parts[0]).Scan(&stored, &scope, &ownerID, &version, &expires, &revoked)
+	err := s.db.QueryRowContext(ctx, `SELECT id, token_hash, scope, owner_user_id, auth_version, expires_at, revoked_at
+		FROM operator_api_keys WHERE id = $1`, parts[0]).Scan(&verifiedID, &stored, &scope, &ownerID, &version, &expires, &revoked)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Access{}, ErrInvalidKey
 	}
@@ -274,5 +275,5 @@ func (s *Service) AuthenticateKey(ctx context.Context, token, requiredScope stri
 	// At most one write per key per hour, even with a busy dashboard client.
 	_, _ = s.db.ExecContext(ctx, `UPDATE operator_api_keys SET last_used_at = $2
 		WHERE id = $1 AND (last_used_at IS NULL OR last_used_at < $2 - INTERVAL '1 hour')`, parts[0], s.now())
-	return Access{ownerID: ownerID, scope: scope, keyID: parts[0]}, nil
+	return Access{ownerID: ownerID, scope: scope, keyID: verifiedID}, nil
 }

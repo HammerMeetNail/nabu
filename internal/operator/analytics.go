@@ -147,7 +147,7 @@ func (s *Service) Activity(ctx context.Context, access Access, days int) (Activi
 		return Activity{}, ErrInvalidInput
 	}
 	now := s.now()
-	result := Activity{AsOf: now, Days: make([]Day, 0, days)}
+	result := Activity{AsOf: now, Days: make([]Day, 0, 90)}
 	start := now.UTC().Truncate(24*time.Hour).AddDate(0, 0, 1-days)
 	rows, err := s.db.QueryContext(ctx, `WITH dates AS (
 	 SELECT generate_series(($1 AT TIME ZONE 'UTC')::date, ($2 AT TIME ZONE 'UTC')::date, INTERVAL '1 day')::date AS date

@@ -252,13 +252,15 @@ func allowedPostAuthRedirect(target string) string {
 	if target == "nabu://callback" {
 		return target
 	}
-	if !strings.HasPrefix(target, "/") || strings.HasPrefix(target, "//") ||
+	if target == "" || target[0] != '/' || (len(target) > 1 && (target[1] == '/' || target[1] == '\\')) ||
 		strings.ContainsAny(target, "\\\x00\r\n\t") {
 		return ""
 	}
 	parsed, err := url.Parse(target)
 	if err != nil || parsed.IsAbs() || parsed.Host != "" ||
-		strings.HasPrefix(parsed.Path, "//") || strings.ContainsAny(parsed.Path, "\\\x00\r\n\t") {
+		parsed.Path == "" || parsed.Path[0] != '/' ||
+		(len(parsed.Path) > 1 && (parsed.Path[1] == '/' || parsed.Path[1] == '\\')) ||
+		strings.ContainsAny(parsed.Path, "\\\x00\r\n\t") {
 		return ""
 	}
 	return target

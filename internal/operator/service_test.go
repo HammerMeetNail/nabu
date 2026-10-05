@@ -108,6 +108,9 @@ func TestPlatformOwnerReportingAndKeyLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if readAccess.KeyID() != key.ID {
+		t.Fatalf("authenticated key ID = %q, want persisted ID %q", readAccess.KeyID(), key.ID)
+	}
 	if _, err := service.Users(ctx, readAccess, 0, 50); !errors.Is(err, ErrDenied) {
 		t.Fatalf("summary key read email data: %v", err)
 	}
