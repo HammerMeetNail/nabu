@@ -111,12 +111,21 @@ func (h *ChoreReminderPrefsHandler) Update(w http.ResponseWriter, r *http.Reques
 	}
 
 	var req struct {
-		Enabled     *bool `json:"enabled"`
-		LeadMinutes *int  `json:"leadMinutes"`
+		Enabled         *bool   `json:"enabled"`
+		LeadMinutes     *int    `json:"leadMinutes"`
+		QuietHoursStart *string `json:"quietHoursStart"`
+		QuietHoursEnd   *string `json:"quietHoursEnd"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
 		return
+	}
+
+	for _, v := range []*string{req.QuietHoursStart, req.QuietHoursEnd} {
+		if v != nil && *v != "" && !chore.ValidQuietTime(*v) {
+			writeError(w, http.StatusBadRequest, "invalid quiet hours time")
+			return
+		}
 	}
 
 	current, err := h.store.GetChoreReminderPref(r.Context(), user.ID, choreID)
@@ -130,6 +139,12 @@ func (h *ChoreReminderPrefsHandler) Update(w http.ResponseWriter, r *http.Reques
 	}
 	if req.LeadMinutes != nil {
 		current.LeadMinutes = *req.LeadMinutes
+	}
+	if req.QuietHoursStart != nil {
+		current.QuietHoursStart = *req.QuietHoursStart
+	}
+	if req.QuietHoursEnd != nil {
+		current.QuietHoursEnd = *req.QuietHoursEnd
 	}
 	current.UserID = user.ID
 	current.ChoreID = choreID

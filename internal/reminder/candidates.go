@@ -21,6 +21,12 @@ type candidate struct {
 	Preferences  notification.ReminderPreference
 	UserTimezone string
 	SentDates    []string
+	// Household-level quiet window on the chore itself (applies to every
+	// member) and this user's per-chore quiet window from chore_reminder_prefs.
+	ChoreQuietStart string
+	ChoreQuietEnd   string
+	UserQuietStart  string
+	UserQuietEnd    string
 }
 
 type candidateReader interface {
@@ -37,6 +43,8 @@ func (s *PostgresStore) CandidatePage(ctx context.Context, after candidateCursor
                 ELSE COALESCE(np.default_reminder_lead_minutes,10) END,
  COALESCE(np.timezone,'UTC'), COALESCE(up.timezone,''),
  COALESCE(np.quiet_hours_start,''), COALESCE(np.quiet_hours_end,''),
+ COALESCE(cp.quiet_hours_start,''), COALESCE(cp.quiet_hours_end,''),
+ COALESCE(c.quiet_hours_start,''), COALESCE(c.quiet_hours_end,''),
  COALESCE((SELECT jsonb_agg(r.scheduled_date::text) FROM schedule_reminders r
            WHERE r.schedule_id=s.id AND r.user_id=m.user_id
            AND r.scheduled_date BETWEEN $4::date-2 AND $4::date+2), '[]'::jsonb)
@@ -67,7 +75,8 @@ func (s *PostgresStore) CandidatePage(ctx context.Context, after candidateCursor
 		if err := rows.Scan(&sch.ID, &sch.HouseholdID, &sch.ChoreID, &sch.FrequencyType, &sch.SpecificTime,
 			&days, &sch.IntervalDays, &sch.DayOfMonth, &monthWeekday, &sch.MonthOfYear,
 			&sch.RecurrenceEnd, &start, &sch.CreatedAt, &c.UserID, &c.LeadMinutes,
-			&c.Preferences.Timezone, &c.UserTimezone, &c.Preferences.QuietHoursStart, &c.Preferences.QuietHoursEnd, &sent); err != nil {
+			&c.Preferences.Timezone, &c.UserTimezone, &c.Preferences.QuietHoursStart, &c.Preferences.QuietHoursEnd,
+			&c.UserQuietStart, &c.UserQuietEnd, &c.ChoreQuietStart, &c.ChoreQuietEnd, &sent); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(days, &sch.DaysOfWeek); err != nil {
@@ -105,14 +114,21 @@ func reminderLocation(notificationZone, userZone string) *time.Location {
 }
 
 func quietAt(p notification.ReminderPreference, now time.Time) bool {
-	if p.QuietHoursStart == "" || p.QuietHoursEnd == "" {
+	return inQuietWindow(now, p.Timezone, p.QuietHoursStart, p.QuietHoursEnd)
+}
+
+// inQuietWindow reports whether now falls inside the start..end quiet window
+// (interpreted in the given IANA timezone; empty bounds mean no window). The
+// window wraps midnight when start > end.
+func inQuietWindow(now time.Time, tz, start, end string) bool {
+	if start == "" || end == "" {
 		return false
 	}
 	loc := time.UTC
-	if p.Timezone != "" {
-		if found, err := time.LoadLocation(p.Timezone); err == nil {
+	if tz != "" {
+		if found, err := time.LoadLocation(tz); err == nil {
 			loc = found
 		}
 	}
-	return isBetween(now.In(loc), p.QuietHoursStart, p.QuietHoursEnd)
+	return isBetween(now.In(loc), start, end)
 }

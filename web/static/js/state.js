@@ -38,7 +38,7 @@ export function createAppState() {
     latestLogs: {},            // map of choreId -> ChoreLog (most recent per chore)
     notificationPrefs: null,
     availableNotificationTypes: [],
-    choreReminderPrefs: [],     // array of {userId, choreId, enabled, leadMinutes}
+    choreReminderPrefs: [],     // array of {userId, choreId, enabled, leadMinutes, quietHoursStart?, quietHoursEnd?}
     historyChoreFilter: null,  // null = show all, []string = filtered chore IDs
     historyFilterOpen: false,  // filter dropdown starts closed
     historySearch: "",         // text search across note/title (empty = off)

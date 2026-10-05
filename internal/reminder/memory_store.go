@@ -3,7 +3,12 @@ package reminder
 import (
 	"context"
 	"fmt"
+	"slices"
+	"sort"
+
+	"github.com/HammerMeetNail/nabu/internal/chore"
 	"github.com/HammerMeetNail/nabu/internal/lifecycle"
+	"github.com/HammerMeetNail/nabu/internal/schedule"
 	"sync"
 	"time"
 )
@@ -13,14 +18,28 @@ type MemoryStore struct {
 	removedPrefs map[string]bool
 	mu           sync.RWMutex
 	prefs        map[string]ChoreReminderPref
-	sent         map[string]bool
+	// sent maps sentKey -> remindedAt. The timestamp backs ListRecentReminders.
+	sent map[string]time.Time
+	// Optional lookups used to enrich delivery-log records with schedule and
+	// chore details. Nil-safe: records carry zero chore fields when unset.
+	schedStore schedule.Store
+	choreStore chore.Store
 }
 
 func NewMemoryStore() *MemoryStore {
 	return &MemoryStore{
 		prefs: map[string]ChoreReminderPref{},
-		sent:  map[string]bool{},
+		sent:  map[string]time.Time{},
 	}
+}
+
+// WithStores attaches the schedule and chore stores used to resolve chore
+// names/icons for ListRecentReminders. Optional; a store without them returns
+// records with empty chore fields.
+func (s *MemoryStore) WithStores(schedStore schedule.Store, choreStore chore.Store) *MemoryStore {
+	s.schedStore = schedStore
+	s.choreStore = choreStore
+	return s
 }
 
 func remKey(userID, choreID int64) string {
@@ -71,7 +90,8 @@ func (s *MemoryStore) UpdateChoreReminderPref(_ context.Context, prefs ChoreRemi
 func (s *MemoryStore) HasReminder(_ context.Context, scheduleID, userID int64, scheduledDate string) (bool, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.sent[sentKey(scheduleID, userID, scheduledDate)], nil
+	_, ok := s.sent[sentKey(scheduleID, userID, scheduledDate)]
+	return ok, nil
 }
 
 func (s *MemoryStore) RecordReminder(_ context.Context, scheduleID, userID int64, scheduledDate string) error {
@@ -81,8 +101,59 @@ func (s *MemoryStore) RecordReminder(_ context.Context, scheduleID, userID int64
 		return err
 	}
 
-	s.sent[sentKey(scheduleID, userID, scheduledDate)] = true
+	s.sent[sentKey(scheduleID, userID, scheduledDate)] = time.Now()
 	return nil
+}
+
+func (s *MemoryStore) ListRecentReminders(ctx context.Context, userID int64, limit int) ([]ReminderRecord, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 100 {
+		limit = 100
+	}
+	s.mu.RLock()
+	var out []ReminderRecord
+	for key, at := range s.sent {
+		parts := splitReminderKey(key)
+		if len(parts) != 3 {
+			continue
+		}
+		var scheduleID, uid int64
+		if _, err := fmt.Sscan(parts[0], &scheduleID); err != nil {
+			continue
+		}
+		if _, err := fmt.Sscan(parts[1], &uid); err != nil || uid != userID {
+			continue
+		}
+		rec := ReminderRecord{ScheduleID: scheduleID, ScheduledDate: parts[2], RemindedAt: at.UTC()}
+		if s.schedStore != nil {
+			if sch, err := s.schedStore.Get(ctx, scheduleID); err == nil {
+				rec.ChoreID = sch.ChoreID
+				if s.choreStore != nil {
+					if c, err := s.choreStore.GetChore(ctx, sch.ChoreID); err == nil {
+						rec.ChoreName = c.Name
+						rec.ChoreIcon = c.Icon
+					}
+				}
+			}
+		}
+		out = append(out, rec)
+	}
+	s.mu.RUnlock()
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].RemindedAt.Equal(out[j].RemindedAt) {
+			return out[i].RemindedAt.After(out[j].RemindedAt)
+		}
+		return out[i].ScheduleID > out[j].ScheduleID
+	})
+	if len(out) > limit {
+		out = slices.Clone(out[:limit])
+	}
+	if out == nil {
+		out = []ReminderRecord{}
+	}
+	return out, nil
 }
 
 func (s *MemoryStore) PurgeOldReminders(_ context.Context) (int64, error) {

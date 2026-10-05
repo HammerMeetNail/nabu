@@ -4528,6 +4528,19 @@ body.sheet-open .timer-chip { visibility: hidden; }
   max-width: 140px;
 }
 
+/* ── Chore quiet hours (per chore / per user / per household) ──────────────── */
+.chore-quiet-hours-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chore-quiet-hours-row .input {
+  max-width: 130px;
+}
+.chore-quiet-hours-sep {
+  color: var(--text-muted, #888);
+}
+
 /* ── Custom stats widgets (Phase 4) ────────────────────────────────────────── */
 .widget-card-header {
   display: flex;
