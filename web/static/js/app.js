@@ -1361,7 +1361,9 @@ async function doLogout() {
       if (ticket !== identityUIRevision) return;
       adoptUser(null); state.logoutPending = true; state.logoutBusy = true; state.logoutDurable = durable; render(app);
     });
-    if (resultIsCurrent(result) && ticket === identityUIRevision) adoptUser(null);
+    // A failed advisory mirror write must not hide a completed sign-out. The
+    // durable device record and server session have already been updated.
+    if (result.identity?.revision === contextSnapshot()?.revision && ticket === identityUIRevision) adoptUser(null);
   } catch (err) {
     const identity = contextSnapshot();
     if (ticket !== identityUIRevision) return;

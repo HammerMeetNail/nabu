@@ -89,16 +89,17 @@ func (s *Service) RequireRecentSession(ctx context.Context, user auth.User) erro
 	if !s.IsOwner(user) || user.SessionHash == "" {
 		return ErrDenied
 	}
-	var created time.Time
-	err := s.db.QueryRowContext(ctx, `SELECT created_at FROM sessions WHERE user_id = $1 AND token_hash = $2 AND auth_version = $3`,
-		user.ID, user.SessionHash, user.AuthVersion).Scan(&created)
+	var authenticatedAt sql.NullTime
+	err := s.db.QueryRowContext(ctx, `SELECT authenticated_at FROM sessions WHERE user_id = $1 AND token_hash = $2 AND auth_version = $3`,
+		user.ID, user.SessionHash, user.AuthVersion).Scan(&authenticatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrDenied
 	}
 	if err != nil {
 		return err
 	}
-	if s.now().Sub(created) > 10*time.Minute || created.After(s.now().Add(time.Minute)) {
+	now := s.now()
+	if !authenticatedAt.Valid || now.Sub(authenticatedAt.Time) > 10*time.Minute || authenticatedAt.Time.After(now.Add(time.Minute)) {
 		return ErrRecentLogin
 	}
 	return nil

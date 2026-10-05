@@ -16,7 +16,7 @@ section { background: white; border: 1px solid #e6ded4; border-radius: 1rem; pad
 h2 { font-size: 1.18rem; margin: 0; }
 .section-head span, small, .note { color: #5c6670; }
 .note { margin: .85rem 0 0; font-size: .88rem; }
-#message { margin: .5rem 0; min-height: 1.4em; color: #8a3131; }
+#message { max-width: 1360px; margin: .5rem auto; padding: 0 clamp(1rem, 3vw, 2.5rem); min-height: 1.4em; color: #8a3131; }
 .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: .7rem; }
 .card { border: 1px solid #dedbd8; border-radius: .7rem; padding: 1rem; background: #fcfbf8; }
 .card strong { display: block; font-size: 1.75rem; line-height: 1.1; font-variant-numeric: tabular-nums; }

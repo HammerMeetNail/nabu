@@ -35,7 +35,7 @@ func TestHTTPLogReadsDoNotUseReservedDeliveryPool(t *testing.T) {
 	}
 	token := "synthetic-request-token"
 	digest := sha256.Sum256([]byte(token))
-	if _, err := auth.NewPostgresStore(db).CreateSession(ctx, 1, 0, base64.RawURLEncoding.EncodeToString(digest[:]), time.Now().Add(time.Hour)); err != nil {
+	if _, err := auth.NewPostgresStore(db).CreateSession(ctx, 1, 0, base64.RawURLEncoding.EncodeToString(digest[:]), time.Now().Add(time.Hour), time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	cfg, err := config.Load()

@@ -67,7 +67,9 @@ test('OAuth return paths cannot become cross-origin after browser normalization'
       const response=await request.get(`${url}/api/auth/google/login?redirect=${encodeURIComponent(target)}`,{maxRedirects:0});
       expect(response.status()).toBe(302);
       const redirectCookie=response.headersArray().find(header=>header.name.toLowerCase()==='set-cookie' && header.value.startsWith('nabu_oidc_redirect='));
-      expect(Boolean(redirectCookie),target).toBe(allowed);
+      expect(redirectCookie,target).toBeDefined();
+      expect(redirectCookie.value.startsWith('nabu_oidc_redirect=/operator;'),target).toBe(allowed);
+      if(!allowed) expect(redirectCookie.value,target).toContain('Max-Age=0');
     }
   },{GOOGLE_CLIENT_ID:'test-client',GOOGLE_CLIENT_SECRET:'test-secret',RATE_LIMIT_AUTH_MAX:'30'});
 });

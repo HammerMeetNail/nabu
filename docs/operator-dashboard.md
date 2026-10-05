@@ -59,7 +59,10 @@ The owner session can manage keys at `GET`/`POST /api/operator/v1/keys` and
 `DELETE /api/operator/v1/keys/{id}`. Key creation takes JSON with `name`,
 `scope` (`summary` or `full`), and `days` (7, 30, or 90). The response shows
 the bearer token once. Creation requires a session signed in within the last
-10 minutes; sign out and in again when that window has passed.
+10 minutes; sign out and in again when that window has passed. Existing
+sessions at the first rollout of this proof-time check must sign in again.
+Setting a password from an already signed-in passwordless session does not
+refresh the ten-minute window; sign in with that password afterward.
 
 For a script, send `Authorization: Bearer <token>`. A `summary` key can only
 read summary and activity; a `full` key can also read email-bearing user and

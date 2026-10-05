@@ -83,8 +83,8 @@ func TestOperatorHandlersReportAndManageScopedKeys(t *testing.T) {
 		VALUES('operator@example.com','hash','Operator',true) RETURNING id`).Scan(&ownerID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(`INSERT INTO sessions(id,user_id,token_hash,expires_at,created_at,auth_version)
-		VALUES('operator-session',$1,'operator-hash',$2,$3,0)`, ownerID, time.Now().Add(time.Hour), time.Now()); err != nil {
+	if _, err := db.Exec(`INSERT INTO sessions(id,user_id,token_hash,expires_at,created_at,authenticated_at,auth_version)
+		VALUES('operator-session',$1,'operator-hash',$2,$3,$3,0)`, ownerID, time.Now().Add(time.Hour), time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Exec(`INSERT INTO households(name,invite_code) VALUES('Operator household','operator-handler-test')`); err != nil {

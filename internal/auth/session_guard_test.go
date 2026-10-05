@@ -15,7 +15,7 @@ func TestMemorySessionGuardHoldsRevocationBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.CreateSession(ctx, u.ID, 0, "guard", time.Now().Add(time.Hour)); err != nil {
+	if _, err := s.CreateSession(ctx, u.ID, 0, "guard", time.Now().Add(time.Hour), time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	entered, resume := make(chan struct{}), make(chan struct{})

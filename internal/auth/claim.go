@@ -4,11 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 )
 
 // Every proof flow locks the user before consuming tokens or replacing
 // credentials. A failed session insert therefore leaves the proof usable.
 func (s *Service) transactionalLogin(ctx context.Context, action func(*Service) (User, error)) (User, Session, error) {
+	return s.transactionalLoginWithProof(ctx, action, s.now())
+}
+
+func (s *Service) transactionalLoginWithProof(ctx context.Context, action func(*Service) (User, error), authenticatedAt time.Time) (User, Session, error) {
 	var user User
 	var session Session
 	var err error
@@ -21,7 +26,7 @@ func (s *Service) transactionalLogin(ctx context.Context, action func(*Service) 
 			if err != nil {
 				return err
 			}
-			session, err = tx.newSession(ctx, user)
+			session, err = tx.newSession(ctx, user, authenticatedAt)
 			return err
 		})
 		// Another proof/registration can create the email between lookup and

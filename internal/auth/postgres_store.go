@@ -147,7 +147,7 @@ func (s *PostgresStore) SetUserHousehold(ctx context.Context, userID, householdI
 	return nil
 }
 
-func (s *PostgresStore) CreateSession(ctx context.Context, userID, authVersion int64, tokenHash string, expiresAt time.Time) (Session, error) {
+func (s *PostgresStore) CreateSession(ctx context.Context, userID, authVersion int64, tokenHash string, expiresAt, authenticatedAt time.Time) (Session, error) {
 	var session Session
 	err := s.InTransaction(ctx, func(store Store) error {
 		tx := store.(*PostgresStore)
@@ -159,11 +159,15 @@ func (s *PostgresStore) CreateSession(ctx context.Context, userID, authVersion i
 			return ErrInvalidCredentials
 		}
 		session = Session{ID: randomToken(32), UserID: userID, AuthVersion: authVersion,
-			ExpiresAt: expiresAt, LastSeenAt: time.Now().UTC(), CreatedAt: time.Now().UTC()}
+			ExpiresAt: expiresAt, LastSeenAt: time.Now().UTC(), CreatedAt: time.Now().UTC(), AuthenticatedAt: authenticatedAt}
+		var proof any
+		if !authenticatedAt.IsZero() {
+			proof = authenticatedAt
+		}
 		_, err = tx.q.ExecContext(ctx, `INSERT INTO sessions
-   (id, user_id, auth_version, token_hash, expires_at, last_seen_at, created_at)
-   VALUES ($1, $2, $3, $4, $5, $6, $7)`, session.ID, userID, authVersion, tokenHash,
-			expiresAt, session.LastSeenAt, session.CreatedAt)
+   (id, user_id, auth_version, token_hash, expires_at, last_seen_at, created_at, authenticated_at)
+   VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`, session.ID, userID, authVersion, tokenHash,
+			expiresAt, session.LastSeenAt, session.CreatedAt, proof)
 		return err
 	})
 	if err != nil {
@@ -174,10 +178,14 @@ func (s *PostgresStore) CreateSession(ctx context.Context, userID, authVersion i
 
 func (s *PostgresStore) GetSession(ctx context.Context, tokenHash string) (Session, error) {
 	var session Session
+	var authenticatedAt sql.NullTime
 	err := s.q.QueryRowContext(ctx, `
-		SELECT id, user_id, expires_at, last_seen_at, created_at, auth_version
+		SELECT id, user_id, expires_at, last_seen_at, created_at, auth_version, authenticated_at
 		FROM sessions WHERE token_hash = $1
-	`, tokenHash).Scan(&session.ID, &session.UserID, &session.ExpiresAt, &session.LastSeenAt, &session.CreatedAt, &session.AuthVersion)
+	`, tokenHash).Scan(&session.ID, &session.UserID, &session.ExpiresAt, &session.LastSeenAt, &session.CreatedAt, &session.AuthVersion, &authenticatedAt)
+	if authenticatedAt.Valid {
+		session.AuthenticatedAt = authenticatedAt.Time
+	}
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return Session{}, ErrSessionNotFound

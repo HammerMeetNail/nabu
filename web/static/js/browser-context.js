@@ -3,6 +3,7 @@ import { deviceRecord, newKey, withBrowserLock } from "./device-store.js";
 const MIRROR = "nabu-browser-identity";
 let current = null;
 const listeners = new Set();
+const identityChannel = typeof window !== "undefined" && window.BroadcastChannel ? new window.BroadcastChannel(MIRROR) : null;
 
 export class ContextChangedError extends Error {
   constructor() { super("Account or household changed. Your saved work remains with its original account."); this.name = "ContextChangedError"; }
@@ -24,6 +25,9 @@ export function onExternalIdentityChange(listener) { listeners.add(listener); re
 
 async function publish(record, { required = false } = {}) {
   current = record;
+  // A pending identity change must hide other tabs even if the advisory
+  // localStorage mirror cannot be written.
+  identityChannel?.postMessage(record);
   let durable = false;
   try { await deviceRecord("identity", () => record); durable = true; } catch (err) { if (required) throw err; }
   try { localStorage.setItem(MIRROR, JSON.stringify(record)); } catch { /* online use can still proceed */ }
@@ -145,14 +149,18 @@ export async function logoutIdentity(run, onPending) {
     let previous;
     try { previous = await storedIdentity() || current; }
     catch (err) {
-      current = { ...expected, replacesRevision:expected?.replacesRevision ?? expected?.revision, revision:newKey(), status:"logout-pending" };
+      const pending = { ...expected, replacesRevision:expected?.replacesRevision ?? expected?.revision, revision:newKey(), status:"logout-pending" };
+      current = pending;
       onPending?.({durable:false});
+      // The authority read failed, but other open tabs must still hide data.
+      // Best-effort publication may also restore the durable pending gate.
+      await publish(pending);
       err.message = "Could not check saved sign-out state. Keep this page open and retry.";
       throw err;
     }
     const memoryRetry = expected?.status === "logout-pending" && expected.replacesRevision === previous?.revision;
     if (expected?.revision !== previous?.revision && !memoryRetry) throw new ContextChangedError();
-    const pending = { ...previous, replacesRevision:previous?.revision, revision:newKey(), bindingId:newKey(), status:"logout-pending" };
+    const pending = { ...previous, replacesRevision:previous?.replacesRevision ?? previous?.revision, revision:newKey(), bindingId:newKey(), status:"logout-pending" };
     // Without a durable gate we cannot promise offline sign-out privacy.
     onPending?.({durable:false});
     try { await publish(pending, { required:true }); }
@@ -169,10 +177,13 @@ export async function clearBrowserIdentity() {
   return withBrowserLock("nabu-identity", () => publish({ userId:0, householdId:0, revision:newKey(), bindingId:newKey(), status:"signed-out" }, { required:true }));
 }
 
-if (typeof window !== "undefined") window.addEventListener("storage", event => {
-  if (event.key !== MIRROR) return;
-  const next = mirrored();
+function acceptExternal(next) {
   if (next?.revision === current?.revision) return;
   current = next;
   for (const listener of listeners) listener(next);
+}
+
+if (identityChannel) identityChannel.onmessage = event => acceptExternal(event.data);
+if (typeof window !== "undefined") window.addEventListener("storage", event => {
+  if (event.key === MIRROR) acceptExternal(mirrored());
 });

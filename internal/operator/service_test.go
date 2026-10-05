@@ -2,7 +2,9 @@ package operator
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strconv"
@@ -10,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/HammerMeetNail/nabu/internal/audit"
 	"github.com/HammerMeetNail/nabu/internal/auth"
 	"github.com/HammerMeetNail/nabu/internal/database"
 	"github.com/HammerMeetNail/nabu/internal/testdb"
@@ -44,8 +47,8 @@ func TestPlatformOwnerReportingAndKeyLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	mustExec(t, db, `INSERT INTO sessions(id,user_id,token_hash,expires_at,created_at,auth_version)
-	 VALUES('owner-session',$1,'owner-hash',$2,$3,0)`, ownerID, now.Add(time.Hour), now)
+	mustExec(t, db, `INSERT INTO sessions(id,user_id,token_hash,expires_at,created_at,authenticated_at,auth_version)
+	 VALUES('owner-session',$1,'owner-hash',$2,$3,$3,0)`, ownerID, now.Add(time.Hour), now)
 	// The chore is attributed to the member, but the operator performed it.
 	mustExec(t, db, `INSERT INTO chore_logs(household_id,user_id,chore_id,completed_at,created_at,idempotency_actor_id)
 	 VALUES($1,$2,$3,$4,$4,$5)`, householdID, memberID, choreID, now, ownerID)
@@ -174,17 +177,82 @@ func TestOperatorKeyRequiresRecentSessionAndVerifiedOwner(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	mustExec(t, db, `INSERT INTO sessions(id,user_id,token_hash,expires_at,created_at,auth_version)
-	 VALUES('old',$1,'old-hash',$2,$3,0)`, ownerID, now.Add(time.Hour), now.Add(-11*time.Minute))
+	mustExec(t, db, `INSERT INTO sessions(id,user_id,token_hash,expires_at,created_at,authenticated_at,auth_version)
+	 VALUES('old',$1,'old-hash',$2,$3,$3,0)`, ownerID, now.Add(time.Hour), now.Add(-11*time.Minute))
 	s := NewService(db, ownerID)
 	s.now = func() time.Time { return now }
 	owner := auth.User{ID: ownerID, EmailVerified: true, SessionHash: "old-hash"}
 	if _, _, err := s.CreateKey(context.Background(), owner, "test", ScopeFull, 7); !errors.Is(err, ErrRecentLogin) {
 		t.Fatalf("old session created key: %v", err)
 	}
+	mustExec(t, db, `UPDATE sessions SET created_at=$1, authenticated_at=$2 WHERE token_hash='old-hash'`, now.Add(-11*time.Minute), now.Add(-10*time.Minute))
+	if err := s.RequireRecentSession(context.Background(), owner); err != nil {
+		t.Fatalf("proof exactly ten minutes old was denied: %v", err)
+	}
+	mustExec(t, db, `UPDATE sessions SET created_at=$1, authenticated_at=$2 WHERE token_hash='old-hash'`, now, now.Add(-10*time.Minute-time.Microsecond))
+	if err := s.RequireRecentSession(context.Background(), owner); !errors.Is(err, ErrRecentLogin) {
+		t.Fatalf("fresh session with old proof was accepted: %v", err)
+	}
+	mustExec(t, db, `UPDATE sessions SET authenticated_at=NULL WHERE token_hash='old-hash'`)
+	if err := s.RequireRecentSession(context.Background(), owner); !errors.Is(err, ErrRecentLogin) {
+		t.Fatalf("session without a proven auth time was accepted: %v", err)
+	}
 	owner.EmailVerified = false
 	if _, err := s.AuthorizeSession(owner); !errors.Is(err, ErrDenied) {
 		t.Fatalf("unverified owner authorized: %v", err)
+	}
+}
+
+func TestPasswordlessSetupDoesNotRefreshOperatorProof(t *testing.T) {
+	db := testdb.New(t)
+	ctx := context.Background()
+	if err := database.Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	var ownerID int64
+	const email = "passwordless-operator@example.com"
+	if err := db.QueryRow(`INSERT INTO users(email,password_hash,display_name,email_verified)
+		VALUES($1,'','Owner',true) RETURNING id`, email).Scan(&ownerID); err != nil {
+		t.Fatal(err)
+	}
+	oldToken := "passwordless-old-session"
+	digest := sha256.Sum256([]byte(oldToken))
+	oldHash := base64.RawURLEncoding.EncodeToString(digest[:])
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	mustExec(t, db, `INSERT INTO sessions(id,user_id,token_hash,expires_at,last_seen_at,created_at,authenticated_at,auth_version)
+		VALUES('old-session',$1,$2,$3,$4,$5,$5,0)`, ownerID, oldHash, now.Add(time.Hour), now, now.Add(-20*time.Minute))
+	authService := auth.NewService(auth.NewPostgresStore(db))
+	operatorService := NewService(db, ownerID)
+	operatorService.now = func() time.Time { return now }
+	oldUser, err := authService.Authenticate(ctx, oldToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := operatorService.RequireRecentSession(ctx, oldUser); !errors.Is(err, ErrRecentLogin) {
+		t.Fatalf("old passwordless session was accepted: %v", err)
+	}
+	actorCtx := audit.WithActor(ctx, audit.Actor{UserID: ownerID, AuthVersion: oldUser.AuthVersion})
+	_, setupSession, err := authService.ChangePassword(actorCtx, ownerID, "", "new-owner-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	setupUser, err := authService.Authenticate(ctx, setupSession.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := operatorService.CreateKey(ctx, setupUser, "must reauthenticate", ScopeFull, 7); !errors.Is(err, ErrRecentLogin) {
+		t.Fatalf("password setup refreshed proof without authentication: %v", err)
+	}
+	_, loginSession, err := authService.Login(ctx, email, "new-owner-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	loggedIn, err := authService.Authenticate(ctx, loginSession.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := operatorService.CreateKey(ctx, loggedIn, "recent login", ScopeFull, 7); err != nil {
+		t.Fatalf("genuine password login was denied: %v", err)
 	}
 }
 
@@ -199,8 +267,8 @@ func TestConcurrentOperatorKeyCreationHonorsCap(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC().Truncate(time.Microsecond)
-	mustExec(t, db, `INSERT INTO sessions(id,user_id,token_hash,expires_at,created_at,auth_version)
-	 VALUES('owner-session',$1,'owner-hash',$2,$3,0)`, ownerID, now.Add(time.Hour), now)
+	mustExec(t, db, `INSERT INTO sessions(id,user_id,token_hash,expires_at,created_at,authenticated_at,auth_version)
+	 VALUES('owner-session',$1,'owner-hash',$2,$3,$3,0)`, ownerID, now.Add(time.Hour), now)
 	service := NewService(db, ownerID)
 	service.now = func() time.Time { return now }
 	owner := auth.User{ID: ownerID, EmailVerified: true, AuthVersion: 0, SessionHash: "owner-hash"}

@@ -21,12 +21,13 @@ type User struct {
 }
 
 type Session struct {
-	ID          string    `json:"id"`
-	UserID      int64     `json:"userId"`
-	AuthVersion int64     `json:"-"`
-	ExpiresAt   time.Time `json:"expiresAt"`
-	LastSeenAt  time.Time `json:"lastSeenAt"`
-	CreatedAt   time.Time `json:"createdAt"`
+	ID              string    `json:"id"`
+	UserID          int64     `json:"userId"`
+	AuthVersion     int64     `json:"-"`
+	ExpiresAt       time.Time `json:"expiresAt"`
+	LastSeenAt      time.Time `json:"lastSeenAt"`
+	CreatedAt       time.Time `json:"createdAt"`
+	AuthenticatedAt time.Time `json:"-"` // last proof for this session, not session rotation
 }
 
 type AuthToken struct {
@@ -52,7 +53,7 @@ type Store interface {
 	VerifyEmail(ctx context.Context, userID int64) (User, error)
 	UpdatePassword(ctx context.Context, userID int64, passwordHash string) error
 	SetUserHousehold(ctx context.Context, userID, householdID int64, role string) error
-	CreateSession(ctx context.Context, userID, authVersion int64, tokenHash string, expiresAt time.Time) (Session, error)
+	CreateSession(ctx context.Context, userID, authVersion int64, tokenHash string, expiresAt, authenticatedAt time.Time) (Session, error)
 	GetSession(ctx context.Context, tokenHash string) (Session, error)
 	TouchSession(ctx context.Context, tokenHash string, lastSeenAt time.Time) error
 	DeleteSession(ctx context.Context, tokenHash string) error
