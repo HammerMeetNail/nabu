@@ -1326,7 +1326,7 @@ final class NabuMemberSuspensionUITests: XCTestCase {
         }
         let joiner = NabuTestAPI(baseURL: baseURL)
         _ = try joiner.json("POST", "/api/auth/register", ["email": memberEmail, "password": password])
-        let joined = try joiner.json("POST", "/api/household/join", ["code": code])
+        let joined = try joiner.json("POST", "/api/household/join", ["inviteCode": code])
         XCTAssertTrue(joined["household"] != nil, "Second member should join the household: \(joined)")
 
         // 3. Owner disables the member from the Settings (household) tab.
