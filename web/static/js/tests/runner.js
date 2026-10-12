@@ -1611,3 +1611,128 @@ describe('Activity number selectors', () => {
     assert.ok([...picker.options].every(option => Number(option.value) <= 86400));
   });
 });
+
+describe('Member access disable/enable', () => {
+  // renderHouseholdView builds invite URLs from window.location.
+  globalThis.window = dom.window;
+  const household = {id: 1, name: 'Sitter House', initials: 'SH', inviteCode: 'CODE123'};
+  const owner = {id: 10, role: 'owner', email: 'owner@test.com'};
+  const admin = {id: 11, role: 'admin', email: 'admin@test.com'};
+  const ownerMember = {userId: 10, email: 'owner@test.com', displayName: 'Owner', avatarColor: '#111', emailVerified: true, role: 'owner', suspended: false};
+  const adminMember = {userId: 11, email: 'admin@test.com', displayName: 'Admin', avatarColor: '#222', emailVerified: true, role: 'admin', suspended: false};
+  const sitter = {userId: 12, email: 'sitter@test.com', displayName: 'Sitter', avatarColor: '#111', emailVerified: true, role: 'member', suspended: false};
+
+  it('shows Disable access and the Disabled badge per member suspension state', async () => {
+    const {renderHouseholdView} = await import('../household.js');
+    const disabled = {...sitter, suspended: true};
+
+    const root = JSDOM.fragment(renderHouseholdView(household, [ownerMember, {...sitter}], [], owner));
+    const row = root.querySelector(`.member-row[data-user-id="${sitter.userId}"]`);
+    assert.ok(row.querySelector('[data-action="toggle-member-access"][data-suspended="0"]'), 'owner gets a Disable button');
+    assert.equal(row.querySelectorAll('.member-disabled-badge').length, 0);
+
+    const root2 = JSDOM.fragment(renderHouseholdView(household, [ownerMember, disabled], [], owner));
+    const row2 = root2.querySelector(`.member-row[data-user-id="${sitter.userId}"]`);
+    assert.equal(row2.querySelector('.member-disabled-badge').textContent, 'Disabled');
+    assert.equal(row2.querySelector('[data-action="toggle-member-access"]').textContent.trim(), 'Enable access');
+    assert.equal(row2.querySelector('[data-action="toggle-member-access"]').dataset.suspended, '1');
+  });
+
+  it('grants admins Disable on members but never on owners or themselves', async () => {
+    const {renderHouseholdView} = await import('../household.js');
+    const root = JSDOM.fragment(renderHouseholdView(household, [ownerMember, adminMember, {...sitter}], [], admin));
+    assert.ok(root.querySelector(`.member-row[data-user-id="${sitter.userId}"] [data-action="toggle-member-access"]`), 'admin can disable a member');
+    assert.equal(root.querySelector(`.member-row[data-user-id="${ownerMember.userId}"] [data-action="toggle-member-access"]`), null, 'admin cannot touch owners');
+    assert.equal(root.querySelector(`.member-row[data-user-id="${adminMember.userId}"] [data-action="toggle-member-access"]`), null, 'no self-disable');
+    assert.equal(root.querySelector(`.member-row[data-user-id="${ownerMember.userId}"] [data-action="remove-member"]`), null, 'admin sees no role controls');
+  });
+
+  it('never offers disable on owners or self, and escapes hostile display names', async () => {
+    const {renderHouseholdView} = await import('../household.js');
+    const hostile = {...sitter, displayName: '<img src=x onerror="alert(1)">'};
+    const root = JSDOM.fragment(renderHouseholdView(household, [ownerMember, hostile], [], owner));
+    assert.equal(root.querySelectorAll('img').length, 0);
+    assert.equal(root.querySelector(`.member-row[data-user-id="${ownerMember.userId}"] [data-action="toggle-member-access"]`), null, 'owner cannot disable self');
+  });
+
+  it('loadHousehold surfaces access_suspended responses as {suspended}', async () => {
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({
+      ok: false, status: 403,
+      headers: new Map([['Content-Type', 'application/json']]),
+      json: async () => ({error: 'Your access to Sitter House is temporarily disabled.', status: 'access_suspended', household: 'Sitter House'}),
+    });
+    try {
+      const {loadHousehold} = await import('../household.js');
+      const data = await loadHousehold();
+      assert.equal(data.suspended.status, 'access_suspended');
+      assert.equal(data.suspended.household, 'Sitter House');
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it('replaces the setup empty state with the access-disabled card', async () => {
+    const {renderAccessSuspendedCard, accessSuspendedMessage} = await import('../utils.js');
+    const suspended = {household: 'Sitter House', error: 'Your access to Sitter House is temporarily disabled.'};
+
+    assert.equal(accessSuspendedMessage({}), '');
+    assert.equal(accessSuspendedMessage({accessSuspended: {household: 'Sitter House'}}),
+      'Your access to Sitter House is temporarily disabled. Contact an administrator to re-enable access.');
+
+    const root = JSDOM.fragment(renderAccessSuspendedCard({accessSuspended: suspended}));
+    assert.equal(root.querySelector('h3').textContent, 'Access disabled');
+    assert.match(root.querySelector('p').textContent, /temporarily disabled/);
+
+    const hostile = JSDOM.fragment(renderAccessSuspendedCard({
+      accessSuspended: {household: 'X', error: '<img src=x onerror="alert(1)">'},
+    }));
+    assert.equal(hostile.querySelectorAll('img').length, 0, 'the server message is escaped');
+  });
+
+  it('a disabled member sees the disabled card instead of setup prompts', async () => {
+    const {renderHomeView} = await import('../home.js');
+    const {renderChoresView} = await import('../chores.js');
+    const state = {
+      user: {id: 12, email: 'sitter@test.com'},
+      household: null,
+      chores: [],
+      choreOrder: [],
+      hiddenHomeChoreIDs: [],
+      latestLogs: {},
+      accessSuspended: {household: 'Sitter House', error: 'Your access to Sitter House is temporarily disabled. Contact an administrator to re-enable access.'},
+    };
+
+    for (const html of [renderHomeView(state), renderChoresView(state)]) {
+      assert.match(html, /Access disabled/, 'shows the disabled heading');
+      assert.doesNotMatch(html, /Set Up Household/, 'never invites a disabled member to set up');
+      assert.doesNotMatch(html, /No household set up/, 'never claims they have no household');
+    }
+
+    // Without the suspension flag the normal empty states remain.
+    const fresh = {...state, accessSuspended: null};
+    assert.match(renderHomeView(fresh), /Set Up Household/);
+    assert.match(renderChoresView(fresh), /No household set up/);
+  });
+
+  it('a disabled member sees the disabled card instead of empty stats', async () => {
+    const {renderStatsPage} = await import('../stats.js');
+    const state = {
+      user: {id: 12, email: 'sitter@test.com'},
+      household: null,
+      chores: [],
+      members: [],
+      historicalMembers: [],
+      volumeUnit: 'ml',
+      accessSuspended: {household: 'Sitter House', error: 'Your access to Sitter House is temporarily disabled. Contact an administrator to re-enable access.'},
+    };
+
+    const html = renderStatsPage(state);
+    assert.match(html, /Access disabled/, 'stats explains the real reason');
+    assert.match(html, /temporarily disabled/);
+    assert.doesNotMatch(html, /No chores yet|No data yet/, 'a disabled member is never told the household is empty');
+
+    const normal = renderStatsPage({...state, accessSuspended: null, stats: {}});
+    assert.doesNotMatch(normal, /Access disabled/, 'an active member keeps the normal stats page');
+  });
+});

@@ -19,12 +19,25 @@ final class HouseholdDataLoader {
                 api.get("/api/households") as HouseholdsResponse
             )
             guard state.owns(owner) else { return }
+            state.accessSuspendedMessage = nil
             state.household = data.household
             state.members = data.members
             state.historicalMembers = data.historicalMembers
             state.invites = data.invites
             state.userHouseholds = listData.households
             state.activeHouseholdId = data.household.id
+        } catch let error as APIError {
+            guard state.owns(owner) else { return }
+            if case .accessSuspended(let message, _) = error {
+                // The membership is disabled: show the server's message
+                // instead of the create/join-household onboarding screen.
+                state.household = nil
+                state.members = []
+                state.invites = []
+                state.userHouseholds = []
+                state.accessSuspendedMessage = message
+            }
+            // Other failures remain silent — PWA pattern.
         } catch {
             // Silent failure — PWA pattern
         }

@@ -96,7 +96,8 @@ struct HouseholdView: View {
                             MemberRow(member: member, isCurrentUser: member.userId == state.user?.id,
                                       currentUserRole: state.user?.role ?? "member",
                                       onRoleChange: { newRole in Task { await updateMemberRole(member, role: newRole) } },
-                                      onRemove: { Task { await removeMember(member) } })
+                                      onRemove: { Task { await removeMember(member) } },
+                                      onToggleAccess: { suspended in Task { await setMemberAccess(member, suspended: suspended) } })
                         }
                     }
                 }
@@ -465,9 +466,21 @@ struct HouseholdView: View {
             if let idx = state.members.firstIndex(where: { $0.userId == member.userId }) {
                 let updated = Member(userId: member.userId, email: member.email,
                                      displayName: member.displayName, avatarColor: member.avatarColor,
-                                     emailVerified: member.emailVerified, role: newRole)
+                                     emailVerified: member.emailVerified, role: newRole,
+                                     suspended: member.suspended)
                 state.members[idx] = updated
             }
+        } catch {}
+    }
+
+    private func setMemberAccess(_ member: Member, suspended: Bool) async {
+        let owner = state.revision
+        let api = environment.apiClient.scoped()
+        let body = UpdateMemberAccessRequest(suspended: suspended)
+        do {
+            let _: StatusResponse = try await api.patch("/api/household/members/\(member.userId)/access", body: body)
+            guard state.revision == owner else { return }
+            await refreshHousehold()
         } catch {}
     }
 
@@ -757,8 +770,18 @@ struct MemberRow: View {
     let currentUserRole: String
     let onRoleChange: (String) -> Void
     let onRemove: () -> Void
+    let onToggleAccess: (_ suspended: Bool) -> Void
 
     @State private var showingRemoveConfirm = false
+    @State private var showingDisableConfirm = false
+
+    // Owners manage everyone but owners and themselves; admins may only
+    // disable plain members.
+    private var canToggleAccess: Bool {
+        guard !isCurrentUser, member.role != "owner" else { return false }
+        if currentUserRole == "owner" { return true }
+        return currentUserRole == "admin" && member.role == "member"
+    }
 
     var body: some View {
         HStack {
@@ -781,6 +804,18 @@ struct MemberRow: View {
 
             Spacer()
 
+            if member.suspended {
+                Text("Disabled")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.red)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 2)
+                    .background(Color.red.opacity(0.12))
+                    .clipShape(Capsule())
+                    .accessibilityIdentifier("member-disabled-badge")
+            }
+
             Text(member.role.capitalized)
                 .font(.caption)
                 .foregroundColor(.secondary)
@@ -798,6 +833,17 @@ struct MemberRow: View {
                               systemImage: "person.badge.shield.checkmark")
                     }
 
+                    if canToggleAccess {
+                        Button(member.suspended ? "Enable access" : "Disable access") {
+                            if member.suspended {
+                                onToggleAccess(false)
+                            } else {
+                                showingDisableConfirm = true
+                            }
+                        }
+                        .accessibilityIdentifier("member-toggle-access")
+                    }
+
                     Button(role: .destructive) {
                         showingRemoveConfirm = true
                     } label: {
@@ -807,9 +853,43 @@ struct MemberRow: View {
                     Image(systemName: "ellipsis.circle")
                         .foregroundColor(.secondary)
                 }
+                .accessibilityIdentifier("member-menu")
                 .alert("Remove \(member.displayName.isEmpty ? member.email : member.displayName)?", isPresented: $showingRemoveConfirm) {
                     Button("Remove", role: .destructive) { onRemove() }
                     Button("Cancel", role: .cancel) {}
+                }
+                .alert(
+                    "Disable \(member.displayName.isEmpty ? member.email : member.displayName)?",
+                    isPresented: $showingDisableConfirm
+                ) {
+                    Button("Disable access", role: .destructive) { onToggleAccess(true) }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("They will be signed out and cannot view or change anything in this household until you re-enable them.")
+                }
+            } else if canToggleAccess {
+                // Admin actors get only the access toggle.
+                Menu {
+                    Button(member.suspended ? "Enable access" : "Disable access") {
+                        if member.suspended {
+                            onToggleAccess(false)
+                        } else {
+                            showingDisableConfirm = true
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                        .foregroundColor(.secondary)
+                }
+                .accessibilityIdentifier("member-menu")
+                .alert(
+                    "Disable \(member.displayName.isEmpty ? member.email : member.displayName)?",
+                    isPresented: $showingDisableConfirm
+                ) {
+                    Button("Disable access", role: .destructive) { onToggleAccess(true) }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("They will be signed out and cannot view or change anything in this household until you re-enable them.")
                 }
             }
         }

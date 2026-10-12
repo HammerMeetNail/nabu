@@ -85,27 +85,51 @@ struct APIClient {
     }
 
     private func mutate<Request: Encodable, Response: Decodable>(_ method: String, _ path: String, _ body: Request) async throws -> Response {
-        let url = baseURL.appendingPathComponent(path)
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if let csrfToken = csrfProvider.token {
-            request.setValue(csrfToken, forHTTPHeaderField: "X-CSRF-Token")
-        }
-        request.httpBody = try apiEncoder.encode(body)
-        return try await perform(request)
+        let data = try apiEncoder.encode(body)
+        return try await mutateRequest(method, path: path, body: data, contentType: "application/json")
     }
 
     private func mutateWithoutBody<Response: Decodable>(_ method: String, _ path: String) async throws -> Response {
+        try await mutateRequest(method, path: path, body: nil, contentType: nil)
+    }
+
+    /// Sends a state-changing request, replaying it once if the server's
+    /// double-submit middleware rejected it for a missing cookie. That
+    /// rejection is a plain-text 403 raised before any handler runs — it
+    /// surfaces as `httpError`, where an authorization failure carries a JSON
+    /// body and surfaces as `serverError` — so the replay cannot duplicate a
+    /// write. Signing out clears the cookie store, which is how the *next*
+    /// sign-in used to answer users with "HTTP error 403".
+    private func mutateRequest<Response: Decodable>(_ method: String, path: String, body: Data?, contentType: String?) async throws -> Response {
         let url = baseURL.appendingPathComponent(path)
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if let csrfToken = csrfProvider.token {
-            request.setValue(csrfToken, forHTTPHeaderField: "X-CSRF-Token")
+        func build() -> URLRequest {
+            var request = URLRequest(url: url)
+            request.httpMethod = method
+            if let contentType {
+                request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+            }
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            if let csrfToken = csrfProvider.token {
+                request.setValue(csrfToken, forHTTPHeaderField: "X-CSRF-Token")
+            }
+            request.httpBody = body
+            return request
         }
-        return try await perform(request)
+        do {
+            return try await perform(build())
+        } catch APIError.httpError(statusCode: 403) {
+            await refreshCSRFToken()
+            return try await perform(build())
+        }
+    }
+
+    /// Any request makes the server re-issue the double-submit cookie when none
+    /// is present; `/api/me` is the cheapest. It goes out unwrapped so the
+    /// identity state is untouched by a cookie refresh.
+    private func refreshCSRFToken() async {
+        var request = URLRequest(url: baseURL.appendingPathComponent("/api/me"))
+        request.httpMethod = "GET"
+        _ = try? await send(request)
     }
 
     private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {
@@ -137,6 +161,10 @@ struct APIClient {
         }
         if identity.managed, let user = owner.user, path != "/api/me" {
             request.setValue(String(user.id), forHTTPHeaderField: "X-Nabu-User-ID")
+            // A deliberate claim about the identity that authored the request,
+            // including "this account has no active household" (0). The server
+            // rejects a mismatch with 409 `X-Nabu-Context-Changed` so work
+            // captured for one account can never be attributed to another.
             request.setValue(String(user.householdId ?? 0), forHTTPHeaderField: "X-Nabu-Household-ID")
         }
         let result: (Data, HTTPURLResponse)
@@ -176,9 +204,20 @@ struct APIClient {
                     guard identity.accept(response.user, expected: owner) else { throw APIError.contextChanged }
                 }
                 await identity.publish()
-            } else if httpResponse.statusCode == 401 || httpResponse.value(forHTTPHeaderField: "X-Nabu-Context-Changed") == "true" {
+            } else if httpResponse.value(forHTTPHeaderField: "X-Nabu-Context-Changed") == "true" {
+                // The server is explicit here: the identity that authored this
+                // request is no longer the session's. Drop the old claim at once
+                // and let the next confirmed read (/api/me) re-establish it.
                 identity.invalidate(owner)
                 await identity.publish()
+            } else if httpResponse.statusCode == 401 {
+                // A 401 is not always a lost session: the server also answers
+                // 401 "no household" for household-scoped reads when the account
+                // has no active household — a fresh account, or a membership an
+                // administrator has disabled. Re-read the canonical session and
+                // only drop it if /api/me says so, mirroring the PWA's
+                // nabu-session-invalid -> confirmBrowserSession behaviour.
+                await confirmSessionAfterUnauthorized(owner)
             }
         }
         let accepted = try checked(data, httpResponse)
@@ -203,6 +242,9 @@ struct APIClient {
         }
         guard (200...299).contains(httpResponse.statusCode) else {
             if let apiErr = try? apiDecoder.decode(APIErrorResponse.self, from: data) {
+                if apiErr.status == "access_suspended" {
+                    throw APIError.accessSuspended(message: apiErr.error, household: apiErr.household)
+                }
                 throw APIError.serverError(statusCode: httpResponse.statusCode, message: apiErr.error)
             }
             throw APIError.httpError(statusCode: httpResponse.statusCode)
@@ -228,6 +270,31 @@ struct APIClient {
             await identity.publish()
             throw error
         }
+    }
+
+    /// Re-reads the canonical session after a household-scoped endpoint answers
+    /// 401. The server uses 401 "no household" both for an absent session and
+    /// for an account whose active household is gone — including a membership an
+    /// administrator has disabled — so the session is only dropped when /api/me
+    /// itself says the session is gone.
+    private func confirmSessionAfterUnauthorized(_ owner: ClientIdentity.Snapshot) async {
+        var request = URLRequest(url: baseURL.appendingPathComponent("/api/me"))
+        request.httpMethod = "GET"
+        let user: User?
+        do {
+            let (data, response) = try await send(request)
+            if response.statusCode == 401 {
+                user = nil
+            } else if (200...299).contains(response.statusCode) {
+                user = try apiDecoder.decode(UserResponse.self, from: data).user
+            } else {
+                return // Ambiguous: leave the identity for the next confirmed read.
+            }
+        } catch {
+            return // Transport failure: keep the last confirmed identity.
+        }
+        guard identity.accept(user, expected: owner) else { return }
+        await identity.publish()
     }
 
     private static func changesIdentity(_ request: URLRequest) -> Bool {

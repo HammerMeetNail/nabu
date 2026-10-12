@@ -20,7 +20,13 @@ export async function activateHousehold(id) {
 }
 
 export async function loadHousehold() {
-  try { return await apiFetch("/api/household"); } catch (err) { if (err.status === 404) return {}; throw err; }
+  try {
+    return await apiFetch("/api/household");
+  } catch (err) {
+    if (err.status === 404) return {};
+    if (err.status === 403 && err.data?.status === "access_suspended") return { suspended: err.data };
+    throw err;
+  }
 }
 
 export async function createHousehold(name, initials) {
@@ -60,6 +66,13 @@ export async function updateMemberRole(userId, role) {
   return apiFetch(`/api/household/members/${userId}`, {
     method: "PATCH",
     body: JSON.stringify({ role }),
+  });
+}
+
+export async function setMemberAccess(userId, suspended) {
+  return apiFetch(`/api/household/members/${userId}/access`, {
+    method: "PATCH",
+    body: JSON.stringify({ suspended }),
   });
 }
 
@@ -113,6 +126,7 @@ export function renderHouseholdView(household, members, invites, currentUser) {
     </div>`;
   }
   const isOwner = currentUser && currentUser.role === 'owner';
+  const isAdmin = currentUser && currentUser.role === 'admin';
   const ownerCount = (members || []).filter(m => m.role === 'owner').length;
 
   const chevronSVG = `<svg class="member-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>`;
@@ -122,8 +136,15 @@ export function renderHouseholdView(household, members, invites, currentUser) {
     const label = m.displayName || m.email || 'Unknown';
     const isSelf = m.userId === currentUser.id;
     const isLastOwner = m.role === 'owner' && ownerCount <= 1;
+    // Owners manage everyone but owners; admins may only disable plain members.
+    const canToggleAccess = !isSelf && m.role !== 'owner' && (isOwner || (isAdmin && m.role === 'member'));
 
     let detailsHTML = '';
+    let controlsHTML = '';
+    if (canToggleAccess) {
+      controlsHTML = `
+        <button type="button" class="btn btn-sm ${m.suspended ? 'btn-primary' : 'btn-secondary'} mt-2" data-action="toggle-member-access" data-user-id="${m.userId}" data-suspended="${m.suspended ? '1' : '0'}">${m.suspended ? 'Enable access' : 'Disable access'}</button>`;
+    }
     if (isOwner && !isSelf) {
       let roleOptions = '';
 
@@ -145,12 +166,14 @@ export function renderHouseholdView(household, members, invites, currentUser) {
       }
 
       detailsHTML = `<div class="member-row-details">
-        ${roleOptions}
+        ${roleOptions}${controlsHTML}
       </div>`;
     } else if (isOwner && isSelf) {
       detailsHTML = `<div class="member-row-details">
         <p class="text-secondary" style="font-size:12px">You are the owner${ownerCount > 1 ? ' (one of ' + ownerCount + ')' : ''} of this household.</p>
       </div>`;
+    } else if (isAdmin && canToggleAccess) {
+      detailsHTML = `<div class="member-row-details">${controlsHTML}</div>`;
     }
 
     return `<details class="member-row" data-user-id="${m.userId}">
@@ -158,6 +181,7 @@ export function renderHouseholdView(household, members, invites, currentUser) {
         <span class="avatar-circle-sm" style="background:${m.avatarColor || '#19323C'}">${initial}</span>
         <span class="member-name">${escapeHTML(label)}</span>
         <span class="role-badge">${m.role}</span>
+        ${m.suspended ? '<span class="role-badge member-disabled-badge">Disabled</span>' : ''}
         <span class="verify-badge${m.emailVerified ? ' verify-badge--ok' : ' verify-badge--no'}">${m.emailVerified ? 'Email \u2713' : 'Email \u2717'}</span>
         ${chevronSVG}
       </summary>

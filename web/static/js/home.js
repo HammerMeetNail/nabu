@@ -1,5 +1,5 @@
 import { apiFetch } from "./api.js";
-import { escapeHTML } from "./utils.js";
+import { escapeHTML, renderAccessSuspendedCard } from "./utils.js";
 import { sortChoresByOrder } from "./preferences.js";
 import { renderMemberSelect } from "./schedule.js";
 import { renderChoresView as renderChoresViewList } from "./chores.js";
@@ -83,6 +83,7 @@ export function renderHomeView(state) {
   const jiggleMode = state.jiggleMode || false;
 
   if (!state.household && state.user) {
+    if (state.accessSuspended) return renderAccessSuspendedCard(state);
     return `<div class="card mt-3"><h2>Welcome!</h2>
       <p>Hi ${escapeHTML(state.user.email || '')}! Set up your household to get started.</p>
       <a class="btn btn-primary mt-2" href="#" data-nav="settings">Set Up Household</a></div>`;

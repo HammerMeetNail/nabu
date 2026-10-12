@@ -20,6 +20,9 @@ type Service struct {
 	userStore     interface {
 		GetUserByID(context.Context, int64) (auth.User, error)
 	}
+	// revokeSessions force-signs-out a user after their membership is
+	// disabled. Optional: nil when the auth store cannot revoke sessions.
+	revokeSessions func(context.Context, int64) error
 }
 
 type AuthStore interface {
@@ -61,6 +64,7 @@ func NewService(store Store, authStore AuthStore) *Service {
 			return &householdID, role, nil
 		})
 	}
+	svc := &Service{store: store, auditLogger: audit.NopLogger{}}
 	if memory, ok := store.(*MemoryStore); ok {
 		if users, ok := authStore.(interface {
 			UserExists(context.Context, int64) error
@@ -68,7 +72,12 @@ func NewService(store Store, authStore AuthStore) *Service {
 			memory.userExists = users.UserExists
 		}
 	}
-	return &Service{store: store, auditLogger: audit.NopLogger{}}
+	if revoker, ok := authStore.(interface {
+		RevokeSessions(context.Context, int64) error
+	}); ok {
+		svc.revokeSessions = revoker.RevokeSessions
+	}
+	return svc
 }
 
 func (s *Service) transaction(ctx context.Context, fn func(*Service) error) error {
@@ -151,6 +160,13 @@ func (s *Service) CreateHousehold(ctx context.Context, name, initials string, ow
 func (s *Service) GetHousehold(ctx context.Context, userID int64) (Household, []Member, error) {
 	householdID, role, err := s.store.GetMembership(ctx, userID)
 	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			// A disabled member must learn which household disabled them
+			// instead of seeing the create/join-household screen.
+			if suspended, serr := s.store.GetSuspendedMemberships(ctx, userID); serr == nil && len(suspended) > 0 {
+				return Household{}, nil, &AccessSuspendedError{HouseholdName: suspended[0].Name}
+			}
+		}
 		return Household{}, nil, err
 	}
 	hh, cerr := s.store.GetHousehold(ctx, householdID)
@@ -502,6 +518,63 @@ func (s *Service) UpdateMemberRole(ctx context.Context, actorUserID, targetUserI
 		"target_user_id": formatID(targetUserID),
 		"household_id":   formatID(hhID),
 		"new_role":       newRole,
+	})
+	return nil
+}
+
+// SetMemberAccess disables or re-enables a member's household access.
+// Owners may suspend admins and members; admins may only suspend members.
+// Owners can never be suspended (no household lockout). Suspending also
+// force-signs-out the target's sessions after the membership write commits.
+func (s *Service) SetMemberAccess(ctx context.Context, actorUserID, targetUserID int64, suspended bool) error {
+	if !s.inTransaction {
+		err := s.transaction(ctx, func(tx *Service) error { return tx.SetMemberAccess(ctx, actorUserID, targetUserID, suspended) })
+		if err == nil && suspended && s.revokeSessions != nil {
+			// Best-effort after commit: even if revocation fails, the live
+			// membership checks in GetMembership deny the suspended user.
+			if rerr := s.revokeSessions(ctx, targetUserID); rerr != nil {
+				s.logAudit(ctx, "household.member_session_revoke_failed", map[string]string{
+					"user_id":        formatID(actorUserID),
+					"target_user_id": formatID(targetUserID),
+				})
+			}
+		}
+		return err
+	}
+	actorHHID, actorRole, err := s.store.GetMembership(ctx, actorUserID)
+	if err != nil {
+		return err
+	}
+	if actorRole != RoleOwner && actorRole != RoleAdmin {
+		return ErrNotAuthorized
+	}
+	if actorUserID == targetUserID {
+		return ErrNotAuthorized
+	}
+	targetRole, err := s.store.GetMembershipForHousehold(ctx, targetUserID, actorHHID)
+	if errors.Is(err, ErrNotMember) {
+		return ErrNotAuthorized
+	}
+	if err != nil {
+		return err
+	}
+	if targetRole == RoleOwner {
+		return ErrNotAuthorized
+	}
+	if actorRole == RoleAdmin && targetRole != RoleMember {
+		return ErrNotAuthorized
+	}
+	if err := s.store.SetMemberSuspended(ctx, actorHHID, targetUserID, suspended); err != nil {
+		return err
+	}
+	event := "household.member_unsuspended"
+	if suspended {
+		event = "household.member_suspended"
+	}
+	s.logAudit(ctx, event, map[string]string{
+		"user_id":        formatID(actorUserID),
+		"target_user_id": formatID(targetUserID),
+		"household_id":   formatID(actorHHID),
 	})
 	return nil
 }

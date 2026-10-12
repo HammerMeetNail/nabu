@@ -1,5 +1,37 @@
 import SwiftUI
 
+/// Shown instead of onboarding when an administrator has disabled this
+/// account's household membership. The message comes from the server and
+/// names the household. Sign-out stays available so a disabled account can
+/// leave the app or switch to another household (the PWA keeps its Account
+/// section reachable in the same state).
+struct AccessSuspendedView: View {
+    let message: String
+    var onSignOut: () -> Void = {}
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Spacer(minLength: 64)
+            Image(systemName: "person.crop.circle.badge.xmark")
+                .font(.system(size: 48))
+                .foregroundColor(.secondary)
+            Text("Access disabled")
+                .font(.title2.weight(.bold))
+            Text(message)
+                .font(.subheadline)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .accessibilityIdentifier("access-suspended-message")
+            Button("Sign Out", action: onSignOut)
+                .buttonStyle(NabuPrimaryButtonStyle())
+                .accessibilityIdentifier("access-suspended-sign-out")
+            Spacer()
+        }
+        .padding()
+        .frame(maxWidth: .infinity)
+    }
+}
+
 struct OnboardingView: View {
     @EnvironmentObject var state: AppState
     @ObservedObject var auth: AuthStore

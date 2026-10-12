@@ -76,7 +76,8 @@ final class ModelDecodingTests: XCTestCase {
               "displayName": "Bob",
               "avatarColor": "#F59E0B",
               "emailVerified": false,
-              "role": "member"
+              "role": "member",
+              "suspended": true
             }
           ],
           "historicalMembers": [
@@ -108,7 +109,9 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertEqual(response.members.count, 2)
         XCTAssertEqual(response.members[0].userId, 1)
         XCTAssertEqual(response.members[0].role, "owner")
+        XCTAssertEqual(response.members[0].suspended, false, "absent suspended field defaults to false")
         XCTAssertEqual(response.members[1].role, "member")
+        XCTAssertEqual(response.members[1].suspended, true)
         XCTAssertEqual(response.historicalMembers.map(\.displayName), ["Former Member"])
         XCTAssertEqual(response.invites.count, 1)
         XCTAssertEqual(response.invites[0].code, "XYZ789")

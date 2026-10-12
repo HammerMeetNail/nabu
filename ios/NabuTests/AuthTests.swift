@@ -164,6 +164,60 @@ final class AuthTests: XCTestCase {
         XCTAssertEqual(user?.hasPassword, true)
     }
 
+    // MARK: - Sessions with no active household (disabled membership, fresh account)
+
+    /// A signed-in identity whose household-scoped reads answer 401 "no household".
+    private func householdlessClient(meStatus: Int = 200) -> APIClient {
+        let user = User(id: 7, householdId: nil, email: "sitter@test.local", displayName: "Sitter",
+                        avatarColor: "#19323C", emailVerified: true, role: "member", createdAt: Date())
+        let identity = ClientIdentity()
+        identity.accept(user)
+        var client = APIClient(baseURL: URL(string: "http://localhost:9998")!, identity: identity)
+        client.mockHandler = { request in
+            let url = request.url!
+            if url.path == "/api/me" {
+                if meStatus != 200 {
+                    let body = #"{"error":"no session"}"#.data(using: .utf8)!
+                    return (body, HTTPURLResponse(url: url, statusCode: meStatus, httpVersion: nil, headerFields: nil)!)
+                }
+                let body = ##"{"user":{"id":7,"householdId":null,"email":"sitter@test.local","displayName":"Sitter","avatarColor":"#19323C","emailVerified":true,"hasPassword":true,"role":"member","createdAt":"2026-09-10T12:00:00Z"}}"##.data(using: .utf8)!
+                return (body, HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+            }
+            let body = #"{"error":"no household"}"#.data(using: .utf8)!
+            return (body, HTTPURLResponse(url: url, statusCode: 401, httpVersion: nil, headerFields: nil)!)
+        }
+        return client
+    }
+
+    /// The server answers 401 "no household" for an account with no active
+    /// household — a fresh account, or a membership an administrator disabled.
+    /// That must not be mistaken for a lost session, or the app is stranded on
+    /// "Confirming your session" instead of the access-disabled screen.
+    @MainActor
+    func testNoHousehold401KeepsAConfirmedSession() async {
+        let client = householdlessClient()
+        do {
+            _ = try await client.get("/api/chores") as ChoresResponse
+            XCTFail("the 401 must still surface to the caller")
+        } catch APIError.serverError(statusCode: let status, let message) {
+            XCTAssertEqual(status, 401)
+            XCTAssertEqual(message, "no household")
+        } catch {
+            XCTFail("expected the server's 401 \"no household\", got \(error)")
+        }
+        let snapshot = client.identity.snapshot
+        XCTAssertEqual(snapshot.phase, .ready, "a confirmed session survives a 'no household' 401")
+        XCTAssertEqual(snapshot.user?.id, 7)
+    }
+
+    @MainActor
+    func testUnconfirmedSession401StillEndsTheSession() async {
+        let client = householdlessClient(meStatus: 401)
+        _ = try? await client.get("/api/chores") as ChoresResponse
+        XCTAssertEqual(client.identity.snapshot.phase, .anonymous, "a dead session is still dropped")
+        XCTAssertNil(client.identity.snapshot.user)
+    }
+
     /// Opt in through the Xcode test plan environment. Uses the local server
     /// and real URLSession/HTTPCookieStorage, including a recreated identity.
     @MainActor
@@ -264,6 +318,54 @@ final class AuthTests: XCTestCase {
         store.clearAll()
         let provider = CSRFTokenProvider(cookieStore: store)
         XCTAssertNil(provider.token)
+    }
+
+    /// Sign-out clears the cookie store, and the server's double-submit
+    /// middleware answers a plain-text 403 to any state-changing request that
+    /// arrives without its cookie. Signing back in must recover from that
+    /// rejection instead of showing the user "HTTP error 403".
+    @MainActor
+    func testSignInAfterSignOutRecoversFromTheCSRFRejection() async {
+        final class Attempts {
+            var csrfHeaders: [String?] = []
+        }
+        CookieStore().clearAll()
+        let issuedToken = "csrf-token-from-server"
+        let attempts = Attempts()
+
+        var client = APIClient(baseURL: URL(string: "http://localhost:9998")!)
+        client.mockHandler = { request in
+            let url = request.url!
+            if url.path == "/api/me" {
+                // Stand in for URLSession accepting the server's Set-Cookie.
+                let cookie = HTTPCookie(properties: [
+                    .domain: "localhost", .path: "/", .name: "nabu_csrf", .value: issuedToken,
+                ])!
+                HTTPCookieStorage.shared.setCookie(cookie)
+                let body = #"{"error":"no session"}"#.data(using: .utf8)!
+                return (body, HTTPURLResponse(url: url, statusCode: 401, httpVersion: nil, headerFields: nil)!)
+            }
+            let header = request.value(forHTTPHeaderField: "X-CSRF-Token")
+            attempts.csrfHeaders.append(header)
+            // A cookie-less mutation is rejected in plain text before any handler
+            // runs, exactly as internal/middleware/csrf.go does.
+            if header == nil {
+                return (Data("csrf token invalid\n".utf8),
+                        HTTPURLResponse(url: url, statusCode: 403, httpVersion: nil, headerFields: nil)!)
+            }
+            let body = ##"{"user":{"id":7,"householdId":3,"email":"sitter@test.local","displayName":"Sitter","avatarColor":"#19323C","emailVerified":true,"hasPassword":true,"role":"member","createdAt":"2026-09-10T12:00:00Z"}}"##.data(using: .utf8)!
+            return (body, HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+
+        let auth = AuthStore(api: client)
+        let user = await auth.login(email: "sitter@test.local", password: "test123456")
+        CookieStore().clearAll()
+
+        XCTAssertNotNil(user, "signing in after sign-out should succeed, not fail with 403")
+        XCTAssertEqual(attempts.csrfHeaders.count, 2, "the rejected sign-in is replayed exactly once")
+        XCTAssertNil(attempts.csrfHeaders.first ?? nil, "the first attempt is the one without a cookie")
+        XCTAssertEqual(attempts.csrfHeaders.last ?? nil, issuedToken,
+                       "the replay carries the freshly issued CSRF token")
     }
 
     // MARK: - Anti-enumeration

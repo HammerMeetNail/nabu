@@ -13,7 +13,7 @@ import { apiMe, apiFetch } from "./api.js";
 import { loadNotificationPage, mutateNotification } from "./notification-data.js";
 import { renderExports, downloadCSV } from "./exports.js";
 import { replayQueue, queuedLogs, discardQueuedLog } from "./offline-queue.js";
-import { escapeHTML, localDateStr, shiftDateStr, formatVolume } from "./utils.js";
+import { escapeHTML, localDateStr, shiftDateStr, formatVolume, renderAccessSuspendedCard } from "./utils.js";
 import {
   loadSession,
   handleLogin,
@@ -31,7 +31,7 @@ import {
   renderForgotPasswordView,
   renderResetPasswordView,
 } from "./auth.js";
-import { loadHousehold, listHouseholds, activateHousehold, createHousehold, updateHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, transferOwnership, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
+import { loadHousehold, listHouseholds, activateHousehold, createHousehold, updateHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, setMemberAccess, transferOwnership, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
 import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
 import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS, choreHasAnalytics, renderWidgetWizard, widgetGrain, loadChoreSummary, choreAnalyticsGrain } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
@@ -407,6 +407,9 @@ function setupPullToRefresh() {
 function renderActivityView() {
   const chores = state.chores || [];
   if (!state.household && state.user) {
+    // A disabled membership is not a missing household — say so instead of
+    // inviting them to set one up.
+    if (state.accessSuspended) return renderAccessSuspendedCard(state);
     return `<div class="card mt-3"><h2>Welcome!</h2>
       <p>Hi ${escapeHTML(state.user.email || '')}! Set up your household to get started.</p>
       <a class="btn btn-primary mt-2" href="#" data-nav="settings">Set Up Household</a></div>`;
@@ -532,6 +535,9 @@ function renderHomeViewWrapper() {
 function renderCalendarView() {
   const chores = state.chores || [];
   if (!state.household && state.user) {
+    // A disabled membership is not a missing household — say so instead of
+    // inviting them to set one up.
+    if (state.accessSuspended) return renderAccessSuspendedCard(state);
     return `<div class="card mt-3"><h2>Welcome!</h2>
       <p>Hi ${escapeHTML(state.user.email || '')}! Set up your household to get started.</p>
       <a class="btn btn-primary mt-2" href="#" data-nav="settings">Set Up Household</a></div>`;
@@ -626,6 +632,9 @@ function renderCalendarView() {
 function renderScheduleView() {
   const chores = state.chores || [];
   if (!state.household && state.user) {
+    // A disabled membership is not a missing household — say so instead of
+    // inviting them to set one up.
+    if (state.accessSuspended) return renderAccessSuspendedCard(state);
     return `<div class="card mt-3"><h2>Welcome!</h2>
       <p>Hi ${escapeHTML(state.user.email || '')}! Set up your household to get started.</p>
       <a class="btn btn-primary mt-2" href="#" data-nav="settings">Set Up Household</a></div>`;
@@ -875,7 +884,10 @@ function renderSettingsView() {
     </div>` : "";
 
   if (!hh) {
-    return `<div class="settings-view">${renderHouseholdView(null, null, null, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div></div>`;
+    const householdCard = state.accessSuspended
+      ? renderAccessSuspendedCard(state)
+      : renderHouseholdView(null, null, null, state.user);
+    return `<div class="settings-view">${householdCard}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div></div>`;
   }
   return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div></div>`;
 }
@@ -946,6 +958,7 @@ async function loadStatsTodayCount() {
 
 function renderStatsPageView() {
   try {
+    if (state.accessSuspended) return renderStatsPage(state);
     if (state.stats) {
       const page = renderStatsPage(state);
       if (state.activeSheet === "widget-wizard") {
@@ -2085,6 +2098,28 @@ export async function init() {
             showToast(data.error || "Failed to update role", "error");
           }
         })).catch(owned(() => showToast("Failed to update role", "error")));
+        break;
+      }
+      case "toggle-member-access": {
+        e.preventDefault();
+        const userId = parseInt(actionEl.dataset.userId, 10);
+        const wasSuspended = actionEl.dataset.suspended === "1";
+        const member = (state.members || []).find(m => m.userId === userId);
+        const name = member ? (member.displayName || member.email) : "this member";
+        if (!wasSuspended) {
+          // eslint-disable-next-line no-alert
+          if (!confirm(`Disable ${name}'s access? They will be signed out and cannot view or change anything in this household until you re-enable them.`)) break;
+        }
+        setMemberAccess(userId, !wasSuspended).then(owned(async (data) => {
+  const contextScope = captureScope(state);
+          if (data.status === "updated") {
+            await withCurrentContext(loadHouseholdData(), contextScope);
+            render(app);
+            showToast(wasSuspended ? `${name}'s access enabled` : `${name}'s access disabled`, "info");
+          } else {
+            showToast(data.error || "Failed to update access", "error");
+          }
+        })).catch(owned(() => showToast("Failed to update access", "error")));
         break;
       }
       case "transfer-ownership": {
@@ -4246,7 +4281,13 @@ async function loadHouseholdData() {
       loadHousehold(),
       listHouseholds(),
     ]), contextScope);
-    if (data.household) {
+    if (data.suspended) {
+      state.accessSuspended = data.suspended;
+      state.household = null;
+      state.members = [];
+      state.invites = [];
+    } else if (data.household) {
+      state.accessSuspended = null;
       state.household = data.household;
       state.members = data.members;
       state.historicalMembers = data.historicalMembers || [];

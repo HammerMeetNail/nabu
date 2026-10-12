@@ -217,8 +217,9 @@ func (s *MemoryStore) GetMembers(ctx context.Context, householdID int64) ([]Memb
 		for _, h := range hhList {
 			if h.ID == householdID {
 				members = append(members, Member{
-					UserID: userID,
-					Role:   h.Role,
+					UserID:    userID,
+					Role:      h.Role,
+					Suspended: h.Suspended,
 				})
 				if err := readlimit.Check(ctx, len(members)); err != nil {
 					return nil, err
@@ -280,11 +281,11 @@ func (s *MemoryStore) RemoveMember(_ context.Context, householdID, userID int64)
 	if !found {
 		return ErrNotMember
 	}
-	// If removed from active household, switch to another
+	// If removed from active household, switch to another (prefer active ones)
 	if s.userHH[userID] == householdID {
 		remaining := s.userHouseholds[userID]
-		if len(remaining) > 0 {
-			s.userHH[userID] = remaining[0].ID
+		if next, ok := firstUsableMembership(remaining); ok {
+			s.userHH[userID] = next
 		} else {
 			delete(s.userHH, userID)
 		}
@@ -309,6 +310,76 @@ func (s *MemoryStore) UpdateMemberRole(_ context.Context, householdID, userID in
 	return ErrNotMember
 }
 
+// firstUsableMembership returns the ID of the first non-suspended membership.
+func firstUsableMembership(entries []HouseholdWithRole) (int64, bool) {
+	for _, h := range entries {
+		if !h.Suspended {
+			return h.ID, true
+		}
+	}
+	return 0, false
+}
+
+func (s *MemoryStore) SetMemberSuspended(_ context.Context, householdID, userID int64, suspended bool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	hhList, ok := s.userHouseholds[userID]
+	if !ok {
+		return ErrNotMember
+	}
+	found := false
+	for i, h := range hhList {
+		if h.ID == householdID {
+			s.userHouseholds[userID][i].Suspended = suspended
+			found = true
+			break
+		}
+	}
+	if !found {
+		return ErrNotMember
+	}
+	// A suspended household can never be the active one; move the pointer to
+	// another usable membership or clear it entirely.
+	if suspended && s.userHH[userID] == householdID {
+		if next, ok := firstUsableMembership(s.userHouseholds[userID]); ok {
+			s.userHH[userID] = next
+		} else {
+			delete(s.userHH, userID)
+		}
+	}
+	// Restore the active pointer if suspension had cleared it, so a
+	// re-enabled member lands back in the household.
+	if !suspended {
+		if _, active := s.userHH[userID]; !active {
+			s.userHH[userID] = householdID
+		}
+	}
+	return nil
+}
+
+func (s *MemoryStore) IsMemberSuspended(_ context.Context, householdID, userID int64) (bool, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	for _, h := range s.userHouseholds[userID] {
+		if h.ID == householdID {
+			return h.Suspended, nil
+		}
+	}
+	return false, ErrNotMember
+}
+
+func (s *MemoryStore) GetSuspendedMemberships(_ context.Context, userID int64) ([]HouseholdWithRole, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	var result []HouseholdWithRole
+	for _, h := range s.userHouseholds[userID] {
+		if h.Suspended {
+			result = append(result, h)
+		}
+	}
+	return result, nil
+}
+
 func (s *MemoryStore) GetMembership(_ context.Context, userID int64) (int64, string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -316,9 +387,13 @@ func (s *MemoryStore) GetMembership(_ context.Context, userID int64) (int64, str
 	if !ok {
 		return 0, "", ErrNotFound
 	}
-	// Find role in user_households for the active household
+	// Find role in user_households for the active household. A suspended
+	// membership grants no access even if a stale pointer still references it.
 	for _, h := range s.userHouseholds[userID] {
 		if h.ID == hhID {
+			if h.Suspended {
+				return 0, "", ErrNotFound
+			}
 			return hhID, h.Role, nil
 		}
 	}
@@ -340,19 +415,26 @@ func (s *MemoryStore) ListUserHouseholds(_ context.Context, userID int64) ([]Hou
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	hhList := s.userHouseholds[userID]
-	result := make([]HouseholdWithRole, len(hhList))
-	copy(result, hhList)
+	result := make([]HouseholdWithRole, 0, len(hhList))
+	for _, h := range hhList {
+		if !h.Suspended {
+			result = append(result, h)
+		}
+	}
 	return result, nil
 }
 
 func (s *MemoryStore) SetActiveHousehold(_ context.Context, userID, householdID int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	// Verify user is a member
+	// Verify user is a member with usable (non-suspended) access
 	found := false
 	for _, h := range s.userHouseholds[userID] {
 		if h.ID == householdID {
 			found = true
+			if h.Suspended {
+				return ErrNotMember
+			}
 			break
 		}
 	}

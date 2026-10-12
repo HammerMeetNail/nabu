@@ -451,6 +451,15 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	mux.HandleFunc("/api/household/invites/", method(http.MethodDelete, householdHandler.DeleteInvite))
 	mux.HandleFunc("/api/household/join", method(http.MethodPost, householdHandler.Join))
 	mux.HandleFunc("/api/household/members/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/access") {
+			if r.Method == http.MethodPatch {
+				householdHandler.UpdateMemberAccess(w, r)
+				return
+			}
+			w.Header().Set("Allow", "PATCH")
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
 		switch r.Method {
 		case http.MethodPatch:
 			householdHandler.UpdateMemberRole(w, r)

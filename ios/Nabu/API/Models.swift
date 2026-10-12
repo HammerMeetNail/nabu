@@ -95,8 +95,37 @@ struct Member: Codable, Identifiable, Equatable {
     let avatarColor: String
     let emailVerified: Bool
     let role: String
+    // Disabled members keep their membership but have no household access or
+    // notifications until an owner/admin re-enables them.
+    let suspended: Bool
 
     var id: Int { userId }
+
+    init(userId: Int, email: String, displayName: String, avatarColor: String,
+         emailVerified: Bool, role: String, suspended: Bool = false) {
+        self.userId = userId
+        self.email = email
+        self.displayName = displayName
+        self.avatarColor = avatarColor
+        self.emailVerified = emailVerified
+        self.role = role
+        self.suspended = suspended
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case userId, email, displayName, avatarColor, emailVerified, role, suspended
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        userId = try container.decode(Int.self, forKey: .userId)
+        email = try container.decode(String.self, forKey: .email)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        avatarColor = try container.decode(String.self, forKey: .avatarColor)
+        emailVerified = try container.decode(Bool.self, forKey: .emailVerified)
+        role = try container.decode(String.self, forKey: .role)
+        suspended = try container.decodeIfPresent(Bool.self, forKey: .suspended) ?? false
+    }
 }
 
 struct HistoricalMember: Codable, Identifiable, Equatable {

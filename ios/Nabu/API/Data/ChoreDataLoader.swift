@@ -19,7 +19,7 @@ final class ChoreDataLoader {
             NSLog("[Nabu] ChoreDataLoader OK: \(data.chores.count) chores")
             state.chores = data.chores
         } catch {
-            NSLog("[Nabu] Request failed")
+            NSLog("[Nabu] ChoreDataLoader failed: \(String(describing: error))")
         }
     }
 }

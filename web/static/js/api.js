@@ -25,6 +25,7 @@ async function request(path, options, origin) {
   if (!response.ok) {
     const err = new Error(data?.error || `Could not load data (${response.status})`);
     err.status = response.status;
+    err.data = data;
     throw err;
   }
   return {response,data};

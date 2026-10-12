@@ -1280,6 +1280,374 @@ final class NabuHomeEndToEndUITests: XCTestCase {
     }
 }
 
+// MARK: - Member Access Suspension (real server)
+
+/// Owner disable/enable flow against a real server, the iOS counterpart of
+/// `tests/e2e/settings-disable-member.spec.js`. The owner is created by the
+/// app's auto-register hook; the second member is registered and joined over
+/// HTTP from the test process so both accounts exist before the UI works.
+final class NabuMemberSuspensionUITests: XCTestCase {
+    let uiTimeout = 15.0
+    var app: XCUIApplication!
+    let password = "test123456"
+    var ownerEmail = ""
+    var memberEmail = ""
+    let baseURL = URL(string: "http://localhost:8080")!
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+        let stamp = Int(Date().timeIntervalSince1970)
+        let salt = Int.random(in: 0...99_999)
+        ownerEmail = "susp-owner-\(stamp)-\(salt)@nabu.local"
+        memberEmail = "susp-member-\(stamp)-\(salt)@nabu.local"
+        app = XCUIApplication()
+    }
+
+    func testOwnerDisablesMemberAndMemberSeesDisabledMessage() throws {
+        // 1. Owner: register + create household + seed defaults (app-side).
+        app.launchArguments = [
+            "-disableAnimations",
+            "-nabuBaseURL", baseURL.absoluteString,
+            "-nabuAutoRegister", ownerEmail, password,
+        ]
+        app.launchForLocalTest()
+        let seededChore = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Water Plants")).firstMatch
+        XCTAssertTrue(seededChore.waitForExistence(timeout: 30), "Owner home grid should load")
+        app.terminate()
+
+        // 2. A second member joins with the household's invite code.
+        let owner = NabuTestAPI(baseURL: baseURL)
+        _ = try owner.json("POST", "/api/auth/login", ["email": ownerEmail, "password": password])
+        let household = try owner.json("GET", "/api/household", nil)
+        guard let hh = household["household"] as? [String: Any],
+              let code = hh["inviteCode"] as? String, !code.isEmpty else {
+            XCTFail("Owner should see the household invite code: \(household)")
+            return
+        }
+        let joiner = NabuTestAPI(baseURL: baseURL)
+        _ = try joiner.json("POST", "/api/auth/register", ["email": memberEmail, "password": password])
+        let joined = try joiner.json("POST", "/api/household/join", ["inviteCode": code])
+        XCTAssertTrue(joined["household"] != nil, "Second member should join the household: \(joined)")
+
+        // 3. Owner disables the member from the Settings (household) tab.
+        startAs(ownerEmail)
+        openSettingsTab()
+        revealMemberRow()
+        XCTAssertTrue(memberRow.exists, "Member list should show the joined member")
+        app.buttons["member-menu"].tap()
+        tapMenuAction("Disable access")
+        tapMenuAction("Disable access") // destructive confirm
+        XCTAssertTrue(app.staticTexts["Disabled"].waitForExistence(timeout: uiTimeout),
+                      "Disabled badge should appear after disabling the member")
+
+        // 4. The disabled member sees the access-disabled screen, not the app.
+        startAs(memberEmail)
+        let message = app.staticTexts["access-suspended-message"]
+        XCTAssertTrue(message.waitForExistence(timeout: uiTimeout),
+                      "Disabled member should see the access-disabled screen")
+        XCTAssertTrue(message.label.contains("temporarily disabled"),
+                      "Message should explain that access is temporarily disabled: \(message.label)")
+        // The system credential sheet can appear after the form is gone, on top
+        // of the app, so clear it before judging what the member actually sees.
+        dismissSavePasswordPrompt(waiting: 1)
+        let evidence = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        evidence.name = "access-suspended-screen"
+        evidence.lifetime = XCTAttachment.Lifetime.keepAlways
+        add(evidence)
+        app.terminate()
+
+        // 5. Owner re-enables; the badge clears.
+        startAs(ownerEmail)
+        openSettingsTab()
+        revealMemberRow()
+        XCTAssertTrue(app.staticTexts["Disabled"].waitForExistence(timeout: uiTimeout),
+                      "Disabled badge should survive an app restart")
+        app.buttons["member-menu"].tap()
+        tapMenuAction("Enable access")
+        XCTAssertTrue(memberRow.waitForExistence(timeout: uiTimeout),
+                      "Member row should remain after re-enabling")
+        XCTAssertFalse(app.staticTexts["Disabled"].exists,
+                       "Disabled badge should be gone after re-enabling the member")
+
+        // 6. The re-enabled member is back in the household.
+        startAs(memberEmail)
+        let memberChore = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Water Plants")).firstMatch
+        XCTAssertTrue(memberChore.waitForExistence(timeout: 30), "Re-enabled member should load the home grid")
+    }
+
+    // MARK: - Helpers
+
+    /// Launches and leaves the app signed in as `email`, signing out of
+    /// whatever session the previous phase left behind.
+    private func startAs(_ email: String) {
+        app.launchArguments = ["-disableAnimations", "-nabuBaseURL", baseURL.absoluteString]
+        app.launchForLocalTest()
+
+        let deadline = Date().addingTimeInterval(uiTimeout)
+        while Date() < deadline {
+            dismissSavePasswordPrompt()
+            if app.staticTexts["access-suspended-message"].exists {
+                signOutFromSuspendedScreen()
+                break
+            }
+            if app.tabBars.buttons["Settings"].exists {
+                signOutFromSettings()
+                break
+            }
+            if app.textFields.firstMatch.exists { break } // already at the login form
+            usleep(250_000)
+        }
+        signIn(email)
+    }
+
+    /// iOS offers to save the credential after every successful sign-in. The
+    /// sheet is hosted by the system (not the app), covers the login form, and
+    /// keeps keyboard focus, so the next sign-in cannot type into the password
+    /// field until it is dismissed.
+    private func dismissSavePasswordPrompt(waiting: TimeInterval = 0) {
+        if waiting > 0 {
+            _ = app.buttons["Not Now"].waitForExistence(timeout: waiting)
+        }
+        var hosts: [XCUIApplication] = [app]
+        hosts.append(XCUIApplication(bundleIdentifier: "com.apple.springboard"))
+        for host in hosts {
+            let button = host.buttons["Not Now"]
+            if button.exists {
+                button.tap()
+                return
+            }
+        }
+    }
+
+    /// Fills the password field and submits. The typed value is read back
+    /// because a keystroke that never reaches the field's binding fails
+    /// silently at the form: the Sign In button stays disabled.
+    private func submitLogin(_ password: String) {
+        let field = app.secureTextFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: uiTimeout), "Password field should be shown")
+        dismissSavePasswordPrompt()
+        for attempt in 1...3 {
+            field.tap()
+            usleep(250_000)
+            if attempt > 1 { field.doubleTap() } // select, so retyping replaces leftovers
+            field.typeText(password)
+            let value = field.value as? String ?? ""
+            if !value.isEmpty && value != "Password" { break }
+        }
+        let signInButton = app.buttons["Sign In"]
+        if signInButton.waitForExistence(timeout: 2) { signInButton.tap() }
+    }
+
+    private func waitForLoginFormToClose() {
+        let deadline = Date().addingTimeInterval(uiTimeout)
+        while Date() < deadline, app.secureTextFields.firstMatch.exists {
+            usleep(250_000)
+        }
+        dismissSavePasswordPrompt(waiting: 2)
+    }
+
+    private func signIn(_ email: String) {
+        let emailField = app.textFields.firstMatch
+        XCTAssertTrue(emailField.waitForExistence(timeout: uiTimeout), "Login form should be shown for \(email)")
+        emailField.tap()
+        emailField.typeText(email)
+        submitLogin(password)
+        if app.secureTextFields.firstMatch.exists {
+            app.buttons["Sign In"].tap()
+            waitForLoginFormToClose()
+        }
+        if app.secureTextFields.firstMatch.exists {
+            submitLogin(password)
+            waitForLoginFormToClose()
+        }
+        if app.secureTextFields.firstMatch.exists {
+            let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            attachment.name = "stuck-on-login-form"
+            attachment.lifetime = XCTAttachment.Lifetime.keepAlways
+            add(attachment)
+        }
+        XCTAssertFalse(app.secureTextFields.firstMatch.exists,
+                       "Signing in as \(email) should leave the login form")
+    }
+
+    /// The member row shows the display name (the local part of the generated
+    /// email) with the address underneath.
+    private var memberRow: XCUIElement {
+        app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", memberName)).firstMatch
+    }
+
+    private var memberName: String {
+        String(memberEmail.prefix(while: { $0 != "@" }))
+    }
+
+        /// Settings is a scrolling list, so bring an element on screen before using
+    /// it. How far the list has to scroll varies with content height, so swipe
+    /// until the element appears rather than assuming one swipe is enough.
+    private func scrollUntilVisible(_ element: XCUIElement, maxSwipes: Int = 5) {
+        if element.waitForExistence(timeout: 2) { return }
+        for _ in 0..<maxSwipes {
+            app.swipeUp()
+            if element.waitForExistence(timeout: 1) { return }
+        }
+    }
+
+    private func revealMemberRow() {
+        let menu = app.buttons["member-menu"]
+        scrollUntilVisible(menu)
+        if !menu.waitForExistence(timeout: uiTimeout) {
+            try? app.debugDescription.write(
+                toFile: "/private/var/folders/pk/6j3lsvxs5qld69s1ct38qrlw0000gn/T/opencode/nabu-hierarchy.txt",
+                atomically: true, encoding: .utf8)
+            XCTFail("Member row should expose its menu")
+            return
+        }
+    }
+
+    private func openSettingsTab() {
+        let settings = app.tabBars.buttons["Settings"]
+        XCTAssertTrue(settings.waitForExistence(timeout: uiTimeout), "Settings tab should be visible")
+        // A tap can land while the app is still finishing a sign-in refresh,
+        // which leaves it on the Home tab, so confirm the Members section
+        // arrived and retry the tap if it did not.
+        let membersHeader = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Members (")).firstMatch
+        for _ in 0..<3 {
+            settings.tap()
+            if membersHeader.waitForExistence(timeout: 3) { return }
+        }
+        XCTAssertTrue(membersHeader.waitForExistence(timeout: uiTimeout), "Settings should show the Members section")
+    }
+
+    private func signOutFromSettings() {
+        openSettingsTab()
+        let signOutButton = app.buttons["Sign Out"]
+        scrollUntilVisible(signOutButton)
+        XCTAssertTrue(signOutButton.waitForExistence(timeout: uiTimeout), "Sign Out should be reachable")
+        signOutButton.tap()
+        XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: uiTimeout),
+                      "Signing out should return to the login form")
+    }
+
+    private func signOutFromSuspendedScreen() {
+        let signOutButton = app.buttons["access-suspended-sign-out"]
+        XCTAssertTrue(signOutButton.waitForExistence(timeout: uiTimeout),
+                      "A disabled account must still be able to sign out")
+        signOutButton.tap()
+        XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: uiTimeout),
+                      "Signing out should return to the login form")
+    }
+
+    /// Taps a menu item, waiting for the menu/alert to present it, then waits
+    /// for it to disappear so the next action does not race the dismissal.
+    private func tapMenuAction(_ label: String) {
+        let item = app.buttons[label]
+        XCTAssertTrue(item.waitForExistence(timeout: uiTimeout), "Expected action: \(label)")
+        item.tap()
+        let deadline = Date().addingTimeInterval(uiTimeout)
+        while item.exists, Date() < deadline {
+            usleep(100_000)
+        }
+    }
+}
+
+/// Minimal JSON client for server-side state the app cannot create itself
+/// (a second account). Cookies and the CSRF token are handled explicitly:
+/// the server's `nabu_csrf` cookie must be echoed in `X-CSRF-Token` on every
+/// state-changing call, exactly like `apiFetch()` in the PWA.
+private final class NabuTestAPI {
+    private let baseURL: URL
+    private let session: URLSession
+    private let cookieLock = NSLock()
+    private var cookies: [String: String] = [:]
+
+    init(baseURL: URL) {
+        self.baseURL = baseURL
+        let config = URLSessionConfiguration.ephemeral
+        config.httpShouldSetCookies = false // this client owns the jar
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        self.session = URLSession(configuration: config)
+    }
+
+    func json(_ method: String, _ path: String, _ body: [String: Any]?) throws -> [String: Any] {
+        if method != "GET", cookieValue("nabu_csrf") == nil {
+            // Pre-flight so the server hands us a CSRF cookie, as the app does.
+            _ = try send(URLRequest(url: baseURL.appendingPathComponent("/api/me")))
+        }
+        var request = URLRequest(url: baseURL.appendingPathComponent(path))
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        if let csrf = cookieValue("nabu_csrf"), method != "GET" {
+            request.setValue(csrf, forHTTPHeaderField: "X-CSRF-Token")
+        }
+        if body != nil {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body!)
+        }
+        return try send(request)
+    }
+
+    private func cookieValue(_ name: String) -> String? {
+        cookieLock.lock()
+        defer { cookieLock.unlock() }
+        return cookies[name]
+    }
+
+    private func send(_ base: URLRequest) throws -> [String: Any] {
+        var request = base
+        cookieLock.lock()
+        let jar = cookies
+        cookieLock.unlock()
+        if !jar.isEmpty {
+            let header = jar.map { "\($0.key)=\($0.value)" }.joined(separator: "; ")
+            request.setValue(header, forHTTPHeaderField: "Cookie")
+        }
+
+        var payload: [String: Any] = [:]
+        var failure: Error?
+        let done = DispatchSemaphore(value: 0)
+        session.dataTask(with: request) { data, response, error in
+            failure = error
+            if let http = response as? HTTPURLResponse {
+                self.storeCookies(from: http, for: request.url ?? self.baseURL)
+                var decoded: [String: Any] = [:]
+                if let data = data {
+                    decoded = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+                }
+                decoded["_status"] = http.statusCode
+                payload = decoded
+            }
+            done.signal()
+        }.resume()
+        if done.wait(timeout: .now() + 30) == .timedOut {
+            throw URLError(.timedOut)
+        }
+        if let failure = failure { throw failure }
+        return payload
+    }
+
+    private func storeCookies(from response: HTTPURLResponse, for url: URL) {
+        var fields: [String: String] = [:]
+        for (key, value) in response.allHeaderFields {
+            guard let key = key as? String else { continue }
+            if let value = value as? String {
+                fields[key] = value
+            } else if let values = value as? [String] {
+                fields[key] = values.joined(separator: ", ")
+            }
+        }
+        let parsed = HTTPCookie.cookies(withResponseHeaderFields: fields, for: url)
+        guard !parsed.isEmpty else { return }
+        cookieLock.lock()
+        for cookie in parsed {
+            if cookie.value.isEmpty {
+                cookies.removeValue(forKey: cookie.name)
+            } else {
+                cookies[cookie.name] = cookie.value
+            }
+        }
+        cookieLock.unlock()
+    }
+}
+
 // MARK: - Accessibility (P6/C6)
 
 /// Runs the seeded home grid at an accessibility Dynamic Type size and puts

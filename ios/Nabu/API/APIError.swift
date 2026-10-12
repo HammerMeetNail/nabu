@@ -13,6 +13,8 @@ enum APIError: LocalizedError {
     case contextChanged
     case saveNotDurable
     case submissionInProgress
+    /// The signed-in user's household membership is disabled by an admin.
+    case accessSuspended(message: String, household: String?)
 
     var errorDescription: String? {
         switch self {
@@ -43,10 +45,14 @@ enum APIError: LocalizedError {
             return "This save could not be stored on your device. Keep this form open and retry."
         case .submissionInProgress:
             return "This save is already being sent."
+        case .accessSuspended(let message, _):
+            return message
         }
     }
 }
 
 struct APIErrorResponse: Codable {
     let error: String
+    var status: String? = nil
+    var household: String? = nil
 }

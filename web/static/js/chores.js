@@ -1,5 +1,5 @@
 import { commonAmountUnits } from './metrics.js';
-import { escapeHTML } from "./utils.js";
+import { escapeHTML, renderAccessSuspendedCard } from "./utils.js";
 import { sortChoresByOrder } from "./preferences.js";
 
 // Preset color swatches for the chore editor (matches existing predefined chore colors + extras).
@@ -28,6 +28,12 @@ const EDIT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
  */
 export function renderChoresView(state) {
   if (!state.household) {
+    if (state.accessSuspended) {
+      return `<div class="chores-view">
+        <div class="chores-view-header"><h2>Chores</h2></div>
+        ${renderAccessSuspendedCard(state)}
+      </div>`;
+    }
     return `<div class="chores-view">
       <div class="chores-view-header"><h2>Chores</h2></div>
       <div class="empty-state">

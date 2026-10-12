@@ -1,5 +1,5 @@
 import { apiFetch } from "./api.js";
-import { escapeHTML, localDateStr, shiftDateStr, formatVolume, mlToOz } from "./utils.js";
+import { escapeHTML, localDateStr, shiftDateStr, formatVolume, mlToOz, renderAccessSuspendedCard } from "./utils.js";
 import { formatTimeAgo } from "./home.js";
 
 // The stats page renders volumes in the user's preferred unit. Volumes are
@@ -249,6 +249,9 @@ function formatHour(h) {
 
 export function renderStatsPage(state) {
   currentVolumeUnit = state.volumeUnit === "oz" ? "oz" : "ml";
+  if (state.accessSuspended) {
+    return `<div class="stats-page"><h2>Stats</h2>${renderAccessSuspendedCard(state)}</div>`;
+  }
   const stats = state.stats || {};
   const overview = stats.overview || {};
   const streaks = overview.streaks || {};
@@ -1720,6 +1723,9 @@ function formatPeriodLabel(p, period) {
 }
 
 export function renderStatsView(state) {
+  if (state.accessSuspended) {
+    return `<div class="stats-view"><h2>Stats</h2>${renderAccessSuspendedCard(state)}</div>`;
+  }
   const stats = state.stats || {};
   const leaderboard = stats.overview?.leaderboard || [];
   const streaks = stats.overview?.streaks || {};

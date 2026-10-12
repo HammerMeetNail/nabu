@@ -166,7 +166,8 @@ func (s *PostgresStore) DeleteHousehold(ctx context.Context, id int64) error {
 
 func (s *PostgresStore) GetMembers(ctx context.Context, householdID int64) ([]Member, error) {
 	rows, err := s.q.QueryContext(ctx, `
-		SELECT u.id, u.email, u.display_name, u.avatar_color, u.email_verified, uh.role
+		SELECT u.id, u.email, u.display_name, u.avatar_color, u.email_verified, uh.role,
+		       uh.suspended_at IS NOT NULL AS suspended
 		FROM user_households uh
 		JOIN users u ON u.id = uh.user_id
 		WHERE uh.household_id = $1
@@ -178,7 +179,7 @@ func (s *PostgresStore) GetMembers(ctx context.Context, householdID int64) ([]Me
 	var members []Member
 	for rows.Next() {
 		var m Member
-		if err := rows.Scan(&m.UserID, &m.Email, &m.DisplayName, &m.AvatarColor, &m.EmailVerified, &m.Role); err != nil {
+		if err := rows.Scan(&m.UserID, &m.Email, &m.DisplayName, &m.AvatarColor, &m.EmailVerified, &m.Role, &m.Suspended); err != nil {
 			return nil, err
 		}
 		members = append(members, m)
@@ -238,16 +239,17 @@ func (s *PostgresStore) RemoveMember(ctx context.Context, householdID, userID in
 		return ErrNotMember
 	}
 	// If this was their active household, clear it or switch to another
+	// (preferring a non-suspended membership; suspended access is unusable).
 	_, err = s.q.ExecContext(ctx, `
 		UPDATE users SET
 			active_household_id = (
-				SELECT household_id FROM user_households WHERE user_id = $1 ORDER BY household_id LIMIT 1
+				SELECT household_id FROM user_households WHERE user_id = $1 AND suspended_at IS NULL ORDER BY household_id LIMIT 1
 			),
 			household_id = (
-				SELECT household_id FROM user_households WHERE user_id = $1 ORDER BY household_id LIMIT 1
+				SELECT household_id FROM user_households WHERE user_id = $1 AND suspended_at IS NULL ORDER BY household_id LIMIT 1
 			),
 			role = COALESCE(
-				(SELECT role FROM user_households WHERE user_id = $1 ORDER BY household_id LIMIT 1),
+				(SELECT role FROM user_households WHERE user_id = $1 AND suspended_at IS NULL ORDER BY household_id LIMIT 1),
 				'member'
 			)
 		WHERE id = $1 AND (active_household_id = $2 OR household_id = $2)
@@ -284,11 +286,116 @@ func (s *PostgresStore) UpdateMemberRole(ctx context.Context, householdID, userI
 	return err
 }
 
+func (s *PostgresStore) SetMemberSuspended(ctx context.Context, householdID, userID int64, suspended bool) error {
+	if s.tx == nil {
+		return s.InTransaction(ctx, func(store Store) error { return store.SetMemberSuspended(ctx, householdID, userID, suspended) })
+	}
+	if err := s.lockHousehold(ctx, householdID); err != nil {
+		return err
+	}
+	if suspended {
+		result, err := s.q.ExecContext(ctx, `
+			UPDATE user_households SET suspended_at = now()
+			WHERE user_id = $1 AND household_id = $2 AND suspended_at IS NULL
+		`, userID, householdID)
+		if err != nil {
+			return err
+		}
+		if n, err := result.RowsAffected(); err != nil {
+			return err
+		} else if n == 0 {
+			if _, err := s.GetMembershipForHousehold(ctx, userID, householdID); err != nil {
+				return err
+			}
+			return nil // already suspended
+		}
+	} else {
+		result, err := s.q.ExecContext(ctx, `
+			UPDATE user_households SET suspended_at = NULL
+			WHERE user_id = $1 AND household_id = $2 AND suspended_at IS NOT NULL
+		`, userID, householdID)
+		if err != nil {
+			return err
+		}
+		if n, err := result.RowsAffected(); err != nil {
+			return err
+		} else if n == 0 {
+			if _, err := s.GetMembershipForHousehold(ctx, userID, householdID); err != nil {
+				return err
+			}
+			return nil // already active
+		}
+	}
+	if !suspended {
+		// Restore the active pointer if suspension had cleared it, so a
+		// re-enabled member lands back in the household instead of the
+		// create/join screen.
+		_, err := s.q.ExecContext(ctx, `
+			UPDATE users SET active_household_id = $2, household_id = $2,
+				role = (SELECT role FROM user_households WHERE user_id = $1 AND household_id = $2)
+			WHERE id = $1 AND active_household_id IS NULL
+		`, userID, householdID)
+		return err
+	}
+	// A suspended household can never be the active one; move the pointer to
+	// another usable membership or clear it entirely.
+	_, err := s.q.ExecContext(ctx, `
+		UPDATE users SET
+			active_household_id = (
+				SELECT household_id FROM user_households WHERE user_id = $1 AND suspended_at IS NULL ORDER BY household_id LIMIT 1
+			),
+			household_id = (
+				SELECT household_id FROM user_households WHERE user_id = $1 AND suspended_at IS NULL ORDER BY household_id LIMIT 1
+			),
+			role = COALESCE(
+				(SELECT role FROM user_households WHERE user_id = $1 AND suspended_at IS NULL ORDER BY household_id LIMIT 1),
+				'member'
+			)
+		WHERE id = $1 AND active_household_id = $2
+	`, userID, householdID)
+	return err
+}
+
+func (s *PostgresStore) IsMemberSuspended(ctx context.Context, householdID, userID int64) (bool, error) {
+	var suspended bool
+	err := s.q.QueryRowContext(ctx, `
+		SELECT suspended_at IS NOT NULL FROM user_households WHERE user_id = $1 AND household_id = $2
+	`, userID, householdID).Scan(&suspended)
+	if err == sql.ErrNoRows {
+		return false, ErrNotMember
+	}
+	return suspended, err
+}
+
+func (s *PostgresStore) GetSuspendedMemberships(ctx context.Context, userID int64) ([]HouseholdWithRole, error) {
+	rows, err := s.q.QueryContext(ctx, `
+		SELECT h.id, h.name, COALESCE(h.initials, ''), uh.role
+		FROM user_households uh
+		JOIN households h ON h.id = uh.household_id
+		WHERE uh.user_id = $1 AND uh.suspended_at IS NOT NULL
+		ORDER BY uh.joined_at ASC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var result []HouseholdWithRole
+	for rows.Next() {
+		var h HouseholdWithRole
+		if err := rows.Scan(&h.ID, &h.Name, &h.Initials, &h.Role); err != nil {
+			return nil, err
+		}
+		h.Suspended = true
+		result = append(result, h)
+	}
+	return result, rows.Err()
+}
+
 func (s *PostgresStore) GetMembership(ctx context.Context, userID int64) (int64, string, error) {
 	var householdID int64
 	var role string
 	err := s.q.QueryRowContext(ctx, `SELECT uh.household_id, uh.role FROM user_households uh
-  JOIN users u ON u.id = uh.user_id AND u.active_household_id = uh.household_id WHERE u.id = $1`, userID).Scan(&householdID, &role)
+  JOIN users u ON u.id = uh.user_id AND u.active_household_id = uh.household_id WHERE u.id = $1 AND uh.suspended_at IS NULL`, userID).Scan(&householdID, &role)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, "", ErrNotFound
 	}
@@ -311,7 +418,7 @@ func (s *PostgresStore) ListUserHouseholds(ctx context.Context, userID int64) ([
 		SELECT h.id, h.name, COALESCE(h.initials, ''), uh.role
 		FROM user_households uh
 		JOIN households h ON h.id = uh.household_id
-		WHERE uh.user_id = $1
+		WHERE uh.user_id = $1 AND uh.suspended_at IS NULL
 		ORDER BY uh.joined_at ASC
 	`, userID)
 	if err != nil {
@@ -333,10 +440,10 @@ func (s *PostgresStore) SetActiveHousehold(ctx context.Context, userID, househol
 	if s.tx == nil {
 		return s.InTransaction(ctx, func(store Store) error { return store.SetActiveHousehold(ctx, userID, householdID) })
 	}
-	// Verify user is a member of the target household
+	// Verify user is a member with usable (non-suspended) access
 	var role string
 	err := s.q.QueryRowContext(ctx, `
-		SELECT role FROM user_households WHERE user_id = $1 AND household_id = $2
+		SELECT role FROM user_households WHERE user_id = $1 AND household_id = $2 AND suspended_at IS NULL
 	`, userID, householdID).Scan(&role)
 	if err == sql.ErrNoRows {
 		return ErrNotMember

@@ -73,6 +73,43 @@ final class DataLoaderTests: XCTestCase {
         XCTAssertTrue(true)
     }
 
+    func testHouseholdLoaderSurfacesAccessSuspended() async {
+        var mockAPI = APIClient(baseURL: URL(string: "http://localhost:9999")!)
+        mockAPI.mockHandler = { request in
+            guard let url = request.url else { return nil }
+            if url.path == "/api/household" {
+                let body = #"{"error":"Your access to Sitter House is temporarily disabled. Contact an administrator to re-enable access.","status":"access_suspended","household":"Sitter House"}"#
+                let response = HTTPURLResponse(url: url, statusCode: 403, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                return (Data(body.utf8), response)
+            }
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+            return (Data(#"{"households":[]}"#.utf8), response)
+        }
+        let loader = HouseholdDataLoader(api: mockAPI, state: state)
+        await loader.loadHouseholdData()
+        XCTAssertTrue(state.accessSuspendedMessage?.contains("Sitter House") ?? false,
+                      "expected the server suspension message, got \(String(describing: state.accessSuspendedMessage))")
+        XCTAssertNil(state.household)
+    }
+
+    func testHouseholdLoaderClearsSuspendedOnceAccessReturns() async {
+        state.accessSuspendedMessage = "stale message"
+        var mockAPI = APIClient(baseURL: URL(string: "http://localhost:9999")!)
+        mockAPI.mockHandler = { request in
+            guard let url = request.url else { return nil }
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+            if url.path == "/api/household" {
+                let body = #"{"household":{"id":1,"name":"Sitter House","initials":"SH","inviteCode":null,"createdAt":"2024-01-01T00:00:00Z"},"members":[],"historicalMembers":[],"invites":[]}"#
+                return (Data(body.utf8), response)
+            }
+            return (Data(#"{"households":[]}"#.utf8), response)
+        }
+        let loader = HouseholdDataLoader(api: mockAPI, state: state)
+        await loader.loadHouseholdData()
+        XCTAssertNil(state.accessSuspendedMessage)
+        XCTAssertEqual(state.household?.name, "Sitter House")
+    }
+
     func testForegroundRefreshWithoutUser() async {
         await dataLoader.foregroundRefresh()
         // Should not crash
@@ -248,6 +285,33 @@ final class NativeRequestOwnershipTests: XCTestCase {
         await gate.release()
         let rejected = await old.value
         XCTAssertTrue(rejected)
+    }
+
+    /// The origin headers are a deliberate claim about the identity that authored
+    /// a request: an account with no active household claims household 0. The
+    /// server rejects a mismatch with 409 `X-Nabu-Context-Changed`, which is what
+    /// stops work captured for one account from being attributed to another, so
+    /// the claim must be sent even when there is no household to name.
+    func testAccountWithoutAHouseholdClaimsHouseholdZero() async throws {
+        final class HeaderCapture {
+            var values: [String: String] = [:]
+        }
+        let capture = HeaderCapture()
+        let identity = ClientIdentity()
+        identity.accept(User(id: 1, householdId: nil, email: "sitter@nabu.local",
+                             displayName: "Sitter", avatarColor: "#112233", emailVerified: true,
+                             role: "member", createdAt: Date(timeIntervalSince1970: 0)))
+        var api = APIClient(baseURL: URL(string: "http://localhost:9999")!, identity: identity)
+        api.mockHandler = { request in
+            for header in ["X-Nabu-User-ID", "X-Nabu-Household-ID"] {
+                capture.values[header] = request.value(forHTTPHeaderField: header) ?? "<absent>"
+            }
+            return (Data(#"{"chores":[]}"#.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        _ = try await api.get("/api/chores") as ChoresResponse
+        XCTAssertEqual(capture.values["X-Nabu-User-ID"], "1")
+        XCTAssertEqual(capture.values["X-Nabu-Household-ID"], "0",
+                       "a householdless account must still claim household 0 rather than omit the guard")
     }
 
     func testPendingLogoutSurvivesRelaunchAndBlocksOrdinaryRequests() async throws {

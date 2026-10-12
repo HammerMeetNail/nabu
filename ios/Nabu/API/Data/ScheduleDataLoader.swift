@@ -19,7 +19,7 @@ final class ScheduleDataLoader {
             NSLog("[Nabu] ScheduleDataLoader.loadSchedules OK: \(data.schedules.count) schedules")
             state.schedules = data.schedules
         } catch {
-            NSLog("[Nabu] Request failed")
+            NSLog("[Nabu] ScheduleDataLoader failed: \(String(describing: error))")
         }
     }
 }

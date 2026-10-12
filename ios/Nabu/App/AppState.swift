@@ -38,6 +38,10 @@ final class AppState: ObservableObject {
     @Published var members: [Member] = []
     @Published var historicalMembers: [HistoricalMember] = []
     @Published var invites: [Invite] = []
+    /// Non-nil when this account's household membership is disabled. The
+    /// message comes from the server: "Your access to <household> is
+    /// temporarily disabled. Contact an administrator to re-enable access."
+    @Published var accessSuspendedMessage: String?
     @Published var chores: [Chore] = []
     @Published var todayLogs: [ChoreLog] = []
     @Published var schedules: [ChoreSchedule] = []
@@ -112,6 +116,7 @@ final class AppState: ObservableObject {
         members = []
         historicalMembers = []
         invites = []
+        accessSuspendedMessage = nil
         chores = []
         todayLogs = []
         schedules = []
@@ -161,6 +166,7 @@ final class AppState: ObservableObject {
         members = []
         historicalMembers = []
         invites = []
+        accessSuspendedMessage = nil
         chores = []
         todayLogs = []
         schedules = []
