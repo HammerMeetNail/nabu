@@ -1,6 +1,6 @@
 # Match the live PostgreSQL major before adopting this image. Physical backups
 # require the same major; this image is prepared/tested for PostgreSQL 17 only.
-FROM docker.io/library/golang:1.26.8-alpine AS gosu-build
+FROM docker.io/library/golang:1.26.9-alpine AS gosu-build
 ARG GOSU_VERSION=1.19
 ARG GOSU_SHA256=cd9719b775dbfedae53923c9b0dc792b66d42c51e0b36652ed6f747fbadc0164
 RUN apk add --no-cache curl \

@@ -23,7 +23,7 @@ make fmt         # Format Go code
 
 ## Prerequisites
 
-- **Go 1.26.8** (local modules, CI and the release image use this compiler)
+- **Go 1.26.9** (local modules, CI and the release image use this compiler)
 - **JS tests require `pnpm install` first** for `jsdom` (dev dependency). Tests use Node's built-in test runner.
 - **E2E tests require `pnpm exec playwright install chromium`** to download the browser binary.
 - **Podman Compose** for local stack (`make local`). Docker Compose may work but is untested.
