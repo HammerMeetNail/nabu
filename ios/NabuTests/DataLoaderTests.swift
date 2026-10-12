@@ -287,6 +287,33 @@ final class NativeRequestOwnershipTests: XCTestCase {
         XCTAssertTrue(rejected)
     }
 
+    /// The origin headers are a deliberate claim about the identity that authored
+    /// a request: an account with no active household claims household 0. The
+    /// server rejects a mismatch with 409 `X-Nabu-Context-Changed`, which is what
+    /// stops work captured for one account from being attributed to another, so
+    /// the claim must be sent even when there is no household to name.
+    func testAccountWithoutAHouseholdClaimsHouseholdZero() async throws {
+        final class HeaderCapture {
+            var values: [String: String] = [:]
+        }
+        let capture = HeaderCapture()
+        let identity = ClientIdentity()
+        identity.accept(User(id: 1, householdId: nil, email: "sitter@nabu.local",
+                             displayName: "Sitter", avatarColor: "#112233", emailVerified: true,
+                             role: "member", createdAt: Date(timeIntervalSince1970: 0)))
+        var api = APIClient(baseURL: URL(string: "http://localhost:9999")!, identity: identity)
+        api.mockHandler = { request in
+            for header in ["X-Nabu-User-ID", "X-Nabu-Household-ID"] {
+                capture.values[header] = request.value(forHTTPHeaderField: header) ?? "<absent>"
+            }
+            return (Data(#"{"chores":[]}"#.utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        _ = try await api.get("/api/chores") as ChoresResponse
+        XCTAssertEqual(capture.values["X-Nabu-User-ID"], "1")
+        XCTAssertEqual(capture.values["X-Nabu-Household-ID"], "0",
+                       "a householdless account must still claim household 0 rather than omit the guard")
+    }
+
     func testPendingLogoutSurvivesRelaunchAndBlocksOrdinaryRequests() async throws {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: file) }

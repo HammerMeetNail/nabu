@@ -114,9 +114,13 @@ final class DataLoader: ObservableObject {
         // Foreground refresh must not collapse pages being read in the panel.
         if !state.notificationPanelOpen { await notifs.loadNotifData() }
         guard state.owns(owner) else { return }
-        if state.user?.householdId != nil {
-            await household.loadHouseholdData()
-            guard state.owns(owner) else { return }
+        // Always re-read the household: an administrator can disable a
+        // membership while the app is backgrounded, and /api/household is what
+        // reports it. The chore read is gated on there actually being a
+        // household (which a suspended membership does not have).
+        await household.loadHouseholdData()
+        guard state.owns(owner) else { return }
+        if state.household != nil {
             await chores.loadChoreData()
         }
     }

@@ -8,6 +8,9 @@ struct ContentView: View {
     @StateObject private var accountDeletion = AccountDeletionModel()
     @State private var hasCheckedSession = false
     @State private var hasLoadedData = false
+    /// Identity revision of the `loadAppData()` run currently in flight, so the
+    /// several triggers that fire for one sign-in cannot overlap.
+    @State private var loadRevision: UUID?
     @State private var handledLinks: Set<URL> = []
 
     var body: some View {
@@ -94,7 +97,12 @@ struct ContentView: View {
                 } else {
                     _ = await auth.loadSession()
                     hasCheckedSession = true
-                    if state.user?.householdId != nil {
+                    // Load regardless of /api/me's householdId: a membership an
+                    // administrator has disabled has no active household, yet
+                    // /api/household is what reports the suspension. Gating on
+                    // householdId here would send a disabled member straight to
+                    // the create/join onboarding screen.
+                    if state.user != nil {
                         await loadAppData()
                     }
                 }
@@ -103,7 +111,10 @@ struct ContentView: View {
         .onChange(of: state.user) { oldUser, newUser in
             if newUser == nil {
                 hasLoadedData = false
-            } else if newUser?.householdId != nil {
+            } else if newUser != nil {
+                // Load for every sign-in, not only ones with an active
+                // household: a disabled membership has none, and /api/household
+                // is what surfaces the suspension message.
                 Task { await loadAppData() }
             }
             if oldUser == nil, newUser != nil {
@@ -189,8 +200,19 @@ struct ContentView: View {
 
     func loadAppData() async {
         guard state.user != nil else { return }
-        NSLog("[Nabu] ContentView.loadAppData calling reloadAfterAuth")
         let owner = state.revision
+        // Several triggers can fire for one sign-in (`onChange(of: state.user)`,
+        // `onChange(of: state.household)`, the skeleton's own `.task`). Overlapping
+        // runs cancel each other: the first to finish flips `hasLoadedData`, the
+        // skeleton disappears, and SwiftUI cancels the other run's in-flight reads,
+        // leaving Home signed in with no chores. One run per identity revision.
+        guard loadRevision != owner else {
+            NSLog("[Nabu] ContentView.loadAppData skipped: a load for this identity is already running")
+            return
+        }
+        loadRevision = owner
+        defer { loadRevision = nil }
+        NSLog("[Nabu] ContentView.loadAppData calling reloadAfterAuth")
         await dataLoader.reloadAfterAuth()
         guard state.revision == owner else { return }
         hasLoadedData = state.household != nil

@@ -1378,6 +1378,7 @@ final class NabuMemberSuspensionUITests: XCTestCase {
 
         let deadline = Date().addingTimeInterval(uiTimeout)
         while Date() < deadline {
+            dismissSavePasswordPrompt()
             if app.staticTexts["access-suspended-message"].exists {
                 signOutFromSuspendedScreen()
                 break
@@ -1392,15 +1393,74 @@ final class NabuMemberSuspensionUITests: XCTestCase {
         signIn(email)
     }
 
+    /// iOS offers to save the credential after every successful sign-in. The
+    /// sheet is hosted by the system (not the app), covers the login form, and
+    /// keeps keyboard focus, so the next sign-in cannot type into the password
+    /// field until it is dismissed.
+    private func dismissSavePasswordPrompt(waiting: TimeInterval = 0) {
+        if waiting > 0 {
+            _ = app.buttons["Not Now"].waitForExistence(timeout: waiting)
+        }
+        var hosts: [XCUIApplication] = [app]
+        hosts.append(XCUIApplication(bundleIdentifier: "com.apple.springboard"))
+        for host in hosts {
+            let button = host.buttons["Not Now"]
+            if button.exists {
+                button.tap()
+                return
+            }
+        }
+    }
+
+    /// Fills the password field and submits. The typed value is read back
+    /// because a keystroke that never reaches the field's binding fails
+    /// silently at the form: the Sign In button stays disabled.
+    private func submitLogin(_ password: String) {
+        let field = app.secureTextFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: uiTimeout), "Password field should be shown")
+        dismissSavePasswordPrompt()
+        for attempt in 1...3 {
+            field.tap()
+            usleep(250_000)
+            if attempt > 1 { field.doubleTap() } // select, so retyping replaces leftovers
+            field.typeText(password)
+            let value = field.value as? String ?? ""
+            if !value.isEmpty && value != "Password" { break }
+        }
+        let signInButton = app.buttons["Sign In"]
+        if signInButton.waitForExistence(timeout: 2) { signInButton.tap() }
+    }
+
+    private func waitForLoginFormToClose() {
+        let deadline = Date().addingTimeInterval(uiTimeout)
+        while Date() < deadline, app.secureTextFields.firstMatch.exists {
+            usleep(250_000)
+        }
+        dismissSavePasswordPrompt(waiting: 2)
+    }
+
     private func signIn(_ email: String) {
         let emailField = app.textFields.firstMatch
         XCTAssertTrue(emailField.waitForExistence(timeout: uiTimeout), "Login form should be shown for \(email)")
         emailField.tap()
         emailField.typeText(email)
-        let passwordField = app.secureTextFields.firstMatch
-        passwordField.tap()
-        passwordField.typeText(password)
-        app.buttons["Sign In"].tap()
+        submitLogin(password)
+        if app.secureTextFields.firstMatch.exists {
+            app.buttons["Sign In"].tap()
+            waitForLoginFormToClose()
+        }
+        if app.secureTextFields.firstMatch.exists {
+            submitLogin(password)
+            waitForLoginFormToClose()
+        }
+        if app.secureTextFields.firstMatch.exists {
+            let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+            attachment.name = "stuck-on-login-form"
+            attachment.lifetime = XCTAttachment.Lifetime.keepAlways
+            add(attachment)
+        }
+        XCTAssertFalse(app.secureTextFields.firstMatch.exists,
+                       "Signing in as \(email) should leave the login form")
     }
 
     /// The member row shows the display name (the local part of the generated
