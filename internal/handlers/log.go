@@ -162,17 +162,20 @@ func (h *LogHandler) fanOutNotification(householdID, loggerID, actorID, choreID 
 	if err != nil {
 		return
 	}
+	// Disabled members receive no activity notifications.
 	var filtered []household.Member
-	if isPrivate {
-		for _, m := range members {
-			if m.Role == household.RoleOwner || m.Role == household.RoleAdmin {
-				filtered = append(filtered, m)
-			}
+	for _, m := range members {
+		if m.Suspended {
+			continue
 		}
-		members = filtered
-		if len(members) == 0 {
-			return
+		if isPrivate && m.Role != household.RoleOwner && m.Role != household.RoleAdmin {
+			continue
 		}
+		filtered = append(filtered, m)
+	}
+	members = filtered
+	if len(members) == 0 {
+		return
 	}
 	mi := make([]notification.MemberInfo, len(members))
 	for i, m := range members {

@@ -36,6 +36,11 @@ struct ContentView: View {
             } else if state.user == nil {
                 LoginView(auth: auth, apiBaseURL: environment.baseURL)
                     .onAppear { auth.configure(api: environment.apiClient) }
+            } else if state.household == nil, let message = state.accessSuspendedMessage {
+                AccessSuspendedView(message: message) {
+                    Task { _ = await auth.logout() }
+                }
+                .onAppear { auth.configure(api: environment.apiClient) }
             } else if state.household == nil {
                 OnboardingView(auth: auth)
                     .onAppear { auth.configure(api: environment.apiClient) }

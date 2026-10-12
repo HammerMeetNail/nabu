@@ -81,3 +81,23 @@ export function shiftDateStr(isoDate, days) {
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
 }
+
+// accessSuspendedMessage returns the explanation for a membership an
+// administrator has disabled. The server message names the household; the
+// fallback keeps the copy complete if only the household came through.
+export function accessSuspendedMessage(state) {
+  const suspended = state && state.accessSuspended;
+  if (!suspended) return "";
+  return suspended.error
+    || `Your access to ${suspended.household || "this household"} is temporarily disabled. Contact an administrator to re-enable access.`;
+}
+
+// renderAccessSuspendedCard replaces the "set up your household" empty state
+// for a disabled member: they do belong to a household, they simply cannot
+// use it until an administrator re-enables them.
+export function renderAccessSuspendedCard(state) {
+  const message = accessSuspendedMessage(state);
+  if (!message) return "";
+  return `<div class="card mt-3"><h3>Access disabled</h3>`
+    + `<p class="text-secondary">${escapeHTML(message)}</p></div>`;
+}

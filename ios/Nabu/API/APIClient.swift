@@ -203,6 +203,9 @@ struct APIClient {
         }
         guard (200...299).contains(httpResponse.statusCode) else {
             if let apiErr = try? apiDecoder.decode(APIErrorResponse.self, from: data) {
+                if apiErr.status == "access_suspended" {
+                    throw APIError.accessSuspended(message: apiErr.error, household: apiErr.household)
+                }
                 throw APIError.serverError(statusCode: httpResponse.statusCode, message: apiErr.error)
             }
             throw APIError.httpError(statusCode: httpResponse.statusCode)

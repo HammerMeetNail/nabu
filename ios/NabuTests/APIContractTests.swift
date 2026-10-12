@@ -47,6 +47,26 @@ final class APIContractTests: XCTestCase {
         XCTAssertEqual(error.errorDescription, "Name is required")
     }
 
+    func testAccessSuspendedErrorPreservesServerMessage() {
+        let error = APIError.accessSuspended(message: "Your access to Sitter House is temporarily disabled. Contact an administrator to re-enable access.", household: "Sitter House")
+        XCTAssertTrue(error.errorDescription?.contains("temporarily disabled") ?? false)
+    }
+
+    func testAccessSuspendedResponseFieldsDecode() throws {
+        let json = #"{"error":"Your access to Sitter House is temporarily disabled.","status":"access_suspended","household":"Sitter House"}"#.data(using: .utf8)!
+        let response = try JSONDecoder().decode(APIErrorResponse.self, from: json)
+        XCTAssertEqual(response.status, "access_suspended")
+        XCTAssertEqual(response.household, "Sitter House")
+        XCTAssertTrue(response.error.contains("temporarily disabled"))
+    }
+
+    func testOrdinaryErrorResponseHasNoSuspendedStatus() throws {
+        let json = #"{"error":"not authorized for this household"}"#.data(using: .utf8)!
+        let response = try JSONDecoder().decode(APIErrorResponse.self, from: json)
+        XCTAssertNil(response.status)
+        XCTAssertNil(response.household)
+    }
+
     // MARK: - Anti-Enumeration
 
     func testDuplicateRegistrationReturns200() {

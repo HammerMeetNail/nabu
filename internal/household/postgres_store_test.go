@@ -89,10 +89,12 @@ func TestPostgresHouseholdStore_GetMembers(t *testing.T) {
 	defer db.Close()
 	store := NewPostgresStore(db)
 
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT u.id, u.email, u.display_name, u.avatar_color, u.email_verified, uh.role FROM user_households uh JOIN users u ON u.id = uh.user_id WHERE uh.household_id = $1`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT u.id, u.email, u.display_name, u.avatar_color, u.email_verified, uh.role,
+		       uh.suspended_at IS NOT NULL AS suspended
+		FROM user_households uh JOIN users u ON u.id = uh.user_id WHERE uh.household_id = $1`)).
 		WithArgs(int64(1)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "display_name", "avatar_color", "email_verified", "role"}).
-			AddRow(1, "a@b.com", "Alice", "#F00", true, "owner"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "display_name", "avatar_color", "email_verified", "role", "suspended"}).
+			AddRow(1, "a@b.com", "Alice", "#F00", true, "owner", false))
 
 	members, err := store.GetMembers(context.Background(), 1)
 	if err != nil {
@@ -278,6 +280,63 @@ func TestPostgresHouseholdStore_UpdateMemberRole(t *testing.T) {
 	}
 }
 
+func TestPostgresHouseholdStore_SetMemberSuspended(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+	store := NewPostgresStore(db)
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`SELECT pg_advisory_xact_lock($1)`)).WithArgs(lifecycleLockKey).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
+
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE user_households SET suspended_at = now()
+			WHERE user_id = $1 AND household_id = $2 AND suspended_at IS NULL`)).
+		WithArgs(int64(2), int64(1)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	// The suspended household can no longer be the active one.
+	mock.ExpectExec(`UPDATE users SET`).
+		WithArgs(int64(2), int64(1)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+
+	mock.ExpectCommit()
+	err = store.SetMemberSuspended(context.Background(), 1, 2, true)
+	if err != nil {
+		t.Fatalf("SetMemberSuspended suspend: %v", err)
+	}
+
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(`SELECT pg_advisory_xact_lock($1)`)).WithArgs(lifecycleLockKey).WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("SELECT pg_advisory_xact_lock").WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE user_households SET suspended_at = NULL
+			WHERE user_id = $1 AND household_id = $2 AND suspended_at IS NOT NULL`)).
+		WithArgs(int64(2), int64(1)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	// Re-enabling restores a pointer that suspension had cleared.
+	mock.ExpectExec(regexp.QuoteMeta(`UPDATE users SET active_household_id = $2, household_id = $2,
+				role = (SELECT role FROM user_households WHERE user_id = $1 AND household_id = $2)
+			WHERE id = $1 AND active_household_id IS NULL`)).
+		WithArgs(int64(2), int64(1)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+	err = store.SetMemberSuspended(context.Background(), 1, 2, false)
+	if err != nil {
+		t.Fatalf("SetMemberSuspended unsuspend: %v", err)
+	}
+
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT suspended_at IS NOT NULL FROM user_households WHERE user_id = $1 AND household_id = $2`)).
+		WithArgs(int64(2), int64(1)).
+		WillReturnRows(sqlmock.NewRows([]string{"suspended"}).AddRow(false))
+	if suspended, err := store.IsMemberSuspended(context.Background(), 1, 2); err != nil || suspended {
+		t.Fatalf("IsMemberSuspended = %v, %v", suspended, err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatalf("unmet expectations: %v", err)
+	}
+}
+
 // TestJoinHousehold_ExhaustedInvite_Postgres verifies the service consumes the
 // one-time invite BEFORE adding the member, and that an exhausted invite
 // (0 rows affected by the atomic UPDATE) rejects the join without ever calling
@@ -309,13 +368,14 @@ func TestJoinHousehold_ExhaustedInvite_Postgres(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"role"}))
 
 	// Capacity check: one existing member.
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT u.id, u.email, u.display_name, u.avatar_color, u.email_verified, uh.role
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT u.id, u.email, u.display_name, u.avatar_color, u.email_verified, uh.role,
+		       uh.suspended_at IS NOT NULL AS suspended
 		FROM user_households uh
 		JOIN users u ON u.id = uh.user_id
 		WHERE uh.household_id = $1`)).
 		WithArgs(int64(1)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "display_name", "avatar_color", "email_verified", "role"}).
-			AddRow(9, "owner@example.com", "Owner", "#FF0000", true, "owner"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "display_name", "avatar_color", "email_verified", "role", "suspended"}).
+			AddRow(9, "owner@example.com", "Owner", "#FF0000", true, "owner", false))
 
 	// The atomic consume: exhausted → 0 rows → ErrInviteNotFound.
 	mock.ExpectExec(regexp.QuoteMeta(`UPDATE invites SET used_count = used_count + 1
@@ -363,13 +423,14 @@ func TestJoinHousehold_ViaOneTimeInvite_Postgres(t *testing.T) {
 		WithArgs(int64(2), int64(1)).
 		WillReturnRows(sqlmock.NewRows([]string{"role"}))
 
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT u.id, u.email, u.display_name, u.avatar_color, u.email_verified, uh.role
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT u.id, u.email, u.display_name, u.avatar_color, u.email_verified, uh.role,
+		       uh.suspended_at IS NOT NULL AS suspended
 		FROM user_households uh
 		JOIN users u ON u.id = uh.user_id
 		WHERE uh.household_id = $1`)).
 		WithArgs(int64(1)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "display_name", "avatar_color", "email_verified", "role"}).
-			AddRow(9, "owner@example.com", "Owner", "#FF0000", true, "owner"))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "display_name", "avatar_color", "email_verified", "role", "suspended"}).
+			AddRow(9, "owner@example.com", "Owner", "#FF0000", true, "owner", false))
 
 	// Consume the invite (1 row) BEFORE the member insert.
 	mock.ExpectExec(regexp.QuoteMeta(`UPDATE invites SET used_count = used_count + 1

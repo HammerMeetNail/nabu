@@ -55,6 +55,10 @@ struct UpdateMemberRoleRequest: Codable {
     let role: String
 }
 
+struct UpdateMemberAccessRequest: Codable {
+    let suspended: Bool
+}
+
 struct TransferOwnershipRequest: Codable {
     let newOwnerId: Int
 }

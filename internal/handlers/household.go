@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -223,9 +224,12 @@ func (h *HouseholdHandler) Join(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				return
 			}
-			mi := make([]notification.MemberInfo, len(members))
-			for i, m := range members {
-				mi[i] = notification.MemberInfo{UserID: m.UserID, DisplayName: m.DisplayName}
+			var mi []notification.MemberInfo
+			for _, m := range members {
+				if m.Suspended {
+					continue
+				}
+				mi = append(mi, notification.MemberInfo{UserID: m.UserID, DisplayName: m.DisplayName})
 			}
 			h.notifService.NotifyHouseholdJoined(ctx, mi, joinerID, joinerName, householdName, notification.Scope{HouseholdID: hhID})
 		})
@@ -314,6 +318,38 @@ func (h *HouseholdHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
 }
 
+// UpdateMemberAccess disables or re-enables a member's access.
+// PATCH /api/household/members/{id}/access with body {"suspended": bool}.
+func (h *HouseholdHandler) UpdateMemberAccess(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+
+	idStr := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/api/household/members/"), "/access")
+	targetUserID, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid user id")
+		return
+	}
+
+	var req struct {
+		Suspended *bool `json:"suspended"`
+	}
+	if err := readJSON(r, &req); err != nil || req.Suspended == nil {
+		writeError(w, http.StatusBadRequest, "suspended (boolean) is required")
+		return
+	}
+
+	if err := h.service.SetMemberAccess(r.Context(), user.ID, targetUserID, *req.Suspended); err != nil {
+		writeHouseholdError(w, r, err)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+}
+
 func (h *HouseholdHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.CurrentUser(r.Context())
 	if !ok {
@@ -379,6 +415,15 @@ func extractID(path, prefix string) string {
 }
 
 func writeHouseholdError(w http.ResponseWriter, r *http.Request, err error) {
+	var suspendedErr *household.AccessSuspendedError
+	if errors.As(err, &suspendedErr) {
+		writeJSON(w, http.StatusForbidden, map[string]string{
+			"error":     fmt.Sprintf("Your access to %s is temporarily disabled. Contact an administrator to re-enable access.", suspendedErr.HouseholdName),
+			"status":    "access_suspended",
+			"household": suspendedErr.HouseholdName,
+		})
+		return
+	}
 	switch {
 	case errors.Is(err, household.ErrInvalidInput):
 		writeError(w, http.StatusBadRequest, err.Error())

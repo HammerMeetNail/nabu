@@ -94,6 +94,14 @@ final class RequestEncodingTests: XCTestCase {
         XCTAssertEqual(dict["new_owner_id"] as? Int, 2)
     }
 
+    func testUpdateMemberAccessRequest() throws {
+        // The real transport uses apiEncoder (camelCase), like the server JSON.
+        let body = json(try apiEncoder.encode(UpdateMemberAccessRequest(suspended: true)))
+        XCTAssertEqual(body["suspended"] as? Bool, true)
+        let off = json(try apiEncoder.encode(UpdateMemberAccessRequest(suspended: false)))
+        XCTAssertEqual(off["suspended"] as? Bool, false, "false must still be encoded, not dropped")
+    }
+
     // MARK: - Chores
 
     func testCreateChoreRequestFull() throws {

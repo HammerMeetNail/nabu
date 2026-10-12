@@ -73,6 +73,43 @@ final class DataLoaderTests: XCTestCase {
         XCTAssertTrue(true)
     }
 
+    func testHouseholdLoaderSurfacesAccessSuspended() async {
+        var mockAPI = APIClient(baseURL: URL(string: "http://localhost:9999")!)
+        mockAPI.mockHandler = { request in
+            guard let url = request.url else { return nil }
+            if url.path == "/api/household" {
+                let body = #"{"error":"Your access to Sitter House is temporarily disabled. Contact an administrator to re-enable access.","status":"access_suspended","household":"Sitter House"}"#
+                let response = HTTPURLResponse(url: url, statusCode: 403, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+                return (Data(body.utf8), response)
+            }
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+            return (Data(#"{"households":[]}"#.utf8), response)
+        }
+        let loader = HouseholdDataLoader(api: mockAPI, state: state)
+        await loader.loadHouseholdData()
+        XCTAssertTrue(state.accessSuspendedMessage?.contains("Sitter House") ?? false,
+                      "expected the server suspension message, got \(String(describing: state.accessSuspendedMessage))")
+        XCTAssertNil(state.household)
+    }
+
+    func testHouseholdLoaderClearsSuspendedOnceAccessReturns() async {
+        state.accessSuspendedMessage = "stale message"
+        var mockAPI = APIClient(baseURL: URL(string: "http://localhost:9999")!)
+        mockAPI.mockHandler = { request in
+            guard let url = request.url else { return nil }
+            let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
+            if url.path == "/api/household" {
+                let body = #"{"household":{"id":1,"name":"Sitter House","initials":"SH","inviteCode":null,"createdAt":"2024-01-01T00:00:00Z"},"members":[],"historicalMembers":[],"invites":[]}"#
+                return (Data(body.utf8), response)
+            }
+            return (Data(#"{"households":[]}"#.utf8), response)
+        }
+        let loader = HouseholdDataLoader(api: mockAPI, state: state)
+        await loader.loadHouseholdData()
+        XCTAssertNil(state.accessSuspendedMessage)
+        XCTAssertEqual(state.household?.name, "Sitter House")
+    }
+
     func testForegroundRefreshWithoutUser() async {
         await dataLoader.foregroundRefresh()
         // Should not crash

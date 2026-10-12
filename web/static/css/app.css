@@ -1119,6 +1119,12 @@ input:focus, select:focus, textarea:focus {
   margin-left: auto;
 }
 
+.member-disabled-badge {
+  background: #FDECEC;
+  color: #B3261E;
+  margin-left: 6px;
+}
+
 .verify-badge {
   font-size: 10px;
   font-weight: 500;

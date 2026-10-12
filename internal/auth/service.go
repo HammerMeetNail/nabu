@@ -191,6 +191,13 @@ func (s *Service) Login(ctx context.Context, email, password string) (User, Sess
 	return user, session, nil
 }
 
+// RevokeSessions deletes every active session for a user. Used when a
+// household disables a member: their devices fall back to the login screen
+// immediately instead of acting on stale access.
+func (s *Service) RevokeSessions(ctx context.Context, userID int64) error {
+	return s.store.DeleteUserSessions(ctx, userID)
+}
+
 func (s *Service) Logout(ctx context.Context, sessionToken string) error {
 	if sessionToken == "" {
 		return nil

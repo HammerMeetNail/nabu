@@ -8,6 +8,7 @@ export function createAppState() {
     todayLogs: [],
     chores: [],
     household: null,
+    accessSuspended: null,   // {household, error} when this account's membership is disabled
     historicalMembers: [],
     userHouseholds: [],
     activeHouseholdId: null,

@@ -145,6 +145,10 @@ func (s *Scheduler) eligibleUsers(ctx context.Context, sch schedule.ChoreSchedul
 		if err != nil || (isPrivate && role != household.RoleOwner && role != household.RoleAdmin) {
 			return nil
 		}
+		// Disabled members receive no reminders.
+		if suspended, err := s.hhStore.IsMemberSuspended(ctx, sch.HouseholdID, uid); err != nil || suspended {
+			return nil
+		}
 		if s.userHasScheduleReminderEnabled(ctx, uid) {
 			return []int64{uid}
 		}
@@ -159,6 +163,9 @@ func (s *Scheduler) eligibleUsers(ctx context.Context, sch schedule.ChoreSchedul
 
 	var users []int64
 	for _, m := range members {
+		if m.Suspended {
+			continue
+		}
 		if isPrivate && m.Role != household.RoleOwner && m.Role != household.RoleAdmin {
 			continue
 		}

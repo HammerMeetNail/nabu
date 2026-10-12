@@ -23,6 +23,9 @@ type HouseholdWithRole struct {
 	Name     string `json:"name"`
 	Initials string `json:"initials"`
 	Role     string `json:"role"`
+	// Suspended marks a disabled membership internally. Suspended
+	// memberships are never listed to clients, so it is not serialized.
+	Suspended bool `json:"-"`
 }
 
 type Member struct {
@@ -32,6 +35,9 @@ type Member struct {
 	AvatarColor   string `json:"avatarColor"`
 	EmailVerified bool   `json:"emailVerified"`
 	Role          string `json:"role"`
+	// Suspended members keep their membership and history but receive no
+	// household access or notifications until an owner/admin re-enables them.
+	Suspended bool `json:"suspended"`
 }
 
 // HistoricalMember identifies a former member who authored retained household
@@ -74,6 +80,17 @@ type Store interface {
 	AddMember(ctx context.Context, householdID, userID int64, role string) error
 	RemoveMember(ctx context.Context, householdID, userID int64) error
 	UpdateMemberRole(ctx context.Context, householdID, userID int64, role string) error
+	// SetMemberSuspended disables or re-enables a membership. Suspending also
+	// moves the user's active-household pointer off this household (preferably
+	// to another non-suspended membership) so their session resolves to a
+	// household they can actually use.
+	SetMemberSuspended(ctx context.Context, householdID, userID int64, suspended bool) error
+	// IsMemberSuspended reports whether the membership row is currently disabled.
+	IsMemberSuspended(ctx context.Context, householdID, userID int64) (bool, error)
+	// GetSuspendedMemberships lists households where the user's membership is
+	// currently disabled (used to tell a disabled user which household
+	// disabled them instead of a bare "no household" response).
+	GetSuspendedMemberships(ctx context.Context, userID int64) ([]HouseholdWithRole, error)
 	// GetMembership returns (activeHouseholdID, role) for the user's currently active household.
 	GetMembership(ctx context.Context, userID int64) (int64, string, error)
 	// GetMembershipForHousehold returns the role of a user in a specific household.
