@@ -1413,26 +1413,47 @@ final class NabuMemberSuspensionUITests: XCTestCase {
         String(memberEmail.prefix(while: { $0 != "@" }))
     }
 
-    /// Settings is a scrolling list, so bring the member row on screen first.
+        /// Settings is a scrolling list, so bring an element on screen before using
+    /// it. How far the list has to scroll varies with content height, so swipe
+    /// until the element appears rather than assuming one swipe is enough.
+    private func scrollUntilVisible(_ element: XCUIElement, maxSwipes: Int = 5) {
+        if element.waitForExistence(timeout: 2) { return }
+        for _ in 0..<maxSwipes {
+            app.swipeUp()
+            if element.waitForExistence(timeout: 1) { return }
+        }
+    }
+
     private func revealMemberRow() {
         let menu = app.buttons["member-menu"]
-        for _ in 0..<4 {
-            if menu.waitForExistence(timeout: 3) { return }
-            app.swipeUp()
+        scrollUntilVisible(menu)
+        if !menu.waitForExistence(timeout: uiTimeout) {
+            try? app.debugDescription.write(
+                toFile: "/private/var/folders/pk/6j3lsvxs5qld69s1ct38qrlw0000gn/T/opencode/nabu-hierarchy.txt",
+                atomically: true, encoding: .utf8)
+            XCTFail("Member row should expose its menu")
+            return
         }
-        XCTAssertTrue(menu.waitForExistence(timeout: uiTimeout), "Member row should expose its menu")
     }
 
     private func openSettingsTab() {
         let settings = app.tabBars.buttons["Settings"]
         XCTAssertTrue(settings.waitForExistence(timeout: uiTimeout), "Settings tab should be visible")
-        settings.tap()
+        // A tap can land while the app is still finishing a sign-in refresh,
+        // which leaves it on the Home tab, so confirm the Members section
+        // arrived and retry the tap if it did not.
+        let membersHeader = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Members (")).firstMatch
+        for _ in 0..<3 {
+            settings.tap()
+            if membersHeader.waitForExistence(timeout: 3) { return }
+        }
+        XCTAssertTrue(membersHeader.waitForExistence(timeout: uiTimeout), "Settings should show the Members section")
     }
 
     private func signOutFromSettings() {
         openSettingsTab()
         let signOutButton = app.buttons["Sign Out"]
-        app.swipeUp()
+        scrollUntilVisible(signOutButton)
         XCTAssertTrue(signOutButton.waitForExistence(timeout: uiTimeout), "Sign Out should be reachable")
         signOutButton.tap()
         XCTAssertTrue(app.textFields.firstMatch.waitForExistence(timeout: uiTimeout),

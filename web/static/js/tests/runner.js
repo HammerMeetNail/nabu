@@ -1714,4 +1714,25 @@ describe('Member access disable/enable', () => {
     assert.match(renderHomeView(fresh), /Set Up Household/);
     assert.match(renderChoresView(fresh), /No household set up/);
   });
+
+  it('a disabled member sees the disabled card instead of empty stats', async () => {
+    const {renderStatsPage} = await import('../stats.js');
+    const state = {
+      user: {id: 12, email: 'sitter@test.com'},
+      household: null,
+      chores: [],
+      members: [],
+      historicalMembers: [],
+      volumeUnit: 'ml',
+      accessSuspended: {household: 'Sitter House', error: 'Your access to Sitter House is temporarily disabled. Contact an administrator to re-enable access.'},
+    };
+
+    const html = renderStatsPage(state);
+    assert.match(html, /Access disabled/, 'stats explains the real reason');
+    assert.match(html, /temporarily disabled/);
+    assert.doesNotMatch(html, /No chores yet|No data yet/, 'a disabled member is never told the household is empty');
+
+    const normal = renderStatsPage({...state, accessSuspended: null, stats: {}});
+    assert.doesNotMatch(normal, /Access disabled/, 'an active member keeps the normal stats page');
+  });
 });

@@ -958,6 +958,7 @@ async function loadStatsTodayCount() {
 
 function renderStatsPageView() {
   try {
+    if (state.accessSuspended) return renderStatsPage(state);
     if (state.stats) {
       const page = renderStatsPage(state);
       if (state.activeSheet === "widget-wizard") {

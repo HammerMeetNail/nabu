@@ -125,11 +125,17 @@ test.describe('Settings - Disable Member Access', () => {
     await expect(sitterPage.getByText(/temporarily disabled/)).toBeVisible();
 
     // And no tab invites her to "set up a household" she already belongs to.
-    for (const route of ['/', '/schedule', '/activity']) {
+    for (const route of ['/', '/schedule', '/activity', '/stats']) {
       await sitterPage.goto(route);
       await expect(sitterPage.getByText('Access disabled')).toBeVisible();
       await expect(sitterPage.getByText('Set Up Household')).toHaveCount(0);
     }
+
+    // Stats explains the real reason rather than showing an empty household.
+    await sitterPage.goto('/stats');
+    await expect(sitterPage.getByText(/temporarily disabled/)).toBeVisible();
+    await expect(sitterPage.getByText('No chores yet')).toHaveCount(0);
+    await expect(sitterPage.getByText('No data yet')).toHaveCount(0);
 
     // Owner re-enables.
     await ownerPage.reload();

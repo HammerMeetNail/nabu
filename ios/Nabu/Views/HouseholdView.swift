@@ -881,6 +881,7 @@ struct MemberRow: View {
                     Image(systemName: "ellipsis.circle")
                         .foregroundColor(.secondary)
                 }
+                .accessibilityIdentifier("member-menu")
                 .alert(
                     "Disable \(member.displayName.isEmpty ? member.email : member.displayName)?",
                     isPresented: $showingDisableConfirm
