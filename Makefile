@@ -73,9 +73,11 @@ coverage:
 
 hooks:
 	@echo "Installing git hooks..."
-	@cp scripts/pre-push-hook.sh .git/hooks/pre-push
-	@chmod +x .git/hooks/pre-push
-	@echo "  pre-push: parity check (skip with SKIP_PARITY=1)"
+	@hooks="$$(git rev-parse --git-path hooks)"; \
+	mkdir -p "$$hooks"; \
+	printf '#!/usr/bin/env bash\n# Installed by `make hooks`. Thin wrapper: runs the versioned\n# script from the working tree, so the installed hook can never drift.\nroot=$$(git rev-parse --show-toplevel) || exit 1\nexec bash "$$root/scripts/pre-push-hook.sh" "$$@"\n' > "$$hooks/pre-push"; \
+	chmod +x "$$hooks/pre-push"; \
+	echo "  pre-push -> scripts/pre-push-hook.sh (build, vet, go/js tests, parity matrix; skip with SKIP_PARITY=1 or SKIP_FAST=1)"
 
 check-parity:
 	bash scripts/check-parity.sh
