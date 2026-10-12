@@ -25,8 +25,14 @@ export async function fixture(page,props={}) {
   await expect(page.locator('.home-grid')).toBeVisible();
   return {email,household,chore,headers:h};
 }
+// Mirrors what the real clients post: completedAt plus the *local* calendar date.
+// Without `date` the server files the log under its own UTC day, so on any machine
+// whose local date differs from UTC (evenings in the Americas, all day east of
+// UTC) date-scoped reads such as the Stats "Today" count query an empty day.
+const localDate = (d=new Date()) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
 export async function postLog(page,chore,fields={}) {
-  const res=await page.request.post('/api/logs',{headers:await headers(page),data:{choreId:chore.id,completedAt:new Date().toISOString(),hour:12,...fields}});
+  const completedAt=new Date();
+  const res=await page.request.post('/api/logs',{headers:await headers(page),data:{choreId:chore.id,completedAt:completedAt.toISOString(),date:localDate(completedAt),hour:12,...fields}});
   expect(res.ok()).toBeTruthy();
   return (await res.json()).log;
 }
