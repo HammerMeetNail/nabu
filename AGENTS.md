@@ -86,7 +86,7 @@ CI and `make lint` use golangci-lint v2.13.2. The local pre-push checklist also 
 
 ## Prerequisites
 
-- **Go 1.26.8** (local validation, CI and release images match `go.mod`; `scripts/check-toolchain.sh` verifies alignment).
+- **Go 1.26.9** (local validation, CI and release images match `go.mod`; `scripts/check-toolchain.sh` verifies alignment).
 - **JS tests require `pnpm install` first** for `jsdom` (dev dependency). Tests use Node's built-in test runner (`node --test`), not Jest or Mocha.
 - **E2E tests require `pnpm exec playwright install chromium`** to download the browser binary.
 - **Podman Compose** for local stack (`make local`). Docker Compose may work but is untested.
