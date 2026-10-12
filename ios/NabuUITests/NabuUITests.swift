@@ -1347,6 +1347,13 @@ final class NabuMemberSuspensionUITests: XCTestCase {
                       "Disabled member should see the access-disabled screen")
         XCTAssertTrue(message.label.contains("temporarily disabled"),
                       "Message should explain that access is temporarily disabled: \(message.label)")
+        // The system credential sheet can appear after the form is gone, on top
+        // of the app, so clear it before judging what the member actually sees.
+        dismissSavePasswordPrompt(waiting: 1)
+        let evidence = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        evidence.name = "access-suspended-screen"
+        evidence.lifetime = XCTAttachment.Lifetime.keepAlways
+        add(evidence)
         app.terminate()
 
         // 5. Owner re-enables; the badge clears.
