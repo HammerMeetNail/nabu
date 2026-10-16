@@ -12,6 +12,7 @@ import { createSheetController } from "./sheets.js";
 import { apiMe, apiFetch } from "./api.js";
 import { loadNotificationPage, mutateNotification } from "./notification-data.js";
 import { renderExports, downloadCSV } from "./exports.js";
+import { renderApiKeys, loadApiKeys, createApiKey, revokeApiKey } from "./api-keys.js";
 import { replayQueue, queuedLogs, discardQueuedLog } from "./offline-queue.js";
 import { escapeHTML, localDateStr, shiftDateStr, formatVolume, renderAccessSuspendedCard } from "./utils.js";
 import {
@@ -343,7 +344,7 @@ async function loadMoreHistoryPage() {
 async function refreshActiveTab() {
   const contextScope = captureScope(state);
   const scope = captureScope(state);
-  if ((state.currentRoute || window.location.pathname) === "/settings") await withCurrentContext(loadHouseholdData(), contextScope);
+  if ((state.currentRoute || window.location.pathname) === "/settings") await withCurrentContext(Promise.all([loadHouseholdData(), loadApiKeysData()]), contextScope);
   else await withCurrentContext(reloadViewData(), contextScope);
   if (scope.current()) render(document.querySelector("#app"));
 }
@@ -863,6 +864,7 @@ function renderSettingsView() {
   const householdRole = state.members?.find(m => m.userId === user?.id)?.role || user?.role;
   const canExportHousehold = !!hh && (householdRole === "owner" || householdRole === "admin");
   const exportCard = renderExports(state, canExportHousehold);
+  const apiKeysCard = user ? renderApiKeys(state, window.location.origin) : "";
 
   const activeId = state.activeHouseholdId || hh?.id;
   const yourHouseholdsCard = state.userHouseholds && state.userHouseholds.length > 1 ? `
@@ -887,9 +889,9 @@ function renderSettingsView() {
     const householdCard = state.accessSuspended
       ? renderAccessSuspendedCard(state)
       : renderHouseholdView(null, null, null, state.user);
-    return `<div class="settings-view">${householdCard}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div></div>`;
+    return `<div class="settings-view">${householdCard}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div></div>`;
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div></div>`;
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div></div>`;
 }
 
 function loadAllStatsData() {
@@ -1025,6 +1027,56 @@ async function updateNotification(action, id) {
   updateTopBar();
   if (updated && action === "clear" && panelIntent === notificationPanelIntent) closeNotifPanel();
   renderNotifPanel();
+}
+
+async function loadApiKeysData() {
+  const scope = captureScope(state, "api-keys");
+  if (!state.user) return;
+  try {
+    state.apiKeys = await withCurrentContext(loadApiKeys(), scope);
+  } catch {}
+}
+
+async function doCreateApiKey(form) {
+  if (state.apiKeyBusy) return;
+  const name = form.querySelector("#api-key-name").value.trim();
+  if (!name) return;
+  const app = document.querySelector("#app");
+  captureScope(state, "api-keys"); // supersede list reads started before this change
+  const scope = captureScope(state);
+  state.apiKeyBusy = true;
+  state.apiKeyError = null;
+  render(app);
+  try {
+    const data = await createApiKey(name);
+    if (!scope.current()) return;
+    state.apiKeyIssued = data.token;
+    state.apiKeys = [data.key, ...(state.apiKeys || [])];
+    form.reset();
+  } catch (err) {
+    if (scope.current()) state.apiKeyError = err.message || "Could not create the key. Please retry.";
+  } finally {
+    if (scope.current()) { state.apiKeyBusy = false; render(app); }
+  }
+}
+
+async function doRevokeApiKey(id, name) {
+  if (state.apiKeyBusy || !window.confirm(`Revoke "${name}"? Scripts using it will stop working right away.`)) return;
+  const app = document.querySelector("#app");
+  captureScope(state, "api-keys"); // supersede list reads started before this change
+  const scope = captureScope(state);
+  state.apiKeyBusy = true;
+  state.apiKeyError = null;
+  render(app);
+  try {
+    await revokeApiKey(id);
+    if (!scope.current()) return;
+    state.apiKeys = await loadApiKeys();
+  } catch (err) {
+    if (scope.current()) state.apiKeyError = err.message || "Could not revoke the key. Please retry.";
+  } finally {
+    if (scope.current()) { state.apiKeyBusy = false; render(app); }
+  }
 }
 
 async function loadNotificationPrefs() {
@@ -1421,6 +1473,9 @@ async function reloadAfterAuth() {
     loadLatestLogsData(),
   ]), contextScope);
   if (!scope.current()) return;
+  if ((state.currentRoute || window.location.pathname) === "/settings") {
+    void loadApiKeysData().then(() => { if (scope.current()) render(document.querySelector("#app")); });
+  }
   await withCurrentContext(syncTimezone(state), contextScope);
   if (!scope.current() || !state.household) return;
   // Notifications update their own panel/badge and must not delay Home.
@@ -1745,7 +1800,7 @@ export async function init() {
       if (state.currentRoute === "/settings") {
         state._loadedHousehold = true;
         render(app);
-        Promise.all([loadNotificationPrefs(), loadChoreReminderPrefsData()]).then(owned(() => render(app)));
+        Promise.all([loadNotificationPrefs(), loadChoreReminderPrefsData(), loadApiKeysData()]).then(owned(() => render(app)));
         return;
       }
       if (state.currentRoute === "/activity") {
@@ -1968,6 +2023,24 @@ export async function init() {
         e.preventDefault();
         void doDeleteAccount();
         break;
+      case "revoke-api-key":
+        e.preventDefault();
+        void doRevokeApiKey(actionEl.dataset.keyId, actionEl.dataset.keyName || "this key");
+        break;
+      case "copy-api-key": {
+        e.preventDefault();
+        const token = state.apiKeyIssued;
+        if (!token) break;
+        navigator.clipboard?.writeText(token).then(
+          () => showToast("API key copied", "success"),
+          () => showToast("Copy failed. Select the key and copy it manually.", "error"));
+        break;
+      }
+      case "dismiss-api-key":
+        e.preventDefault();
+        state.apiKeyIssued = null;
+        render(app);
+        break;
 
       case "open-notifications": {
         e.preventDefault();
@@ -2013,7 +2086,7 @@ export async function init() {
         state._loadedHousehold = true;
         state.currentRoute = "/settings";
         render(app);
-        Promise.all([loadNotificationPrefs(), loadChoreReminderPrefsData()]).then(owned(() => render(app)));
+        Promise.all([loadNotificationPrefs(), loadChoreReminderPrefsData(), loadApiKeysData()]).then(owned(() => render(app)));
         break;
       }
       case "create-invite":
@@ -3648,6 +3721,9 @@ export async function init() {
         break;
       case "change-password":
         doChangePassword(form);
+        break;
+      case "create-api-key":
+        void doCreateApiKey(form);
         break;
       case "create-household":
         doCreateHousehold(form);

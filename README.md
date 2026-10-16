@@ -155,6 +155,9 @@ Rate budgets apply independently to each server replica; they are not a distribu
 ### Logging
 `POST /api/logs` `PATCH /api/logs/{id}` `DELETE /api/logs/{id}` `GET /api/logs/today` `GET /api/logs/week` `GET /api/logs/month` `GET /api/logs/history` `GET /api/logs/latest-per-chore`
 
+### API keys
+`GET /api/api-keys` `POST /api/api-keys` `DELETE /api/api-keys/{id}` (browser session only). Personal keys (`Authorization: Bearer nabu_pat_…`) can call the logging endpoints plus `GET /api/chores`, `GET /api/household` and `GET /api/me`; see [`docs/api.md`](docs/api.md).
+
 ### Schedules
 `GET /api/schedules` `POST /api/schedules` `PATCH /api/schedules/{id}` `DELETE /api/schedules/{id}` `GET /api/schedules/for-date`
 

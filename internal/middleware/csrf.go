@@ -16,6 +16,13 @@ import (
 func CSRF(cookieName string, secure bool) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// A request already authenticated by a personal API key carries no
+			// ambient credentials (APIKey drops the Cookie header), so there is
+			// nothing for a cross-site request to forge.
+			if APIKeyID(r.Context()) != "" {
+				next.ServeHTTP(w, r)
+				return
+			}
 			token := ""
 			if cookie, err := r.Cookie(cookieName); err == nil {
 				token = cookie.Value

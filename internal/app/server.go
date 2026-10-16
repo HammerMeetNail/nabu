@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"html/template"
 	"io"
 	"io/fs"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/account"
+	"github.com/HammerMeetNail/nabu/internal/apikey"
 	"github.com/HammerMeetNail/nabu/internal/apns"
 	"github.com/HammerMeetNail/nabu/internal/audit"
 	"github.com/HammerMeetNail/nabu/internal/auth"
@@ -116,6 +118,7 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	var pushStore push.Store
 	var dayNoteStore daynote.Store
 	var apnsStore apns.Store
+	var apiKeyStore apikey.Store
 
 	if db != nil {
 		authStore = auth.NewPostgresStore(db)
@@ -127,6 +130,7 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 		pushStore = push.NewPostgresStore(db)
 		dayNoteStore = daynote.NewPostgresStore(db)
 		apnsStore = apns.NewPostgresStore(db)
+		apiKeyStore = apikey.NewPostgresStore(db)
 	} else {
 		authStore = auth.NewMemoryStore()
 		householdStore = household.NewMemoryStore()
@@ -137,6 +141,7 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 		pushStore = push.NewMemoryStore()
 		dayNoteStore = daynote.NewMemoryStore()
 		apnsStore = apns.NewMemoryStore()
+		apiKeyStore = apikey.NewMemoryStore()
 		pushStore.(*push.MemoryStore).BindSessions(authStore.(*auth.MemoryStore))
 		apnsStore.(*apns.MemoryStore).BindSessions(authStore.(*auth.MemoryStore))
 	}
@@ -510,6 +515,11 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 		}
 	}))
 
+	apiKeyService := apikey.NewService(apiKeyStore, authService)
+	apiKeyHandler := handlers.NewAPIKeyHandler(apiKeyService, auditLog)
+	mux.HandleFunc("/api/api-keys", middleware.RequireAuth(apiKeyHandler.Keys))
+	mux.HandleFunc("/api/api-keys/{id}", method(http.MethodDelete, middleware.RequireAuth(apiKeyHandler.Revoke)))
+
 	mux.HandleFunc("/api/logs", method(http.MethodPost, middleware.RequireAuth(logHandler.Create)))
 	mux.HandleFunc("/api/logs/{id}", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -719,6 +729,14 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	handler = middleware.SecurityHeaders(cfg.ServerSecure)(handler)
 	handler = middleware.Session(authService, "nabu_session")(handler)
 	handler = middleware.CSRF("nabu_csrf", cfg.ServerSecure)(handler)
+	// Outside CSRF so a validated personal API key can skip the cookie check.
+	handler = middleware.APIKey(func(ctx context.Context, token string) (auth.User, string, error) {
+		user, keyID, err := apiKeyService.Authenticate(ctx, token)
+		if errors.Is(err, apikey.ErrInvalidKey) {
+			return auth.User{}, "", middleware.ErrInvalidAPIKey
+		}
+		return user, keyID, err
+	}, auditLog)(handler)
 	handler = rateLimiter.Middleware("/api/auth")(handler)
 	handler = joinLimiter.Middleware("/api/household/join")(handler)
 	if operatorLimiter != nil {
