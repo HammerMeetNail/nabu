@@ -54,7 +54,7 @@ export function renderApiKeys(state, origin = "") {
   }).join("");
   return `<div class="card mt-3" data-testid="api-keys">
     <h3>API Keys</h3>
-    <p class="text-secondary">Let a script add, view, edit, and delete activity logs as you, with the same permissions you have in the app. Keys can't change settings, members, or chores. Changing your password turns off every key.</p>
+    <p class="text-secondary">Let a script add, view, edit, and delete activity logs as you, with the same permissions you have in the app. Keys can't change settings or chores. Changing your password turns off every key.</p>
     ${issuedBlock}
     <form id="create-api-key-form" data-action="create-api-key" class="mt-2">
       <div class="form-group">
