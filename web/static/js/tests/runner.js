@@ -1736,3 +1736,31 @@ describe('Member access disable/enable', () => {
     assert.doesNotMatch(normal, /Access disabled/, 'an active member keeps the normal stats page');
   });
 });
+
+describe("API keys settings card", () => {
+  it("escapes key names and only offers revoke for active keys", async () => {
+    const { renderApiKeys } = await import("../api-keys.js");
+    const html = renderApiKeys({ apiKeys: [
+      { id: "aaaaaaaaaaaaaaaa", name: '<img src=x onerror=alert(1)>', createdAt: "2026-10-16T00:00:00Z", lastUsedAt: null, revokedAt: null, invalidated: false },
+      { id: "bbbbbbbbbbbbbbbb", name: "old", createdAt: "2026-10-01T00:00:00Z", lastUsedAt: null, revokedAt: "2026-10-02T00:00:00Z", invalidated: false },
+      { id: "cccccccccccccccc", name: "stale", createdAt: "2026-10-01T00:00:00Z", lastUsedAt: null, revokedAt: null, invalidated: true },
+    ] }, "https://nabu.example");
+    const root = dom.window.document.createElement("div");
+    root.innerHTML = html;
+    assert.equal(root.querySelector("img"), null);
+    assert.equal(root.querySelectorAll('[data-testid="api-key-row"]').length, 3);
+    const revoke = root.querySelectorAll('[data-action="revoke-api-key"]');
+    assert.equal(revoke.length, 1);
+    assert.equal(revoke[0].dataset.keyId, "aaaaaaaaaaaaaaaa");
+    assert.match(root.textContent, /Revoked/);
+    assert.match(root.textContent, /password changed/);
+    assert.equal(root.querySelector('[data-testid="api-key-issued"]'), null);
+  });
+
+  it("shows a newly issued token once", async () => {
+    const { renderApiKeys } = await import("../api-keys.js");
+    const root = dom.window.document.createElement("div");
+    root.innerHTML = renderApiKeys({ apiKeys: [], apiKeyIssued: 'nabu_pat_x."y' });
+    assert.equal(root.querySelector("#api-key-token").value, 'nabu_pat_x."y');
+  });
+});

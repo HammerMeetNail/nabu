@@ -30,6 +30,10 @@ export function createAppState() {
     deleteAccountOpen: false,
     deleteAccountBusy: false,
     deleteAccountError: null,
+    apiKeys: [],               // Settings → API Keys list (never holds tokens)
+    apiKeyIssued: null,        // clear token shown once after creation
+    apiKeyBusy: false,
+    apiKeyError: null,
     choreOrder: [],            // per-user preferred chore order (array of chore IDs)
     hiddenHomeChoreIDs: [],    // chore IDs hidden from the Home tab grid
     volumeUnit: "ml",          // per-user volume display/input unit ("ml" | "oz")

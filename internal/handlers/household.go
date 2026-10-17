@@ -58,7 +58,9 @@ func (h *HouseholdHandler) Get(w http.ResponseWriter, r *http.Request) {
 		writeHouseholdError(w, r, inviteErr)
 		return
 	}
-	if invites == nil {
+	// API keys read the household only to find member IDs for "Done by";
+	// invite codes grant membership and stay browser-only.
+	if invites == nil || middleware.APIKeyID(r.Context()) != "" {
 		invites = []household.Invite{}
 	}
 

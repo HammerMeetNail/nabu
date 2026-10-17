@@ -4729,3 +4729,12 @@ body.sheet-open .timer-chip { visibility: hidden; }
 
 .indicator-row { flex-wrap: wrap; }
 .custom-amount-input { max-width: 140px; }
+
+/* Settings → API Keys */
+.api-key-issued { padding: 12px; border: 1px solid var(--border, #ddd); border-radius: 8px; }
+.api-key-issued input { width: 100%; min-width: 0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.85rem; }
+.api-key-list { list-style: none; margin: 0; padding: 0; }
+.api-key-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--border, #eee); }
+.api-key-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.api-key-name { font-weight: 600; overflow-wrap: anywhere; }
+[data-testid="api-keys"] code { overflow-wrap: anywhere; font-size: 0.8rem; }

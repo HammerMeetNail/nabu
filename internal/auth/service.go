@@ -118,6 +118,23 @@ func (s *Service) GetUserByID(ctx context.Context, userID int64) (User, error) {
 	return s.profile(ctx, user)
 }
 
+// AuthenticateUserVersion loads a user for a long-lived credential (an API
+// key) bound to authVersion. A password change or reset bumps the version, so
+// it returns ErrSessionNotFound for stale credentials and deleted accounts.
+func (s *Service) AuthenticateUserVersion(ctx context.Context, userID, authVersion int64) (User, error) {
+	user, err := s.store.GetUserByID(ctx, userID)
+	if errors.Is(err, ErrUserNotFound) {
+		return User{}, ErrSessionNotFound
+	}
+	if err != nil {
+		return User{}, err
+	}
+	if user.AuthVersion != authVersion {
+		return User{}, ErrSessionNotFound
+	}
+	return s.profile(ctx, user)
+}
+
 func (s *Service) Register(ctx context.Context, email, password string) (User, Session, error) {
 	normalizedEmail, err := normalizeAndValidateEmail(email)
 	if err != nil {
