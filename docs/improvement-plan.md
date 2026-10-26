@@ -19,7 +19,7 @@ Nabu's engineering foundation is stronger than its product surface. The backend 
 | 4 | **Suspended members still receive schedule reminders on Postgres**: the candidate query and `GetMembershipForHousehold` ignore `suspended_at` (the in-memory path checks it). | `internal/reminder/candidates.go`; `internal/household/postgres_store.go:405` | **P1** (authorization) |
 | 5 | **Stored HTML injection via chore icon**: icons are interpolated unescaped in 3 render sinks; the server allows any 8 runes. CSP blocks script, but any member can inject markup such as `<style>` that breaks shared views for the whole household. | `web/static/js/today.js:385`, `stats.js:733`, `stats.js:830`; `internal/handlers/chore.go:27` | **P1** (security) |
 | 6 | **Every new household gets the same 16 tiles** (Feed Cats, Feed Baby, Clean Litter Box, Walk Dog, Watch Movie…) whatever the household contains. The first screen a new user sees is mostly irrelevant. | `web/static/js/app.js:4382-4403`; `internal/chore/service.go:375-392` | **P1** (activation) |
-| 7 | **Logging takes two taps plus a form** on both clients; the "tap = log" behavior described in AGENTS.md invariant #1 no longer exists. On iOS no confirmation or undo appears after a new log (the undo path can only be reached from edit, and it removes `latestLogs` by log ID although the map is keyed by chore ID). | `app.js:2518-2526`; `ios/.../HomeView.swift:62-104`, `LogSheet.swift:238-244` | **P1** (core loop) |
+| 7 | **On iOS no confirmation or undo appears after a new log**: the undo path can only be reached from edit, and it removes `latestLogs` by log ID although the map is keyed by chore ID. | `ios/.../HomeView.swift:62-104`, `LogSheet.swift:238-244` | **P1** (core loop) |
 | 8 | **Cannot log offline after a cold launch**: both clients block on a "confirm your session / reconnect" screen even though a durable offline log queue exists. | `web/static/js/browser-context.js`; `ios/.../ContentView.swift:30-38` | **P1** ("always within reach") |
 | 9 | **People are shown by email local-part** ("rev1791941045711"). No display-name prompt at sign-up, and no way to change it on either client. | `internal/auth/postgres_store.go:53` (`emailToDisplay`) | **P1** (shared household UX) |
 | 10 | **No GDPR groundwork for health data.** Feeds, diapers and medications are very likely "data concerning health" (Art. 9). There is no explicit-consent step, no DPIA, no documented processor agreements, and no stated retention or backup-erasure policy. | onboarding; privacy policy; ops | **P1** (blocks EU marketing) |
@@ -27,7 +27,7 @@ Nabu's engineering foundation is stronger than its product surface. The backend 
 
 ### The plan in one paragraph
 
-Fix the launch blockers and data-safety bugs (**Phase 0**, about 1–2 weeks). Then rebuild the core loop around a **one-tap log with undo** and an **offline-first launch** on both clients (**Phase 1**). Replace "here are 16 random tiles" with **guided household setup**: who lives here (baby, pets, plants, people), names, and an invite (**Phase 2**). Make Nabu reachable without opening it: **interactive widgets, Siri/Shortcuts, Control Center, the Action button, a Live Activity for timers, an Apple Watch app, and a real desktop/Mac layout** (**Phase 3**). Put **GDPR compliance** in place: lawful basis and explicit consent for health data, erasure that protects other members, retention, processor agreements (**Phase 4**). Harden for **horizontal scale and observability** (**Phase 5**) and **launch** with a real App Store presence, an honest marketing site, privacy-respecting analytics, and a free-core / paid-plus model (**Phase 6**).
+Fix the launch blockers and data-safety bugs (**Phase 0**, about 1–2 weeks). Then make launch **offline-first** on both clients and make the PWA fast, with a real router and a cached data layer (**Phase 1**). Replace "here are 16 random tiles" with **guided household setup**: who lives here (baby, pets, plants, people), names, and an invite (**Phase 2**). Make Nabu reachable without opening it: **interactive widgets, Siri/Shortcuts, Control Center, the Action button, a Live Activity for timers, an Apple Watch app, and a real desktop/Mac layout** (**Phase 3**). Put **GDPR compliance** in place: lawful basis and explicit consent for health data, erasure that protects other members, retention, processor agreements (**Phase 4**). Harden for **horizontal scale and observability** (**Phase 5**) and **launch** with a real App Store presence, an honest marketing site, privacy-respecting analytics, and a free-core / paid-plus model (**Phase 6**).
 
 ---
 
@@ -63,7 +63,7 @@ Households where **several people share responsibility for things that must not 
 
 ### Positioning statement (draft)
 
-> **Nabu — the shared memory for your home.** One tap logs the feed, the meds, the walk, the watering, and everyone in the house sees it instantly. No more "did anyone…?" texts.
+> **Nabu — the shared memory for your home.** Log the feed, the meds, the walk, the watering, and everyone in the house sees it instantly. No more "did anyone…?" texts.
 
 ---
 
@@ -210,38 +210,33 @@ Sizing assumes one senior engineer working with coding agents; S ≈ ≤2 days, 
 | 0.8 | PWA: move the undo toast so it never overlaps a sheet's action area (or dismiss it when a sheet opens); fix the dark-mode bell color; hide the version label (move it to Settings → About). | S | E2E for toast/sheet overlap; dark-mode visual check. |
 | 0.9 | Housekeeping: update AGENTS.md invariant #1, the README counts, and `ios/README.md`; remove or relocate root-level review files; decide PR #141; quote the deploy heredoc. | S | Docs match code. |
 
-### Phase 1 — The two-second log (3–5 weeks)
+### Phase 1 — Offline-first and fast (3–5 weeks)
 
-The single most important product change: **logging must be one tap, with undo, everywhere, online or not.**
+Nabu must open straight to a usable Home, online or not, and feel fast on both clients.
 
-1. **Tap = log, long-press = details** (M, both clients).
-   - Tiles for chores that need no input log immediately with `slotHour`/`completedAt` = now (restoring the original invariant), show an undo toast and play a haptic.
-   - Chores that need input (amount, type, rating) open a **compact quick sheet**: the most recent value pre-selected as a chip, big targets, and Log pinned. The When / follow-up / note fields move behind "More".
-   - A per-chore setting, "Ask for details", lets households opt in or out.
-   - The Follow-up control becomes one control ("Remind me in: Off · 30m · 1h · 2h · 3h · Custom") instead of three selects.
-2. **Smart defaults** (S–M).
+1. **Smart defaults** (S–M).
    - Feed Baby pre-fills the last amount and type; breast feeds get left/right/both and an optional timer.
    - Meds pre-fill the last dose.
    - "Usual time" hints come from history (already computable from the time-series data).
-3. **Offline-first launch** (M each client).
+2. **Offline-first launch** (M each client).
    - **PWA:** cache the app shell in the SW (navigation → cached shell, then revalidate). Persist the last-known identity and the chores/latest/household snapshot in IndexedDB. **Render from the snapshot immediately**, then reconcile with `/api/me`. If the session turns out to be revoked, wipe the snapshot and drop to sign-in, but never block logging on a reachable-network check when the identity binding is valid. Pending logs already queue durably.
    - **iOS:** the same pattern. Persist a snapshot (JSON file in Application Support with file protection; SwiftData is unnecessary). Launch into Home from the snapshot. Treat `/api/me` failure from a network error as "offline", not "checking".
-4. **PWA rendering and data layer** (L, incremental).
+3. **PWA rendering and data layer** (L, incremental).
    - **Router:** real `pushState` per tab, `aria-current`, a working Back button, and deep links (`/activity`, `/stats/chore/12`).
    - **Data store:** a small stale-while-revalidate cache keyed by endpoint and household, deduping in-flight calls and invalidating on mutation. The log POST response should return the updated latest/today rows, so the 3 refetches disappear.
    - **Rendering:** keyed morphing (`data-key`) and per-region rendering, so the stats page doesn't rebuild on unrelated state. Split `app.js` by feature (actions registry per module).
    - **Build step:** stay build-step-free. Have the server emit `<link rel="modulepreload">` for the full import graph it already walks in `buildVersionedJSCache`, which removes the waterfall with zero tooling. Fix the SW precache to use the versioned URLs.
    - **First paint:** show a skeleton or the cached snapshot before network.
    - **Target:** Home interactive in ≤1.5 s cold on slow 4G and ≤300 ms warm.
-5. **iOS architecture** (L, incremental).
+4. **iOS architecture** (L, incremental).
    - Migrate to `@Observable` feature models (Home, Activity, Stats, Settings) owned by a thin `AppModel`, and shrink `AppState`.
    - Swift 6 language mode with complete concurrency checking.
    - Replace the 43 silent `catch {}` blocks with typed error surfaces and logging.
    - Add a String Catalog (even English-only, so pluralization is correct and localization is ready), os.Logger, `#Preview` blocks, an xcconfig per environment (Dev/Staging/Prod base URL), and `MARKETING_VERSION` wiring.
    - Gate test hooks behind `#if DEBUG`.
-6. **Stats API consolidation** (M). Add a `GET /api/stats/dashboard?period=` that returns the visible sections in one response (the server already knows the layout preference), with ETag/`If-None-Match`. Both clients drop from 15 requests to 1–2.
+5. **Stats API consolidation** (M). Add a `GET /api/stats/dashboard?period=` that returns the visible sections in one response (the server already knows the layout preference), with ETag/`If-None-Match`. Both clients drop from 15 requests to 1–2.
 
-**Exit metrics:** median taps per log ≤ 1.2; p50 time from launch to log < 2 s (instrumented, §5 Phase 6); offline cold-launch log succeeds on both clients (E2E + XCUITest).
+**Exit metrics:** Home interactive in ≤1.5 s cold on slow 4G and ≤300 ms warm (instrumented, §5 Phase 6); offline cold-launch log succeeds on both clients (E2E + XCUITest).
 
 ### Phase 2 — Guided setup and real people (2–3 weeks)
 
@@ -326,7 +321,7 @@ Nabu stores data about children's feeding, diapers and medications for household
    - A type scale and spacing tokens shared by CSS custom properties and the Swift asset catalog. CSS has 66 distinct hard-coded hex values today; iOS has about 80 numeric paddings.
    - A unified illustration style for empty states.
    - Motion guidelines that respect Reduce Motion.
-2. **Marketing site** (S–M). Screenshots from a **seeded demo household on staging** (no real pet names or notification counts), a short screen-recorded video of one-tap logging, a widget or watch hero shot, a Privacy section ("no ads, no third-party analytics, your data exportable and deletable"), and App Store / Install PWA buttons.
+2. **Marketing site** (S–M). Screenshots from a **seeded demo household on staging** (no real pet names or notification counts), a short screen-recorded video of logging a feed, a widget or watch hero shot, a Privacy section ("no ads, no third-party analytics, your data exportable and deletable"), and App Store / Install PWA buttons.
 3. **App Store** (M; owner-gated items in `docs/plans/ios-v1/p7-release.md`).
    - Physical-device APNs checklist, TestFlight external beta, screenshots after Phases 0–2, privacy labels, and review notes with a staging demo account.
    - Category: Lifestyle (primary), Health & Fitness (secondary).
@@ -408,15 +403,14 @@ All third-party calls go through a server-side proxy with caching, per-household
 ## 9. Decisions needed from the owner
 
 1. **Account deletion semantics:** keep shared-household logs under an unlinkable "Former member" tombstone with opt-in deletion of the user's entries and notes (recommended, Phase 0.3), or delete them all (current behavior, but the copy must then say so).
-2. **Tap behavior:** one-tap logging by default for no-input chores (recommended) vs. always opening a sheet.
-3. **Default packs:** confirm the pack list and whether "Personal" (books, movies) stays in Nabu's scope or is cut to sharpen positioning.
-4. **Monetization:** the free-core / Plus split and price points (§5, Phase 6).
-5. **Apple Watch** in v1.0 or v1.1 (recommended: v1.1, right after App Store launch).
-6. **Hosting:** managed Postgres plus 2 replicas before paid launch, or stay single-node longer.
-7. **PR #141 quiet hours:** rebase and fix, or close.
-8. **Analytics:** approve first-party aggregate analytics consistent with the "no tracking" promise.
-9. **Brand:** keep the name "Nabu" (check trademark and App Store name availability) and commission an icon/logo.
-10. **Privacy counsel:** engage a privacy lawyer for the data map, DPIA, consent text and deletion design (Phase 4), and decide whether an EU representative is needed (Art. 27) if Nabu has no EU establishment.
+2. **Default packs:** confirm the pack list and whether "Personal" (books, movies) stays in Nabu's scope or is cut to sharpen positioning.
+3. **Monetization:** the free-core / Plus split and price points (§5, Phase 6).
+4. **Apple Watch** in v1.0 or v1.1 (recommended: v1.1, right after App Store launch).
+5. **Hosting:** managed Postgres plus 2 replicas before paid launch, or stay single-node longer.
+6. **PR #141 quiet hours:** rebase and fix, or close.
+7. **Analytics:** approve first-party aggregate analytics consistent with the "no tracking" promise.
+8. **Brand:** keep the name "Nabu" (check trademark and App Store name availability) and commission an icon/logo.
+9. **Privacy counsel:** engage a privacy lawyer for the data map, DPIA, consent text and deletion design (Phase 4), and decide whether an EU representative is needed (Art. 27) if Nabu has no EU establishment.
 
 ---
 
@@ -424,7 +418,7 @@ All third-party calls go through a server-side proxy with caching, per-household
 
 ```
 Weeks  1–2   Phase 0 (all)                         ── Phase 5.1 observability · Phase 4 data map + counsel engaged
-Weeks  3–7   Phase 1 (two-second log, offline-first, PWA router/data layer, iOS architecture)
+Weeks  3–7   Phase 1 (offline-first, PWA router/data layer, iOS architecture)
 Weeks  6–9   Phase 2 (onboarding, packs, names, invites, health-data consent)    ── Phase 5.2–5.4 in parallel
 Weeks  8–13  Phase 3 (App Intents → widgets/controls → Live Activity → desktop web; Watch starts)
 Weeks 10–12  Phase 4 exit: DPIA, DPAs, privacy policy, export/deletion verified
