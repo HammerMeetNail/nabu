@@ -33,7 +33,7 @@ func TestDeleteAccount_NoHousehold(t *testing.T) {
 	ctx := context.Background()
 	u := mustCreateUser(t, users, "solo@test.com")
 
-	if err := svc.DeleteAccount(ctx, u.ID); err != nil {
+	if err := svc.DeleteAccount(ctx, u.ID, auth.DeleteOptions{}); err != nil {
 		t.Fatalf("DeleteAccount: %v", err)
 	}
 	if _, err := users.GetUserByID(ctx, u.ID); err == nil {
@@ -50,7 +50,7 @@ func TestDeleteAccount_SoleMemberDeletesHousehold(t *testing.T) {
 		t.Fatalf("CreateHousehold: %v", err)
 	}
 
-	if err := svc.DeleteAccount(ctx, u.ID); err != nil {
+	if err := svc.DeleteAccount(ctx, u.ID, auth.DeleteOptions{}); err != nil {
 		t.Fatalf("DeleteAccount: %v", err)
 	}
 	if _, err := households.GetHousehold(ctx, hh.ID); err == nil {
@@ -71,7 +71,7 @@ func TestDeleteAccount_OnlyOwnerWithMembersBlocked(t *testing.T) {
 		t.Fatalf("AddMember: %v", err)
 	}
 
-	err := svc.DeleteAccount(ctx, owner.ID)
+	err := svc.DeleteAccount(ctx, owner.ID, auth.DeleteOptions{})
 	var transfer ErrMustTransferOwnership
 	if !errors.As(err, &transfer) {
 		t.Fatalf("err = %v, want ErrMustTransferOwnership", err)
@@ -101,7 +101,7 @@ func TestDeleteAccount_SecondOwnerAllowsDeletion(t *testing.T) {
 		t.Fatalf("AddMember: %v", err)
 	}
 
-	if err := svc.DeleteAccount(ctx, owner.ID); err != nil {
+	if err := svc.DeleteAccount(ctx, owner.ID, auth.DeleteOptions{}); err != nil {
 		t.Fatalf("DeleteAccount: %v", err)
 	}
 	if _, err := households.GetHousehold(ctx, hh.ID); err != nil {
@@ -126,7 +126,7 @@ func TestDeleteAccount_MemberLeavesHousehold(t *testing.T) {
 		t.Fatalf("AddMember: %v", err)
 	}
 
-	if err := svc.DeleteAccount(ctx, member.ID); err != nil {
+	if err := svc.DeleteAccount(ctx, member.ID, auth.DeleteOptions{}); err != nil {
 		t.Fatalf("DeleteAccount: %v", err)
 	}
 	if _, err := households.GetHousehold(ctx, hh.ID); err != nil {
@@ -150,7 +150,7 @@ func TestDeleteAccount_MixedMemberships(t *testing.T) {
 		t.Fatalf("AddMember: %v", err)
 	}
 
-	if err := svc.DeleteAccount(ctx, u.ID); err != nil {
+	if err := svc.DeleteAccount(ctx, u.ID, auth.DeleteOptions{}); err != nil {
 		t.Fatalf("DeleteAccount: %v", err)
 	}
 	if _, err := households.GetHousehold(ctx, solo.ID); err == nil {
@@ -173,7 +173,7 @@ func TestDeleteAccount_SessionsInvalidated(t *testing.T) {
 		t.Fatalf("CreateSession: %v", err)
 	}
 
-	if err := svc.DeleteAccount(ctx, u.ID); err != nil {
+	if err := svc.DeleteAccount(ctx, u.ID, auth.DeleteOptions{}); err != nil {
 		t.Fatalf("DeleteAccount: %v", err)
 	}
 	if _, err := users.GetSession(ctx, "hash1"); err == nil {

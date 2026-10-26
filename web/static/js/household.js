@@ -178,7 +178,7 @@ export function renderHouseholdView(household, members, invites, currentUser) {
 
     return `<details class="member-row" data-user-id="${m.userId}">
       <summary class="member-row-summary">
-        <span class="avatar-circle-sm" style="background:${m.avatarColor || '#19323C'}">${initial}</span>
+        <span class="avatar-circle-sm" style="background:${escapeHTML(m.avatarColor || '#19323C')}">${escapeHTML(initial)}</span>
         <span class="member-name">${escapeHTML(label)}</span>
         <span class="role-badge">${m.role}</span>
         ${m.suspended ? '<span class="role-badge member-disabled-badge">Disabled</span>' : ''}

@@ -3,6 +3,7 @@ package middleware
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"net/http/httptest"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/auth"
+	"github.com/HammerMeetNail/nabu/internal/clientip"
 )
 
 func TestCSRFMiddlewareRejectsMissingHeader(t *testing.T) {
@@ -327,5 +329,58 @@ func TestSessionMiddlewareSkipsStaticPaths(t *testing.T) {
 	_, ok := CurrentUser(req.Context())
 	if ok {
 		t.Fatal("should not set user for static path")
+	}
+}
+
+func TestRequestLoggerReportsClientCancellationAs499(t *testing.T) {
+	var output bytes.Buffer
+	ctx, cancel := context.WithCancel(context.Background())
+	handler := RequestLogger(log.New(&output, "", 0))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cancel() // the client disconnects mid-request
+		http.Error(w, "failed", http.StatusInternalServerError)
+	}))
+	req := httptest.NewRequest(http.MethodGet, "/api/stats/overview", nil).WithContext(ctx)
+	handler.ServeHTTP(httptest.NewRecorder(), req)
+	if !bytes.Contains(output.Bytes(), []byte(`"status":499`)) {
+		t.Fatalf("log body = %s", output.String())
+	}
+
+	// A genuine server error with a live client is still a 500.
+	output.Reset()
+	handler = RequestLogger(log.New(&output, "", 0))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "failed", http.StatusInternalServerError)
+	}))
+	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/stats/overview", nil))
+	if !bytes.Contains(output.Bytes(), []byte(`"status":500`)) {
+		t.Fatalf("log body = %s", output.String())
+	}
+}
+
+func TestRequestLoggerHashesTrustedForwardedClient(t *testing.T) {
+	proxies, err := clientip.ParseTrustedProxies("10.0.0.0/8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientFor := func(forwarded string) string {
+		var output bytes.Buffer
+		handler := RequestLogger(log.New(&output, "", 0), proxies...)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.RemoteAddr = "10.0.0.5:443" // the proxy
+		req.Header.Set("X-Forwarded-For", forwarded)
+		handler.ServeHTTP(httptest.NewRecorder(), req)
+		var line struct {
+			Client string `json:"client"`
+		}
+		if err := json.Unmarshal(output.Bytes(), &line); err != nil {
+			t.Fatalf("log line %q: %v", output.String(), err)
+		}
+		return line.Client
+	}
+	a, b := clientFor("198.51.100.1"), clientFor("198.51.100.2")
+	if a == "" || a == b {
+		t.Fatalf("distinct clients behind one proxy hashed to %q and %q", a, b)
+	}
+	if a != hashClientIP("198.51.100.1") {
+		t.Fatalf("client hash %q is not the forwarded client's", a)
 	}
 }

@@ -11,10 +11,11 @@ import (
 )
 
 type MemoryStore struct {
-	deleted lifecycle.Tombstones
-	mu      sync.RWMutex
-	idSeq   int64
-	logs    map[int64]ChoreLog
+	deleted   lifecycle.Tombstones
+	mu        sync.RWMutex
+	idSeq     int64
+	formerSeq int64
+	logs      map[int64]ChoreLog
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -122,6 +123,27 @@ func (s *MemoryStore) ListLogsRange(ctx context.Context, householdID int64, star
 			}
 		}
 	}
+	return result, nil
+}
+
+func (s *MemoryStore) ListUserLogs(ctx context.Context, userID int64) ([]ChoreLog, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	result := []ChoreLog{}
+	for _, l := range s.logs {
+		if l.UserID == userID {
+			result = append(result, l)
+			if err := readlimit.Check(ctx, len(result)); err != nil {
+				return nil, err
+			}
+		}
+	}
+	sort.Slice(result, func(i, j int) bool {
+		if !result[i].CompletedAt.Equal(result[j].CompletedAt) {
+			return result[i].CompletedAt.Before(result[j].CompletedAt)
+		}
+		return result[i].ID < result[j].ID
+	})
 	return result, nil
 }
 
@@ -279,10 +301,33 @@ func (s *MemoryStore) CleanupAccount(d *lifecycle.Deletion) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	former := map[int64]int64{}
 	for id, l := range s.logs {
-		if l.UserID == d.UserID || d.Households[l.HouseholdID] || d.Chores[l.ChoreID] {
+		if (l.UserID == d.UserID && d.DeleteLogs) || d.Households[l.HouseholdID] || d.Chores[l.ChoreID] {
 			d.Logs[id] = true
 			delete(s.logs, id)
+			continue
+		}
+		changed := false
+		if l.IdempotencyActorID == d.UserID {
+			l.IdempotencyActorID, changed = 0, true
+		}
+		if l.UserID == d.UserID {
+			// Mirrors the PostgreSQL former_member_seq: one fresh negative
+			// tombstone per household, unrelated to the deleted user's ID.
+			tombstone, ok := former[l.HouseholdID]
+			if !ok {
+				s.formerSeq++
+				tombstone = -s.formerSeq
+				former[l.HouseholdID] = tombstone
+			}
+			l.UserID, changed = tombstone, true
+			if d.DeleteNotes {
+				l.Note = ""
+			}
+		}
+		if changed {
+			s.logs[id] = l
 		}
 	}
 

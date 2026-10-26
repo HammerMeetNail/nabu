@@ -42,7 +42,7 @@ func (s *PostgresStore) CandidatePage(ctx context.Context, after candidateCursor
            AND r.scheduled_date BETWEEN $4::date-2 AND $4::date+2), '[]'::jsonb)
  FROM chore_schedules s
  JOIN chores c ON c.id=s.chore_id AND c.household_id=s.household_id
- JOIN user_households m ON m.household_id=s.household_id
+ JOIN user_households m ON m.household_id=s.household_id AND m.suspended_at IS NULL
  LEFT JOIN reminder_preferences np ON np.user_id=m.user_id
  LEFT JOIN user_preferences up ON up.user_id=m.user_id
  LEFT JOIN chore_reminder_prefs cp ON cp.user_id=m.user_id AND cp.chore_id=s.chore_id

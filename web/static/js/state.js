@@ -30,6 +30,8 @@ export function createAppState() {
     deleteAccountOpen: false,
     deleteAccountBusy: false,
     deleteAccountError: null,
+    deleteAccountLogs: false,  // opt-in: delete my logs in shared households
+    deleteAccountNotes: false, // opt-in: strip my notes from retained logs
     apiKeys: [],               // Settings → API Keys list (never holds tokens)
     apiKeyIssued: null,        // clear token shown once after creation
     apiKeyBusy: false,

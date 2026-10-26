@@ -39,7 +39,7 @@ make fmt         # Format Go code
 | `app` | Route registration, middleware chain, dependency wiring, JS/SW cache-busting |
 | `auth` | Registration, login, sessions, magic link, password reset, Google OIDC |
 | `household` | Household creation, invite system, role management, multi-household switching |
-| `chore` | Chore CRUD, reorder, restore defaults, 12 predefined system chores |
+| `chore` | Chore CRUD, reorder, restore defaults, 16 predefined system chores |
 | `log` | Chore logging (idempotent per chore/day), today/week/month/history queries |
 | `schedule` | Recurring schedules with time-slot matching engine, drag-and-drop rescheduling |
 | `notification` | In-app notification store, per-type notification preferences, push dispatch |
@@ -47,8 +47,8 @@ make fmt         # Format Go code
 | `stats` | Leaderboard, streaks, heatmap, category breakdown, busy hours, weekly recap |
 | `userprefs` | Chore ordering, hidden home chores, timezone preferences |
 | `handlers` | HTTP handlers grouped by feature — no business logic, call services directly |
-| `middleware` | RequestLogger → SecurityHeaders → Session → CSRF → RateLimiter (strict `/api/auth` + optional global `/api/*` backstop) |
-| `database` | pgx connection pool + embedded SQL migration runner (26 migrations) |
+| `middleware` | Outermost first: RequestLogger → SecurityHeaders → RateLimiters (strict `/api/auth` + optional global `/api/*` backstop) → APIKey → CSRF → Session |
+| `database` | pgx connection pool + embedded SQL migration runner (58 migrations) |
 | `config` | Environment variable loader with defaults |
 | `audit` | Audit logging interface + std logger implementation |
 | `mail` | SMTP mailer for verification, magic link, password reset emails |

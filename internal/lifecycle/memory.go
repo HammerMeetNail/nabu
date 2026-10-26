@@ -10,6 +10,9 @@ var ErrDeleted = errors.New("resource no longer available")
 type Deletion struct {
 	UserID                              int64
 	Households, Chores, Schedules, Logs map[int64]bool
+	// DeleteLogs and DeleteNotes mirror auth.DeleteOptions. Without
+	// DeleteLogs the user's surviving logs move to a former-member tombstone.
+	DeleteLogs, DeleteNotes bool
 }
 
 func NewDeletion(userID int64, households []int64) *Deletion {

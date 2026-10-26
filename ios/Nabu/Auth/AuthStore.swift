@@ -7,6 +7,10 @@ final class AccountDeletionModel: ObservableObject {
     @Published var isPresented = false
     @Published private(set) var isDeleting = false
     @Published private(set) var errorMessage: String?
+    /// Opt-in: also delete every log the user recorded in shared households.
+    @Published var deleteLogs = false
+    /// Opt-in: strip the user's notes from the logs that stay.
+    @Published var deleteNotes = false
     private struct Owner: Equatable {
         let server: URL
         let actorID: Int
@@ -29,6 +33,8 @@ final class AccountDeletionModel: ObservableObject {
         owner = current
         errorMessage = nil
         isDeleting = false
+        deleteLogs = false
+        deleteNotes = false
         isPresented = true
     }
 
@@ -52,7 +58,7 @@ final class AccountDeletionModel: ObservableObject {
         errorMessage = nil
         defer { if intent == token { isDeleting = false } }
         do {
-            let _: StatusResponse = try await api.scoped().delete("/api/me", body: DeleteAccountRequest(confirm: "DELETE"))
+            let _: StatusResponse = try await api.scoped().delete("/api/me", body: DeleteAccountRequest(confirm: "DELETE", deleteLogs: deleteLogs, deleteNotes: deleteNotes))
             if intent == token { cancel() }
         } catch {
             guard intent == token, isPresented else { return }

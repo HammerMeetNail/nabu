@@ -297,9 +297,13 @@ struct SetDayNoteRequest: Codable {
 // MARK: - Account
 
 /// Body of `DELETE /api/me`. The server requires the literal string "DELETE"
-/// so the account cannot be destroyed by a single stray request.
+/// so the account cannot be destroyed by a single stray request. By default
+/// the user's logs in shared households stay, shown as "Former member";
+/// `deleteLogs` / `deleteNotes` opt in to removing them or their notes.
 struct DeleteAccountRequest: Codable {
     let confirm: String
+    var deleteLogs = false
+    var deleteNotes = false
 }
 
 // MARK: - Push

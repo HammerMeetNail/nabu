@@ -28,9 +28,10 @@ type Service struct {
 	users             auth.Store
 	households        household.Store
 	inTransaction     bool
-	memoryCleanup     func(int64, []int64)
+	memoryCleanup     func(int64, []int64, auth.DeleteOptions)
 	cleanupUserID     int64
 	cleanupHouseholds []int64
+	cleanupOptions    auth.DeleteOptions
 }
 
 func NewService(users auth.Store, households household.Store) *Service {
@@ -84,7 +85,7 @@ func (s *Service) transaction(ctx context.Context, fn func(*Service) error) erro
 		return err
 	}
 	if tx.memoryCleanup != nil && tx.cleanupUserID != 0 {
-		tx.memoryCleanup(tx.cleanupUserID, tx.cleanupHouseholds)
+		tx.memoryCleanup(tx.cleanupUserID, tx.cleanupHouseholds, tx.cleanupOptions)
 	}
 	commitUsers()
 	commitHouseholds()
@@ -99,13 +100,14 @@ func (s *Service) transaction(ctx context.Context, fn func(*Service) error) erro
 //
 // Validation runs over every membership before anything is mutated, so a
 // rejection never leaves a half-deleted account. Personal data (sessions,
-// tokens, preferences, notifications, push subscriptions, the user's chore
-// logs) is removed; household-shared content in surviving households stays,
-// with chore authorship and schedule assignment cleared and the user's
-// invites revoked.
-func (s *Service) DeleteAccount(ctx context.Context, userID int64) error {
+// tokens, preferences, notifications, push subscriptions, reminder prefs,
+// invites) is removed. Household-shared content in surviving households
+// stays, with chore authorship and schedule assignment cleared. The user's
+// logs there are kept under an unlinkable "Former member" tombstone unless
+// opts asks to delete them (or to strip their notes).
+func (s *Service) DeleteAccount(ctx context.Context, userID int64, opts auth.DeleteOptions) error {
 	if !s.inTransaction {
-		return s.transaction(ctx, func(tx *Service) error { return tx.DeleteAccount(ctx, userID) })
+		return s.transaction(ctx, func(tx *Service) error { return tx.DeleteAccount(ctx, userID, opts) })
 	}
 	memberships, err := s.households.ListUserHouseholds(ctx, userID)
 	if err != nil {
@@ -155,10 +157,10 @@ func (s *Service) DeleteAccount(ctx context.Context, userID int64) error {
 	if memory, ok := s.households.(interface{ RemoveUserInvites(int64) }); ok {
 		memory.RemoveUserInvites(userID)
 	}
-	if err := s.users.DeleteUser(ctx, userID); err != nil {
+	if err := s.users.DeleteUser(ctx, userID, opts); err != nil {
 		return err
 	}
-	s.cleanupUserID, s.cleanupHouseholds = userID, deleteHouseholds
+	s.cleanupUserID, s.cleanupHouseholds, s.cleanupOptions = userID, deleteHouseholds, opts
 	for _, hhID := range deleteHouseholds {
 		if err := s.households.DeleteHousehold(ctx, hhID); err != nil {
 			return err
@@ -169,4 +171,6 @@ func (s *Service) DeleteAccount(ctx context.Context, userID int64) error {
 
 // SetMemoryCleanup enlists infallible domain cleanup at the memory commit
 // point, after every policy/write/context check and before releasing identity.
-func (s *Service) SetMemoryCleanup(cleanup func(int64, []int64)) { s.memoryCleanup = cleanup }
+func (s *Service) SetMemoryCleanup(cleanup func(int64, []int64, auth.DeleteOptions)) {
+	s.memoryCleanup = cleanup
+}

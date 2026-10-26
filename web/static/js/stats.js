@@ -648,7 +648,7 @@ function renderBusyHoursChart(busyHours) {
   return `<div class="busy-hours-chart">${bars}</div>`;
 }
 
-function renderLeaderboardList(leaderboard, memberMap, period) {
+export function renderLeaderboardList(leaderboard, memberMap, period) {
   const emptyLabel = period === "all"
     ? "No chores logged yet"
     : period === "day"
@@ -662,7 +662,7 @@ function renderLeaderboardList(leaderboard, memberMap, period) {
     const initial = name.charAt(0).toUpperCase();
     const color = member ? member.avatarColor : "#19323C";
     return `<li class="stat-item">
-      <span class="avatar-circle-sm" style="background:${color}">${initial}</span>
+      <span class="avatar-circle-sm" style="background:${escapeHTML(color)}">${escapeHTML(initial)}</span>
       <span>${escapeHTML(name)}</span>
       <span class="text-secondary">${entry.count} chores</span>
     </li>`;
@@ -711,7 +711,7 @@ function renderCategoryBars(breakdown) {
   return bars;
 }
 
-function renderTopChoresList(topChores, period) {
+export function renderTopChoresList(topChores, period) {
   if (!topChores || topChores.length === 0) {
     const empty = period === "all"
       ? "No chores logged yet"
@@ -730,7 +730,7 @@ function renderTopChoresList(topChores, period) {
     const icon = c.choreIcon || "✓";
     return `<div class="top-chore-row">
       <span class="top-chore-rank">${i + 1}</span>
-      <span class="top-chore-icon">${icon}</span>
+      <span class="top-chore-icon">${escapeHTML(icon)}</span>
       <span class="top-chore-name">${escapeHTML(c.choreName)}</span>
       <div class="top-chore-bar-track">
         <div class="top-chore-bar-fill" style="width:${pct}%"></div>
@@ -756,7 +756,7 @@ function renderTopChoresSection(state) {
     const active = m.userId === topChoresUserId ? " top-chore-pill--active" : "";
     const initial = (m.displayName || m.email).charAt(0).toUpperCase();
     return `<button class="top-chore-pill${active}" data-action="top-chores-user" data-user-id="${m.userId}" aria-pressed="${m.userId === topChoresUserId}">
-      <span class="avatar-circle-sm" style="background:${m.avatarColor || "#19323C"}">${initial}</span>
+      <span class="avatar-circle-sm" style="background:${escapeHTML(m.avatarColor || "#19323C")}">${escapeHTML(initial)}</span>
       <span>${escapeHTML(m.displayName || m.email)}</span>
     </button>`;
   }).join("");
@@ -771,7 +771,7 @@ function renderTopChoresSection(state) {
   </div>`;
 }
 
-function renderChoreStatsList(choreStats, choreMap, period) {
+export function renderChoreStatsList(choreStats, choreMap, period) {
   if (!choreStats || choreStats.length === 0) {
     return '<p class="text-secondary text-center">No chore data yet</p>';
   }
@@ -827,7 +827,7 @@ function renderChoreStatsList(choreStats, choreMap, period) {
 
     return `<details class="chore-stat-card"${expandable ? "" : " open"}>
       <summary class="chore-stat-summary">
-        <span class="chore-stat-icon">${icon}</span>
+        <span class="chore-stat-icon">${escapeHTML(icon)}</span>
         <span class="chore-stat-name">${escapeHTML(cs.choreName)}</span>
         <span class="chore-stat-counts">
           <span class="chore-stat-week">${count} ${periodLabel}</span>
@@ -1394,7 +1394,7 @@ function renderBabyColumn(ts, memberMap, period, type) {
   </div>`;
 }
 
-function renderMemberList(byMember, memberMap) {
+export function renderMemberList(byMember, memberMap) {
   if (!byMember || byMember.length === 0) return '<p class="text-secondary text-sm">No data</p>';
 
   const maxCount = byMember[0]?.count || 1;
@@ -1406,7 +1406,7 @@ function renderMemberList(byMember, memberMap) {
       const color = member ? member.avatarColor : "#19323C";
       const pct = maxCount > 0 ? (entry.count / maxCount) * 100 : 0;
       return `<div class="baby-member-row">
-        <span class="avatar-circle-sm" style="background:${color}">${initial}</span>
+        <span class="avatar-circle-sm" style="background:${escapeHTML(color)}">${escapeHTML(initial)}</span>
         <span class="baby-member-name">${escapeHTML(name)}</span>
         <div class="baby-member-bar-track">
           <div class="baby-member-bar-fill" style="width:${pct}%"></div>
@@ -1742,7 +1742,7 @@ export function renderStatsView(state) {
     const initial = name.charAt(0).toUpperCase();
     const color = member ? member.avatarColor : "#19323C";
     return `<li class="stat-item">
-      <span class="avatar-circle-sm" style="background:${color}">${initial}</span>
+      <span class="avatar-circle-sm" style="background:${escapeHTML(color)}">${escapeHTML(initial)}</span>
       <span>${escapeHTML(name)}</span>
       <span class="text-secondary">${entry.count} chores</span>
     </li>`;

@@ -107,3 +107,30 @@ func TestRevocationWaitsForEnteredDelivery(t *testing.T) {
 		}
 	}
 }
+
+// Suspended members keep their membership row but must receive no
+// deliveries (reminders, notifications) until they are restored.
+func TestWithMemberRejectsSuspendedMemberInMemory(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore()
+	home, err := store.CreateHousehold(ctx, "Test", "T", 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.AddMember(ctx, home.ID, 2, RoleMember); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetMemberSuspended(ctx, home.ID, 2, true); err != nil {
+		t.Fatal(err)
+	}
+	delivered := false
+	if err := WithMember(ctx, store, 2, home.ID, func(string) error { delivered = true; return nil }); !errors.Is(err, ErrNotMember) || delivered {
+		t.Fatalf("suspended delivery err=%v delivered=%v", err, delivered)
+	}
+	if err := store.SetMemberSuspended(ctx, home.ID, 2, false); err != nil {
+		t.Fatal(err)
+	}
+	if err := WithMember(ctx, store, 2, home.ID, func(string) error { delivered = true; return nil }); err != nil || !delivered {
+		t.Fatalf("restored delivery err=%v delivered=%v", err, delivered)
+	}
+}

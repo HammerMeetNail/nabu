@@ -4,6 +4,8 @@ struct QuickLogSheet: View {
     @Environment(\.dismiss) private var dismiss
     let state: AppState
     let logStore: LogStore
+    /// Called after the server creates the log (drives the undo toast).
+    var onLogged: ((ChoreLog, String) -> Void)?
 
     @State private var note = ""
     @State private var submissionKey = UUID().uuidString
@@ -97,6 +99,7 @@ struct QuickLogSheet: View {
                 case .created(let response):
                     state.todayLogs.insert(response.log, at: 0)
                     state.latestLogs[chore.id] = response.log
+                    onLogged?(response.log, chore.name)
                 case .queued(let pending):
                     var row = pending
                     if row.userId == nil { row.userId = state.user?.id }

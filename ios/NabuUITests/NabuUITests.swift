@@ -667,7 +667,10 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "transfer ownership (or remove")).firstMatch.exists)
         let confirm = app.textFields["Type DELETE to confirm"]
         let remove = app.buttons["Delete My Account"]
+        // The data download and opt-in sections sit above the confirmation.
+        reveal(remove, in: app)
         XCTAssertFalse(remove.isEnabled)
+        reveal(confirm, in: app)
         confirm.tap(); confirm.typeText("DELETE")
         remove.tap()
         let error = app.staticTexts["Transfer ownership before deleting your account."]
@@ -677,9 +680,42 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         app.buttons["Cancel"].tap()
         XCTAssertTrue(open.waitForExistence(timeout: 5))
         open.tap()
+        reveal(remove, in: app)
         XCTAssertFalse(remove.isEnabled)
+        reveal(confirm, in: app)
         XCTAssertEqual(confirm.value as? String, "Type DELETE to confirm")
         XCTAssertFalse(error.exists)
+        app.buttons["Cancel"].tap()
+    }
+
+    func testDeletionExplainsFormerMemberAndSendsOptIns() {
+        let app = launch("delete-account-options")
+        app.tabBars.buttons["Settings"].tap()
+        let open = app.buttons["Delete Account…"]
+        reveal(open, in: app); open.tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Former member")).firstMatch.waitForExistence(timeout: 5))
+        let logs = app.switches["delete-account-logs"]
+        let notes = app.switches["delete-account-notes"]
+        XCTAssertEqual(logs.value as? String, "0")
+        XCTAssertEqual(notes.value as? String, "0")
+
+        let download = app.buttons["download-my-data"]
+        download.tap()
+        XCTAssertTrue(app.otherElements["export-share-sheet"].waitForExistence(timeout: 5)
+            || app.otherElements["ActivityListView"].waitForExistence(timeout: 5))
+        if app.buttons["Close"].exists { app.buttons["Close"].tap() } else { app.swipeDown() }
+
+        reveal(logs, in: app)
+        (logs.switches.firstMatch.exists ? logs.switches.firstMatch : logs).tap()
+        XCTAssertEqual(logs.value as? String, "1")
+        let confirm = app.textFields["Type DELETE to confirm"]
+        reveal(confirm, in: app)
+        confirm.tap(); confirm.typeText("DELETE")
+        let remove = app.buttons["Delete My Account"]
+        reveal(remove, in: app)
+        remove.tap()
+        let echoed = app.staticTexts["Received deleteLogs=true deleteNotes=false"]
+        XCTAssertTrue(echoed.waitForExistence(timeout: 5))
         app.buttons["Cancel"].tap()
     }
 
@@ -1053,6 +1089,45 @@ final class NabuHomeLogFlowUITests: XCTestCase {
         saveLog()
 
         XCTAssertTrue(cell(named: "Feed Baby").waitForExistence(timeout: 5))
+    }
+
+    /// Every new log shows an undo toast; Undo deletes it and restores the
+    /// tile's previous "time ago" (here: never done).
+    func testNewLogShowsUndoToastAndUndoRestoresTile() throws {
+        let tile = cell(named: "Water Plants")
+        XCTAssertTrue(tile.waitForExistence(timeout: 5))
+        XCTAssertTrue(tile.label.contains("never done"), "Precondition: \(tile.label)")
+
+        openLogSheet(forChore: "Water Plants")
+        saveLog()
+
+        XCTAssertTrue(app.staticTexts["Logged Water Plants"].waitForExistence(timeout: 3), "undo toast must appear after a new log")
+        XCTAssertTrue(tile.label.contains("done "), "After logging: \(tile.label)")
+        app.buttons["Undo"].tap()
+
+        let restored = NSPredicate(format: "label CONTAINS %@", "never done")
+        expectation(for: restored, evaluatedWith: tile)
+        waitForExpectations(timeout: 5)
+        XCTAssertFalse(app.staticTexts["Logged Water Plants"].exists)
+    }
+
+    /// The Log button is pinned above the safe area: reachable without
+    /// scrolling at the largest accessibility text size, even for a chore
+    /// with amount and type fields.
+    func testLogButtonReachableAtAccessibilityXXXL() throws {
+        app.terminate()
+        app.launchArguments = ["-disableAnimations", "-seedHomeForUITest", "-useMockAPI",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launchForLocalTest()
+        let tile = cell(named: "Feed Baby")
+        for _ in 0..<8 where !(tile.exists && tile.isHittable) { app.swipeUp() }
+        tile.tap()
+
+        let save = app.buttons["save-log-button"]
+        XCTAssertTrue(save.waitForExistence(timeout: 3))
+        XCTAssertTrue(save.isHittable, "Log must be reachable at the default detent without scrolling")
+        save.tap()
+        XCTAssertTrue(save.waitForNonExistence(timeout: 5), "the log must save and dismiss the sheet")
     }
 
     // MARK: - Helpers

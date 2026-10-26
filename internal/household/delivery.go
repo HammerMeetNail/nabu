@@ -1,10 +1,16 @@
 package household
 
-import "context"
+import (
+	"context"
+	"database/sql"
+	"errors"
+)
 
 // WithMember linearizes a bounded delivery with removal/role changes. Once a
 // removal commits, no later delivery can use a previously resolved membership.
 // Providers may still deliver messages they accepted before revocation.
+// A suspended membership is treated as absent: disabled members receive no
+// reminders or notifications.
 func WithMember(ctx context.Context, store Store, userID, householdID int64, deliver func(string) error) error {
 	if guarded, ok := store.(interface {
 		WithMember(context.Context, int64, int64, func(string) error) error
@@ -14,6 +20,11 @@ func WithMember(ctx context.Context, store Store, userID, householdID int64, del
 	role, err := store.GetMembershipForHousehold(ctx, userID, householdID)
 	if err != nil {
 		return err
+	}
+	if suspended, err := store.IsMemberSuspended(ctx, householdID, userID); err != nil {
+		return err
+	} else if suspended {
+		return ErrNotMember
 	}
 	return deliver(role)
 }
@@ -25,7 +36,7 @@ func (s *MemoryStore) WithMember(ctx context.Context, userID, householdID int64,
 		return err
 	}
 	for _, member := range s.userHouseholds[userID] {
-		if member.ID == householdID {
+		if member.ID == householdID && !member.Suspended {
 			return deliver(member.Role)
 		}
 	}
@@ -42,8 +53,12 @@ func (s *PostgresStore) WithMember(ctx context.Context, userID, householdID int6
 	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock_shared($1)`, -householdID); err != nil {
 		return err
 	}
-	current := &PostgresStore{db: s.db, q: tx, tx: tx}
-	role, err := current.GetMembershipForHousehold(ctx, userID, householdID)
+	var role string
+	err = tx.QueryRowContext(ctx, `SELECT role FROM user_households
+		WHERE user_id = $1 AND household_id = $2 AND suspended_at IS NULL`, userID, householdID).Scan(&role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return ErrNotMember
+	}
 	if err != nil {
 		return err
 	}

@@ -306,7 +306,7 @@ func (s *Service) GetAllTimeLeaderboard(ctx context.Context, householdID int64, 
 	for _, l := range logs {
 		counts[l.UserID]++
 	}
-	var entries []LeaderboardEntry
+	entries := []LeaderboardEntry{}
 	for uid, c := range counts {
 		entries = append(entries, LeaderboardEntry{UserID: uid, Count: c})
 	}
@@ -334,7 +334,7 @@ func (s *Service) getLeaderboard(ctx context.Context, householdID int64, start, 
 			counts[l.UserID]++
 		}
 	}
-	var entries []LeaderboardEntry
+	entries := []LeaderboardEntry{}
 	for uid, c := range counts {
 		entries = append(entries, LeaderboardEntry{UserID: uid, Count: c})
 	}
@@ -455,7 +455,7 @@ func (s *Service) GetCategoryBreakdown(ctx context.Context, householdID int64, s
 		}
 	}
 
-	var breakdown []CategoryBreakdown
+	breakdown := []CategoryBreakdown{}
 	for cat, c := range catCount {
 		breakdown = append(breakdown, CategoryBreakdown{Category: cat, Count: c})
 	}
@@ -528,7 +528,7 @@ func (s *Service) GetWeeklyRecap(ctx context.Context, householdID int64, loc *ti
 		return WeeklyRecap{}, err
 	}
 
-	recap := WeeklyRecap{}
+	recap := WeeklyRecap{ByCategory: []CategoryBreakdown{}}
 
 	counts := map[int64]int{}
 	dayCounts := map[string]int{}
@@ -621,7 +621,7 @@ func (s *Service) GetChoreStats(ctx context.Context, householdID int64, loc *tim
 		logsByChore[l.ChoreID] = append(logsByChore[l.ChoreID], l)
 	}
 
-	var result []ChoreStats
+	result := []ChoreStats{}
 	for _, ch := range chores {
 		var weekCount, monthCount, rangeCount int
 		indicatorCounts := map[string]int{}
@@ -724,7 +724,7 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 		return WeeklyOverview{}, err
 	}
 
-	overview := WeeklyOverview{}
+	overview := WeeklyOverview{Leaderboard: []LeaderboardEntry{}, Breakdown: []CategoryBreakdown{}, Recap: WeeklyRecap{ByCategory: []CategoryBreakdown{}}}
 
 	// Leaderboard (week only)
 	counts := map[int64]int{}
@@ -1013,7 +1013,7 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 			byMember[l.UserID]++
 		}
 	}
-	var memberEntries []LeaderboardEntry
+	memberEntries := []LeaderboardEntry{}
 	for uid, c := range byMember {
 		memberEntries = append(memberEntries, LeaderboardEntry{UserID: uid, Count: c})
 	}
