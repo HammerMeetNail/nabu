@@ -186,7 +186,7 @@ func TestDeletedUserCannotResumeHouseholdCreationOrJoin(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := account.NewService(users, store).DeleteAccount(ctx, deleted.ID); err != nil {
+			if err := account.NewService(users, store).DeleteAccount(ctx, deleted.ID, auth.DeleteOptions{}); err != nil {
 				t.Fatal(err)
 			}
 			if operation == "create" {

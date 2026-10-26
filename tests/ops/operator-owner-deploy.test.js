@@ -27,7 +27,12 @@ for(const line of deployStep.slice(runStart+'        run: |\n'.length).split('\n
 const run=runLines.join('\n');
 const preflight=run.slice(0,run.indexOf('mkdir -p ~/.ssh'));
 assert.ok(preflight.startsWith("python3 - << 'PY'\n"));
-const remote=run.slice(run.indexOf('ssh ssh.yearofbingo.com << EOF\n'));
+// Secret-bearing files are rendered on the runner and streamed as data; the
+// remote script is a quoted heredoc, so no secret is ever parsed as shell.
+const render=run.slice(run.indexOf('umask 077\n'),run.indexOf('# Deploy (quoted heredoc'));
+assert.ok(render.includes("cat > nabu.env << ENVFILE\n"));
+const remote=run.slice(run.indexOf("ssh ssh.yearofbingo.com << 'EOF'\n"));
+assert.ok(remote.startsWith("ssh ssh.yearofbingo.com << 'EOF'\n"));
 assert.ok(remote.endsWith('EOF\n'));
 
 const maxID='9223372036854775807';
@@ -68,12 +73,17 @@ test('operator owner reaches the remote env file and Compose, including clearing
     const remotePath=join(dir,'remote.sh');
     const env={...syntheticEnv,PROBE_REMOTE:remotePath};
     if(owner!==undefined) env.OPERATOR_OWNER_USER_ID=owner;
+    // ssh HOST CMD streams stdin to the named remote file; ssh HOST (no
+    // command) receives the remote script.
+    const stub='ssh() { case "${2:-}" in *.env.next*) cat > .env.next;; "") cat > "$PROBE_REMOTE";; *) cat > /dev/null;; esac; }\n';
     const capture=await execute('bash',['-e','-o','pipefail','-c',
-      preflight+'ssh() { cat > "$PROBE_REMOTE"; }\n'+remote],{cwd:dir,env});
+      preflight+stub+render+remote],{cwd:dir,env});
     assert.equal(capture.code,0,`${name}: ${capture.output}`);
+    assert.equal((await stat(join(dir,'.env.next'))).mode&0o777,0o600);
     const captured=await readFile(remotePath,'utf8');
+    assert.doesNotMatch(captured,/OPERATOR_OWNER_USER_ID/,`${name}: secrets must not reach the remote script`);
     const writerStart=captured.indexOf('if [ -f .env ]; then cp .env .env.previous; chmod 600 .env.previous; fi');
-    const writerEnd=captured.indexOf('chmod 600 .env',captured.indexOf('ENVFILE\n',writerStart));
+    const writerEnd=captured.indexOf('chmod 600 .env\n',writerStart+1);
     assert.ok(writerStart>=0 && writerEnd>writerStart,`${name}: missing env writer`);
     const writer=captured.slice(writerStart,writerEnd+'chmod 600 .env'.length)+'\n';
     const written=await execute('bash',['-e','-o','pipefail','-c',writer],{cwd:dir,env:syntheticEnv});
@@ -94,4 +104,20 @@ test('operator owner reaches the remote env file and Compose, including clearing
     assert.equal(matches.length,1,`${name}: ${rendered.output}`);
     assert.equal(matches[0][1],owner??'',name);
   }
+});
+
+test('secret values are written as data and never parsed as shell',async t=>{
+  const dir=await mkdtemp(join(tmpdir(),'nabu-secret-deploy-'));
+  t.after(()=>rm(dir,{recursive:true,force:true}));
+  const hostile='pw\nENVFILE\ntouch injected-local\nEOF\ntouch injected-remote\n$(touch injected-subst)`touch injected-tick`';
+  const env={...syntheticEnv,PROBE_REMOTE:join(dir,'remote.sh'),DB_PASSWORD:hostile,R2_SECRET_ACCESS_KEY:hostile};
+  const stub='ssh() { case "${2:-}" in *.env.next*) cat > .env.next;; *rclone*) cat > rclone.next;; "") cat > "$PROBE_REMOTE";; esac; }\n';
+  const capture=await execute('bash',['-e','-o','pipefail','-c',preflight+stub+render+remote],{cwd:dir,env});
+  assert.equal(capture.code,0,capture.output);
+  for(const marker of ['injected-local','injected-remote','injected-subst','injected-tick']) {
+    await assert.rejects(stat(join(dir,marker)),`${marker} was executed`);
+  }
+  assert.ok((await readFile(join(dir,'.env.next'),'utf8')).includes(`DB_PASSWORD=${hostile}\n`));
+  assert.ok((await readFile(join(dir,'rclone.next'),'utf8')).includes(hostile));
+  assert.doesNotMatch(await readFile(join(dir,'remote.sh'),'utf8'),/injected/);
 });

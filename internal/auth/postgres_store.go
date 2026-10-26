@@ -212,7 +212,7 @@ func (s *PostgresStore) DeleteUserSessions(ctx context.Context, userID int64) er
 	return err
 }
 
-func (s *PostgresStore) DeleteUser(ctx context.Context, userID int64) error {
+func (s *PostgresStore) DeleteUser(ctx context.Context, userID int64, opts DeleteOptions) error {
 	return s.InTransaction(ctx, func(store Store) error {
 		tx := store.(*PostgresStore)
 		if _, err := tx.GetUserByID(ctx, userID); errors.Is(err, ErrUserNotFound) {
@@ -220,7 +220,27 @@ func (s *PostgresStore) DeleteUser(ctx context.Context, userID int64) error {
 		} else if err != nil {
 			return err
 		}
+		if opts.DeleteLogs {
+			if _, err := tx.q.ExecContext(ctx, `DELETE FROM chore_logs WHERE user_id = $1`, userID); err != nil {
+				return err
+			}
+		} else {
+			// One fresh tombstone per household: former members of different
+			// households (or two in one) are never linkable to each other.
+			if _, err := tx.q.ExecContext(ctx, `
+				WITH former AS (
+					SELECT household_id, -nextval('former_member_seq') AS id
+					FROM (SELECT DISTINCT household_id FROM chore_logs WHERE user_id = $1) h
+				)
+				UPDATE chore_logs l
+				SET user_id = former.id, note = CASE WHEN $2 THEN '' ELSE l.note END
+				FROM former
+				WHERE l.user_id = $1 AND l.household_id = former.household_id`, userID, opts.DeleteNotes); err != nil {
+				return err
+			}
+		}
 		for _, query := range []string{
+			`UPDATE chore_logs SET idempotency_actor_id = NULL WHERE idempotency_actor_id = $1`,
 			`DELETE FROM invites WHERE created_by = $1`,
 			`UPDATE day_notes SET updated_by = NULL WHERE updated_by = $1`,
 			`UPDATE chores SET created_by = NULL WHERE created_by = $1`,

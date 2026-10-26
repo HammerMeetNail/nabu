@@ -706,3 +706,42 @@ func TestStaticLegalPages(t *testing.T) {
 		}
 	}
 }
+
+// Rejections from inner middleware (CSRF 403, context-changed 409, rate
+// limit 429) must still carry security headers and a request ID: the logger
+// and SecurityHeaders wrap the whole chain.
+func TestRejectionsCarrySecurityHeadersAndRequestID(t *testing.T) {
+	t.Setenv("RATE_LIMIT_AUTH_MAX", "1")
+	srv := newTestSrv(t)
+	if closer, ok := srv.(io.Closer); ok {
+		t.Cleanup(func() { _ = closer.Close() })
+	}
+	session := srvRegister(t, srv) // consumes the single /api/auth slot
+
+	assertHeaders := func(name string, rec *httptest.ResponseRecorder, want int) {
+		t.Helper()
+		if rec.Code != want {
+			t.Fatalf("%s: status = %d, want %d (%s)", name, rec.Code, want, rec.Body.String())
+		}
+		for _, h := range []string{"Content-Security-Policy", "X-Content-Type-Options", "X-Frame-Options", "X-Request-ID"} {
+			if rec.Header().Get(h) == "" {
+				t.Errorf("%s: missing %s header", name, h)
+			}
+		}
+	}
+
+	// CSRF: state-changing request with no token.
+	assertHeaders("csrf", srvRequest(srv, http.MethodPost, "/api/household", `{"name":"x"}`, "", session), http.StatusForbidden)
+
+	// Context changed: the request was authored by a different account.
+	req := httptest.NewRequest(http.MethodGet, "/api/me", nil)
+	req.AddCookie(&http.Cookie{Name: "nabu_session", Value: session})
+	req.Header.Set("X-Nabu-User-ID", "999999")
+	rec := httptest.NewRecorder()
+	srv.ServeHTTP(rec, req)
+	assertHeaders("context-changed", rec, http.StatusConflict)
+
+	// Rate limit on /api/auth.
+	assertHeaders("rate-limit", srvRequest(srv, http.MethodPost, "/api/auth/login",
+		`{"email":"srv_route_test@example.com","password":"password123"}`, "tok", ""), http.StatusTooManyRequests)
+}

@@ -52,6 +52,9 @@ type Store interface {
 	ListLogsRange(ctx context.Context, householdID int64, start, end time.Time) ([]ChoreLog, error)
 	// ListLogUserIDs returns the distinct authors of logs retained by a household.
 	ListLogUserIDs(ctx context.Context, householdID int64) ([]int64, error)
+	// ListUserLogs returns every log the user recorded, in any household,
+	// oldest first (the account holder's own-data export).
+	ListUserLogs(ctx context.Context, userID int64) ([]ChoreLog, error)
 	// LatestPerChore returns the most recent log for each chore in the household.
 	// Keys are chore IDs; chores with no logs are absent from the map.
 	LatestPerChore(ctx context.Context, householdID int64) (map[int64]ChoreLog, error)

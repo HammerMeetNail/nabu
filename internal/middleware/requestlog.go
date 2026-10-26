@@ -1,15 +1,25 @@
 package middleware
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
-	"github.com/HammerMeetNail/nabu/internal/diagnostics"
+	"errors"
 	"log"
 	"net"
 	"net/http"
+	"net/netip"
 	"time"
+
+	"github.com/HammerMeetNail/nabu/internal/clientip"
+	"github.com/HammerMeetNail/nabu/internal/diagnostics"
 )
+
+// StatusClientClosedRequest is logged when the client disconnected before the
+// handler finished. The handler's own error status (usually 500 from a
+// canceled query) is not a server fault and must not count toward error rates.
+const StatusClientClosedRequest = 499
 
 // hashClientIP returns a short, stable fingerprint of the request's client IP
 // so access logs can correlate a source without storing the raw address. The
@@ -19,7 +29,7 @@ func hashClientIP(remoteAddr string) string {
 	if err != nil {
 		host = remoteAddr
 	}
-	if host == "" {
+	if host == "" || host == "unknown" {
 		return ""
 	}
 	sum := sha256.Sum256([]byte(host))
@@ -38,7 +48,10 @@ func (r *statusRecorder) WriteHeader(status int) {
 	r.ResponseWriter.WriteHeader(status)
 }
 
-func RequestLogger(logger *log.Logger) func(http.Handler) http.Handler {
+// RequestLogger logs one JSON line per request. trustedProxies are the
+// TRUSTED_PROXY_CIDRS prefixes: behind a proxy or tunnel the client hash is
+// taken from the forwarded client address, not the proxy's.
+func RequestLogger(logger *log.Logger, trustedProxies ...netip.Prefix) func(http.Handler) http.Handler {
 	if logger == nil {
 		logger = log.Default()
 	}
@@ -50,17 +63,21 @@ func RequestLogger(logger *log.Logger) func(http.Handler) http.Handler {
 			recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 			next.ServeHTTP(recorder, r)
 
+			status := recorder.status
+			if status >= 500 && errors.Is(r.Context().Err(), context.Canceled) {
+				status = StatusClientClosedRequest
+			}
 			payload, _ := json.Marshal(map[string]any{
 				"request_id":  requestID,
 				"ts":          start.Format(time.RFC3339),
 				"method":      r.Method,
 				"path":        r.URL.Path,
-				"status":      recorder.status,
+				"status":      status,
 				"duration_ms": time.Since(start).Milliseconds(),
 				// Log a stable hash of the client IP rather than the raw address:
 				// it still lets operators correlate requests from one source
 				// (rate-limit abuse, error bursts) without retaining PII in logs.
-				"client": hashClientIP(r.RemoteAddr),
+				"client": hashClientIP(clientip.Address(r, trustedProxies)),
 			})
 			logger.Println(string(payload))
 		})

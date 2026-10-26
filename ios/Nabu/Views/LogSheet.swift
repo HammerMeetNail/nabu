@@ -17,7 +17,9 @@ struct LogSheet: View {
     let chore: Chore
     let log: ChoreLog?
     let logStore: LogStore
-    var onUndo: ((Int, String) -> Void)?
+    /// Called after a new log is created on the server, so the presenter can
+    /// show the undo toast. Queued (offline) logs have no server ID to undo.
+    var onLogged: ((ChoreLog) -> Void)?
 
     @State private var selectedUnit = ""
     @State private var note = ""
@@ -208,43 +210,24 @@ struct LogSheet: View {
 
                 }
                 .disabled(isSaving || submissionStarted)
-                Section {
-                    if submissionStarted {
-                        Text("This saved request is fixed for safe retry. You can retry it here or manage it in Pending saves.")
-                            .font(.caption)
-                    }
-                    if let error = errorMessage {
-                        Text(error)
-                            .foregroundColor(.red)
-                            .font(.subheadline)
-                    }
-
-                    Button {
-                        saveLog()
-                    } label: {
-                        if isSaving {
-                            ProgressView()
-                                .frame(maxWidth: .infinity)
-                        } else {
-                            Text(isEditing ? "Update" : (submissionStarted ? "Retry save" : "Log"))
-                                .frame(maxWidth: .infinity)
-                                .fontWeight(.semibold)
-                        }
-                    }
-                    .disabled(isSaving)
-                    .accessibilityIdentifier("save-log-button")
-                }
 
                 if isEditing, let logId = log?.id {
                     Section {
                         Button("Remove log", role: .destructive) {
-                            dismiss()
-                            onUndo?(logId, chore.name)
+                            removeLog(logId)
                         }
+                        .disabled(isSaving)
+                        .accessibilityIdentifier("remove-log-button")
                     }
                 }
             }
             .scrollDismissesKeyboard(.interactively)
+            // The primary action is pinned above the safe area so it is
+            // reachable at every detent and Dynamic Type size; inside the
+            // Form it scrolled below the fold at the medium detent.
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                saveBar
+            }
             .navigationTitle("\(chore.icon) \(chore.name)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -443,6 +426,68 @@ struct LogSheet: View {
         loadAmountTexts()
     }
 
+    private var saveBar: some View {
+        VStack(spacing: 8) {
+            if submissionStarted {
+                Text("This saved request is fixed for safe retry. You can retry it here or manage it in Pending saves.")
+                    .font(.caption)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let error = errorMessage {
+                Text(error)
+                    .foregroundColor(.red)
+                    .font(.subheadline)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Button {
+                saveLog()
+            } label: {
+                Group {
+                    if isSaving {
+                        ProgressView()
+                    } else {
+                        Text(isEditing ? "Update" : (submissionStarted ? "Retry save" : "Log"))
+                            .fontWeight(.semibold)
+                    }
+                }
+                .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(isSaving)
+            .accessibilityIdentifier("save-log-button")
+        }
+        .padding(.horizontal)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+        .background(.bar)
+        // Make the bar occlude what scrolls beneath it for accessibility hit
+        // testing too, so VoiceOver touch exploration and UI automation do not
+        // target form rows hidden under it.
+        .accessibilityElement(children: .contain)
+    }
+
+    private func removeLog(_ logId: Int) {
+        guard !isSaving else { return }
+        let owner = state.revision
+        isSaving = true
+        errorMessage = nil
+        Task {
+            do {
+                let _: StatusResponse = try await logStore.deleteLog(logId: logId)
+                guard state.revision == owner else { return }
+                state.todayLogs.removeAll { $0.id == logId }
+                let loader = LogDataLoader(api: logStore.api, state: state)
+                await loader.loadLatestLogsData()
+                guard state.revision == owner else { return }
+                dismiss()
+            } catch {
+                guard state.revision == owner else { return }
+                errorMessage = error.localizedDescription
+                isSaving = false
+            }
+        }
+    }
+
     private func saveLog() {
         guard !isSaving else { return }
         let texts = hasIndicators ? selectedIndicators.map { indicatorAmountTexts[$0] ?? "" } : [amountText]
@@ -533,6 +578,7 @@ struct LogSheet: View {
                     case .created(let response):
                         state.todayLogs.insert(response.log, at: 0)
                         state.latestLogs[chore.id] = response.log
+                        onLogged?(response.log)
                     case .queued(let pending):
                         var row = pending
                         if row.userId == nil { row.userId = state.user?.id }

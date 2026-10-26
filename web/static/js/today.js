@@ -382,7 +382,7 @@ export function renderHistoryView(state) {
           data-chore-id="${r.choreId}"
           data-log-id="${r.logId}"
           data-date="${r.date}">
-          <span class="hist-icon">${r.icon}</span>
+          <span class="hist-icon">${escapeHTML(r.icon)}</span>
           <div class="hist-body">
             <span class="hist-name">${escapeHTML(r.name)}${pendingBadge}</span>
             ${titleStr}

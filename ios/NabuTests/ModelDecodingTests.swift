@@ -927,4 +927,67 @@ final class ModelDecodingTests: XCTestCase {
         XCTAssertNil(ts.metricUnit)
         XCTAssertEqual(ts.periods[0].totalDuration, 5400)
     }
+
+    // MARK: - Empty household (null arrays)
+
+    /// A brand-new household has no logs, and older servers encoded the
+    /// empty recap/leaderboard/breakdown lists as `null`. Decoding must
+    /// yield empty arrays so Stats renders its empty state instead of
+    /// "Couldn't load".
+    func testDecodeEmptyHouseholdOverviewWithNullArrays() throws {
+        let json = #"""
+        {
+          "overview": {
+            "leaderboard": null,
+            "streaks": {"current": 0, "longest": 0},
+            "breakdown": null,
+            "recap": {"totalChores": 0, "topPerformer": null, "mostActiveDay": "", "byCategory": null}
+          }
+        }
+        """#.data(using: .utf8)!
+        let response = try decoder.decode(OverviewResponse.self, from: json)
+        XCTAssertEqual(response.overview.leaderboard, [])
+        XCTAssertEqual(response.overview.breakdown, [])
+        XCTAssertEqual(response.overview.recap.byCategory, [])
+        XCTAssertNil(response.overview.recap.topPerformer)
+    }
+
+    func testDecodeEmptyHouseholdOverviewWithEmptyArrays() throws {
+        let json = #"""
+        {"overview": {"leaderboard": [], "streaks": {"current": 0, "longest": 0}, "breakdown": [],
+          "recap": {"totalChores": 0, "topPerformer": null, "mostActiveDay": "", "byCategory": []}}}
+        """#.data(using: .utf8)!
+        let response = try decoder.decode(OverviewResponse.self, from: json)
+        XCTAssertEqual(response.overview.recap.byCategory, [])
+    }
+
+    func testDecodeEmptyHouseholdStatsListsWithNullArrays() throws {
+        func data(_ s: String) -> Data { s.data(using: .utf8)! }
+        XCTAssertEqual(try decoder.decode(RecapResponse.self, from: data(
+            #"{"recap": {"totalChores": 0, "topPerformer": null, "mostActiveDay": "", "byCategory": null}}"#
+        )).recap.byCategory, [])
+        XCTAssertEqual(try decoder.decode(LeaderboardResponse.self, from: data(
+            #"{"leaderboard": null, "start": "2026-10-11", "end": "2026-10-18"}"#
+        )).leaderboard, [])
+        XCTAssertEqual(try decoder.decode(BreakdownResponse.self, from: data(
+            #"{"breakdown": null, "start": "2026-10-11", "end": "2026-10-18"}"#
+        )).breakdown, [])
+        XCTAssertEqual(try decoder.decode(ChoreStatsResponse.self, from: data(
+            #"{"choreStats": null, "start": "2026-09-27", "end": "2026-10-27"}"#
+        )).choreStats, [])
+        let ts = try decoder.decode(TimeSeriesResponse.self, from: data(
+            #"{"timeSeries": {"choreId": 1, "choreName": "Feed Baby", "choreIcon": "🍼", "byMember": null, "periods": []}}"#
+        )).timeSeries
+        XCTAssertEqual(ts.byMember, [])
+        // A missing key decodes as empty too.
+        XCTAssertEqual(try decoder.decode(TopChoresResponse.self, from: data("{}")).topChores, [])
+    }
+
+    func testEmptyIfNullRoundTripsAsArray() throws {
+        let recap = Recap(totalChores: 0, topPerformer: nil, mostActiveDay: "", byCategory: [])
+        let encoded = try apiEncoder.encode(recap)
+        let object = try JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        XCTAssertEqual((object?["byCategory"] as? [Any])?.count, 0)
+        XCTAssertEqual(try decoder.decode(Recap.self, from: encoded), recap)
+    }
 }

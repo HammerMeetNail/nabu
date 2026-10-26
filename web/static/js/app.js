@@ -148,6 +148,9 @@ function maybeCheckSWUpdate() {
 export function render(root) {
   maybeCheckSWUpdate();
   sheetController?.beforeRender();
+  // An undo toast floats above the tab bar, exactly where a sheet's primary
+  // action sits; opening any sheet dismisses it so it cannot cover Log/Save.
+  if (state.activeSheet) dismissUndoToasts();
 
   const route = state.currentRoute || window.location.pathname || "/";
   // Effective route for tab highlighting: unknown/auth-only paths fall back to
@@ -722,16 +725,35 @@ function renderSettingsView() {
     </div>
   ` : "";
 
+  // The build version lives here (Settings → About), not in the header.
+  const appVersion = (typeof document !== "undefined" && document.body?.dataset.appVersion) || "";
+  const aboutLine = appVersion ? `<p class="app-version" data-testid="app-version">Nabu v${escapeHTML(appVersion)}</p>` : "";
+
   // In-app account deletion (App Store guideline 5.1.1(v) requires it on the
   // native client; the PWA gets the same flow for parity). The server demands
   // the typed confirmation {"confirm":"DELETE"}; a sole owner of a
   // multi-member household gets a 409 telling them to transfer first.
   const deleteAccountSection = state.deleteAccountOpen ? `
     <div class="mt-3" data-testid="delete-account-confirm">
-      <p class="text-secondary">Deleting your account permanently removes your data.
-        Households where you are the only member are deleted with all their logs.
+      <p class="text-secondary">Deleting your account permanently removes your
+        account, email, name, sessions, devices, preferences, reminders and
+        notifications. Households where you are the only member are deleted with
+        all their logs.</p>
+      <p class="text-secondary">In households you share, the logs you recorded
+        stay so the others keep their history. They are shown as
+        “Former member” and are no longer linked to you. You can also delete them.
         If you are the only owner of a household with other members, transfer
         ownership (or remove the other members) first. This cannot be undone.</p>
+      <p class="mt-2"><a href="/api/me/logs/export" download data-testid="download-my-data">Download my data</a>
+        <span class="text-secondary">(every log you recorded, as CSV)</span></p>
+      <label class="form-check mt-2">
+        <input type="checkbox" id="delete-account-logs"${state.deleteAccountLogs ? ' checked' : ''}>
+        <span>Also delete everything I logged in shared households</span>
+      </label>
+      <label class="form-check mt-1">
+        <input type="checkbox" id="delete-account-notes"${state.deleteAccountNotes ? ' checked' : ''}>
+        <span>Also delete the notes I wrote on logs that stay</span>
+      </label>
       <div class="form-group mt-2">
         <label class="form-label" for="delete-account-input">Type DELETE to confirm</label>
         <input id="delete-account-input" type="text" autocomplete="off" autocapitalize="characters" placeholder="DELETE">
@@ -889,9 +911,9 @@ function renderSettingsView() {
     const householdCard = state.accessSuspended
       ? renderAccessSuspendedCard(state)
       : renderHouseholdView(null, null, null, state.user);
-    return `<div class="settings-view">${householdCard}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div></div>`;
+    return `<div class="settings-view">${householdCard}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div>${aboutLine}</div>`;
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div></div>`;
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div>${aboutLine}</div>`;
 }
 
 function loadAllStatsData() {
@@ -1111,6 +1133,10 @@ function getChoreReminderPref(choreId) {
   return (state.choreReminderPrefs || []).find(p => p.choreId === choreId) || null;
 }
 
+function dismissUndoToasts() {
+  document.querySelectorAll("#toast-container [data-undo-toast]").forEach(t => t.remove());
+}
+
 function showToastWithUndo(message, logId) {
   // Haptic tick on a successful log where supported (Android; harmless no-op
   // on iOS). This is the shared success path for logging a chore.
@@ -1119,6 +1145,7 @@ function showToastWithUndo(message, logId) {
   if (!container) return;
   const toast = document.createElement("div");
   toast.className = "toast toast-success";
+  toast.dataset.undoToast = "";
   toast.style.cssText = "display:flex;align-items:center;gap:8px;";
   const label = document.createElement("span");
   label.textContent = message;
@@ -1158,6 +1185,7 @@ function showToastWithRestore(message, log) {
   if (!container || !log) { showToast(message, "success"); return; }
   const toast = document.createElement("div");
   toast.className = "toast toast-success";
+  toast.dataset.undoToast = "";
   toast.style.cssText = "display:flex;align-items:center;gap:8px;";
   const label = document.createElement("span");
   label.textContent = message;
@@ -1614,6 +1642,8 @@ async function doDeleteAccount() {
   if (deleteAccountAttempt) return;
   const input = document.querySelector("#delete-account-input");
   const app = document.querySelector("#app");
+  state.deleteAccountLogs = !!document.querySelector("#delete-account-logs")?.checked;
+  state.deleteAccountNotes = !!document.querySelector("#delete-account-notes")?.checked;
   if (input?.value.trim() !== "DELETE") {
     state.deleteAccountError = "Type DELETE (in capitals) to confirm.";
     render(app);
@@ -1627,7 +1657,8 @@ async function doDeleteAccount() {
   render(app);
   try {
     const result = await changeIdentity(async origin => {
-      await apiFetch("/api/me",{method:"DELETE",body:JSON.stringify({confirm:"DELETE"}),origin,allowContextChange:true});
+      const body = {confirm:"DELETE", deleteLogs:state.deleteAccountLogs, deleteNotes:state.deleteAccountNotes};
+      await apiFetch("/api/me",{method:"DELETE",body:JSON.stringify(body),origin,allowContextChange:true});
       return {ok:true};
     });
     if (ticket !== identityUIRevision || !resultIsCurrent(result)) return;
@@ -2010,6 +2041,8 @@ export async function init() {
         state.deleteAccountOpen = true;
         state.deleteAccountBusy = !!deleteAccountAttempt;
         state.deleteAccountError = null;
+        // Opt-in deletions never carry over from an earlier, cancelled attempt.
+        if (!deleteAccountAttempt) state.deleteAccountLogs = state.deleteAccountNotes = false;
         render(app);
         break;
       case "cancel-delete-account":
@@ -3514,6 +3547,9 @@ export async function init() {
     if (e.target.matches('.number-input input')) syncNumberInput(e.target);
   });
   document.addEventListener("change", (e) => {
+    // Keep the deletion opt-ins in state so a re-render cannot untick them.
+    if (e.target.id === "delete-account-logs") { state.deleteAccountLogs = e.target.checked; return; }
+    if (e.target.id === "delete-account-notes") { state.deleteAccountNotes = e.target.checked; return; }
     if (e.target.matches('[data-action="pick-number"]')) {
       const input = e.target.closest('.number-input').querySelector('input');
       input.value = e.target.value;

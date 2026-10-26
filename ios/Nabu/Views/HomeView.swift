@@ -8,7 +8,9 @@ struct HomeView: View {
     @State private var editingChore: Chore?    // non-nil drives the chore editor
     @State private var editingLog: ChoreLog?
     @State private var undoLogId: Int?
+    @State private var undoChoreId: Int?
     @State private var undoChoreName: String?
+    @State private var undoError: String?
     private let logStore: LogStore
 
     init(logStore: LogStore) {
@@ -52,7 +54,9 @@ struct HomeView: View {
                 }
             }
             .sheet(isPresented: $showingQuickLog) {
-                QuickLogSheet(state: state, logStore: logStore)
+                QuickLogSheet(state: state, logStore: logStore) { log, name in
+                    showUndo(for: log, choreName: name)
+                }
             }
             .sheet(item: $editingChore) { chore in
                 ChoreEditView(chore: chore, choreStore: ChoreStore(api: environment.apiClient))
@@ -65,11 +69,7 @@ struct HomeView: View {
                     chore: chore,
                     log: editingLog,
                     logStore: logStore,
-                    onUndo: { logId, choreName in
-                        undoLogId = logId
-                        undoChoreName = choreName
-                        selectedChore = nil   // dismisses the sheet
-                    }
+                    onLogged: { log in showUndo(for: log, choreName: chore.name) }
                 )
             }
             // Haptics (C3): success when a log lands (the undo toast appears),
@@ -84,23 +84,63 @@ struct HomeView: View {
             .overlay(alignment: .bottom) {
                 if let logId = undoLogId, let name = undoChoreName {
                     UndoToast(choreName: name) {
-                        Task {
-                            do {
-                                let _: StatusResponse = try await logStore.deleteLog(logId: logId)
-                                state.todayLogs.removeAll { $0.id == logId }
-                                state.latestLogs.removeValue(forKey: logId)
-                            } catch {
-                                // Silent failure
-                            }
-                            undoLogId = nil
-                            undoChoreName = nil
-                        }
+                        undo(logId: logId, choreId: undoChoreId)
                     } onDismiss: {
-                        undoLogId = nil
-                        undoChoreName = nil
+                        clearUndo(logId)
                     }
+                    .id(logId)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
+                } else if let undoError {
+                    Text(undoError)
+                        .font(.subheadline)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(Color.red.opacity(0.9))
+                        .clipShape(Capsule())
+                        .padding(.bottom, 20)
+                        .accessibilityIdentifier("undo-error")
+                        .task {
+                            try? await Task.sleep(nanoseconds: 4_000_000_000)
+                            self.undoError = nil
+                        }
                 }
+            }
+        }
+    }
+
+    private func showUndo(for log: ChoreLog, choreName: String) {
+        undoError = nil
+        undoLogId = log.id
+        undoChoreId = log.choreId
+        undoChoreName = choreName
+    }
+
+    private func clearUndo(_ logId: Int) {
+        guard undoLogId == logId else { return } // a newer log owns the toast
+        undoLogId = nil
+        undoChoreId = nil
+        undoChoreName = nil
+    }
+
+    /// Deletes the just-created log and restores the tile's previous
+    /// "time ago" by refetching latest-per-chore (the map is keyed by chore
+    /// ID, and the previous log is only known to the server).
+    private func undo(logId: Int, choreId: Int?) {
+        let owner = state.revision
+        clearUndo(logId)
+        Task {
+            do {
+                let _: StatusResponse = try await logStore.deleteLog(logId: logId)
+                guard state.revision == owner else { return }
+                state.todayLogs.removeAll { $0.id == logId }
+                if let choreId, state.latestLogs[choreId]?.id == logId {
+                    state.latestLogs.removeValue(forKey: choreId)
+                }
+                await LogDataLoader(api: logStore.api, state: state).loadLatestLogsData()
+            } catch {
+                guard state.revision == owner else { return }
+                undoError = "Couldn't undo. The log was kept."
             }
         }
     }

@@ -371,6 +371,22 @@ func (s *PostgresStore) queryLogs(ctx context.Context, householdID int64, dateSt
 	return logs, nil
 }
 
+func (s *PostgresStore) ListUserLogs(ctx context.Context, userID int64) ([]ChoreLog, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT `+logColumns+` FROM chore_logs
+ WHERE user_id = $1 ORDER BY completed_at, id`+readlimit.SQL(ctx), userID)
+	if err != nil {
+		return nil, err
+	}
+	logs, err := scanLogRows(rows)
+	if err != nil {
+		return nil, err
+	}
+	if err := readlimit.Check(ctx, len(logs)); err != nil {
+		return nil, err
+	}
+	return logs, nil
+}
+
 func (s *PostgresStore) HistoryLogs(ctx context.Context, householdID int64, start, end time.Time) ([]ChoreLog, bool, error) {
 	logs, err := s.queryLogs(ctx, householdID, start.Format(time.DateOnly), end.Format(time.DateOnly))
 	if err != nil {

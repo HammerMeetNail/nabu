@@ -30,7 +30,7 @@ a { color: #236886; }
 
 const privacyBody = `
 <h1>Privacy Policy</h1>
-<p><em>Last updated: 2026-08-20</em></p>
+<p><em>Last updated: 2026-10-26</em></p>
 <p>Nabu is a household activity tracker. This policy describes what data the
 service stores and how it is used.</p>
 
@@ -57,9 +57,19 @@ change takes effect and let you know first.</li>
 
 <h2>Data retention and deletion</h2>
 <p>You can delete your account at any time from Settings → Account →
-Delete Account (in the app or on the web). Deletion is immediate and
-permanent: your account and, for households where you are the only member,
-all household data are removed.</p>
+Delete Account (in the app or on the web). Before deleting, you can download
+every log you recorded as a CSV file. Deletion is immediate and permanent.</p>
+<p><strong>What is deleted:</strong> your account, email address, display
+name and avatar, sessions, push and device tokens, preferences, reminder
+settings, notifications, sign-in and email tokens, and invites you created.
+Households where you are the only member are deleted with all their data.</p>
+<p><strong>What is kept:</strong> in households you share with others, the
+logs you recorded stay so the other members keep their household's history
+(for example, a child's feeding record). They are shown as "Former member"
+and are no longer linked to your account, email or name. When deleting, you
+can choose to also delete everything you logged, or only the notes you wrote
+on those logs. Chores and schedules you created in a shared household stay
+with that household, without your name.</p>
 
 <h2>Contact</h2>
 <p>Questions about this policy: see the <a href="/support">support page</a>.</p>

@@ -2,6 +2,7 @@ package chore
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 )
 
@@ -38,6 +39,17 @@ type Chore struct {
 	// visible to all household members; "admins" is visible only to owners and
 	// admins (private household tasks).
 	Visibility string `json:"visibility"`
+}
+
+// MarshalJSON encodes nil list fields as [] so clients can decode them into
+// non-optional arrays.
+func (c Chore) MarshalJSON() ([]byte, error) {
+	type plain Chore
+	out := plain(c)
+	out.IndicatorLabels = nilToEmpty(out.IndicatorLabels)
+	out.IndicatorDefaults = nilToEmpty(out.IndicatorDefaults)
+	out.Subjects = nilToEmpty(out.Subjects)
+	return json.Marshal(out)
 }
 
 // Metric type constants for Chore.MetricType.

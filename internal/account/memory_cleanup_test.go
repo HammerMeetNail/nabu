@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/apns"
+	"github.com/HammerMeetNail/nabu/internal/auth"
 	"github.com/HammerMeetNail/nabu/internal/chore"
 	"github.com/HammerMeetNail/nabu/internal/daynote"
 	"github.com/HammerMeetNail/nabu/internal/household"
@@ -43,8 +44,9 @@ func TestMemoryDeletionCleansDependentDataAndRejectsStaleWrites(t *testing.T) {
 	devices := apns.NewMemoryStore()
 	prefs := userprefs.NewMemoryStore()
 	notes := daynote.NewMemoryStore()
-	svc.SetMemoryCleanup(func(uid int64, hhs []int64) {
+	svc.SetMemoryCleanup(func(uid int64, hhs []int64, opts auth.DeleteOptions) {
 		d := lifecycle.NewDeletion(uid, hhs)
+		d.DeleteLogs, d.DeleteNotes = opts.DeleteLogs, opts.DeleteNotes
 		for _, s := range []any{chores, logs, schedules, reminders, notifications, pushes, devices, prefs, notes} {
 			s.(interface{ CleanupAccount(*lifecycle.Deletion) }).CleanupAccount(d)
 		}
@@ -62,6 +64,8 @@ func TestMemoryDeletionCleansDependentDataAndRejectsStaleWrites(t *testing.T) {
 	entry, err := logs.CreateLog(ctx, chorelog.ChoreLog{HouseholdID: shared.ID, ChoreID: retained.ID, UserID: deleting.ID, Note: "Delete personal log"})
 	must(err)
 	_, err = logs.CreateLog(ctx, chorelog.ChoreLog{HouseholdID: shared.ID, ChoreID: retained.ID, UserID: other.ID})
+	must(err)
+	soloEntry, err := logs.CreateLog(ctx, chorelog.ChoreLog{HouseholdID: solo.ID, ChoreID: ownChore.ID, UserID: deleting.ID})
 	must(err)
 	sch, err := schedules.Create(ctx, schedule.ChoreSchedule{HouseholdID: shared.ID, ChoreID: retained.ID, AssignedUserID: &deleting.ID})
 	must(err)
@@ -81,7 +85,7 @@ func TestMemoryDeletionCleansDependentDataAndRejectsStaleWrites(t *testing.T) {
 	must(err)
 	_, err = notes.Upsert(ctx, shared.ID, "2026-09-10", "Retain household note", deleting.ID)
 	must(err)
-	must(svc.DeleteAccount(ctx, deleting.ID))
+	must(svc.DeleteAccount(ctx, deleting.ID, auth.DeleteOptions{}))
 	if _, err := chores.GetChore(ctx, ownChore.ID); err == nil {
 		t.Fatal("sole-household chore remains")
 	}
@@ -90,11 +94,15 @@ func TestMemoryDeletionCleansDependentDataAndRejectsStaleWrites(t *testing.T) {
 	if kept.CreatedBy != nil || kept.Visibility != chore.VisibilityAdmins {
 		t.Fatal("retained private chore ownership/visibility changed")
 	}
-	if _, err := logs.GetLog(ctx, entry.ID); err == nil {
-		t.Fatal("personal log remains")
+	// By default the shared-household log stays under a former-member
+	// tombstone: no longer attributed to the deleted account.
+	former, err := logs.GetLog(ctx, entry.ID)
+	must(err)
+	if former.UserID >= 0 || former.UserID == deleting.ID || former.Note != entry.Note {
+		t.Fatalf("retained log = user %d note %q, want a negative tombstone and the note kept", former.UserID, former.Note)
 	}
-	if entries, err := logs.ListLogsRange(ctx, shared.ID, time.Time{}, time.Now().AddDate(1, 0, 0)); err != nil || len(entries) != 1 {
-		t.Fatalf("remaining member's log lost: %d %v", len(entries), err)
+	if entries, err := logs.ListLogsRange(ctx, shared.ID, time.Time{}, time.Now().AddDate(1, 0, 0)); err != nil || len(entries) != 2 {
+		t.Fatalf("shared household logs: %d %v", len(entries), err)
 	}
 	keptSchedule, err := schedules.Get(ctx, sch.ID)
 	must(err)
@@ -127,7 +135,7 @@ func TestMemoryDeletionCleansDependentDataAndRejectsStaleWrites(t *testing.T) {
 		"log":      func() error { _, err := logs.CreateLog(ctx, entry); return err },
 		"schedule": func() error { _, err := schedules.Update(ctx, sch); return err },
 		"log effects": func() error {
-			_, err := schedules.ApplyLogEffects(ctx, schedule.LogEffects{LogID: entry.ID, HouseholdID: shared.ID, ChoreID: retained.ID})
+			_, err := schedules.ApplyLogEffects(ctx, schedule.LogEffects{LogID: soloEntry.ID, HouseholdID: solo.ID, ChoreID: ownChore.ID})
 			return err
 		},
 		"reminder": func() error {

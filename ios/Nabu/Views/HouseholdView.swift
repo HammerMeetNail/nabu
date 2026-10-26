@@ -707,6 +707,9 @@ struct DeleteAccountSheet: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var accountDeletion: AccountDeletionModel
     @State private var confirmText = ""
+    @State private var myDataFile: ExportFile?
+    @State private var isExportingMyData = false
+    @State private var myDataError: String?
 
     private var confirmed: Bool {
         confirmText.trimmingCharacters(in: .whitespaces) == "DELETE"
@@ -716,11 +719,37 @@ struct DeleteAccountSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Deleting your account permanently removes your data. Households where you are the only member are deleted with all their logs. This cannot be undone.")
+                    Text("Deleting your account permanently removes your account, email, name, sessions, devices, preferences, reminders and notifications. Households where you are the only member are deleted with all their logs. This cannot be undone.")
+                        .font(.subheadline)
+                    Text("In households you share, the logs you recorded stay so the others keep their history. They are shown as \u{201C}Former member\u{201D} and are no longer linked to you.")
                         .font(.subheadline)
                     Text("If you are the only owner of a household with other members, transfer ownership (or remove the other members) first.")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
+                }
+
+                Section {
+                    Button {
+                        Task { await downloadMyData() }
+                    } label: {
+                        if isExportingMyData { ProgressView() } else { Text("Download My Data") }
+                    }
+                    .disabled(isExportingMyData)
+                    .accessibilityIdentifier("download-my-data")
+                } footer: {
+                    if let myDataError {
+                        Text(myDataError).foregroundColor(.red)
+                    } else {
+                        Text("Every log you recorded, as a CSV file.")
+                    }
+                }
+
+                Section {
+                    Toggle("Also delete everything I logged in shared households", isOn: $accountDeletion.deleteLogs)
+                        .accessibilityIdentifier("delete-account-logs")
+                    Toggle("Also delete the notes I wrote on logs that stay", isOn: $accountDeletion.deleteNotes)
+                        .disabled(accountDeletion.deleteLogs)
+                        .accessibilityIdentifier("delete-account-notes")
                 }
 
                 Section {
@@ -748,6 +777,9 @@ struct DeleteAccountSheet: View {
             }
             .navigationTitle("Delete Account")
             .navigationBarTitleDisplayMode(.inline)
+            .sheet(item: $myDataFile, onDismiss: clearMyDataFile) { file in
+                ShareSheet(items: [file.url])
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -759,6 +791,24 @@ struct DeleteAccountSheet: View {
         }
     }
 
+    private func downloadMyData() async {
+        guard !isExportingMyData else { return }
+        isExportingMyData = true
+        myDataError = nil
+        defer { isExportingMyData = false }
+        do {
+            let url = try await ActivityStore(api: environment.apiClient.scoped()).exportMyLogsCSV()
+            clearMyDataFile()
+            myDataFile = ExportFile(url: url)
+        } catch {
+            myDataError = error.localizedDescription
+        }
+    }
+
+    private func clearMyDataFile() {
+        if let url = myDataFile?.url { try? FileManager.default.removeItem(at: url) }
+        myDataFile = nil
+    }
 }
 
 // MARK: - Member Row

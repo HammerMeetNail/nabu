@@ -61,6 +61,20 @@ final class ActivityStore {
         try await exportCSV(path: "/api/household/data", prefix: "nabu-household-data", start: start, end: end)
     }
 
+    /// Every log the signed-in user recorded, in every household ("Download
+    /// my data" before account deletion).
+    func exportMyLogsCSV() async throws -> URL {
+        let data = try await api.getData("/api/me/logs/export", expectedContentType: "text/csv")
+        try Task.checkCancellation()
+        guard api.identity.isCurrent(owner) else { throw APIError.contextChanged }
+        guard !data.isEmpty, data.count <= 16 * 1024 * 1024 else {
+            throw APIError.serverError(statusCode: 413, message: "The export is too large to download.")
+        }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("nabu-my-logs-\(UUID().uuidString).csv")
+        try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        return url
+    }
+
     private func exportCSV(path: String, prefix: String, start: String?, end: String?) async throws -> URL {
         let first = start ?? "0001-01-01", last = end ?? "9999-12-31"
         guard first <= last else {

@@ -891,7 +891,7 @@ func (h *LogHandler) Export(w http.ResponseWriter, r *http.Request) {
 			csvSafe(ts.Format("2006-01-02")),
 			csvSafe(ts.Format("15:04")),
 			csvSafe(choreNames[l.ChoreID]),
-			csvSafe(memberNames[l.UserID]),
+			csvSafe(exportMemberName(memberNames, l.UserID)),
 			csvSafe(title),
 			csvSafe(l.Note),
 			csvSafe(vol),
@@ -927,6 +927,98 @@ func (h *LogHandler) Export(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sendExport(w, r, buffer, "nabu-logs.csv")
+}
+
+// ExportMine handles GET /api/me/logs/export: a CSV of every log the
+// account holder recorded, in every household ("Download my data", offered
+// before account deletion). Chore and household names are included only for
+// households the user still belongs to, and only for chores they can see.
+func (h *LogHandler) ExportMine(w http.ResponseWriter, r *http.Request) {
+	r, cancel := exportContext(r)
+	defer cancel()
+	user, ok := middleware.CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	logs, err := h.service.GetUserLogs(r.Context(), user.ID)
+	if err != nil {
+		exportError(w, err)
+		return
+	}
+	householdNames := map[int64]string{}
+	choreNames := map[int64]string{}
+	if h.householdStore != nil {
+		memberships, err := h.householdStore.ListUserHouseholds(r.Context(), user.ID)
+		if err != nil {
+			exportError(w, err)
+			return
+		}
+		for _, hh := range memberships {
+			householdNames[hh.ID] = hh.Name
+			if h.choreStore == nil {
+				continue
+			}
+			visible, err := h.visibleChoreIDs(r.Context(), user.ID, hh.ID)
+			if err != nil {
+				exportError(w, err)
+				return
+			}
+			chores, err := h.choreStore.ListChores(r.Context(), hh.ID)
+			if err != nil {
+				exportError(w, err)
+				return
+			}
+			for _, c := range chores {
+				if _, ok := visible[c.ID]; visible == nil || ok {
+					choreNames[c.ID] = c.Name
+				}
+			}
+		}
+	}
+
+	buffer := &exportBuffer{ctx: r.Context()}
+	cw := csv.NewWriter(buffer)
+	_ = cw.Write([]string{"household", "date", "time", "chore", "title", "note", "volume_ml", "indicators", "rating", "duration_seconds", "subject", "metric_unit"})
+	optional := func(v *int) string {
+		if v == nil {
+			return ""
+		}
+		return strconv.Itoa(*v)
+	}
+	for _, l := range logs {
+		ts := l.CompletedAt.UTC()
+		title, subject, rating := "", "", ""
+		if l.Title != nil {
+			title = *l.Title
+		}
+		if l.Subject != nil {
+			subject = *l.Subject
+		}
+		if l.Rating != nil {
+			rating = strconv.FormatFloat(float64(*l.Rating)/10.0, 'f', -1, 64)
+		}
+		_ = cw.Write([]string{
+			csvSafe(householdNames[l.HouseholdID]),
+			csvSafe(ts.Format("2006-01-02")),
+			csvSafe(ts.Format("15:04")),
+			csvSafe(choreNames[l.ChoreID]),
+			csvSafe(title),
+			csvSafe(l.Note),
+			csvSafe(optional(l.VolumeML)),
+			csvSafe(strings.Join(l.Indicators, "; ")),
+			csvSafe(rating),
+			csvSafe(optional(l.DurationSeconds)),
+			csvSafe(subject),
+			csvSafe(l.MetricUnit),
+		})
+	}
+	cw.Flush()
+	if err := cw.Error(); err != nil {
+		exportError(w, err)
+		return
+	}
+	sendExport(w, r, buffer, "nabu-my-logs.csv")
 }
 
 func (h *LogHandler) LatestPerChore(w http.ResponseWriter, r *http.Request) {
@@ -965,4 +1057,13 @@ func stringValue(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// exportMemberName names a log's author in CSV exports, including authors
+// who deleted their account (household.FormerMemberName).
+func exportMemberName(names map[int64]string, userID int64) string {
+	if household.IsFormerMember(userID) {
+		return household.FormerMemberName
+	}
+	return names[userID]
 }

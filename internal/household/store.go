@@ -40,6 +40,17 @@ type Member struct {
 	Suspended bool `json:"suspended"`
 }
 
+// FormerMemberName labels logs kept after their author deleted their
+// account. Those logs carry a negative tombstone user ID (see
+// auth.DeleteOptions) that has no profile and no link to the deleted account.
+const FormerMemberName = "Former member"
+
+// FormerMemberColor is the neutral avatar color for FormerMemberName.
+const FormerMemberColor = "#9CA3AF"
+
+// IsFormerMember reports whether a log's user ID is a former-member tombstone.
+func IsFormerMember(userID int64) bool { return userID < 0 }
+
 // HistoricalMember identifies a former member who authored retained household
 // activity. It intentionally excludes account details and membership role.
 type HistoricalMember struct {

@@ -25,6 +25,7 @@ import (
 	"github.com/HammerMeetNail/nabu/internal/auth"
 	"github.com/HammerMeetNail/nabu/internal/background"
 	"github.com/HammerMeetNail/nabu/internal/chore"
+	"github.com/HammerMeetNail/nabu/internal/clientip"
 	"github.com/HammerMeetNail/nabu/internal/config"
 	"github.com/HammerMeetNail/nabu/internal/database"
 	"github.com/HammerMeetNail/nabu/internal/daynote"
@@ -205,8 +206,9 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	}
 
 	if db == nil {
-		accountService.SetMemoryCleanup(func(userID int64, householdIDs []int64) {
+		accountService.SetMemoryCleanup(func(userID int64, householdIDs []int64, opts auth.DeleteOptions) {
 			d := lifecycle.NewDeletion(userID, householdIDs)
+			d.DeleteLogs, d.DeleteNotes = opts.DeleteLogs, opts.DeleteNotes
 			// Collect dependent IDs under each domain mutex, then clean dependents.
 			for _, store := range []any{choreStore, logStore, scheduleStore, reminderStore, notifStore, pushStore, apnsStore, userPrefsStore, dayNoteStore} {
 				store.(interface{ CleanupAccount(*lifecycle.Deletion) }).CleanupAccount(d)
@@ -536,6 +538,7 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	mux.HandleFunc("/api/logs/week", method(http.MethodGet, middleware.RequireAuth(logHandler.Week)))
 	mux.HandleFunc("/api/logs/month", method(http.MethodGet, middleware.RequireAuth(logHandler.Month)))
 	mux.HandleFunc("/api/logs/history", method(http.MethodGet, middleware.RequireAuth(logHandler.History)))
+	mux.HandleFunc("/api/me/logs/export", method(http.MethodGet, middleware.RequireAuth(exportGate.Wrap(logHandler.ExportMine))))
 	mux.HandleFunc("/api/logs/export", method(http.MethodGet, middleware.RequireAuth(exportGate.Wrap(logHandler.Export))))
 	mux.HandleFunc("/api/logs/latest-per-chore", method(http.MethodGet, middleware.RequireAuth(logHandler.LatestPerChore)))
 	mux.HandleFunc("/api/logs/recent-amounts", method(http.MethodGet, middleware.RequireAuth(logHandler.RecentAmounts)))
@@ -725,8 +728,6 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	})
 
 	var handler http.Handler = mux
-	handler = middleware.RequestLogger(nil)(handler)
-	handler = middleware.SecurityHeaders(cfg.ServerSecure)(handler)
 	handler = middleware.Session(authService, "nabu_session")(handler)
 	handler = middleware.CSRF("nabu_csrf", cfg.ServerSecure)(handler)
 	// Outside CSRF so a validated personal API key can skip the cookie check.
@@ -748,6 +749,14 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	if globalRateLimiter != nil {
 		handler = globalRateLimiter.Middleware("/api/")(handler)
 	}
+	// Outermost, so CSRF (403), context-changed (409) and rate-limit (429)
+	// rejections still carry security headers, an X-Request-ID and a log line.
+	handler = middleware.SecurityHeaders(cfg.ServerSecure)(handler)
+	trustedProxies, err := clientip.ParseTrustedProxies(cfg.TrustedProxyCIDRs)
+	if err != nil {
+		panic("invalid trusted proxy configuration")
+	}
+	handler = middleware.RequestLogger(nil, trustedProxies...)(handler)
 
 	limiters := []*middleware.RateLimiter{rateLimiter, joinLimiter}
 	if operatorLimiter != nil {

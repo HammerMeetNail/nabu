@@ -251,7 +251,7 @@ func TestPostgresDeleteLocksUserBeforeTokens(t *testing.T) {
 				return err
 			}
 			deletePID <- pid
-			return tx.DeleteUser(ctx, user.ID)
+			return tx.DeleteUser(ctx, user.ID, DeleteOptions{})
 		})
 	}()
 	var deleting int

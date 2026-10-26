@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/HammerMeetNail/nabu/internal/chore"
@@ -17,6 +18,21 @@ import (
 
 var hexColorRe = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 
+// validIcon rejects HTML-significant and control characters. Icons are
+// rendered in every member's views, so markup in one is a stored injection
+// against the whole household even where clients escape it.
+func validIcon(icon string) bool {
+	if strings.ContainsAny(icon, "<>&\"'`") {
+		return false
+	}
+	for _, r := range icon {
+		if unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
+}
+
 func validateChoreInput(name, icon, color, category string, indicatorLabels, indicatorDefaults []string) (int, string) {
 	if utf8.RuneCountInString(name) == 0 {
 		return http.StatusBadRequest, "name must not be empty"
@@ -26,6 +42,9 @@ func validateChoreInput(name, icon, color, category string, indicatorLabels, ind
 	}
 	if utf8.RuneCountInString(icon) > 8 {
 		return http.StatusBadRequest, "icon must be 8 characters or fewer"
+	}
+	if !validIcon(icon) {
+		return http.StatusBadRequest, "icon contains invalid characters"
 	}
 	if color != "" && !hexColorRe.MatchString(color) {
 		return http.StatusBadRequest, "color must be a valid hex color (#RRGGBB)"

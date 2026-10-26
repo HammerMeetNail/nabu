@@ -66,10 +66,24 @@ type Store interface {
 	ClaimAuthMail(ctx context.Context, now, leaseUntil time.Time, leaseID string) (AuthMail, error)
 	FinishAuthMail(ctx context.Context, job AuthMail, delivered bool, nextAttempt time.Time) error
 	// DeleteUser permanently deletes the user and their personal data
-	// (sessions, tokens, preferences, notifications, push subscriptions, logs
-	// via FK cascade). Household-shared content survives with authorship
-	// cleared. Deleting an already-deleted user is not an error.
-	DeleteUser(ctx context.Context, userID int64) error
+	// (sessions, tokens, preferences, notifications, push subscriptions).
+	// Household-shared content survives with authorship cleared; by default
+	// the user's logs are kept under an unlinkable per-household former-member
+	// tombstone (see DeleteOptions). Deleting an already-deleted user is not
+	// an error.
+	DeleteUser(ctx context.Context, userID int64, opts DeleteOptions) error
+}
+
+// DeleteOptions selects what account deletion removes beyond the account.
+// By default the user's logs in shared households stay, reassigned to a
+// per-household former-member tombstone (a negative user ID with no profile
+// and no stored link to the deleted account), so the remaining members keep
+// their history.
+type DeleteOptions struct {
+	// DeleteLogs also deletes every log the user recorded.
+	DeleteLogs bool
+	// DeleteNotes clears the note text of the user's retained logs.
+	DeleteNotes bool
 }
 
 // AuthMail contains a short-lived email capability. Never log or expose it.

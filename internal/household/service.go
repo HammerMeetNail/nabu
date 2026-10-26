@@ -217,6 +217,10 @@ func (s *Service) GetHistoricalMembers(ctx context.Context, userID int64) ([]His
 		if _, ok := active[id]; ok {
 			continue
 		}
+		if IsFormerMember(id) {
+			historical = append(historical, HistoricalMember{UserID: id, DisplayName: FormerMemberName, AvatarColor: FormerMemberColor})
+			continue
+		}
 		user, err := s.userStore.GetUserByID(ctx, id)
 		if err != nil {
 			continue // The account was deleted; its profile must remain private.

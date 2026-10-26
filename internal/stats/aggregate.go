@@ -47,7 +47,7 @@ func (s *Service) aggregateLeaderboard(ctx context.Context, householdID int64, s
 	if err != nil {
 		return nil, err
 	}
-	var out []LeaderboardEntry
+	out := []LeaderboardEntry{}
 	for _, r := range rows {
 		out = append(out, LeaderboardEntry{UserID: r.UserID, Count: r.Count})
 	}
@@ -78,7 +78,7 @@ func (s *Service) aggregateCategories(ctx context.Context, householdID int64, st
 	if err != nil {
 		return nil, err
 	}
-	var out []CategoryBreakdown
+	out := []CategoryBreakdown{}
 	for _, r := range rows {
 		out = append(out, CategoryBreakdown{Category: r.Category, Count: r.Count})
 	}
@@ -189,7 +189,7 @@ func (s *Service) aggregateOverview(ctx context.Context, householdID, userID int
 	for _, r := range dates {
 		daySet[r.Date] = true
 	}
-	out := WeeklyOverview{Leaderboard: []LeaderboardEntry{}, Breakdown: []CategoryBreakdown{}, Streaks: streaksFromDays(daySet, yearStart, now)}
+	out := WeeklyOverview{Leaderboard: []LeaderboardEntry{}, Breakdown: []CategoryBreakdown{}, Recap: WeeklyRecap{ByCategory: []CategoryBreakdown{}}, Streaks: streaksFromDays(daySet, yearStart, now)}
 	users, categories, weekdays := map[int64]int{}, map[string]int{}, map[int]int{}
 	for _, r := range rows {
 		users[r.UserID] += r.Count

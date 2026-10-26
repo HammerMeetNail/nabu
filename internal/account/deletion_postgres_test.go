@@ -38,7 +38,7 @@ func TestPostgresDeleteAccountRollsBackEveryHousehold(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := NewService(users, households).DeleteAccount(ctx, u.ID); err == nil {
+	if err := NewService(users, households).DeleteAccount(ctx, u.ID, auth.DeleteOptions{}); err == nil {
 		t.Fatal("expected injected failure")
 	}
 	for _, id := range []int64{first.ID, second.ID} {
@@ -87,7 +87,7 @@ func TestPostgresDeleteMixedAccountPreservesOtherUsersAndSharedContent(t *testin
 	if _, err := households.CreateInvite(ctx, shared.ID, u.ID, "SYNTHETIC-CODE", 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := NewService(users, households).DeleteAccount(ctx, u.ID); err != nil {
+	if err := NewService(users, households).DeleteAccount(ctx, u.ID, auth.DeleteOptions{}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := users.GetUserByID(ctx, u.ID); err == nil {
@@ -160,7 +160,7 @@ func TestPostgresAccountDeletionAndLogEffectsCompleteWithConcurrentNewChore(t *t
     CREATE TRIGGER pause_member_delete BEFORE DELETE ON user_households FOR EACH ROW EXECUTE FUNCTION pause_member_delete()`); err != nil {
 					t.Fatal(err)
 				}
-				go func() { deleted <- NewService(users, households).DeleteAccount(ctx, deleting.ID) }()
+				go func() { deleted <- NewService(users, households).DeleteAccount(ctx, deleting.ID, auth.DeleteOptions{}) }()
 				testdb.WaitBlocked(t, db, gatePID, "DELETE FROM user_households")
 			}
 			// In the phantom case these rows arrive after the account's chore prelock.
@@ -189,7 +189,7 @@ func TestPostgresAccountDeletionAndLogEffectsCompleteWithConcurrentNewChore(t *t
 				resumeDelete()
 				testdb.WaitBlocked(t, db, effectPID, "UPDATE chores SET created_by")
 			} else {
-				go func() { deleted <- NewService(users, households).DeleteAccount(ctx, deleting.ID) }()
+				go func() { deleted <- NewService(users, households).DeleteAccount(ctx, deleting.ID, auth.DeleteOptions{}) }()
 				testdb.WaitBlocked(t, db, effectPID, "SELECT id FROM chores")
 			}
 			resumeEffects()
@@ -234,7 +234,7 @@ func TestPostgresJoinWaitsForSoleHouseholdDeletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	deleted := make(chan error, 1)
-	go func() { deleted <- NewService(users, store).DeleteAccount(ctx, owner.ID) }()
+	go func() { deleted <- NewService(users, store).DeleteAccount(ctx, owner.ID, auth.DeleteOptions{}) }()
 	deletingPID := testdb.WaitBlocked(t, db, gate, "DELETE FROM households")
 	joined := make(chan error, 1)
 	go func() {

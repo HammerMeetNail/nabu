@@ -26,7 +26,10 @@ struct StatsView: View {
                 } else {
                     ScrollView {
                         VStack(spacing: 16) {
-                            if model.overview == nil {
+                            // Only a failed fetch is an error: an empty
+                            // household, or a hidden recap section that
+                            // skips the fetch, is not.
+                            if model.overview == nil, model.errors["overview"] != nil {
                                 InlineErrorView(message: "Stats couldn't be loaded. Try again.") {
                                     await model.loadAll(showSpinner: false)
                                 }

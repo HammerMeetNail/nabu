@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/HammerMeetNail/nabu/internal/account"
+	"github.com/HammerMeetNail/nabu/internal/auth"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
 )
 
@@ -22,7 +23,9 @@ func NewAccountHandler(service *account.Service, authHandler *AuthHandler) *Acco
 // DeleteMe handles DELETE /api/me. The body must carry the typed
 // confirmation {"confirm":"DELETE"} so the account cannot be destroyed by a
 // single stray request; CSRF and auth are enforced by middleware like every
-// other state-changing endpoint.
+// other state-changing endpoint. Optional "deleteLogs" and "deleteNotes"
+// opt in to removing the user's logs (or their note text) from households
+// that survive; by default those logs stay under "Former member".
 func (h *AccountHandler) DeleteMe(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.CurrentUser(r.Context())
 	if !ok {
@@ -31,7 +34,9 @@ func (h *AccountHandler) DeleteMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Confirm string `json:"confirm"`
+		Confirm     string `json:"confirm"`
+		DeleteLogs  bool   `json:"deleteLogs"`
+		DeleteNotes bool   `json:"deleteNotes"`
 	}
 	if err := readJSON(r, &req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")
@@ -42,7 +47,7 @@ func (h *AccountHandler) DeleteMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.DeleteAccount(r.Context(), user.ID); err != nil {
+	if err := h.service.DeleteAccount(r.Context(), user.ID, auth.DeleteOptions{DeleteLogs: req.DeleteLogs, DeleteNotes: req.DeleteNotes}); err != nil {
 		var transfer account.ErrMustTransferOwnership
 		if errors.As(err, &transfer) {
 			writeError(w, http.StatusConflict, transfer.Error())

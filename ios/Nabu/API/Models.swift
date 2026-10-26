@@ -55,6 +55,40 @@ let apiEncoder: JSONEncoder = {
     return e
 }()
 
+// MARK: - Null-tolerant arrays
+
+/// Decodes a JSON array that is `null` or missing as `[]`. Go encodes a nil
+/// slice as `null`, and Swift will not coerce that to a non-optional array, so
+/// one empty list on the server used to fail a whole response (the Stats tab
+/// showed "Couldn't load" for every new household on `recap.byCategory`).
+/// Structs with a custom `init(from:)` use `decodeIfPresent(…) ?? []` instead.
+@propertyWrapper
+struct EmptyIfNull<Element: Codable>: Codable {
+    var wrappedValue: [Element]
+
+    init(wrappedValue: [Element]) {
+        self.wrappedValue = wrappedValue
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        wrappedValue = container.decodeNil() ? [] : try container.decode([Element].self)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(wrappedValue)
+    }
+}
+
+extension EmptyIfNull: Equatable where Element: Equatable {}
+
+extension KeyedDecodingContainer {
+    func decode<Element>(_ type: EmptyIfNull<Element>.Type, forKey key: Key) throws -> EmptyIfNull<Element> {
+        try decodeIfPresent(type, forKey: key) ?? EmptyIfNull(wrappedValue: [])
+    }
+}
+
 // MARK: - User
 
 struct User: Codable, Identifiable, Equatable {
@@ -247,7 +281,7 @@ struct ChoreLog: Codable, Identifiable, Equatable {
     let choreId: Int
     let completedAt: Date
     let note: String
-    let indicators: [String]
+    @EmptyIfNull var indicators: [String]
     let slotHour: Int?
     let createdAt: Date
     let volumeML: Int?
@@ -404,7 +438,7 @@ struct ReminderPreference: Codable, Equatable {
     let quietHoursStart: String
     let quietHoursEnd: String
     let timezone: String
-    let enabledPushTypes: [String]
+    @EmptyIfNull var enabledPushTypes: [String]
     let defaultReminderLeadMinutes: Int
 }
 
@@ -416,7 +450,7 @@ struct ChoreReminderPref: Codable, Equatable {
 }
 
 struct ChoreReminderPrefsResponse: Codable {
-    let prefs: [ChoreReminderPref]
+    @EmptyIfNull var prefs: [ChoreReminderPref]
 }
 
 struct ChoreReminderPrefResponse: Codable {
@@ -544,13 +578,13 @@ struct Recap: Codable, Equatable {
     let totalChores: Int
     let topPerformer: RecapTopPerformer?
     let mostActiveDay: String
-    let byCategory: [BreakdownEntry]
+    @EmptyIfNull var byCategory: [BreakdownEntry]
 }
 
 struct StatsOverview: Codable, Equatable {
-    let leaderboard: [LeaderboardEntry]
+    @EmptyIfNull var leaderboard: [LeaderboardEntry]
     let streaks: Streaks
-    let breakdown: [BreakdownEntry]
+    @EmptyIfNull var breakdown: [BreakdownEntry]
     let recap: Recap
 }
 
@@ -638,8 +672,8 @@ struct ChoreTimeSeries: Codable, Equatable {
     let choreIcon: String
     let metricType: String?
     let metricUnit: String?
-    let byMember: [TimeSeriesByMember]
-    let periods: [TimeSeriesPeriod]
+    @EmptyIfNull var byMember: [TimeSeriesByMember]
+    @EmptyIfNull var periods: [TimeSeriesPeriod]
 }
 
 /// One inter-feed gap from `GET /api/stats/feeding-gaps` (cluster-feeding
@@ -660,7 +694,7 @@ struct ChoreSummary: Codable, Equatable {
     let count: Int
     let totalML: Int
     let totalDuration: Int
-    let byMember: [LeaderboardEntry]
+    @EmptyIfNull var byMember: [LeaderboardEntry]
     let metricType: String?
     let metricUnit: String?
 }
@@ -695,11 +729,11 @@ struct HouseholdOnlyResponse: Codable {
 }
 
 struct HouseholdsResponse: Codable {
-    let households: [HouseholdWithRole]
+    @EmptyIfNull var households: [HouseholdWithRole]
 }
 
 struct InvitesResponse: Codable {
-    let invites: [Invite]
+    @EmptyIfNull var invites: [Invite]
 }
 
 struct InviteResponse: Codable {
@@ -707,7 +741,7 @@ struct InviteResponse: Codable {
 }
 
 struct ChoresResponse: Codable {
-    let chores: [Chore]
+    @EmptyIfNull var chores: [Chore]
 }
 
 struct ChoreResponse: Codable {
@@ -715,7 +749,7 @@ struct ChoreResponse: Codable {
 }
 
 struct DefaultsResponse: Codable {
-    let defaults: [Chore]
+    @EmptyIfNull var defaults: [Chore]
 }
 
 struct LogResponse: Codable {
@@ -723,17 +757,17 @@ struct LogResponse: Codable {
 }
 
 struct LogsResponse: Codable {
-    let logs: [ChoreLog]
+    @EmptyIfNull var logs: [ChoreLog]
 }
 
 struct TodayResponse: Codable {
-    let logs: [ChoreLog]
+    @EmptyIfNull var logs: [ChoreLog]
     let summary: DailySummary
     let date: String
 }
 
 struct HistoryResponse: Codable {
-    let logs: [ChoreLog]
+    @EmptyIfNull var logs: [ChoreLog]
     let hasMore: Bool
     // Absent on text-search responses (`?q=`), which are a flat, capped,
     // newest-first list rather than a paginated window.
@@ -746,7 +780,7 @@ struct LatestLogsResponse: Codable {
 }
 
 struct SchedulesResponse: Codable {
-    let schedules: [ChoreSchedule]
+    @EmptyIfNull var schedules: [ChoreSchedule]
 }
 
 struct ScheduleResponse: Codable {
@@ -754,19 +788,19 @@ struct ScheduleResponse: Codable {
 }
 
 struct ScheduleForDateResponse: Codable {
-    let schedules: [ChoreSchedule]
+    @EmptyIfNull var schedules: [ChoreSchedule]
     let date: String
 }
 
 struct NotificationsResponse: Codable {
-    let notifications: [AppNotification]
+    @EmptyIfNull var notifications: [AppNotification]
     let unreadCount: Int
     var nextCursor: String? = nil
 }
 
 struct NotificationPrefsResponse: Codable {
     let preferences: ReminderPreference
-    let availableTypes: [NotificationTypeInfo]
+    @EmptyIfNull var availableTypes: [NotificationTypeInfo]
 }
 
 struct UserPreferencesResponse: Codable {
@@ -778,7 +812,7 @@ struct StatusResponse: Codable {
 }
 
 struct LeaderboardResponse: Codable {
-    let leaderboard: [LeaderboardEntry]
+    @EmptyIfNull var leaderboard: [LeaderboardEntry]
     let start: String?
     let end: String?
 }
@@ -788,11 +822,11 @@ struct StreaksResponse: Codable {
 }
 
 struct HeatmapResponse: Codable {
-    let heatmap: [HeatmapEntry]
+    @EmptyIfNull var heatmap: [HeatmapEntry]
 }
 
 struct BreakdownResponse: Codable {
-    let breakdown: [BreakdownEntry]
+    @EmptyIfNull var breakdown: [BreakdownEntry]
     let start: String
     let end: String
 }
@@ -806,17 +840,17 @@ struct OverviewResponse: Codable {
 }
 
 struct BusyHoursResponse: Codable {
-    let busyHours: [BusyHour]
+    @EmptyIfNull var busyHours: [BusyHour]
     let start: String
     let end: String
 }
 
 struct TopChoresResponse: Codable {
-    let topChores: [TopChore]
+    @EmptyIfNull var topChores: [TopChore]
 }
 
 struct ChoreStatsResponse: Codable {
-    let choreStats: [ChoreStat]
+    @EmptyIfNull var choreStats: [ChoreStat]
     let start: String
     let end: String
 }
@@ -834,15 +868,15 @@ struct ChoreSummaryResponse: Codable {
 }
 
 struct FeedingGapsResponse: Codable {
-    let feedingGaps: [FeedingGap]
+    @EmptyIfNull var feedingGaps: [FeedingGap]
 }
 
 struct DayNotesResponse: Codable {
-    let notes: [DayNote]
+    @EmptyIfNull var notes: [DayNote]
 }
 
 struct DayNoteResponse: Codable {
     let note: DayNote
 }
 
-struct RecentAmountsResponse: Codable { let amounts: [Int] }
+struct RecentAmountsResponse: Codable { @EmptyIfNull var amounts: [Int] }

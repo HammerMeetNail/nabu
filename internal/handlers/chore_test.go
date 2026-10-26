@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -528,5 +530,31 @@ func TestChoreUpdateCategoryValidation(t *testing.T) {
 	handler.Update(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("update category too long: status = %d, want 400", rec.Code)
+	}
+}
+
+// Icons render in every member's views; markup in one is a stored injection
+// against the whole household (e.g. a <style> tag that hides shared views).
+func TestChoreCreateRejectsMarkupInIcon(t *testing.T) {
+	handler, sessionID, authService, _ := setupChoreTest(t)
+	for _, icon := range []string{`<style>`, `<b>`, `a&b`, `"x"`, `'`, "\u0007", "🧹\n"} {
+		body, _ := json.Marshal(map[string]string{"name": "Evil", "icon": icon, "color": "#FF0000", "category": "cleaning"})
+		req := withUser(httptest.NewRequest(http.MethodPost, "/api/chores", bytes.NewReader(body)), authService, sessionID)
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		handler.Create(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Errorf("icon %q: status = %d, want 400, body=%s", icon, rec.Code, rec.Body.String())
+		}
+	}
+	for _, icon := range []string{"🗑️", "👨‍👩‍👧", "🇮🇪", "AB"} {
+		body, _ := json.Marshal(map[string]string{"name": "Fine " + icon, "icon": icon, "color": "#FF0000", "category": "cleaning"})
+		req := withUser(httptest.NewRequest(http.MethodPost, "/api/chores", bytes.NewReader(body)), authService, sessionID)
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		handler.Create(rec, req)
+		if rec.Code != http.StatusCreated && rec.Code != http.StatusOK {
+			t.Errorf("icon %q: status = %d, want success, body=%s", icon, rec.Code, rec.Body.String())
+		}
 	}
 }

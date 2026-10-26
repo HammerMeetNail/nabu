@@ -1764,3 +1764,56 @@ describe("API keys settings card", () => {
     assert.equal(root.querySelector("#api-key-token").value, 'nabu_pat_x."y');
   });
 });
+
+describe("Chore icon and member avatar sinks escape untrusted values", () => {
+  const evilIcon = `<style>*{display:none}</style>`;
+  const evilName = `<img src=x onerror=alert(1)>`;
+  const evilColor = `red;}</style><img src=x onerror=alert(1)>`;
+  const assertInert = (html) => {
+    assert.ok(!html.includes("<style>"), html);
+    assert.ok(!html.includes("<img"), html);
+  };
+
+  it("history row escapes the chore icon", async () => {
+    const { renderHistoryView } = await import("../today.js");
+    const html = renderHistoryView({
+      chores: [{ id: 1, name: "Feed", icon: evilIcon, color: "#000000" }],
+      members: [{ userId: 1, displayName: "Ann" }],
+      historyLogs: [{ id: 1, choreId: 1, userId: 1, note: "", indicators: [], completedAt: "2026-07-02T10:00:00Z" }],
+    });
+    assertInert(html);
+    assert.ok(html.includes("&lt;style&gt;"));
+  });
+
+  it("top chores list escapes the chore icon", async () => {
+    const { renderTopChoresList } = await import("../stats.js");
+    const html = renderTopChoresList([{ choreId: 1, choreName: "Feed", choreIcon: evilIcon, count: 2 }], "week");
+    assertInert(html);
+    assert.ok(html.includes("&lt;style&gt;"));
+  });
+
+  it("chore stats list escapes the chore icon", async () => {
+    const { renderChoreStatsList } = await import("../stats.js");
+    const html = renderChoreStatsList([{ choreId: 1, choreName: "Feed", choreIcon: evilIcon, totalInRange: 3 }], {}, "week");
+    assertInert(html);
+    assert.ok(html.includes("&lt;style&gt;"));
+  });
+
+  it("leaderboard and member lists escape the initial and avatar color", async () => {
+    const { renderLeaderboardList, renderMemberList } = await import("../stats.js");
+    const memberMap = { 1: { userId: 1, displayName: evilName, avatarColor: evilColor } };
+    assertInert(renderLeaderboardList([{ userId: 1, count: 2 }], memberMap, "week"));
+    assertInert(renderMemberList([{ userId: 1, count: 2 }], memberMap));
+  });
+
+  it("household member rows escape the initial and avatar color", async () => {
+    const { renderHouseholdView } = await import("../household.js");
+    const html = renderHouseholdView(
+      { id: 1, name: "Home", initials: "H", inviteCode: "abc" },
+      [{ userId: 2, displayName: evilName, email: "x@example.com", avatarColor: evilColor, role: "member" }],
+      [],
+      { id: 1, role: "owner" },
+    );
+    assertInert(html);
+  });
+});

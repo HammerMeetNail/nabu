@@ -396,6 +396,13 @@ final class ReviewUITestResponses {
         }
         if path == "/api/me" {
             if request.httpMethod == "DELETE" {
+                if scenario == "delete-account-options" {
+                    // Echo the opt-in choices so the UI test can assert them.
+                    let body = try JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: Any]
+                    let logs = body?["deleteLogs"] as? Bool ?? false
+                    let notes = body?["deleteNotes"] as? Bool ?? false
+                    return try failed("Received deleteLogs=\(logs) deleteNotes=\(notes)", status: 409)
+                }
                 return try failed("Transfer ownership before deleting your account.", status: 409)
             }
             return try json(UserResponse(user: user))
@@ -518,6 +525,11 @@ final class ReviewUITestResponses {
                 else { readNotices.insert(id) }
             }
             return try json(StatusResponse(status: "ok"))
+        }
+        if path == "/api/me/logs/export" {
+            return (Data("household,date,time,chore,note\nTest Home,2026-09-10,08:00,Task,Mine\n".utf8),
+                    HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil,
+                        headerFields: ["Content-Type": "text/csv"])!)
         }
         if path == "/api/logs/export" || path == "/api/household/data" {
             if attempt == 1 { return try failed("Choose a smaller date range.", status: 413) }

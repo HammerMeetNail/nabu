@@ -643,8 +643,47 @@ jobs:
           scp scripts/verify-backup-resources.sh ssh.yearofbingo.com:/opt/nabu/scripts/verify-backup-resources.next.sh
           scp scripts/wait-ready.sh scripts/deploy-local.sh ssh.yearofbingo.com:/opt/nabu/scripts/
 
-          # Deploy
-          ssh ssh.yearofbingo.com << EOF
+          # Render secret-bearing files on the runner and stream them to the
+          # server as data. They used to be expanded into the remote shell
+          # script, where a secret containing a newline could end a heredoc
+          # and run as a command. Expanded heredoc content is never re-parsed.
+          umask 077
+          cat > nabu.env << ENVFILE
+          DB_PASSWORD=${DB_PASSWORD}
+          SMTP_PASS=${SMTP_PASS}
+          GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+          GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+          OPERATOR_OWNER_USER_ID=${OPERATOR_OWNER_USER_ID}
+          APNS_AUTH_KEY_P8=${APNS_AUTH_KEY_P8}
+          APNS_KEY_ID=${APNS_KEY_ID}
+          APNS_TEAM_ID=${APNS_TEAM_ID}
+          APNS_BUNDLE_ID=${APNS_BUNDLE_ID}
+          APPLE_CLIENT_IDS=${APPLE_CLIENT_IDS}
+          APPLE_WEB_CLIENT_ID=${APPLE_WEB_CLIENT_ID}
+          VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
+          VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+          VAPID_SUBJECT=${VAPID_SUBJECT}
+          BACKUP_ENCRYPTION_KEY=${BACKUP_ENCRYPTION_KEY}
+          BACKUP_NOTIFY_EMAILS=${BACKUP_NOTIFY_EMAILS}
+          RESEND_API_KEY=${RESEND_API_KEY}
+          EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS}
+          ENVFILE
+          cat > rclone-nabu.conf << RCLONECONF
+          [r2-nabu]
+          type = s3
+          provider = Cloudflare
+          access_key_id = ${R2_ACCESS_KEY_ID}
+          secret_access_key = ${R2_SECRET_ACCESS_KEY}
+          endpoint = https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
+          acl = private
+          no_check_bucket = true
+          RCLONECONF
+          ssh ssh.yearofbingo.com 'umask 077 && cat > /opt/nabu/.env.next' < nabu.env
+          ssh ssh.yearofbingo.com 'umask 077 && mkdir -p ~/.config/rclone && cat > ~/.config/rclone/rclone-nabu.conf.next' < rclone-nabu.conf
+          rm -f nabu.env rclone-nabu.conf
+
+          # Deploy (quoted heredoc: no local expansion inside the remote script)
+          ssh ssh.yearofbingo.com << 'EOF'
             set -euo pipefail
             cd /opt/nabu
 
@@ -667,42 +706,13 @@ jobs:
               exit 1
             fi
 
-            # Write .env with all secrets
+            # Install .env (rendered on the runner above)
             if [ -f .env ]; then cp .env .env.previous; chmod 600 .env.previous; fi
-            cat > .env << 'ENVFILE'
-          DB_PASSWORD=${DB_PASSWORD}
-          SMTP_PASS=${SMTP_PASS}
-          GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-          GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-          OPERATOR_OWNER_USER_ID=${OPERATOR_OWNER_USER_ID}
-          APNS_AUTH_KEY_P8=${APNS_AUTH_KEY_P8}
-          APNS_KEY_ID=${APNS_KEY_ID}
-          APNS_TEAM_ID=${APNS_TEAM_ID}
-          APNS_BUNDLE_ID=${APNS_BUNDLE_ID}
-          APPLE_CLIENT_IDS=${APPLE_CLIENT_IDS}
-          APPLE_WEB_CLIENT_ID=${APPLE_WEB_CLIENT_ID}
-          VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}
-          VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
-          VAPID_SUBJECT=${VAPID_SUBJECT}
-          BACKUP_ENCRYPTION_KEY=${BACKUP_ENCRYPTION_KEY}
-          BACKUP_NOTIFY_EMAILS=${BACKUP_NOTIFY_EMAILS}
-          RESEND_API_KEY=${RESEND_API_KEY}
-          EMAIL_FROM_ADDRESS=${EMAIL_FROM_ADDRESS}
-          ENVFILE
+            mv .env.next .env
             chmod 600 .env
 
-            # Create/update rclone config for R2 backups (separate file to avoid conflict with yearofbingo)
-            mkdir -p ~/.config/rclone
-            cat > ~/.config/rclone/rclone-nabu.conf << 'RCLONECONF'
-          [r2-nabu]
-          type = s3
-          provider = Cloudflare
-          access_key_id = ${R2_ACCESS_KEY_ID}
-          secret_access_key = ${R2_SECRET_ACCESS_KEY}
-          endpoint = https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com
-          acl = private
-          no_check_bucket = true
-          RCLONECONF
+            # rclone config for R2 backups (separate file to avoid conflict with yearofbingo)
+            mv ~/.config/rclone/rclone-nabu.conf.next ~/.config/rclone/rclone-nabu.conf
             chmod 600 ~/.config/rclone/rclone-nabu.conf
 
             # Bound readiness and roll back the application on failure.

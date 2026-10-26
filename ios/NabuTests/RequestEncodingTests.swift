@@ -94,6 +94,16 @@ final class RequestEncodingTests: XCTestCase {
         XCTAssertEqual(dict["new_owner_id"] as? Int, 2)
     }
 
+    func testDeleteAccountRequestCarriesOptIns() throws {
+        let defaults = json(try apiEncoder.encode(DeleteAccountRequest(confirm: "DELETE")))
+        XCTAssertEqual(defaults["confirm"] as? String, "DELETE")
+        XCTAssertEqual(defaults["deleteLogs"] as? Bool, false)
+        XCTAssertEqual(defaults["deleteNotes"] as? Bool, false)
+        let both = json(try apiEncoder.encode(DeleteAccountRequest(confirm: "DELETE", deleteLogs: true, deleteNotes: true)))
+        XCTAssertEqual(both["deleteLogs"] as? Bool, true)
+        XCTAssertEqual(both["deleteNotes"] as? Bool, true)
+    }
+
     func testUpdateMemberAccessRequest() throws {
         // The real transport uses apiEncoder (camelCase), like the server JSON.
         let body = json(try apiEncoder.encode(UpdateMemberAccessRequest(suspended: true)))

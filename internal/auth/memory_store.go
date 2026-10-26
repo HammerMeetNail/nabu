@@ -261,7 +261,9 @@ func (s *MemoryStore) DeleteUserSessions(_ context.Context, userID int64) error 
 	return nil
 }
 
-func (s *MemoryStore) DeleteUser(_ context.Context, userID int64) error {
+// DeleteUser removes the account. Logs live in the log store; the account
+// service's memory cleanup applies DeleteOptions to them.
+func (s *MemoryStore) DeleteUser(_ context.Context, userID int64, _ DeleteOptions) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	user, ok := s.usersByID[userID]

@@ -133,10 +133,10 @@ input:focus, select:focus, textarea:focus {
 }
 
 .app-version {
-  font-size: 11px;
-  font-weight: 400;
+  font-size: 12px;
   color: var(--text-secondary);
-  margin-left: 4px;
+  text-align: center;
+  margin: 16px 0 8px;
 }
 
 .top-bar-actions {
@@ -146,6 +146,9 @@ input:focus, select:focus, textarea:focus {
 }
 
 .icon-button {
+  /* Buttons do not inherit color; without this the bell's currentColor
+     stroke stayed black on the dark-mode header. */
+  color: var(--text);
   width: 36px;
   height: 36px;
   display: flex;
@@ -4738,3 +4741,21 @@ body.sheet-open .timer-chip { visibility: hidden; }
 .api-key-meta { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .api-key-name { font-weight: 600; overflow-wrap: anywhere; }
 [data-testid="api-keys"] code { overflow-wrap: anywhere; font-size: 0.8rem; }
+
+/* Checkbox + label row (account deletion options). */
+.form-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.35;
+}
+.form-check input[type="checkbox"] {
+  /* Override the global full-width input rule. */
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  margin: 1px 0 0;
+  flex: 0 0 auto;
+  accent-color: var(--primary);
+}
