@@ -14,13 +14,14 @@
 | 1.4 iOS architecture | Not started. |
 | 1.5 Stats API consolidation | Merged: `GET /api/stats/dashboard`, two requests per visit (#164). |
 | 2.1 Onboarding, steps 1–4 | Merged: name and color (#166), setup with packs (#168). |
-| 2.1 step 5 (QR) and 2.5 (invite page) | Open: #170. |
-| 2.1 step 6 (reminders after the first log) | Open: #171. |
+| 2.1 step 5 (QR) and 2.5 (invite page) | Merged: #170. |
+| 2.1 step 6 (reminders after the first log) | Merged: #171. |
 | 2.2 Activity packs | Merged: #168. |
-| 2.3 Subjects as first-class | Needs a decision: packs now name an activity per pet or baby ("Feed Mongo"), which one "Feed" tile asking "who?" would replace. |
-| 2.4 Sign-up polish | Next, after #170 and #171: their new specs fill the confirm field this removes. |
-| 5.4 Database | Open: #172 (every foreign key indexed, duplicate indexes dropped, former members read in one query). Not started: statement timeouts on hot paths. |
-| Fixes found along the way | Merged: #167 (iOS 27 UI tests, flaky specs). Open: #169 (iOS edit sheet stayed open after Save), #173 (Settings member row snapped shut on re-render). |
+| 2.3 Subjects as first-class | Decided: a baby's or pet's own activities ("Feed Mongo") stay custom tasks that no template change alters; a medication for two or more of one kind ("Cat Meds") asks which of them. Open: #174. |
+| 2.4 Sign-up polish | Open: #175 (logo and tagline, one password with Show/Hide, Apple and Google first on iOS). |
+| 3 Desktop web | Open: #176 (sidebar, Home's activity column, two-column Stats, keys 1–9, u and /). Not started: the other Phase 3 surfaces. |
+| 5.4 Database | Merged: #172 (every foreign key indexed, duplicate indexes dropped, former members read in one query). Not started: statement timeouts on hot paths. |
+| Fixes found along the way | Merged: #167 (iOS 27 UI tests, flaky specs), #169 (iOS edit sheet stayed open after Save), #173 (Settings member row snapped shut on re-render). Open: in #176, Activity's search lost focus after the first pause in typing, and Home lost focus after each save; in #175, showing a password on iOS made it offer to save the password. |
 
 ---
 
