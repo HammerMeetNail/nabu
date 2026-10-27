@@ -13,14 +13,28 @@ final class StatsModelTests: XCTestCase {
     var requests: RequestRecorder!
 
     final class RequestRecorder: @unchecked Sendable {
+        /// Every read, each dashboard read listed as its own endpoint URL.
         var urls: [URL] = []
+        /// What actually went over the transport.
+        var transport: [URL] = []
         var bodies: [String: Data] = [:]  // keyed by "METHOD path"
         private let lock = NSLock()
-        func record(_ request: URLRequest) {
+        func record(_ request: URLRequest, transport sent: Bool = true) {
             lock.lock(); defer { lock.unlock() }
             if let url = request.url { urls.append(url) }
+            if sent, let url = request.url { transport.append(url) }
             if let url = request.url, let body = request.httpBody {
                 bodies["\(request.httpMethod ?? "") \(url.path)"] = body
+            }
+        }
+        func recordTransport(_ url: URL) {
+            lock.lock(); defer { lock.unlock() }
+            transport.append(url)
+        }
+        func dashboards() -> [[String]] {
+            lock.lock(); defer { lock.unlock() }
+            return transport.filter { $0.path == "/api/stats/dashboard" }.map { url in
+                URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.compactMap(\.value) ?? []
             }
         }
         func urlStrings() -> [String] {
@@ -41,10 +55,42 @@ final class StatsModelTests: XCTestCase {
 
     /// Installs a mock that records every request and answers with canned
     /// JSON per path prefix.
-    private func installMock(preferencesResponse: String? = nil) {
+    private func installMock(preferencesResponse: String? = nil,
+                             dashboard: ((String, (Data, URLResponse)?) -> (Data, URLResponse)?)? = nil) {
         let recorder = requests!
+        let answer = Self.cannedStats(preferencesResponse: preferencesResponse)
         api.mockHandler = { request in
-            recorder.record(request)
+            guard let url = request.url else { return nil }
+            guard url.path == "/api/stats/dashboard" else {
+                recorder.record(request)
+                return answer(request)
+            }
+            // Answer like the server: each read runs as its own endpoint.
+            recorder.recordTransport(url)
+            let reads = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
+                .filter { $0.name == "read" }.compactMap(\.value) ?? []
+            var results: [String] = []
+            for read in reads {
+                var sub = URLRequest(url: URL(string: "http://localhost:9999/api/stats/" + read)!)
+                sub.httpMethod = "GET"
+                recorder.record(sub, transport: false)
+                let reply = dashboard.map { $0(read, answer(sub)) } ?? answer(sub)
+                guard let (data, response) = reply, let http = response as? HTTPURLResponse else {
+                    results.append(#"{"status":404,"data":{"error":"not found"}}"#)
+                    continue
+                }
+                results.append(#"{"status":\#(http.statusCode),"data":\#(String(decoding: data, as: UTF8.self))}"#)
+            }
+            let body = Data(("{\"results\":[" + results.joined(separator: ",") + "]}").utf8)
+            return (body, HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
+                                          headerFields: ["Content-Type": "application/json"])!)
+        }
+        model.configure(api: api, state: state)
+    }
+
+    /// Canned JSON per Stats endpoint, as the server answers them.
+    private static func cannedStats(preferencesResponse: String?) -> (URLRequest) -> (Data, URLResponse)? {
+        return { request in
             guard let url = request.url else { return nil }
             let path = url.path
             func ok(_ json: String) -> (Data, URLResponse) {
@@ -78,7 +124,6 @@ final class StatsModelTests: XCTestCase {
                 return nil
             }
         }
-        model.configure(api: api, state: state)
     }
 
     private func makeFeedBaby() -> Chore {
@@ -118,6 +163,77 @@ final class StatsModelTests: XCTestCase {
         XCTAssertEqual(model.choreStats.first?.totalInRange, 6)
         XCTAssertEqual(model.feedingGaps.first?.gapMinutes, 95)
         XCTAssertEqual(model.categoriesBreakdown.first?.count, 9)
+    }
+
+    /// A page load sends two requests, sections and per-chore charts, instead
+    /// of one per chart (PWA `stats-dashboard.spec.js`).
+    func testLoadAllSendsSectionsAndChartsAsTwoDashboardRequests() async {
+        state.chores = [makeFeedBaby(), makeMedsChore(id: 3), makeMedsChore(id: 4)]
+        state.statsWidgets = [makeWidget(id: "w1", type: "timeseries", choreIds: [3])]
+        installMock()
+        await model.loadAll()
+
+        XCTAssertEqual(requests.transport.map(\.path), ["/api/stats/dashboard", "/api/stats/dashboard"])
+        let lanes = requests.dashboards()
+        let charts = lanes.first { $0.allSatisfy { $0.hasPrefix("chores/") && $0.contains("/") } } ?? []
+        let sections = lanes.first { $0 != charts } ?? []
+        XCTAssertEqual(Set(charts), ["chores/1/time-series?period=daily", "chores/3/time-series?period=daily",
+                                     "chores/4/time-series?period=daily"], "a widget sharing a chart read is fetched once")
+        for read in ["overview", "heatmap", "busy-hours", "chores?period=month", "breakdown?period=week",
+                     "top-chores?userId=7&period=month", "leaderboard?period=week"] {
+            XCTAssertTrue(sections.contains(read), read)
+        }
+        XCTAssertTrue(sections.contains { $0.hasPrefix("feeding-gaps?start=") })
+
+        XCTAssertEqual(model.overview?.streaks.current, 2)
+        XCTAssertEqual(model.choreStats.first?.totalInRange, 6)
+        XCTAssertEqual(model.feedBabyTS?.byMember.first?.count, 3)
+        XCTAssertEqual(model.choreTimeSeries[4]?.periods.first?.count, 2)
+        XCTAssertEqual(model.widgetTimeSeries["w1"]?.count, 1)
+        XCTAssertTrue(model.errors.isEmpty)
+        XCTAssertFalse(model.isLoading)
+    }
+
+    func testFailedDashboardReadFailsOnlyItsSectionAndRetriesFresh() async {
+        state.chores = [makeFeedBaby()]
+        installMock(dashboard: { read, reply in
+            guard read.hasPrefix("breakdown?") else { return reply }
+            let url = URL(string: "http://localhost:9999/api/stats/" + read)!
+            return (Data(#"{"error":"failed to load category breakdown"}"#.utf8),
+                    HTTPURLResponse(url: url, statusCode: 500, httpVersion: nil, headerFields: nil)!)
+        })
+        await model.loadAll()
+        XCTAssertNotNil(model.errors["categories"])
+        XCTAssertEqual(model.errors.count, 1)
+        XCTAssertEqual(model.overview?.streaks.current, 2)
+        XCTAssertFalse(requests.transport.contains { $0.path == "/api/stats/breakdown" }, "the server answered; no second request")
+
+        await model.retrySection("categories")
+        XCTAssertNil(model.errors["categories"])
+        XCTAssertEqual(model.categoriesBreakdown.first?.count, 9)
+        XCTAssertTrue(requests.transport.contains { $0.path == "/api/stats/breakdown" }, "a retry asks the endpoint again")
+    }
+
+    /// A server without the dashboard (an older deploy) still loads every section.
+    func testDashboardUnavailableFallsBackToEachEndpoint() async {
+        state.chores = [makeFeedBaby(), makeMedsChore(id: 3)]
+        installMock()
+        let recorder = requests!
+        let mock = api.mockHandler!
+        api.mockHandler = { request in
+            guard request.url?.path == "/api/stats/dashboard" else { return mock(request) }
+            recorder.recordTransport(request.url!)
+            return (Data(#"{"error":"not found"}"#.utf8),
+                    HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!)
+        }
+        model = StatsModel()
+        model.configure(api: api, state: state)
+        await model.loadAll()
+        XCTAssertTrue(model.errors.isEmpty, "\(model.errors)")
+        XCTAssertEqual(model.overview?.streaks.current, 2)
+        XCTAssertNotNil(model.choreTimeSeries[3])
+        XCTAssertNotNil(model.feedBabyTS)
+        XCTAssertTrue(requests.transport.contains { $0.path == "/api/stats/overview" })
     }
 
     func testPeriodTogglesRefetchWithNewPeriod() async {

@@ -3,13 +3,28 @@ import {fixture,headers,deferred,observeModuleCalls} from './review-fixtures.js'
 
 test.use({serviceWorkers:'block'});
 
+// Rewrites the page's next /api/stats/dashboard response: `edit` receives each
+// read and its result as the server sent it, and returns the result to use.
+// The page's section reads travel together in that one request.
+async function editDashboard(page,edit,{hold}={}) {
+  await page.route('**/api/stats/dashboard?*',async route=>{
+    const reads=new URL(route.request().url()).searchParams.getAll('read');
+    const response=await route.fetch();const body=await response.json();
+    await hold?.();
+    body.results=body.results.map((result,i)=>edit(reads[i],result));
+    // An edited body has no server ETag, so the page never revalidates it.
+    const headers={...response.headers()};delete headers.etag;
+    await route.fulfill({response,headers,json:body});
+  },{times:1});
+}
+
 test('Stats keeps the latest period after reversed responses and recovers an initial overview error',async({page})=>{
   const joinLoads=await observeModuleCalls(page,'stats-data','loadStatsResource');
   await fixture(page,{metricType:'none'});
-  await page.route('**/api/stats/overview',route=>route.fulfill({status:500,body:'{}'}));
+  // The server reports a failed read with its own status inside the response.
+  await editDashboard(page,(read,result)=>read==='overview' ? {status:500,data:{error:'failed to load overview'}} : result);
   await page.locator('[data-nav="stats"]').click();
   await expect(page.getByRole('button',{name:'Retry charts'})).toBeVisible();
-  await page.unroute('**/api/stats/overview');
   await page.getByRole('button',{name:'Retry charts'}).click();
   await expect(page.getByRole('button',{name:'Retry charts'})).toHaveCount(0);
   const entered=deferred(),release=deferred(),finished=deferred();
@@ -100,12 +115,12 @@ test('household switching rejects a held Stats result and keeps its timer scoped
   await page.locator('[data-action="start-timer"]').click();
   await expect(page.locator('#timer-chip')).toBeVisible();
   const entered=deferred(),release=deferred(),finished=deferred();
-  let held=false;
-  await page.route('**/api/stats/breakdown?period=*',async route=>{
-    if(held) {await route.continue();return;}
-    held=true;const response=await route.fetch();entered.resolve();await release.promise;
-    await route.fulfill({response,json:{breakdown:[{category:'A stats canary',count:88}]}});finished.resolve();
-  });
+  // Hold the page's first section request and answer its Categories read with a canary.
+  await editDashboard(page,(read,result)=>{
+    if(!read.startsWith('breakdown?')) return result;
+    finished.resolve();
+    return {status:200,data:{breakdown:[{category:'A stats canary',count:88}]}};
+  },{hold:async()=>{entered.resolve();await release.promise;}});
   try {
     await page.locator('[data-nav="stats"]').click();await entered.promise;
     await page.locator('#hh-indicator').click();

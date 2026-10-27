@@ -71,6 +71,7 @@
 		CF7725D402FEDBBD83A0AFF8 /* ScheduleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04E82D0A2850166FAE3F9F87 /* ScheduleTests.swift */; };
 		D7453732D5E13694EDB91D5A /* NabuUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5875BDB9E0390BF04EFDEAF4 /* NabuUITests.swift */; };
 		E4C31E73661729E7F794E8FF /* ScheduleStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8D6860772FD1D27C92F7B78 /* ScheduleStore.swift */; };
+		B100000000000000000005B1 /* StatsDashboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000005A1 /* StatsDashboard.swift */; };
 		E8FCB2E4799DC95953BF2D54 /* LogStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CC042FD2FD2699642D0DE0A /* LogStore.swift */; };
 		EB10CC22BFD126AA3376AD5C /* HouseholdView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DA2BDB9721C408CA80FDC0B /* HouseholdView.swift */; };
 		EE9B096B5E77323156340F8A /* NotificationsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA47955EB0BEED65A2E7D6A1 /* NotificationsView.swift */; };
@@ -167,6 +168,7 @@
 		EF94FD24339D3BD81121A742 /* CSRFTokenProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSRFTokenProvider.swift; sourceTree = "<group>"; };
 		F5AC6C0A4901CAA9D3720902 /* ChoreStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChoreStore.swift; sourceTree = "<group>"; };
 		F8D6860772FD1D27C92F7B78 /* ScheduleStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleStore.swift; sourceTree = "<group>"; };
+		A100000000000000000005A1 /* StatsDashboard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsDashboard.swift; sourceTree = "<group>"; };
 		FA47955EB0BEED65A2E7D6A1 /* NotificationsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsView.swift; sourceTree = "<group>"; };
 		6AEB5F0349354099A801015D /* NotificationPreferencesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationPreferencesView.swift; sourceTree = "<group>"; };
 		A100000000000000000001A1 /* VolumeUnits.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VolumeUnits.swift; sourceTree = "<group>"; };
@@ -301,6 +303,7 @@
 				F5AC6C0A4901CAA9D3720902 /* ChoreStore.swift */,
 				5FB8E1BFBBBA870E0149238A /* ActivityStore.swift */,
 				F8D6860772FD1D27C92F7B78 /* ScheduleStore.swift */,
+				A100000000000000000005A1 /* StatsDashboard.swift */,
 				60ED049FEA044ECED45000D3 /* Data */,
 			);
 			path = API;
@@ -718,6 +721,7 @@
 				C5187ED70EC0A751BDFACD50 /* ChoreStore.swift in Sources */,
 				72162844C6992740A229AC76 /* ActivityStore.swift in Sources */,
 				E4C31E73661729E7F794E8FF /* ScheduleStore.swift in Sources */,
+				B100000000000000000005B1 /* StatsDashboard.swift in Sources */,
 				44C43E962D082C797E8AA07D /* AuthStore.swift in Sources */,
 				6BB41E941ECB0DB53D2ECAAC /* LoginView.swift in Sources */,
 				4AD1F406FC2015E5E4E75A14 /* RegisterView.swift in Sources */,
