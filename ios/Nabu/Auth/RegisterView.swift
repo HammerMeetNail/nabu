@@ -10,15 +10,22 @@ struct RegisterView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var email = ""
     @State private var password = ""
-    @State private var confirmPassword = ""
 
     var body: some View {
         ScrollView {
             VStack(spacing: 24) {
-                Text("Create Account")
-                    .font(.title.weight(.bold))
-                    .foregroundColor(DesignColors.textPrimary)
-                    .padding(.top, 48)
+                VStack(spacing: 8) {
+                    NabuLogo(size: 56)
+                    Text("Create Account")
+                        .font(.title.weight(.bold))
+                        .foregroundColor(DesignColors.textPrimary)
+                    Text(authTagline)
+                        .font(.subheadline)
+                        .foregroundColor(DesignColors.textSecondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 32)
+                }
+                .padding(.top, 24)
 
                 if let invite = state.invitePreview {
                     InviteBanner(status: invite)
@@ -26,57 +33,7 @@ struct RegisterView: View {
 
                 AuthCard {
                     VStack(spacing: 16) {
-                        LabeledField("Email") {
-                            TextField("you@example.com", text: $email)
-                                .textContentType(.emailAddress)
-                                .keyboardType(.emailAddress)
-                                .autocapitalization(.none)
-                                .disableAutocorrection(true)
-                                .textFieldStyle(NabuTextFieldStyle())
-                        }
-
-                        LabeledField("Password") {
-                            SecureField("Password (min 8 characters)", text: $password)
-                                .textContentType(.newPassword)
-                                .textFieldStyle(NabuTextFieldStyle())
-                        }
-
-                        LabeledField("Confirm Password") {
-                            SecureField("Confirm Password", text: $confirmPassword)
-                                .textContentType(.newPassword)
-                                .textFieldStyle(NabuTextFieldStyle())
-                        }
-
-                        if let error = auth.errorMessage ?? googleAuth.errorMessage ?? appleAuth.errorMessage {
-                            Text(error)
-                                .font(.callout)
-                                .foregroundColor(DesignColors.danger)
-                                .multilineTextAlignment(.center)
-                        }
-
-                        if let notice = auth.registrationNotice {
-                            Text(notice)
-                                .font(.callout)
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                        }
-
-                        // Create Account (primary)
-                        Button(action: performRegister) {
-                            if auth.isLoading {
-                                ProgressView()
-                                    .tint(.white)
-                            } else {
-                                Text("Create Account")
-                            }
-                        }
-                        .buttonStyle(NabuPrimaryButtonStyle())
-                        .disabled(email.isEmpty || password.isEmpty || confirmPassword.isEmpty
-                                  || auth.isLoading || googleAuth.isAuthenticating || !isValid)
-                        .accessibilityIdentifier("register-submit-button")
-
-                        OrDivider()
-
+                        // Apple and Google first, the quickest way in.
                         // Sign up with Apple — App Store guideline 4.8
                         // requires it at least as prominent as other
                         // third-party sign-in options, hence above Google.
@@ -104,6 +61,60 @@ struct RegisterView: View {
                         .buttonStyle(NabuGoogleButtonStyle())
                         .disabled(auth.isLoading || googleAuth.isAuthenticating)
 
+                        OrDivider()
+
+                        LabeledField("Email") {
+                            TextField("you@example.com", text: $email)
+                                .textContentType(.emailAddress)
+                                .keyboardType(.emailAddress)
+                                .autocapitalization(.none)
+                                .disableAutocorrection(true)
+                                .textFieldStyle(NabuTextFieldStyle())
+                        }
+
+                        LabeledField("Password") {
+                            VStack(alignment: .leading, spacing: 6) {
+                                PasswordField(placeholder: "Password", text: $password, contentType: .newPassword)
+                                // The rule, checked as it's met.
+                                Label("At least 8 characters", systemImage: passwordLongEnough ? "checkmark.circle.fill" : "circle")
+                                    .font(.footnote)
+                                    .foregroundColor(passwordLongEnough ? DesignColors.success : DesignColors.textSecondary)
+                                    .accessibilityElement(children: .ignore)
+                                    .accessibilityLabel("At least 8 characters")
+                                    .accessibilityValue(passwordLongEnough ? "met" : "not met")
+                                    .accessibilityIdentifier("password-rule")
+                            }
+                        }
+
+                        if let error = auth.errorMessage ?? googleAuth.errorMessage ?? appleAuth.errorMessage {
+                            Text(error)
+                                .font(.callout)
+                                .foregroundColor(DesignColors.danger)
+                                .multilineTextAlignment(.center)
+                        }
+
+                        if let notice = auth.registrationNotice {
+                            Text(notice)
+                                .font(.callout)
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                        }
+
+                        // Create Account (primary)
+                        Button(action: performRegister) {
+                            if auth.isLoading {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Text("Create Account")
+                            }
+                        }
+                        .buttonStyle(NabuPrimaryButtonStyle())
+                        .disabled(email.isEmpty || password.isEmpty
+                                  || auth.isLoading || googleAuth.isAuthenticating || !isValid)
+                        .accessibilityIdentifier("register-submit-button")
+
+
                         // Back to sign in
                         Button("Already have an account? Sign in") {
                             dismiss()
@@ -121,8 +132,11 @@ struct RegisterView: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
+    private var passwordLongEnough: Bool { password.count >= 8 }
+
+    /// As the server checks it: at most 72 bytes is bcrypt's limit.
     private var isValid: Bool {
-        password.count >= 8 && password == confirmPassword && email.contains("@")
+        passwordLongEnough && password.utf8.count <= 72 && email.contains("@")
     }
 
     private func performRegister() {

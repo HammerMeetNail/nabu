@@ -1626,7 +1626,6 @@ async function doRegister(form) {
   if (form.dataset.busy) return;
   hideError("#register-error"); hideError("#register-status");
   const email = form.querySelector("#reg-email").value, password = form.querySelector("#reg-password").value;
-  if (password !== form.querySelector("#reg-confirm").value) { setError("#register-error","Passwords do not match"); return; }
   form.dataset.busy = "true";
   try {
     const result = await handleRegister(email,password);
@@ -2156,6 +2155,18 @@ export async function init() {
           ? "/api/auth/apple/web/login"
           : "/api/auth/google/login";
         window.location.href = oauthPath + (operatorLoginDestination() ? "?redirect=%2Foperator" : "");
+        break;
+      }
+      case "toggle-password": {
+        // Straight on the DOM: a re-render would clear the fields not in focus.
+        e.preventDefault();
+        const input = document.getElementById(actionEl.dataset.target);
+        if (!input) break;
+        const show = input.type === "password";
+        input.type = show ? "text" : "password";
+        actionEl.textContent = show ? "Hide" : "Show";
+        actionEl.setAttribute("aria-pressed", String(show));
+        actionEl.setAttribute("aria-label", show ? "Hide password" : "Show password");
         break;
       }
       case "show-login":

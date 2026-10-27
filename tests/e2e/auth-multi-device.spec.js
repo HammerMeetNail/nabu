@@ -17,7 +17,6 @@ test("login on second device does not invalidate first device session", async ({
   await pageA.waitForSelector("#register-form");
   await pageA.fill("#reg-email", email);
   await pageA.fill("#reg-password", password);
-  await pageA.fill("#reg-confirm", password);
   await pageA.click("button[type=\"submit\"]");
   await pageA.waitForSelector("#hh-indicator:not([hidden])", {
     timeout: 10000,
@@ -67,7 +66,6 @@ test("password change on one device invalidates sessions on all devices", async 
   await pageA.waitForSelector("#register-form");
   await pageA.fill("#reg-email", email);
   await pageA.fill("#reg-password", password);
-  await pageA.fill("#reg-confirm", password);
   await pageA.click("button[type=\"submit\"]");
   await pageA.waitForSelector("#hh-indicator:not([hidden])", {
     timeout: 10000,

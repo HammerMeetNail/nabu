@@ -12,7 +12,6 @@ async function register(page) {
   await page.waitForSelector('#register-form');
   await page.fill('#reg-email', email);
   await page.fill('#reg-password', 'test123456');
-  await page.fill('#reg-confirm', 'test123456');
   await page.click('button[type="submit"]');
   await expect(page.getByRole('heading', { name: 'Welcome to Nabu' })).toBeVisible({ timeout: 10000 });
   return email;

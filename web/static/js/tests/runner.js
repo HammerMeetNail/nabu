@@ -132,13 +132,28 @@ describe("Auth Views", () => {
     assert.ok(html.includes("Sign In"));
     assert.ok(html.includes("Nabu"));
     assert.ok(html.includes("Create Account"));
+    const root = document.createElement("div");
+    root.innerHTML = html;
+    assert.equal(root.querySelector(".auth-logo").getAttribute("src"), "/static/icons/icon.svg");
+    assert.equal(root.querySelector(".auth-tagline").textContent, "One shared log for your home: feeds, meds, walks and chores.");
+    assert.equal(root.querySelector("#login-password").getAttribute("autocomplete"), "current-password");
+    const toggle = root.querySelector('[data-action="toggle-password"]');
+    assert.deepEqual([toggle.dataset.target, toggle.getAttribute("aria-pressed"), toggle.getAttribute("aria-label")], ["login-password", "false", "Show password"]);
   });
 
-  it("renders register view", async () => {
+  it("renders register view with one password, its rule and Show/Hide", async () => {
     const { renderRegisterView } = await import("../auth.js");
     const html = renderRegisterView();
     assert.ok(html.includes("Create Account"));
-    assert.ok(html.includes("Confirm Password"));
+    const root = document.createElement("div");
+    root.innerHTML = html;
+    assert.equal(root.querySelector("#reg-confirm"), null);
+    assert.ok(!html.includes("Confirm Password"));
+    const password = root.querySelector("#reg-password");
+    assert.deepEqual([password.type, password.minLength, password.maxLength, password.getAttribute("autocomplete")], ["password", 8, 72, "new-password"]);
+    assert.equal(root.querySelector(`#${password.getAttribute("aria-describedby")}`).textContent, "At least 8 characters.");
+    assert.equal(root.querySelector('[data-action="toggle-password"]').dataset.target, "reg-password");
+    assert.ok(root.querySelector(".auth-logo") && root.querySelector(".auth-tagline"));
   });
 
   it("hides third-party sign-in buttons when not configured", async () => {

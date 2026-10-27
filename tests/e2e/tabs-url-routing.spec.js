@@ -18,7 +18,6 @@ async function setupWithChores(page) {
   await page.waitForSelector('#register-form');
   await page.fill('#reg-email', email);
   await page.fill('#reg-password', PASSWORD);
-  await page.fill('#reg-confirm', PASSWORD);
   await page.click('button[type="submit"]');
   await page.waitForSelector('#hh-indicator:not([hidden])', { timeout: 10000 });
   const csrf = (await page.context().cookies()).find(c => c.name === 'nabu_csrf')?.value || '';

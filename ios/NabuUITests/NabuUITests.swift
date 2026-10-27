@@ -857,9 +857,22 @@ final class NabuUITests: XCTestCase {
     func testNavigateToRegister() throws {
         XCTAssertTrue(app.buttons["Create Account"].waitForExistence(timeout: 5))
         app.buttons["Create Account"].tap()
-        XCTAssertTrue(app.staticTexts["Create Account"].exists)
-        XCTAssertTrue(app.secureTextFields["Password (min 8 characters)"].exists)
-        XCTAssertTrue(app.secureTextFields["Confirm Password"].exists)
+        XCTAssertTrue(app.staticTexts["Create Account"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["One shared log for your home: feeds, meds, walks and chores."].exists)
+        XCTAssertTrue(app.secureTextFields["Password"].exists)
+        XCTAssertFalse(app.secureTextFields["Confirm Password"].exists, "one password, with Show/Hide")
+        XCTAssertTrue(app.buttons["Show password"].exists)
+    }
+
+    /// Apple and Google come before the email form on both screens.
+    func testAppleAndGoogleComeFirst() throws {
+        let apple = app.buttons["siwa-button"]
+        XCTAssertTrue(apple.waitForExistence(timeout: 5))
+        XCTAssertLessThan(apple.frame.minY, app.textFields.firstMatch.frame.minY)
+        XCTAssertLessThan(app.buttons["Continue with Google"].frame.minY, app.textFields.firstMatch.frame.minY)
+        app.buttons["Create Account"].tap()
+        XCTAssertTrue(app.staticTexts["Create Account"].waitForExistence(timeout: 5))
+        XCTAssertLessThan(app.buttons["siwa-button"].frame.minY, app.textFields.firstMatch.frame.minY)
     }
 
     // P5 exit gate: the Sign in with Apple button renders on both auth
@@ -893,7 +906,9 @@ final class NabuUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Sign In"].isEnabled)
     }
 
-    func testRegisterPasswordMismatch() throws {
+    /// The rule shows as it's met, Create Account waits for it, and Show
+    /// reveals what was typed in place of typing it twice.
+    func testRegisterPasswordRuleAndShow() throws {
         app.buttons["Create Account"].tap()
         XCTAssertTrue(app.staticTexts["Create Account"].waitForExistence(timeout: 5))
 
@@ -901,15 +916,30 @@ final class NabuUITests: XCTestCase {
         emailField.tap()
         emailField.typeText("test@test.com")
 
-        let passwordFields = app.secureTextFields
-        passwordFields.firstMatch.tap()
-        passwordFields.firstMatch.typeText("password123")
-
-        passwordFields.element(boundBy: 1).tap()
-        passwordFields.element(boundBy: 1).typeText("different")
-
-        let createButton = app.buttons["Create Account"]
+        let password = app.secureTextFields["Password"]
+        password.tap()
+        // iOS offers a strong password for a new account; decline it to type one.
+        if app.buttons["GenerateStrongPasswordButton"].waitForExistence(timeout: 3) {
+            app.buttons["xmark"].tap()
+        }
+        password.typeText("short")
+        let rule = app.descendants(matching: .any)["password-rule"]
+        XCTAssertEqual(rule.value as? String, "not met")
+        let createButton = app.buttons["register-submit-button"]
         XCTAssertFalse(createButton.isEnabled)
+
+        password.typeText("er-pass")
+        XCTAssertEqual(rule.value as? String, "met")
+        XCTAssertTrue(createButton.isEnabled)
+
+        app.buttons["Show password"].tap()
+        XCTAssertEqual(app.textFields["Password"].value as? String, "shorter-pass")
+        XCTAssertFalse(app.secureTextFields["Password"].exists)
+        // Showing it is not sending the form: iOS must not offer to save it.
+        XCTAssertFalse(app.sheets["Save Password?"].waitForExistence(timeout: 2))
+        app.buttons["Hide password"].tap()
+        XCTAssertTrue(app.secureTextFields["Password"].exists)
+        XCTAssertFalse(app.textFields["Password"].exists)
     }
 }
 
@@ -2150,7 +2180,7 @@ final class NabuInviteUITests: XCTestCase {
         XCTAssertTrue(banner.label.contains("Dana O'Connor invited you to join"), banner.label)
         XCTAssertTrue(banner.label.contains("The O'Connors' home"), banner.label)
         app.buttons["Create Account"].tap()
-        XCTAssertTrue(app.secureTextFields["Confirm Password"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Create Account"].waitForExistence(timeout: 5))
         XCTAssertTrue(banner.waitForExistence(timeout: 5), "sign-up shows it too")
 
         // A dead link says so, and is dropped rather than joined after sign-up.

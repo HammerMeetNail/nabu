@@ -7,7 +7,6 @@ async function setup(page, metricType = 'none') {
   await page.goto('/register');
   await page.locator('#reg-email').fill(email);
   await page.locator('#reg-password').fill('test123456');
-  await page.locator('#reg-confirm').fill('test123456');
   await page.locator('#register-form button[type=submit]').click();
   await expect(page.locator('#hh-indicator')).toBeVisible();
   const csrf = (await page.context().cookies()).find(c => c.name === 'nabu_csrf')?.value;
