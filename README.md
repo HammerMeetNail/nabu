@@ -48,7 +48,7 @@ make fmt         # Format Go code
 | `userprefs` | Chore ordering, hidden home chores, timezone preferences |
 | `handlers` | HTTP handlers grouped by feature — no business logic, call services directly |
 | `middleware` | Outermost first: RequestLogger → SecurityHeaders → RateLimiters (strict `/api/auth` + optional global `/api/*` backstop) → APIKey → CSRF → Session |
-| `database` | pgx connection pool + embedded SQL migration runner (58 migrations) |
+| `database` | pgx connection pool + embedded SQL migration runner (60 migrations) |
 | `config` | Environment variable loader with defaults |
 | `audit` | Audit logging interface + std logger implementation |
 | `mail` | SMTP mailer for verification, magic link, password reset emails |

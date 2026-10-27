@@ -131,6 +131,19 @@ func (s *MemoryStore) GetUserByID(_ context.Context, id int64) (User, error) {
 	return user, nil
 }
 
+func (s *MemoryStore) GetUsersByIDs(_ context.Context, ids []int64) ([]User, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	users := make([]User, 0, len(ids))
+	for _, id := range ids {
+		if user, ok := s.usersByID[id]; ok {
+			users = append(users, user)
+		}
+	}
+	return users, nil
+}
+
 func (s *MemoryStore) GetUserByIDWithHash(_ context.Context, id int64) (User, string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

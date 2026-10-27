@@ -48,6 +48,9 @@ type Store interface {
 	CreateUser(ctx context.Context, email, passwordHash string) (User, error)
 	GetUserByEmail(ctx context.Context, email string) (User, string, error)
 	GetUserByID(ctx context.Context, id int64) (User, error)
+	// GetUsersByIDs reads the users with these IDs that still exist, in one
+	// read and in no particular order.
+	GetUsersByIDs(ctx context.Context, ids []int64) ([]User, error)
 	GetUserByIDWithHash(ctx context.Context, id int64) (User, string, error)
 	FindUserByEmail(ctx context.Context, email string) (User, error)
 	VerifyEmail(ctx context.Context, userID int64) (User, error)

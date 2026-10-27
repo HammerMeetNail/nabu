@@ -153,6 +153,13 @@ func (s *Service) GetUserByID(ctx context.Context, userID int64) (User, error) {
 	return s.profile(ctx, user)
 }
 
+// GetUsersByIDs reads the non-secret account data of the users with these IDs
+// that still exist, in one read. Unlike GetUserByID it doesn't resolve each
+// one's current membership: it serves names and colors.
+func (s *Service) GetUsersByIDs(ctx context.Context, ids []int64) ([]User, error) {
+	return s.store.GetUsersByIDs(ctx, ids)
+}
+
 // AuthenticateUserVersion loads a user for a long-lived credential (an API
 // key) bound to authVersion. A password change or reset bumps the version, so
 // it returns ErrSessionNotFound for stale credentials and deleted accounts.
