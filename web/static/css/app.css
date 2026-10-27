@@ -1368,6 +1368,11 @@ details[open] .member-chevron {
   padding-bottom: 16px;
 }
 
+/* A deep-linked section scrolls into view below the sticky top bar. */
+.stats-page [data-stats-section] {
+  scroll-margin-top: calc(72px + env(safe-area-inset-top, 0px));
+}
+
 .stats-header-row {
   display: flex;
   align-items: center;

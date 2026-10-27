@@ -118,7 +118,8 @@ test.describe("Admin household data export", () => {
       headers: { "X-CSRF-Token": ownerCsrf },
     });
     expect(demoteResponse.ok()).toBe(true);
-    await memberPage.reload();
+    // The page's URL is Settings now, so reload from Home before opening it.
+    await memberPage.goto("/today");
     await memberPage.waitForSelector(".home-grid", { timeout: 15000 });
     await memberPage.click('a[data-nav="settings"]');
     await memberPage.waitForSelector(".settings-view", { timeout: 10000 });

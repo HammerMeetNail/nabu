@@ -122,11 +122,10 @@ test.describe('Settings: notification preferences', () => {
     });
     expect(patchRes.ok()).toBe(true);
 
+    // Reload keeps the Settings tab and reads the saved preferences again.
     await page.reload();
-    await page.waitForSelector('.home-grid', { timeout: 15000 });
-
-    await page.click('a[data-nav="settings"]');
-    await page.waitForSelector('.settings-view', { timeout: 5000 });
+    await page.waitForSelector('.settings-view', { timeout: 15000 });
+    await expect(page.locator('.settings-view h3', { hasText: 'Notifications' })).toBeVisible({ timeout: 10000 });
 
     // Per-type toggles should be hidden (push is off)
     await expect(page.locator('.notif-pref-list')).not.toBeVisible({ timeout: 5000 });

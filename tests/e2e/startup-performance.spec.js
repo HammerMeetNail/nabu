@@ -104,7 +104,8 @@ test('Home is usable while notifications are pending and loads calendar data on 
     notifications.resolve();
     await joinNotifications();
     await expect(page.locator('.schedule-view')).toBeVisible();
-    await page.reload();
+    // The page's URL is Schedule now, so load Home afresh.
+    await page.goto('/today');
     await expect(page.locator('.home-grid')).toBeVisible();
     await expect(page.locator('.home-card-time')).toHaveText('just now');
     const history = await page.request.get('/api/logs/history');
