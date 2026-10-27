@@ -89,6 +89,9 @@ final class AppState: ObservableObject {
     /// Invite code from a `/join?code=…` universal link opened while logged
     /// out; OnboardingView prefills its Join tab from it.
     @Published var pendingInviteCode: String?
+    /// What that invite link is for, shown above sign-in and sign-up (the
+    /// PWA's /join page). A dead link's `.invalid` outlives its dropped code.
+    @Published var invitePreview: InvitePreviewStatus?
     /// Connectivity from DataLoader's NWPathMonitor; drives the global
     /// offline banner (C4). Not reset on logout — it's device state.
     @Published var isOffline = false
@@ -176,6 +179,7 @@ final class AppState: ObservableObject {
         dayNotes = [:]
         pendingQuickLog = nil
         pendingInviteCode = nil
+        invitePreview = nil
         statsSectionOrder = []
         statsSectionHidden = []
         statsWidgets = []

@@ -460,6 +460,7 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	})
 	mux.HandleFunc("/api/household/invites/", method(http.MethodDelete, householdHandler.DeleteInvite))
 	mux.HandleFunc("/api/household/join", method(http.MethodPost, householdHandler.Join))
+	mux.HandleFunc("/api/household/join/preview", method(http.MethodGet, householdHandler.JoinPreview))
 	mux.HandleFunc("/api/household/members/", func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, "/access") {
 			if r.Method == http.MethodPatch {

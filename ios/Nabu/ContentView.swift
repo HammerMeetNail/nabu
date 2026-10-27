@@ -42,6 +42,7 @@ struct ContentView: View {
             } else if state.user == nil {
                 LoginView(auth: auth, apiBaseURL: environment.baseURL)
                     .onAppear { auth.configure(api: environment.apiClient) }
+                    .task(id: state.pendingInviteCode) { await loadInvitePreview() }
             } else if state.household == nil, let message = state.accessSuspendedMessage {
                 AccessSuspendedView(message: message) {
                     Task { _ = await auth.logout() }
@@ -209,6 +210,25 @@ struct ContentView: View {
             state.homeView = .log
         case .showActivity:
             state.currentTab = .activity
+        }
+    }
+
+    /// The pending invite link's household and sender, for the sign-in
+    /// screens. A dead link's code is dropped, so signing up leads to setup
+    /// rather than a failed join.
+    private func loadInvitePreview() async {
+        guard let code = state.pendingInviteCode else { return }
+        do {
+            let preview: InvitePreview = try await environment.apiClient.get(
+                "/api/household/join/preview", query: [URLQueryItem(name: "code", value: code)])
+            guard state.pendingInviteCode == code else { return }
+            state.invitePreview = .ready(preview)
+        } catch APIError.serverError(let status, _) where status == 404 {
+            guard state.pendingInviteCode == code else { return }
+            state.invitePreview = .invalid
+            state.pendingInviteCode = nil
+        } catch {
+            // Unreachable or rate-limited: the screens stay as they were.
         }
     }
 

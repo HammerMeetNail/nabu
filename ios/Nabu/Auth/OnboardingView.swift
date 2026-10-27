@@ -488,8 +488,10 @@ struct OnboardingView: View {
         let code = setup.created?.inviteCode ?? ""
         let link = "\(environment.baseURL.absoluteString)/join?code=\(code)"
         Text("Invite your household").font(.title2.weight(.bold)).foregroundColor(DesignColors.textPrimary)
-        Text("Nabu works best when everyone logs. Send this link to the people you share the care with.")
+        Text("Nabu works best when everyone logs. Send this link to the people you share the care with, or let them scan the code.")
             .foregroundColor(DesignColors.textSecondary)
+        QRCodeView(text: link)
+            .frame(maxWidth: .infinity)
         Text(link)
             .font(.footnote.monospaced())
             .textSelection(.enabled)

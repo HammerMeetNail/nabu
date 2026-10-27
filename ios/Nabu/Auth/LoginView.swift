@@ -28,6 +28,10 @@ struct LoginView: View {
                         .foregroundColor(DesignColors.brand)
                         .padding(.top, 48)
 
+                    if let invite = state.invitePreview {
+                        InviteBanner(status: invite)
+                    }
+
                     // Card
                     AuthCard {
                         VStack(spacing: 16) {
@@ -155,6 +159,43 @@ struct LoginView: View {
             if let user = await appleAuth.handle(result, api: auth.api) {
                 state.user = user
             }
+        }
+    }
+}
+
+/// What a pending invite link is for, above sign-in and sign-up: who sent it
+/// and to which household, or that the link is dead (the PWA's /join page).
+struct InviteBanner: View {
+    let status: InvitePreviewStatus
+
+    var body: some View {
+        switch status {
+        case .ready(let preview):
+            VStack(spacing: 8) {
+                if let inviter = preview.inviter {
+                    MemberAvatar(name: inviter.displayName, colorHex: inviter.avatarColor, size: 56)
+                }
+                Text(preview.inviter.map { "\($0.displayName) invited you to join" } ?? "You're invited to join")
+                    .font(.subheadline)
+                    .foregroundColor(DesignColors.textSecondary)
+                Text(preview.household.name)
+                    .font(.title2.weight(.bold))
+                    .foregroundColor(DesignColors.textPrimary)
+                Text("Nabu is one shared log for your home: feeds, meds, walks and chores. Create an account or sign in to join.")
+                    .font(.footnote)
+                    .foregroundColor(DesignColors.textSecondary)
+            }
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 24)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("invite-banner")
+        case .invalid:
+            Text("This invite link isn't valid any more. Ask whoever sent it for a new one.")
+                .font(.callout)
+                .foregroundColor(DesignColors.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+                .accessibilityIdentifier("invite-banner-invalid")
         }
     }
 }

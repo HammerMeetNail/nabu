@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"time"
 	"unicode/utf8"
 
 	"github.com/HammerMeetNail/nabu/internal/audit"
@@ -458,6 +459,81 @@ func (s *Service) JoinHousehold(ctx context.Context, userID int64, inviteCode st
 	})
 	hh.InviteCode = ""
 	return hh, nil
+}
+
+// InvitePreview is what an invite link shows before its holder signs in: the
+// household's name and, when it is known, who sent the invite. It carries no
+// IDs, emails or codes; the holder could join and see more.
+type InvitePreview struct {
+	Household InvitePreviewHousehold `json:"household"`
+	Inviter   *InvitePreviewPerson   `json:"inviter,omitempty"`
+}
+
+type InvitePreviewHousehold struct {
+	Name     string `json:"name"`
+	Initials string `json:"initials"`
+}
+
+type InvitePreviewPerson struct {
+	DisplayName string `json:"displayName"`
+	AvatarColor string `json:"avatarColor"`
+}
+
+// maxInviteCodeLength bounds a code before any lookup; generated codes are 10.
+const maxInviteCodeLength = 64
+
+// PreviewInvite resolves an invite code as JoinHousehold does, without
+// joining. A single-use invite names the member who made it; the permanent
+// code, which only owners see, names the household's owner when there is
+// exactly one. Members whose access is disabled are never named. Unknown,
+// used-up and expired codes all return ErrInviteNotFound, as a join does.
+func (s *Service) PreviewInvite(ctx context.Context, code string) (InvitePreview, error) {
+	if code == "" || len(code) > maxInviteCodeLength {
+		return InvitePreview{}, ErrInviteNotFound
+	}
+	var hh Household
+	var inviterID int64
+	invite, err := s.store.GetInviteByCode(ctx, code)
+	// The Postgres store returns used-up and expired invites; the join's
+	// atomic UseInvite refuses them, so the preview does too.
+	usable := err == nil && (invite.MaxUses <= 0 || invite.UsedCount < invite.MaxUses) &&
+		(invite.ExpiresAt == nil || time.Now().Before(*invite.ExpiresAt))
+	switch {
+	case usable:
+		if hh, err = s.store.GetHousehold(ctx, invite.HouseholdID); errors.Is(err, ErrNotFound) {
+			return InvitePreview{}, ErrInviteNotFound
+		} else if err != nil {
+			return InvitePreview{}, err
+		}
+		inviterID = invite.CreatedBy
+	case err == nil || errors.Is(err, ErrInviteNotFound) || errors.Is(err, ErrInviteExpired):
+		if hh, err = s.store.GetHouseholdByInviteCode(ctx, code); err != nil {
+			return InvitePreview{}, err
+		}
+	default:
+		return InvitePreview{}, err
+	}
+	members, err := s.store.GetMembers(ctx, hh.ID)
+	if err != nil {
+		return InvitePreview{}, err
+	}
+	preview := InvitePreview{Household: InvitePreviewHousehold{Name: hh.Name, Initials: hh.Initials}}
+	var owners []Member
+	for _, m := range members {
+		if m.Suspended {
+			continue
+		}
+		if inviterID != 0 && m.UserID == inviterID {
+			preview.Inviter = &InvitePreviewPerson{DisplayName: m.DisplayName, AvatarColor: m.AvatarColor}
+		}
+		if m.Role == RoleOwner {
+			owners = append(owners, m)
+		}
+	}
+	if inviterID == 0 && len(owners) == 1 {
+		preview.Inviter = &InvitePreviewPerson{DisplayName: owners[0].DisplayName, AvatarColor: owners[0].AvatarColor}
+	}
+	return preview, nil
 }
 
 // ListUserHouseholds returns all households the user belongs to.

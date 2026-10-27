@@ -1,3 +1,5 @@
+import CoreImage
+import UIKit
 import XCTest
 @testable import Nabu
 
@@ -589,5 +591,26 @@ final class HouseholdSetupTests: XCTestCase {
         XCTAssertTrue(reloaded)
         XCTAssertFalse(setup.holdsMainTabs(for: api.identity.snapshot.user))
         XCTAssertNil(setup.created)
+    }
+}
+
+/// Invite links: the preview a signed-out invite shows, and the QR code.
+final class InviteTests: XCTestCase {
+    func testPreviewDecodesWithAndWithoutAnInviter() throws {
+        let named = try apiDecoder.decode(InvitePreview.self, from: Data(##"{"household":{"name":"The O'Connors' home","initials":"TOH"},"inviter":{"displayName":"Dana O'Connor","avatarColor":"#7B5EA7"}}"##.utf8))
+        XCTAssertEqual(named.household, InvitePreview.Household(name: "The O'Connors' home", initials: "TOH"))
+        XCTAssertEqual(named.inviter, InvitePreview.Person(displayName: "Dana O'Connor", avatarColor: "#7B5EA7"))
+        let unnamed = try apiDecoder.decode(InvitePreview.self, from: Data(##"{"household":{"name":"Flat 4","initials":"F4"}}"##.utf8))
+        XCTAssertNil(unnamed.inviter)
+    }
+
+    func testQRCodeReadsBackAsTheLinkWithAQuietZone() throws {
+        let link = "https://nabu-app.com/join?code=7KQ2M9XWPA"
+        let image = try XCTUnwrap(QRCodeView.image(for: link))
+        // Version 3 (29 modules) and a four-module quiet zone each side, at 8 px a module.
+        XCTAssertEqual(image.size, CGSize(width: 37 * 8, height: 37 * 8))
+        let detector = try XCTUnwrap(CIDetector(ofType: CIDetectorTypeQRCode, context: nil, options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]))
+        let found = detector.features(in: try XCTUnwrap(CIImage(image: image))).compactMap { ($0 as? CIQRCodeFeature)?.messageString }
+        XCTAssertEqual(found, [link])
     }
 }

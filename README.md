@@ -146,7 +146,7 @@ Rate budgets apply independently to each server replica; they are not a distribu
 `POST /api/auth/register` `POST /api/auth/login` `POST /api/auth/logout` `GET /api/me` `POST /api/auth/email/verification/resend` `GET /api/auth/email/verify` `POST /api/auth/magic-link/request` `GET /api/auth/magic-link/consume` `POST /api/auth/password/forgot` `POST /api/auth/password/reset` `POST /api/auth/password` `GET /api/auth/google/login` `GET /api/auth/google/callback` `POST /api/auth/apple/native` `GET /api/auth/apple/web/login` `POST /api/auth/apple/web/callback`
 
 ### Household
-`GET /api/household` `POST /api/household` `PATCH /api/household` `POST /api/household/invites` `GET /api/household/invites` `DELETE /api/household/invites/{id}` `POST /api/household/join` `PATCH /api/household/members/{id}` `DELETE /api/household/members/{id}` `POST /api/household/leave` `POST /api/household/transfer`
+`GET /api/household` `POST /api/household` `PATCH /api/household` `POST /api/household/invites` `GET /api/household/invites` `DELETE /api/household/invites/{id}` `POST /api/household/join` `GET /api/household/join/preview?code=` (no session) `PATCH /api/household/members/{id}` `DELETE /api/household/members/{id}` `POST /api/household/leave` `POST /api/household/transfer`
 `GET /api/households` `POST /api/households/{id}/activate`
 
 ### Chores

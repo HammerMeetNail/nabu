@@ -736,3 +736,31 @@ func extractIntFromJSON(t *testing.T, body, prefix string) int64 {
 	}
 	return n
 }
+
+// The invite preview needs no session and names the household and its owner;
+// an unknown code is a 404 whose message says what to do.
+func TestHouseholdJoinPreview(t *testing.T) {
+	handler, sessionID, authService := setupHouseholdWithHome(t)
+	getReq := withUser(httptest.NewRequest(http.MethodGet, "/api/household", nil), authService, sessionID)
+	getRec := httptest.NewRecorder()
+	handler.Get(getRec, getReq)
+	body := getRec.Body.String()
+	start := strings.Index(body, `"inviteCode":"`) + len(`"inviteCode":"`)
+	code := body[start : start+strings.Index(body[start:], `"`)]
+
+	rec := httptest.NewRecorder()
+	handler.JoinPreview(rec, httptest.NewRequest(http.MethodGet, "/api/household/join/preview?code="+code, nil))
+	if rec.Code != http.StatusOK || rec.Body.String() != `{"household":{"name":"My Home","initials":"MH"},"inviter":{"displayName":"alice","avatarColor":"#19323C"}}`+"\n" {
+		t.Fatalf("preview: %d %q", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("Cache-Control") != "no-store" {
+		t.Fatalf("Cache-Control = %q", rec.Header().Get("Cache-Control"))
+	}
+	for _, code := range []string{"", "NOPE234567"} {
+		rec := httptest.NewRecorder()
+		handler.JoinPreview(rec, httptest.NewRequest(http.MethodGet, "/api/household/join/preview?code="+code, nil))
+		if rec.Code != http.StatusNotFound || !strings.Contains(rec.Body.String(), "This invite link isn't valid any more. Ask for a new one.") {
+			t.Fatalf("code %q: %d %s", code, rec.Code, rec.Body.String())
+		}
+	}
+}

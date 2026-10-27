@@ -152,18 +152,19 @@ struct APIClient {
         // an ordinary write by the current identity: it needs a ready session
         // and carries the identity claim like any other request.
         let sessionRead = path == "/api/me" && request.httpMethod != "PATCH"
+        let publicRead = request.httpMethod == "GET" && Self.publicReads.contains(path)
         var request = request
         var ticket: UUID?
         if transition {
             do { ticket = try identity.beginTransition(logout: logout, expected: owner) }
             catch { await identity.publish(); throw error }
             await identity.publish()
-        } else if identity.managed && !sessionRead && !path.hasPrefix("/api/auth/") {
+        } else if identity.managed && !sessionRead && !publicRead && !path.hasPrefix("/api/auth/") {
             guard owner.phase == .ready else { throw APIError.contextChanged }
         } else if identity.managed && (owner.phase == .logoutPending || owner.phase == .changing) {
             throw APIError.contextChanged
         }
-        if identity.managed, let user = owner.user, !sessionRead {
+        if identity.managed, let user = owner.user, !sessionRead, !publicRead {
             request.setValue(String(user.id), forHTTPHeaderField: "X-Nabu-User-ID")
             // A deliberate claim about the identity that authored the request,
             // including "this account has no active household" (0). The server
@@ -300,6 +301,10 @@ struct APIClient {
         guard identity.accept(user, expected: owner) else { return }
         await identity.publish()
     }
+
+    /// Reads that belong to no identity, so they go out signed out and carry
+    /// no claim: an invite link's preview, shown before sign-in.
+    private static let publicReads: Set<String> = ["/api/household/join/preview"]
 
     private static func changesIdentity(_ request: URLRequest) -> Bool {
         let path = request.url?.path ?? ""
