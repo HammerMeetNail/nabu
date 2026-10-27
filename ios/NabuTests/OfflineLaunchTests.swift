@@ -113,6 +113,19 @@ final class OfflineLaunchTests: XCTestCase {
         XCTAssertNil(relaunched.resumeSavedHome())
     }
 
+    /// `-resetState` gives each UI test a signed-out start even after an
+    /// earlier test's sign-out never reached its server.
+    func testResetStateDiscardsAPendingSignOut() throws {
+        try JSONEncoder().encode(["logoutPending": true]).write(to: marker)
+        let relaunched = newIdentity()
+        XCTAssertEqual(relaunched.snapshot.phase, .logoutPending)
+        XCTAssertFalse(relaunched.accept(nil), "a pending sign-out refuses every identity")
+        relaunched.discardPendingLogoutForTests()
+        XCTAssertTrue(relaunched.accept(nil))
+        XCTAssertEqual(relaunched.snapshot.phase, .anonymous)
+        XCTAssertEqual(newIdentity().snapshot.phase, .checking, "the marker is gone for the next launch")
+    }
+
     func testConfirmingTheSavedIdentityKeepsItsRevisionAndHome() throws {
         let relaunched = relaunchWithSavedHome()
         _ = try XCTUnwrap(relaunched.resumeSavedHome())
