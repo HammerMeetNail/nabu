@@ -365,7 +365,26 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		h.dispatch(func() { h.fanOutNotification(hhID, loggerID, user.ID, choreID) })
 	}
 
-	writeJSON(w, http.StatusCreated, map[string]any{"log": entry})
+	writeJSON(w, http.StatusCreated, h.withLatest(r.Context(), user.ID, *user.HouseholdID, req.ChoreID, map[string]any{"log": entry}))
+}
+
+// withLatest adds the chore's latest log after a write ("latest": the log, or
+// null when the chore has no logs left), so a client updates that chore's
+// "time ago" without reloading every chore's latest log. The caller has
+// checked the user can see the chore. When the read fails the field is left
+// out and clients reload instead.
+func (h *LogHandler) withLatest(ctx context.Context, userID, householdID, choreID int64, payload map[string]any) map[string]any {
+	readCtx := log.WithReadAccess(ctx, householdID, userID, map[int64]struct{}{choreID: {}})
+	latest, err := h.service.LatestPerChore(readCtx, householdID)
+	if err != nil {
+		return payload
+	}
+	if entry, ok := latest[choreID]; ok {
+		payload["latest"] = entry
+	} else {
+		payload["latest"] = nil
+	}
+	return payload
 }
 
 func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
@@ -436,13 +455,14 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 		userID = req.UserID
 	}
 
-	// Visibility check: resolve the log and its chore before mutation.
+	// Resolve the log and its chore before mutation: visibility, and the
+	// chore whose latest log the response reports.
+	existingLog, err := h.service.GetLogForHousehold(r.Context(), id, *user.HouseholdID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "log not found")
+		return
+	}
 	if h.choreStore != nil {
-		existingLog, err := h.service.GetLogForHousehold(r.Context(), id, *user.HouseholdID)
-		if err != nil {
-			writeError(w, http.StatusNotFound, "log not found")
-			return
-		}
 		if _, ok := h.canViewChore(r.Context(), user.ID, *user.HouseholdID, existingLog.ChoreID); !ok {
 			writeError(w, http.StatusNotFound, "log not found")
 			return
@@ -491,7 +511,7 @@ func (h *LogHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+	writeJSON(w, http.StatusOK, h.withLatest(r.Context(), user.ID, *user.HouseholdID, existingLog.ChoreID, map[string]any{"status": "updated"}))
 }
 
 func (h *LogHandler) Delete(w http.ResponseWriter, r *http.Request) {
@@ -508,12 +528,12 @@ func (h *LogHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	existingLog, err := h.service.GetLogForHousehold(r.Context(), id, *user.HouseholdID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "log not found")
+		return
+	}
 	if h.choreStore != nil {
-		existingLog, err := h.service.GetLogForHousehold(r.Context(), id, *user.HouseholdID)
-		if err != nil {
-			writeError(w, http.StatusNotFound, "log not found")
-			return
-		}
 		if _, ok := h.canViewChore(r.Context(), user.ID, *user.HouseholdID, existingLog.ChoreID); !ok {
 			writeError(w, http.StatusNotFound, "log not found")
 			return
@@ -525,7 +545,7 @@ func (h *LogHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+	writeJSON(w, http.StatusOK, h.withLatest(r.Context(), user.ID, *user.HouseholdID, existingLog.ChoreID, map[string]any{"status": "deleted"}))
 }
 
 func (h *LogHandler) Today(w http.ResponseWriter, r *http.Request) {

@@ -358,8 +358,10 @@ struct HistoryListView: View {
     private func deleteLog(_ log: ChoreLog) async {
         let owner = state.revision
         do {
-            let _: StatusResponse = try await logStore.deleteLog(logId: log.id)
+            let response = try await logStore.deleteLog(logId: log.id)
             guard state.revision == owner else { return }
+            // Home's tile for this chore no longer shows a deleted log.
+            if response.reportsLatest { state.applyLatestLog(response.latest, choreId: log.choreId) }
             model.confirmDeletion(log.id)
             await model.refresh()
         } catch {
