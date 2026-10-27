@@ -3,8 +3,10 @@ import Foundation
 /// View model for the Stats tab. Mirrors the PWA's stats data-loading and
 /// interaction semantics (`app.js` loadAllStatsData / loadWidgetData /
 /// loadChoreAnalyticsData / loadBabyTimeSeries and the stats-* action
-/// handlers): same endpoints, same query parameters, same caching keys, same
-/// fetch caps. Presentation is native (§2.1); behavior must not diverge.
+/// handlers): same reads, same query parameters, same caching keys, same
+/// fetch caps. A page load sends its reads as two /api/stats/dashboard
+/// requests, sections and per-chore charts, like the PWA's `stats-batch.js`.
+/// Presentation is native (§2.1); behavior must not diverge.
 @MainActor
 final class StatsModel: ObservableObject {
 
@@ -25,6 +27,8 @@ final class StatsModel: ObservableObject {
     private var requests: [String: UUID] = [:]
     private var queries: [String: String] = [:]
     private var pageRequest = UUID()
+    /// The current page load's reads, fetched up front by `loadAll`.
+    private var prefetched: [StatsRead: Task<StatsReadOutcome, Never>] = [:]
 
     // Overview
     @Published var overview: StatsOverview?
@@ -173,11 +177,13 @@ final class StatsModel: ObservableObject {
     /// `showSpinner: false` refreshes in place (pull-to-refresh) without
     /// flipping the whole tab back to the loading state.
     func loadAll(showSpinner: Bool = true) async {
-        guard contextIsCurrent else { return }
+        guard contextIsCurrent, let api else { return }
         let request = UUID()
         pageRequest = request
         if showSpinner { isLoading = true }
         if topChoresUserId == 0 { topChoresUserId = state?.user?.id ?? 0 }
+        prefetch(plannedReads(), api: api)
+        defer { if pageRequest == request { prefetched = [:] } }
 
         await withTaskGroup(of: Void.self) { group in
             group.addTask { await self.loadOverview() }
@@ -197,17 +203,138 @@ final class StatsModel: ObservableObject {
         if contextIsCurrent, pageRequest == request { isLoading = false }
     }
 
+    /// Fetches the page's reads in two dashboard requests, sections and
+    /// charts, instead of one request per chart. A lane with one read leaves
+    /// it to its loader, which reads the endpoint directly.
+    private func prefetch(_ reads: [StatsRead], api: APIClient) {
+        prefetched = [:]
+        for charts in [false, true] {
+            let lane = reads.filter { $0.isChart == charts }
+            guard lane.count > 1 else { continue }
+            let batch = Task { await StatsDashboard.fetch(lane, api: api) }
+            for read in lane {
+                prefetched[read] = Task { await batch.value[read] ?? .unavailable }
+            }
+        }
+    }
+
+    /// Every read this page load makes, from the same state the loaders read.
+    private func plannedReads() -> [StatsRead] {
+        var reads = [overviewRead]
+        if visible("activity") { reads.append(heatmapRead) }
+        if visible("busy-hours") { reads.append(busyHoursRead) }
+        if visible("chores") { reads.append(periodRead("chores", choreStatsPeriod)) }
+        if visible("categories") { reads.append(periodRead("breakdown", categoriesPeriod)) }
+        if visible("top-chores") { reads.append(topChoresRead) }
+        if visible("leaderboard") { reads.append(periodRead("leaderboard", leaderboardPeriod)) }
+        if visible("baby") {
+            if let chore = feedBabyChore { reads.append(timeSeriesRead(chore.id, feedBabyPeriod)) }
+            if let chore = changeBabyChore { reads.append(timeSeriesRead(chore.id, changeBabyPeriod)) }
+            if feedBabyChore != nil {
+                prepareFeedingGapsRange()
+                reads.append(feedingGapsRead)
+            }
+        }
+        for id in analyticsChoreIDs {
+            reads.append(timeSeriesRead(id, StatsSections.choreAnalyticsGrain(choreAnalyticsPeriod[id] ?? "day")))
+        }
+        for widget in visibleWidgets where widget.type != "last-done" {
+            for id in widgetChoreIDs(widget) { reads.append(widgetRead(widget, choreId: id)) }
+        }
+        var seen = Set<StatsRead>()
+        return reads.filter { seen.insert($0).inserted }
+    }
+
+    /// The prefetched result when this page load planned the read; otherwise,
+    /// or when the dashboard request failed, the read's own endpoint.
+    private func get<T: Decodable>(_ read: StatsRead, api: APIClient) async throws -> T {
+        if let pending = prefetched[read] {
+            switch await pending.value {
+            case .data(let data):
+                do { return try apiDecoder.decode(T.self, from: data) } catch { throw APIError.decodingError(error) }
+            case .failed(let status, let message):
+                if let message { throw APIError.serverError(statusCode: status, message: message) }
+                throw APIError.httpError(statusCode: status)
+            case .unavailable:
+                break
+            }
+        }
+        return try await api.get("/api/stats/" + read.path, query: read.query)
+    }
+
+    // MARK: - Reads (shared by the loaders and the page's prefetch)
+
+    private var overviewRead: StatsRead { StatsRead(path: "overview") }
+    private var heatmapRead: StatsRead { StatsRead(path: "heatmap") }
+
+    private var busyHoursRead: StatsRead {
+        var query: [URLQueryItem] = []
+        if let cid = bhChoreId { query.append(URLQueryItem(name: "choreId", value: "\(cid)")) }
+        if let uid = bhUserId { query.append(URLQueryItem(name: "userId", value: "\(uid)")) }
+        if !bhFilterStart.isEmpty { query.append(URLQueryItem(name: "start", value: bhFilterStart)) }
+        if !bhFilterEnd.isEmpty { query.append(URLQueryItem(name: "end", value: bhFilterEnd)) }
+        return StatsRead(path: "busy-hours", query: query)
+    }
+
+    private func periodRead(_ path: String, _ period: String) -> StatsRead {
+        StatsRead(path: path, query: [URLQueryItem(name: "period", value: period)])
+    }
+
+    private var topChoresRead: StatsRead {
+        var query = [URLQueryItem(name: "period", value: topChoresPeriod)]
+        if topChoresUserId != 0 {
+            query.insert(URLQueryItem(name: "userId", value: "\(topChoresUserId)"), at: 0)
+        }
+        return StatsRead(path: "top-chores", query: query)
+    }
+
+    private func timeSeriesRead(_ choreId: Int, _ period: String) -> StatsRead {
+        periodRead("chores/\(choreId)/time-series", period)
+    }
+
+    private var feedingGapsRead: StatsRead {
+        StatsRead(path: "feeding-gaps", query: [
+            URLQueryItem(name: "start", value: feedingGapsStart),
+            URLQueryItem(name: "end", value: Self.exclusiveEnd(feedingGapsEnd)),
+        ])
+    }
+
+    private func widgetRead(_ widget: StatsWidget, choreId: Int) -> StatsRead {
+        widget.type == "timeseries"
+            ? timeSeriesRead(choreId, StatsSections.widgetGrain(widget))
+            : periodRead("chores/\(choreId)/summary", widget.period.isEmpty ? "week" : widget.period)
+    }
+
+    private var analyticsChoreIDs: [Int] {
+        chores.filter(StatsSections.choreHasAnalytics)
+            .filter { visible(StatsSections.choreSectionKey($0.id)) }
+            .prefix(Self.maxAnalyticsFetches).map(\.id)
+    }
+
+    private var visibleWidgets: [StatsWidget] {
+        (state?.statsWidgets ?? []).filter { visible(StatsSections.widgetSectionKey($0.id)) }
+    }
+
+    private func widgetChoreIDs(_ widget: StatsWidget) -> [Int] {
+        var seen = Set<Int>()
+        return Array(widget.choreIds.filter { seen.insert($0).inserted }.prefix(Self.maxAnalyticsFetches))
+    }
+
+    // MARK: - Loaders
+
     private func loadOverview() async {
+        let target = overviewRead
         await read("overview", section: "", query: "overview", fetch: { api in
-            try await api.get("/api/stats/overview") as OverviewResponse
+            try await self.get(target, api: api) as OverviewResponse
         }) { data in
             overview = data.overview
         }
     }
 
     private func loadHeatmap() async {
+        let target = heatmapRead
         await read("activity", section: "activity", query: "heatmap", fetch: { api in
-            try await api.get("/api/stats/heatmap") as HeatmapResponse
+            try await self.get(target, api: api) as HeatmapResponse
         }) { data in
             heatmap = data.heatmap
         }
@@ -215,17 +342,13 @@ final class StatsModel: ObservableObject {
 
     func loadBusyHours() async {
         let filters = [bhChoreId.map(String.init) ?? "", bhUserId.map(String.init) ?? "", bhFilterStart, bhFilterEnd]
-        var query: [URLQueryItem] = []
-        if let cid = bhChoreId { query.append(URLQueryItem(name: "choreId", value: "\(cid)")) }
-        if let uid = bhUserId { query.append(URLQueryItem(name: "userId", value: "\(uid)")) }
-        if !bhFilterStart.isEmpty { query.append(URLQueryItem(name: "start", value: bhFilterStart)) }
-        if !bhFilterEnd.isEmpty { query.append(URLQueryItem(name: "end", value: bhFilterEnd)) }
+        let target = busyHoursRead
         await read("busy-hours", section: "busy-hours", query: filters.joined(separator: "|"), matches: {
             filters == [bhChoreId.map(String.init) ?? "", bhUserId.map(String.init) ?? "", bhFilterStart, bhFilterEnd]
         }, clear: {
             busyHours = []; busyHoursStart = ""; busyHoursEnd = ""
         }, fetch: { api in
-            try await api.get("/api/stats/busy-hours", query: query) as BusyHoursResponse
+            try await self.get(target, api: api) as BusyHoursResponse
         }) { data in
             busyHours = data.busyHours
             busyHoursStart = data.start
@@ -238,7 +361,7 @@ final class StatsModel: ObservableObject {
         await read("chores", section: "chores", query: period, matches: { choreStatsPeriod == period }, clear: {
             choreStats = []; choreStatsStart = ""; choreStatsEnd = ""
         }, fetch: { api in
-            try await api.get("/api/stats/chores", query: [URLQueryItem(name: "period", value: period)]) as ChoreStatsResponse
+            try await self.get(self.periodRead("chores", period), api: api) as ChoreStatsResponse
         }) { data in
             choreStats = data.choreStats
             choreStatsStart = data.start
@@ -251,7 +374,7 @@ final class StatsModel: ObservableObject {
         await read("categories", section: "categories", query: period, matches: { categoriesPeriod == period }, clear: {
             categoriesBreakdown = []
         }, fetch: { api in
-            try await api.get("/api/stats/breakdown", query: [URLQueryItem(name: "period", value: period)]) as BreakdownResponse
+            try await self.get(self.periodRead("breakdown", period), api: api) as BreakdownResponse
         }) { data in
             categoriesBreakdown = data.breakdown
         }
@@ -259,14 +382,11 @@ final class StatsModel: ObservableObject {
 
     private func loadTopChores() async {
         let key = "\(topChoresUserId)-\(topChoresPeriod)"
-        var query = [URLQueryItem(name: "period", value: topChoresPeriod)]
-        if topChoresUserId != 0 {
-            query.insert(URLQueryItem(name: "userId", value: "\(topChoresUserId)"), at: 0)
-        }
+        let target = topChoresRead
         await read("top-chores", section: "top-chores", query: key, matches: {
             key == "\(topChoresUserId)-\(topChoresPeriod)"
         }, fetch: { api in
-            try await api.get("/api/stats/top-chores", query: query) as TopChoresResponse
+            try await self.get(target, api: api) as TopChoresResponse
         }) { data in
             topChoresByUserAndPeriod[key] = data.topChores
         }
@@ -275,7 +395,7 @@ final class StatsModel: ObservableObject {
     private func loadLeaderboard() async {
         let period = leaderboardPeriod
         await read("leaderboard", section: "leaderboard", query: period, matches: { leaderboardPeriod == period }, fetch: { api in
-            try await api.get("/api/stats/leaderboard", query: [URLQueryItem(name: "period", value: period)]) as LeaderboardResponse
+            try await self.get(self.periodRead("leaderboard", period), api: api) as LeaderboardResponse
         }) { data in
             leaderboardByPeriod[period] = data
         }
@@ -295,7 +415,7 @@ final class StatsModel: ObservableObject {
         }, clear: {
             if feed { feedBabyTS = nil } else { changeBabyTS = nil }
         }, fetch: { api in
-            try await api.get("/api/stats/chores/\(chore.id)/time-series", query: [URLQueryItem(name: "period", value: period)]) as TimeSeriesResponse
+            try await self.get(self.timeSeriesRead(chore.id, period), api: api) as TimeSeriesResponse
         }) { data in
             if feed { feedBabyTS = data.timeSeries } else { changeBabyTS = data.timeSeries }
         }
@@ -306,22 +426,24 @@ final class StatsModel: ObservableObject {
     /// day later (PWA `apiExclusiveEnd`). Defaults to the last 7 days.
     func loadFeedingGaps() async {
         guard contextIsCurrent, visible("baby"), let chore = feedBabyChore else { return }
-        let today = Date()
-        if feedingGapsEnd.isEmpty { feedingGapsEnd = Self.dateString(today) }
-        if feedingGapsStart.isEmpty {
-            feedingGapsStart = Self.dateString(Calendar.current.date(byAdding: .day, value: -6, to: today) ?? today)
-        }
-        let query = [
-            URLQueryItem(name: "start", value: feedingGapsStart),
-            URLQueryItem(name: "end", value: Self.exclusiveEnd(feedingGapsEnd)),
-        ]
+        prepareFeedingGapsRange()
+        let target = feedingGapsRead
         let dates = [feedingGapsStart, feedingGapsEnd]
         await read("gaps", section: "baby", query: dates.joined(separator: "|"), matches: {
             dates == [feedingGapsStart, feedingGapsEnd] && feedBabyChore?.id == chore.id
         }, clear: { feedingGaps = [] }, fetch: { api in
-            try await api.get("/api/stats/feeding-gaps", query: query) as FeedingGapsResponse
+            try await self.get(target, api: api) as FeedingGapsResponse
         }) { data in
             feedingGaps = data.feedingGaps
+        }
+    }
+
+    /// Defaults the range to the last 7 days.
+    private func prepareFeedingGapsRange() {
+        let today = Date()
+        if feedingGapsEnd.isEmpty { feedingGapsEnd = Self.dateString(today) }
+        if feedingGapsStart.isEmpty {
+            feedingGapsStart = Self.dateString(Calendar.current.date(byAdding: .day, value: -6, to: today) ?? today)
         }
     }
 
@@ -347,9 +469,7 @@ final class StatsModel: ObservableObject {
     /// section, skipping hidden sections, capped at `maxAnalyticsFetches`.
     func loadChoreAnalytics() async {
         guard contextIsCurrent else { return }
-        let ids = chores.filter(StatsSections.choreHasAnalytics)
-            .filter { visible(StatsSections.choreSectionKey($0.id)) }
-            .prefix(Self.maxAnalyticsFetches).map(\.id)
+        let ids = analyticsChoreIDs
         await withTaskGroup(of: Void.self) { group in
             for id in ids { group.addTask { await self.loadChoreAnalytics(choreId: id) } }
         }
@@ -361,9 +481,7 @@ final class StatsModel: ObservableObject {
         await read(key, section: key, query: period, matches: {
             (choreAnalyticsPeriod[choreId] ?? "day") == period && chores.contains { $0.id == choreId }
         }, clear: { choreTimeSeries[choreId] = nil }, fetch: { api in
-            try await api.get("/api/stats/chores/\(choreId)/time-series", query: [
-                URLQueryItem(name: "period", value: StatsSections.choreAnalyticsGrain(period))
-            ]) as TimeSeriesResponse
+            try await self.get(self.timeSeriesRead(choreId, StatsSections.choreAnalyticsGrain(period)), api: api) as TimeSeriesResponse
         }) { data in choreTimeSeries[choreId] = data.timeSeries }
     }
 
@@ -375,8 +493,7 @@ final class StatsModel: ObservableObject {
 
     func loadWidgetData() async {
         guard contextIsCurrent, let api else { return }
-        let widgets = (state?.statsWidgets ?? [])
-            .filter { visible(StatsSections.widgetSectionKey($0.id)) }
+        let widgets = visibleWidgets
         // Saved widgets already have the server's 20-widget limit. The 15-chore
         // analytics budget must not leave valid rendered cards without values.
         for widget in widgets { await loadData(for: widget, api: api) }
@@ -389,8 +506,7 @@ final class StatsModel: ObservableObject {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let fingerprint = (try? encoder.encode(widget)) ?? Data()
-        var seen = Set<Int>()
-        let ids = widget.choreIds.filter { seen.insert($0).inserted }.prefix(Self.maxAnalyticsFetches)
+        let ids = widgetChoreIDs(widget)
         let matches = { [self] in
             guard let current = state?.statsWidgets.first(where: { $0.id == widget.id }) else { return false }
             return current == widget
@@ -401,9 +517,7 @@ final class StatsModel: ObservableObject {
                 var results: [ChoreTimeSeries] = []
                 for id in ids {
                     guard contextIsCurrent, matches(), visible(key), !Task.isCancelled else { throw APIError.contextChanged }
-                    let data: TimeSeriesResponse = try await api.get("/api/stats/chores/\(id)/time-series", query: [
-                        URLQueryItem(name: "period", value: StatsSections.widgetGrain(widget))
-                    ])
+                    let data: TimeSeriesResponse = try await self.get(self.widgetRead(widget, choreId: id), api: api)
                     results.append(data.timeSeries)
                 }
                 return results
@@ -414,9 +528,7 @@ final class StatsModel: ObservableObject {
                 var results: [ChoreSummary] = []
                 for id in ids {
                     guard contextIsCurrent, matches(), visible(key), !Task.isCancelled else { throw APIError.contextChanged }
-                    let data: ChoreSummaryResponse = try await api.get("/api/stats/chores/\(id)/summary", query: [
-                        URLQueryItem(name: "period", value: widget.period.isEmpty ? "week" : widget.period)
-                    ])
+                    let data: ChoreSummaryResponse = try await self.get(self.widgetRead(widget, choreId: id), api: api)
                     results.append(data.summary)
                 }
                 return results
