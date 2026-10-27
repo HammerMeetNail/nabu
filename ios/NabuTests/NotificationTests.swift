@@ -360,3 +360,23 @@ final class NotificationOwnershipTests: XCTestCase {
         XCTAssertFalse(state.notificationLoading)
     }
 }
+
+/// The notifications offer after someone's first log.
+final class PushOfferTests: XCTestCase {
+    func testDueAfterALogUntilAnsweredPerAccount() throws {
+        let suite = "push-offer-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(PushOffer.state(for: 7, defaults: defaults), "")
+        PushOffer.markDue(for: 7, defaults: defaults)
+        XCTAssertEqual(PushOffer.state(for: 7, defaults: defaults), "due")
+        XCTAssertEqual(PushOffer.state(for: 8, defaults: defaults), "", "per account")
+        PushOffer.markDone(for: 7, defaults: defaults)
+        PushOffer.markDue(for: 7, defaults: defaults)
+        XCTAssertEqual(PushOffer.state(for: 7, defaults: defaults), "done", "a later log doesn't offer again")
+        PushOffer.markDue(for: 8, defaults: defaults)
+        PushOffer.reset(defaults: defaults)
+        XCTAssertEqual(PushOffer.state(for: 7, defaults: defaults), "")
+        XCTAssertEqual(PushOffer.state(for: 8, defaults: defaults), "")
+    }
+}

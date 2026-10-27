@@ -1,4 +1,5 @@
 import Foundation
+import UserNotifications
 
 enum TestHooks {
     /// Fixed picker dates for reviewed screen baselines; ordinary launches
@@ -42,6 +43,19 @@ enum TestHooks {
 #else
         return false
 #endif
+    }
+
+    /// Notification permission as UI tests see it: `-pushUndecided` treats it
+    /// as undecided, so the notifications offer shows; other UI test launches
+    /// (seeded, or registered against a real server) treat it as decided, so
+    /// the offer never covers their screens.
+    static var pushAuthorizationOverride: UNAuthorizationStatus? {
+#if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("-pushUndecided") { return .notDetermined }
+        if args.contains("-seedHomeForUITest") || args.contains("-nabuAutoRegister") { return .denied }
+#endif
+        return nil
     }
 
     /// Skips the auth/session check and seeds a logged-in state with a single
