@@ -119,4 +119,26 @@ test.describe('Log sheet prefill scope', () => {
     await expect(page.locator('.log-chip[data-label="🍼 formula"]')).not.toHaveClass(/log-chip--on/);
     await expect(page.locator('.indicator-volume-select[data-indicator="🤱 breast"]')).toHaveValue('95');
   });
+
+  test('a medication starts from its last dose', async ({ page }) => {
+    const { chores } = await setupWithChores(page);
+    const meds = chores.find(c => c.name === 'Cat Meds');
+    expect(meds).toBeDefined();
+    const card = page.locator(`.home-chore-card[data-home-chore-id="${meds.id}"]`);
+
+    // No previous dose: the amount starts empty.
+    await card.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('#log-volume')).toHaveValue('');
+    await page.fill('#log-volume', '5');
+    await page.click('[data-action="save-log"]');
+    await expect(page.locator('.bottom-sheet')).toHaveCount(0, { timeout: 5000 });
+
+    // The next dose starts from 5, also after a reload.
+    await page.reload();
+    await page.waitForSelector('.home-grid', { timeout: 15000 });
+    await card.click();
+    await expect(page.locator('.bottom-sheet')).toBeVisible({ timeout: 3000 });
+    await expect(page.locator('#log-volume')).toHaveValue('5');
+  });
 });

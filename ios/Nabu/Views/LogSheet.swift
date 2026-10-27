@@ -11,6 +11,17 @@ func initialSubjectForNewLog(_ chore: Chore, latestLogs: [Int: ChoreLog]) -> Str
     return chore.subjects.contains(subject) ? subject : nil
 }
 
+/// The amount to preselect when opening a *new* log sheet for a plain amount
+/// chore (one without types, e.g. a medication dose): the latest log's amount,
+/// but only when it was recorded in the sheet's unit. Type chores (Feed Baby)
+/// echo per-type amounts instead. PWA parity with `renderLogSheet`'s
+/// `cachedAmount`.
+func initialAmountForNewLog(_ chore: Chore, latestLogs: [Int: ChoreLog], unit: String) -> Int? {
+    guard chore.hasVolumeML, chore.indicatorLabels.isEmpty, let latest = latestLogs[chore.id] else { return nil }
+    guard latest.metricUnit == nil || latest.metricUnit == unit else { return nil }
+    return latest.volumeML
+}
+
 struct LogSheet: View {
     @Environment(\.dismiss) private var dismiss
     let state: AppState
@@ -414,6 +425,7 @@ struct LogSheet: View {
                 }
             } else {
                 selectedIndicators = chore.indicatorDefaults
+                volumeML = initialAmountForNewLog(chore, latestLogs: state.latestLogs, unit: selectedUnit)
             }
             // Echo the latest log's subject (e.g. the previously selected
             // cat) so the next entry starts with it preselected — PWA parity.
