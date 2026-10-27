@@ -563,8 +563,12 @@ struct LogSheet: View {
                     let loader = LogDataLoader(api: logStore.api, state: state)
                     if response.reportsLatest { state.applyLatestLog(response.latest, choreId: chore.id) }
                     await loader.loadTodayData()
-                    guard state.revision == owner, !response.reportsLatest else { return }
-                    await loader.loadLatestLogsData()
+                    // An older server doesn't report the chore's latest log.
+                    // Either way the sheet closes below.
+                    if !response.reportsLatest {
+                        guard state.revision == owner else { return }
+                        await loader.loadLatestLogsData()
+                    }
                 } else {
                     let followUpMinutes = followUpDays * 1440 + followUpHours * 60 + followUpMins
                     let followUpTime: String? = {

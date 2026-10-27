@@ -50,6 +50,7 @@ final class AppEnvironment: ObservableObject {
         if args.contains("-resetState") {
 #if DEBUG
             apiClient.cookieStore.clearAll()
+            apiClient.identity.discardPendingLogoutForTests()
             apiClient.identity.accept(nil)
 #endif
             state.reset()

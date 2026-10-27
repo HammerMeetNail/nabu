@@ -446,6 +446,18 @@ final class ClientIdentity: @unchecked Sendable {
         revision = UUID(); user = nil; phase = logout ? .logoutPending : .checking
     }
 
+#if DEBUG
+    /// `-resetState` only: forgets an unfinished sign-out, so a UI test that
+    /// left one (its server never confirmed it) can't strand every signed-out
+    /// test that launches after it. The app itself never discards one.
+    func discardPendingLogoutForTests() {
+        lock.lock(); defer { lock.unlock() }
+        guard phase == .logoutPending else { return }
+        if let fileURL { try? FileManager.default.removeItem(at: fileURL) }
+        revision = UUID(); user = nil; phase = .checking; logoutIsDurable = true
+    }
+#endif
+
     /// Offline launch: becomes the identity whose Home was last saved on this
     /// device when the launch session check could not reach the server. Only
     /// before any server answer or identity change, because an answer (no
