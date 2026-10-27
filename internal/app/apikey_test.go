@@ -152,7 +152,14 @@ func TestAPIKeyHouseholdReadOmitsInvites(t *testing.T) {
 func TestAPIKeyRejectsBadTokensWithoutSessionFallback(t *testing.T) {
 	srv, session, _, _, token := apiKeyFixture(t)
 	sessionCookie := &http.Cookie{Name: "nabu_session", Value: session}
-	for _, bad := range []string{"", "nabu_pat_short", token + "x", token[:len(token)-1] + "A", "nabu_op_aaaaaaaaaaaaaaaa." + strings.Repeat("a", 43)} {
+	// Change the secret's last character. A fixed replacement can equal it:
+	// the last of 43 base64url characters encoding 32 bytes is one of only 16
+	// values, so always using "A" re-sent the valid token 1 run in 16.
+	tampered := token[:len(token)-1] + "A"
+	if strings.HasSuffix(token, "A") {
+		tampered = token[:len(token)-1] + "E"
+	}
+	for _, bad := range []string{"", "nabu_pat_short", token + "x", tampered, "nabu_op_aaaaaaaaaaaaaaaa." + strings.Repeat("a", 43)} {
 		rec := bearerRequest(srv, http.MethodGet, "/api/me", "", bad, sessionCookie)
 		if rec.Code != http.StatusUnauthorized {
 			t.Errorf("token %q: want 401, got %d", bad, rec.Code)
