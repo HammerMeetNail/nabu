@@ -2122,6 +2122,8 @@ final class NabuPushOfferUITests: XCTestCase {
         let relaunched = launch(resetting: false)
         XCTAssertTrue(relaunched.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Water Plants")).firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(relaunched.descendants(matching: .any)["push-offer"].exists)
+    }
+}
 
 /// Invite links (PWA `invite-landing.spec.js`): one opened while signed out
 /// says who sent it and to which household, on sign-in and on sign-up, and a
