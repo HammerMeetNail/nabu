@@ -183,6 +183,27 @@ struct Invite: Codable, Identifiable, Equatable {
     let createdAt: Date
 }
 
+/// What an invite link shows before sign-in (`GET /api/household/join/preview`):
+/// the household and, when known, who sent the invite.
+struct InvitePreview: Decodable, Equatable {
+    struct Household: Decodable, Equatable {
+        let name: String
+        let initials: String
+    }
+    struct Person: Decodable, Equatable {
+        let displayName: String
+        let avatarColor: String
+    }
+    let household: Household
+    let inviter: Person?
+}
+
+enum InvitePreviewStatus: Equatable {
+    case ready(InvitePreview)
+    /// Unknown, used up or expired: the server can't tell them apart.
+    case invalid
+}
+
 // MARK: - Chore
 
 struct Chore: Codable, Identifiable, Equatable {

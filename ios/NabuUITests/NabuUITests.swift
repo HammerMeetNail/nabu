@@ -1989,6 +1989,9 @@ final class NabuOnboardingUITests: XCTestCase {
         XCTAssertTrue(link.waitForExistence(timeout: 10))
         XCTAssertTrue(link.label.hasSuffix("/join?code=SETUP1"), link.label)
         XCTAssertTrue(app.buttons["onboarding-share"].exists)
+        let qr = app.descendants(matching: .any)["invite-qr"]
+        XCTAssertTrue(qr.exists, "a QR code of the link")
+        XCTAssertEqual(qr.label, "QR code for the invite link")
         app.buttons["onboarding-done"].tap()
 
         for name in ["Feed Ada", "Change Ada", "Feed Mongo", "Feed Roger", "Clean Litter Box"] {
@@ -2119,5 +2122,59 @@ final class NabuPushOfferUITests: XCTestCase {
         let relaunched = launch(resetting: false)
         XCTAssertTrue(relaunched.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Water Plants")).firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(relaunched.descendants(matching: .any)["push-offer"].exists)
+    }
+}
+
+/// Invite links (PWA `invite-landing.spec.js`): one opened while signed out
+/// says who sent it and to which household, on sign-in and on sign-up, and a
+/// dead one says so. Settings shows the household's invite link as a QR code.
+final class NabuInviteUITests: XCTestCase {
+    /// Opens a link as tapping one would, accepting iOS's "Open in "Nabu"?".
+    private func open(_ link: String, in app: XCUIApplication) {
+        app.open(URL(string: link)!)
+        let confirm = XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Open"]
+        if confirm.waitForExistence(timeout: 3) { confirm.tap() }
+    }
+
+    func testInviteLinkOpenedSignedOutNamesTheSenderAndHousehold() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-disableAnimations", "-resetState", "-useMockAPI", "-nabuBaseURL", "http://localhost:9998"]
+        app.launchForLocalTest()
+        XCTAssertTrue(app.buttons["Create Account"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.descendants(matching: .any)["invite-banner"].exists)
+
+        open("nabu:///join?code=SETUP1", in: app)
+        let banner = app.descendants(matching: .any)["invite-banner"]
+        XCTAssertTrue(banner.waitForExistence(timeout: 10))
+        XCTAssertTrue(banner.label.contains("Dana O'Connor invited you to join"), banner.label)
+        XCTAssertTrue(banner.label.contains("The O'Connors' home"), banner.label)
+        app.buttons["Create Account"].tap()
+        XCTAssertTrue(app.secureTextFields["Confirm Password"].waitForExistence(timeout: 5))
+        XCTAssertTrue(banner.waitForExistence(timeout: 5), "sign-up shows it too")
+
+        // A dead link says so, and is dropped rather than joined after sign-up.
+        open("nabu:///join?code=DEAD99", in: app)
+        XCTAssertTrue(app.descendants(matching: .any)["invite-banner-invalid"].waitForExistence(timeout: 10))
+        XCTAssertFalse(banner.exists)
+    }
+
+    func testSettingsShowsTheInviteLinkAsAQRCode() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-disableAnimations", "-seedHomeForUITest", "-useMockAPI", "-reviewScenario", "invite",
+                               "-nabuBaseURL", "http://localhost:9998"]
+        app.launchForLocalTest()
+        app.tabBars.buttons["Settings"].tap()
+        let show = app.buttons["show-invite-qr"]
+        XCTAssertTrue(show.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["share-invite-link"].exists)
+        XCTAssertFalse(app.staticTexts["http://localhost:9998/join?code=TESTHOME01"].exists, "no raw link under the household's name")
+
+        show.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["invite-qr"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["invite-qr-link"].label, "http://localhost:9998/join?code=TESTHOME01")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(show.waitForExistence(timeout: 5))
     }
 }

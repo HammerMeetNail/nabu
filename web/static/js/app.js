@@ -34,7 +34,7 @@ import {
   renderForgotPasswordView,
   renderResetPasswordView,
 } from "./auth.js";
-import { loadHousehold, listHouseholds, activateHousehold, createHousehold, updateHousehold, joinHousehold, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, setMemberAccess, transferOwnership, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
+import { loadHousehold, listHouseholds, activateHousehold, createHousehold, updateHousehold, joinHousehold, loadInvitePreview, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, setMemberAccess, transferOwnership, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
 import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
 import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS, choreHasAnalytics, renderWidgetWizard, widgetGrain, loadChoreSummary, choreAnalyticsGrain } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
@@ -204,9 +204,12 @@ export function render(root) {
     html = renderResetPasswordView(token);
   } else if (route.startsWith("/join")) {
     const code = new URL(window.location.href).searchParams.get("code") || state._pendingInviteCode;
-    if (code) state._pendingInviteCode = code;
+    // A code the server called dead stays dropped, though the URL keeps it.
+    const dead = !!code && state.invitePreview?.code === code && state.invitePreview.status === "invalid";
+    if (code && !dead) state._pendingInviteCode = code;
     if (!state.user) {
-      html = renderJoinView(code);
+      if (code && state.invitePreview?.code !== code) loadJoinInvite(code);
+      html = renderJoinView(code && state.invitePreview?.code === code ? state.invitePreview : null);
     } else if (!state.household && code) {
       html = `<div class="auth-card"><p class="text-center">Joining household…</p></div>`;
       if (!state._joinAttempted) {
@@ -951,7 +954,7 @@ function renderSettingsView() {
       : renderHouseholdView(null, null, null, state.user);
     return `<div class="settings-view">${householdCard}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div>${aboutLine}</div>`;
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div>${aboutLine}</div>`;
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user, { showInviteQR: !!state.showInviteQR })}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div>${aboutLine}</div>`;
 }
 
 function loadAllStatsData() {
@@ -1752,6 +1755,21 @@ async function verifyEmail(token) {
   }
   if (ticket === identityUIRevision) render(document.querySelector("#app"));
 }
+// The invite page's preview: the household and who sent the link. A dead link
+// drops the pending code, so signing up leads to setup, not a failed join.
+function loadJoinInvite(code) {
+  state.invitePreview = { code, status: "loading" };
+  const settle = next => {
+    if (state.invitePreview?.code !== code) return;
+    state.invitePreview = { code, ...next };
+    // Only the invite page shows it; re-rendering a form would reset its fields.
+    if (!state.user && activeRoute().startsWith("/join")) render(document.querySelector("#app"));
+  };
+  loadInvitePreview(code).then(data => settle({ status: "ready", household: data?.household, inviter: data?.inviter || null }), err => {
+    if (err?.status === 404 && state._pendingInviteCode === code) state._pendingInviteCode = null;
+    settle({ status: err?.status === 404 ? "invalid" : "unavailable" });
+  });
+}
 async function doJoinWithCode(code) {
   state._pendingInviteCode = null;
   await runHouseholdTransition(() => joinHousehold(code),{route:"/"});
@@ -2339,6 +2357,11 @@ export async function init() {
         );
         break;
       }
+      case "toggle-invite-qr":
+        e.preventDefault();
+        state.showInviteQR = !state.showInviteQR;
+        render(app);
+        break;
       case "delete-invite":
         e.preventDefault();
         deleteInvite(parseInt(actionEl.dataset.inviteId)).then(owned(async () => {

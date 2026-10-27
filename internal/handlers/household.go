@@ -186,6 +186,24 @@ func (h *HouseholdHandler) DeleteInvite(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
+// JoinPreview answers what an invite link shows before its holder signs in:
+// the household's name and who invited them. It needs no session. The code
+// travels in the query string, which request logs leave out, and shares the
+// join's per-IP budget (its path is under /api/household/join).
+func (h *HouseholdHandler) JoinPreview(w http.ResponseWriter, r *http.Request) {
+	preview, err := h.service.PreviewInvite(r.Context(), r.URL.Query().Get("code"))
+	w.Header().Set("Cache-Control", "no-store")
+	if errors.Is(err, household.ErrInviteNotFound) {
+		writeError(w, http.StatusNotFound, "This invite link isn't valid any more. Ask for a new one.")
+		return
+	}
+	if err != nil {
+		writeServerError(w, "could not load invite", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, preview)
+}
+
 func (h *HouseholdHandler) Join(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.CurrentUser(r.Context())
 	if !ok {

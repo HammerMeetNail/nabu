@@ -197,6 +197,10 @@ final class AppEnvironment: ObservableObject {
                 state.latestLogs = [:]
                 state.todayLogs = []
             }
+            if scenario == "invite" {
+                // The owner sees the household's permanent invite link.
+                state.household = Household(id: 1, name: "Test Home", initials: "TH", inviteCode: "TESTHOME01", createdAt: now)
+            }
             if scenario == "midnight" {
                 let prior = Calendar.current.startOfDay(for: TestHooks.reviewDate ?? now).addingTimeInterval(-60)
                 state.latestLogs[4] = ChoreLog(id: 104, householdId: 1, userId: 1, choreId: 4,
@@ -222,6 +226,11 @@ final class AppEnvironment: ObservableObject {
             let path = url.path
 
             switch path {
+            case "/api/me" where request.httpMethod == "GET":
+                // Signed out: the server's answer without a session.
+                return AppEnvironment.mockJSON(request, ["user": NSNull()], status: 200)
+            case "/api/household/join/preview":
+                return AppEnvironment.mockInvitePreview(request)
             case "/api/logs":
                 if request.httpMethod == "POST" {
                     return AppEnvironment.mockCreateLog(request)
@@ -316,6 +325,24 @@ final class AppEnvironment: ObservableObject {
             headerFields: ["Content-Type": "application/json"]
         )!
         return (data, httpResponse)
+    }
+
+    static func mockJSON(_ request: URLRequest, _ body: [String: Any], status: Int) -> (Data, URLResponse)? {
+        guard let url = request.url, let data = try? JSONSerialization.data(withJSONObject: body) else { return nil }
+        return (data, HTTPURLResponse(url: url, statusCode: status, httpVersion: "HTTP/1.1",
+                                      headerFields: ["Content-Type": "application/json"])!)
+    }
+
+    /// `SETUP1` is Dana's invite to The O'Connors' home; any other code is
+    /// dead, as an unknown, used or expired one reads from the server.
+    static func mockInvitePreview(_ request: URLRequest) -> (Data, URLResponse)? {
+        let code = request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }?
+            .queryItems?.first(where: { $0.name == "code" })?.value
+        guard code == "SETUP1" else {
+            return mockJSON(request, ["error": "This invite link isn't valid any more. Ask for a new one."], status: 404)
+        }
+        return mockJSON(request, ["household": ["name": "The O'Connors' home", "initials": "TOH"],
+                                  "inviter": ["displayName": "Dana O'Connor", "avatarColor": "#7B5EA7"]], status: 200)
     }
 
     static func mockDeleteLog(_ request: URLRequest, path: String) -> (Data, URLResponse)? {

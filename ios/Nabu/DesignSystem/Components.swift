@@ -1,3 +1,4 @@
+import CoreImage.CIFilterBuiltins
 import SwiftUI
 
 // MARK: - OrDivider
@@ -368,5 +369,45 @@ struct OfflineBanner: View {
             .clipShape(Capsule())
             .padding(.horizontal, 16)
             .accessibilityIdentifier("offline-banner")
+    }
+}
+
+// MARK: - QR code
+// The PWA draws the same code with qr.js: error correction M, dark on white.
+
+/// A QR code for a link, dark on white whatever the theme so cameras read it,
+/// with the standard four-module quiet zone.
+struct QRCodeView: View {
+    let text: String
+    var label = "QR code for the invite link"
+
+    var body: some View {
+        if let image = Self.image(for: text) {
+            Image(uiImage: image)
+                .interpolation(.none)
+                .resizable()
+                .scaledToFit()
+                .frame(maxWidth: 220)
+                .background(Color.white)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(DesignColors.border))
+                .accessibilityElement()
+                .accessibilityLabel(label)
+                .accessibilityIdentifier("invite-qr")
+        }
+    }
+
+    /// The code as an image, 8 pixels per module, quiet zone included.
+    static func image(for text: String) -> UIImage? {
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(text.utf8)
+        filter.correctionLevel = "M"
+        guard let code = filter.outputImage else { return nil }
+        // Core Image adds a one-module margin; pad to the standard four.
+        let quiet = code.transformed(by: CGAffineTransform(translationX: 3, y: 3))
+            .composited(over: CIImage(color: .white).cropped(to: code.extent.insetBy(dx: -3, dy: -3).offsetBy(dx: 3, dy: 3)))
+        let scaled = quiet.transformed(by: CGAffineTransform(scaleX: 8, y: 8))
+        guard let cgImage = CIContext().createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: cgImage)
     }
 }

@@ -20,6 +20,10 @@ struct RegisterView: View {
                     .foregroundColor(DesignColors.textPrimary)
                     .padding(.top, 48)
 
+                if let invite = state.invitePreview {
+                    InviteBanner(status: invite)
+                }
+
                 AuthCard {
                     VStack(spacing: 16) {
                         LabeledField("Email") {

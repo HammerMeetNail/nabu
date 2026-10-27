@@ -7,6 +7,7 @@
 
 import { escapeHTML } from "./utils.js";
 import { PROFILE_COLORS } from "./profile.js";
+import { renderInviteQR } from "./household.js";
 
 const STEPS = ["name", "household", "packs"];
 export const MAX_PACK_NAMES = 6;
@@ -169,7 +170,8 @@ function renderInviteStep(state) {
   const link = `${window.location.origin}/join?code=${encodeURIComponent(code)}`;
   const canShare = typeof navigator !== "undefined" && typeof navigator.share === "function";
   return `<h2>Invite your household</h2>
-    <p>Nabu works best when everyone logs. Send this link to the people you share the care with.</p>
+    <p>Nabu works best when everyone logs. Send this link to the people you share the care with, or let them scan the code.</p>
+    ${renderInviteQR(link)}
     <div class="invite-link-row"><code class="invite-link-url">${escapeHTML(link)}</code></div>
     <div class="onboarding-actions">
       ${canShare ? `<button type="button" class="btn btn-primary" data-action="onboarding-share" data-code="${escapeHTML(code)}">Share link</button>` : ""}

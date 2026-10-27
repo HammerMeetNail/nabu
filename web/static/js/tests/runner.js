@@ -2138,6 +2138,176 @@ describe("Household setup", () => {
     assert.equal(root.querySelector('[data-action="copy-invite-link"]').dataset.code, "AB&CD");
     // No Web Share in this browser, so only Copy.
     assert.equal(root.querySelector('[data-action="onboarding-share"]'), null);
+    // A QR code of the same link, for someone in the room.
+    const { renderQRCode } = await import("../qr.js");
+    assert.equal(root.querySelector(".invite-qr svg").getAttribute("aria-label"), "QR code for the invite link");
+    assert.equal(root.querySelector(".invite-qr path").getAttribute("d"),
+      new dom.window.DOMParser().parseFromString(renderQRCode("http://localhost:8080/join?code=AB%26CD", ""), "image/svg+xml").querySelector("path").getAttribute("d"));
+  });
+});
+
+describe("Invite QR codes", () => {
+  // Decoded with Core Image and Vision when written, as were every version
+  // (1-10), every mask and UTF-8 text from the same encoder.
+  const GOLDEN = [
+    "#######...####.#####..#######",
+    "#.....#.#..###.##.##..#.....#",
+    "#.###.#..#..#......##.#.###.#",
+    "#.###.#...##.##...#...#.###.#",
+    "#.###.#.#...##...###..#.###.#",
+    "#.....#...#.##.#.#.##.#.....#",
+    "#######.#.#.#.#.#.#.#.#######",
+    "..........##.#...##.#........",
+    "#.#.#.#..........#.##...#..#.",
+    ".#...#..###.###......###.#..#",
+    "##.##.###.####...#...#.##.###",
+    "###.##.###.#.###.#.##......#.",
+    "###..####..#.....#######.#.##",
+    ".#...#...#.#.####.#.###..#..#",
+    "....###.#.#...#..#....#..#.##",
+    "#.#..#...#..##...##.#..#.#.#.",
+    "##...##..###...###.####..#.##",
+    ".###.#..#.##.#.###..#.#..##.#",
+    "#.#..##.##....#..##...###..##",
+    ".##.##.##..####.###..#.#.#.#.",
+    "#.#.#.##..##..#..#..#####....",
+    "........#.###......##...#.###",
+    "#######......#...#.##.#.##.##",
+    "#.....#...#....####.#...##...",
+    "#.###.#.##.....#.#..#####....",
+    "#.###.#.....#....#.##..##.###",
+    "#.###.#.#..###.....#.#.###..#",
+    "#.....#...#..#####.###.##..#.",
+    "#######.#.#####.##..#.##...##",
+  ];
+  const picture = modules => modules.map(row => row.map(dark => (dark ? "#" : ".")).join(""));
+
+  it("matches the standard's Reed-Solomon, format and version codes", async () => {
+    const { reedSolomon, formatBits, versionBits } = await import("../qr.js");
+    // "HELLO WORLD" at 1-M, the standard's worked example.
+    assert.deepEqual(reedSolomon([32, 91, 11, 120, 209, 114, 220, 77, 67, 64, 236, 17, 236, 17, 236, 17], 10),
+      [196, 35, 39, 119, 235, 215, 231, 226, 93, 23]);
+    assert.equal(formatBits(0), 0b101010000010010);
+    assert.equal(formatBits(5), 0b100000011001110);
+    assert.equal(versionBits(7), 0x07c94);
+    assert.equal(versionBits(10), 0x0a4d3);
+  });
+
+  it("encodes an invite link as a known-good matrix", async () => {
+    const { encodeQR } = await import("../qr.js");
+    const qr = encodeQR("https://nabu-app.com/join?code=7KQ2M9XWPA");
+    assert.deepEqual([qr.version, qr.size, qr.mask], [3, 29, 0]);
+    assert.deepEqual(picture(qr.modules), GOLDEN);
+  });
+
+  it("picks the smallest version that fits, up to 213 bytes", async () => {
+    const { encodeQR, QR_MAX_BYTES } = await import("../qr.js");
+    const version = n => encodeQR("x".repeat(n)).version;
+    assert.deepEqual([version(14), version(15), version(42), version(43), version(122), version(123), version(212), version(213)],
+      [1, 2, 3, 4, 7, 8, 10, 10]);
+    // UTF-8 bytes count, not characters.
+    assert.equal(encodeQR("é".repeat(7)).version, 1);
+    assert.equal(encodeQR("é".repeat(8)).version, 2);
+    assert.throws(() => encodeQR("x".repeat(QR_MAX_BYTES + 1)), RangeError);
+  });
+
+  it("draws the finder, timing and format patterns for every mask", async () => {
+    const { encodeQR, formatBits } = await import("../qr.js");
+    for (let mask = 0; mask < 8; mask++) {
+      const { size, modules } = encodeQR("https://example.com/join?code=ABCDEFGHJK" + "x".repeat(mask * 20), { mask });
+      const finder = ["#######", "#.....#", "#.###.#", "#.###.#", "#.###.#", "#.....#", "#######"];
+      for (const [x, y] of [[0, 0], [size - 7, 0], [0, size - 7]]) {
+        assert.deepEqual(picture(modules.slice(y, y + 7).map(row => row.slice(x, x + 7))), finder);
+      }
+      for (let i = 8; i < size - 8; i++) {
+        assert.equal(modules[6][i], i % 2 === 0);
+        assert.equal(modules[i][6], i % 2 === 0);
+      }
+      assert.equal(modules[size - 8][8], true);
+      // Both copies of the format bits name level M and this mask.
+      const bit = i => ((formatBits(mask) >>> i) & 1) === 1;
+      const first = [...[0, 1, 2, 3, 4, 5, 7, 8].map(y => modules[y][8]), modules[8][7], ...[5, 4, 3, 2, 1, 0].map(x => modules[8][x])];
+      const second = [...Array.from({ length: 8 }, (_, i) => modules[8][size - 1 - i]), ...Array.from({ length: 7 }, (_, i) => modules[size - 7 + i][8])];
+      assert.deepEqual(first, Array.from({ length: 15 }, (_, i) => bit(i)));
+      assert.deepEqual(second, Array.from({ length: 15 }, (_, i) => bit(i)));
+    }
+  });
+
+  it("renders dark modules on white with a quiet zone and an escaped label", async () => {
+    const { encodeQR, renderQRCode } = await import("../qr.js");
+    const text = "https://nabu-app.com/join?code=7KQ2M9XWPA";
+    const svg = new dom.window.DOMParser().parseFromString(renderQRCode(text, '"><script>x</script>'), "image/svg+xml").documentElement;
+    assert.equal(svg.getAttribute("viewBox"), "0 0 37 37");
+    assert.equal(svg.getAttribute("role"), "img");
+    assert.equal(svg.getAttribute("aria-label"), '"><script>x</script>');
+    assert.equal(svg.querySelectorAll("script").length, 0);
+    assert.equal(svg.querySelector("rect").getAttribute("fill"), "#fff");
+    assert.equal(svg.querySelector("path").getAttribute("fill"), "#000");
+    // Each "M x y h n v1 h-n z" run covers dark modules only, offset by the
+    // four-module quiet zone, and together they cover every dark module.
+    const covered = new Set();
+    for (const [, x, y, n] of svg.querySelector("path").getAttribute("d").matchAll(/M(\d+) (\d+)h(\d+)v1h-\3z/g)) {
+      for (let i = 0; i < Number(n); i++) covered.add(`${Number(x) - 4 + i},${Number(y) - 4}`);
+    }
+    const dark = new Set();
+    encodeQR(text).modules.forEach((row, y) => row.forEach((on, x) => { if (on) dark.add(`${x},${y}`); }));
+    assert.deepEqual([...covered].sort(), [...dark].sort());
+  });
+});
+
+describe("Invite page", () => {
+  const page = async invite => {
+    const { renderJoinView } = await import("../household.js");
+    const root = document.createElement("div");
+    root.innerHTML = renderJoinView(invite);
+    return root;
+  };
+
+  it("says who invited you to which household, escaped", async () => {
+    const root = await page({ code: "C", status: "ready", household: { name: '<img src=x onerror=alert(1)>Home', initials: "H" },
+      inviter: { displayName: 'dana<script>', avatarColor: 'red;background:url(x)' } });
+    assert.equal(root.querySelector(".invite-lead").textContent, "dana<script> invited you to join");
+    assert.equal(root.querySelector("h1").textContent, "<img src=x onerror=alert(1)>Home");
+    assert.equal(root.querySelectorAll("img, script").length, 0);
+    // An invalid color falls back to the brand color.
+    assert.equal(root.querySelector(".invite-avatar").getAttribute("style"), "background:#19323C");
+    assert.equal(root.querySelector(".invite-avatar").textContent, "D");
+    assert.ok(root.querySelector('[data-action="show-register"]') && root.querySelector('[data-action="show-login"]'));
+  });
+
+  it("shows the household's initials when no inviter is named", async () => {
+    const root = await page({ code: "C", status: "ready", household: { name: "Flat 4", initials: "F4" }, inviter: null });
+    assert.equal(root.querySelector(".invite-lead").textContent, "You're invited to join");
+    assert.equal(root.querySelector(".invite-avatar--household").textContent, "F4");
+    assert.equal((await page({ code: "C", status: "ready", household: { name: "Flat 4", initials: "" }, inviter: null })).querySelector(".invite-avatar"), null);
+  });
+
+  it("says a dead link is dead, and stays generic while loading or unreachable", async () => {
+    assert.equal((await page({ code: "C", status: "invalid" })).querySelector("h1").textContent, "This invite link isn't valid any more");
+    const loading = await page({ code: "C", status: "loading" });
+    assert.equal(loading.querySelector("h1").textContent, "You're Invited!");
+    assert.equal(loading.querySelector(".invite-card").getAttribute("aria-busy"), "true");
+    assert.equal((await page({ code: "C", status: "unavailable" })).querySelector("h1").textContent, "You're Invited!");
+    assert.equal((await page(null)).querySelector(".invite-card").getAttribute("aria-busy"), null);
+  });
+
+  it("shows the invite link's QR code in Settings on request", async () => {
+    const { renderHouseholdView } = await import("../household.js");
+    const owner = { id: 1, role: "owner" };
+    const household = { name: "Home", initials: "H", inviteCode: "QRCODE1234" };
+    const members = [{ userId: 1, displayName: "Dana", role: "owner" }];
+    const root = document.createElement("div");
+    root.innerHTML = renderHouseholdView(household, members, [], owner);
+    const toggle = root.querySelector('[data-action="toggle-invite-qr"]');
+    assert.deepEqual([toggle.textContent, toggle.getAttribute("aria-expanded")], ["QR code", "false"]);
+    assert.equal(root.querySelector(".invite-qr"), null);
+    root.innerHTML = renderHouseholdView(household, members, [], owner, { showInviteQR: true });
+    assert.equal(root.querySelector('[data-action="toggle-invite-qr"]').textContent, "Hide QR code");
+    assert.equal(root.querySelector(".invite-qr svg").getAttribute("aria-label"), "QR code for the invite link");
+    // Members other than the owner see no invite link at all.
+    root.innerHTML = renderHouseholdView({ ...household, inviteCode: "" }, members, [], { id: 2, role: "member" }, { showInviteQR: true });
+    assert.equal(root.querySelector('[data-action="toggle-invite-qr"]'), null);
+    assert.equal(root.querySelector(".invite-qr"), null);
   });
 });
 

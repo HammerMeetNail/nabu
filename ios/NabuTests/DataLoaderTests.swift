@@ -314,6 +314,30 @@ final class NativeRequestOwnershipTests: XCTestCase {
                        "a householdless account must still claim household 0 rather than omit the guard")
     }
 
+    /// Signed out, the only household read that goes out is an invite link's
+    /// preview, and it carries no identity claim.
+    func testSignedOutClientReadsOnlyTheInvitePreview() async throws {
+        final class Capture {
+            var requests: [String] = []
+        }
+        let capture = Capture()
+        let identity = ClientIdentity()
+        XCTAssertTrue(identity.accept(nil))
+        var api = APIClient(baseURL: URL(string: "http://localhost:9999")!, identity: identity)
+        api.mockHandler = { request in
+            capture.requests.append("\(request.httpMethod ?? "") \(request.url!.path) \(request.value(forHTTPHeaderField: "X-Nabu-User-ID") ?? "no claim")")
+            return (Data(#"{"household":{"name":"Home","initials":"H"}}"#.utf8),
+                    HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        }
+        let preview: InvitePreview = try await api.get("/api/household/join/preview", query: [URLQueryItem(name: "code", value: "ABC")])
+        XCTAssertEqual(preview.household.name, "Home")
+        do { let _: HouseholdResponse = try await api.get("/api/household"); XCTFail("household data needs a session") }
+        catch APIError.contextChanged { }
+        do { let _: StatusResponse = try await api.postEmpty("/api/household/join/preview"); XCTFail("only reads are public") }
+        catch APIError.contextChanged { }
+        XCTAssertEqual(capture.requests, ["GET /api/household/join/preview no claim"])
+    }
+
     func testPendingLogoutSurvivesRelaunchAndBlocksOrdinaryRequests() async throws {
         let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: file) }

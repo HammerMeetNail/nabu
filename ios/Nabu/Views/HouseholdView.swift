@@ -5,7 +5,7 @@ struct HouseholdView: View {
     @EnvironmentObject var environment: AppEnvironment
     @StateObject private var auth = AuthStore(api: APIClient(baseURL: URL(string: "http://localhost:8080")!))
     @State private var showingEdit = false
-    @State private var showingInvite = false
+    @State private var showingInviteQR = false
     @State private var showingTransfer = false
     @State private var inviteCode: String?
     @State private var householdName: String = ""
@@ -83,21 +83,28 @@ struct HouseholdView: View {
                                 .background(DesignColors.brand)
                                 .clipShape(RoundedRectangle(cornerRadius: 10))
 
-                            VStack(alignment: .leading) {
-                                Text(household.name)
-                                    .font(.headline)
-                                if state.user?.role == "owner", let code = household.inviteCode, !code.isEmpty {
-                                    Text("\(environment.baseURL.absoluteString)/join?code=\(code)")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
-                            }
+                            Text(household.name)
+                                .font(.headline)
                         }
 
                         Button("Edit Household") {
                             householdName = household.name
                             householdInitials = household.initials
                             showingEdit = true
+                        }
+
+                        // Only owners see the household's permanent invite link.
+                        if let link = inviteLink(for: household) {
+                            ShareLink(item: link) {
+                                Label("Share invite link", systemImage: "square.and.arrow.up")
+                            }
+                            .accessibilityIdentifier("share-invite-link")
+                            Button {
+                                showingInviteQR = true
+                            } label: {
+                                Label("Show invite QR code", systemImage: "qrcode")
+                            }
+                            .accessibilityIdentifier("show-invite-qr")
                         }
                     }
                 }
@@ -367,6 +374,11 @@ struct HouseholdView: View {
         .sheet(item: $exportFile, onDismiss: clearExportFile) { file in
             ShareSheet(items: [file.url])
         }
+        .sheet(isPresented: $showingInviteQR) {
+            if let household = state.household, let link = inviteLink(for: household) {
+                InviteQRSheet(link: link.absoluteString)
+            }
+        }
         .sheet(isPresented: $showingPassword) {
             PasswordChangeSheet()
         }
@@ -428,6 +440,11 @@ struct HouseholdView: View {
                 Text("Share this code: \(code). It can be used once and expires after 7 days.")
             }
         }
+    }
+
+    private func inviteLink(for household: Household) -> URL? {
+        guard state.user?.role == "owner", let code = household.inviteCode, !code.isEmpty else { return nil }
+        return URL(string: "\(environment.baseURL.absoluteString)/join?code=\(code)")
     }
 
     private var appVersion: String {
@@ -691,6 +708,43 @@ struct PasswordChangeSheet: View {
 }
 
 // MARK: - CSV export support
+
+/// The household's invite link as a QR code, for someone in the room to scan
+/// (the PWA shows it under the link in Settings).
+struct InviteQRSheet: View {
+    let link: String
+    @Environment(\.dismiss) private var dismiss
+    @State private var copied = false
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 20) {
+                Text("Scan it with a phone's camera to open the invite.")
+                    .font(.subheadline)
+                    .foregroundColor(DesignColors.textSecondary)
+                    .multilineTextAlignment(.center)
+                QRCodeView(text: link)
+                Text(link)
+                    .font(.footnote.monospaced())
+                    .multilineTextAlignment(.center)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("invite-qr-link")
+                Button(copied ? "Copied" : "Copy link") {
+                    UIPasteboard.general.string = link
+                    copied = true
+                }
+                .buttonStyle(NabuSecondaryButtonStyle())
+                Spacer()
+            }
+            .padding(24)
+            .navigationTitle("Invite QR code")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
+            }
+        }
+    }
+}
 
 /// Wraps the downloaded export so it can drive `.sheet(item:)`.
 struct ExportFile: Identifiable {

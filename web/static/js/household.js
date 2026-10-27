@@ -1,6 +1,7 @@
 import { apiFetch as request } from "./api.js";
 import { changeIdentity } from "./browser-context.js";
 import { escapeHTML } from "./utils.js";
+import { renderQRCode } from "./qr.js";
 
 async function apiFetch(path, options = {}) { return (await request(path, options)).data; }
 async function householdTransition(path, options) {
@@ -51,6 +52,12 @@ export async function deleteInvite(id) {
   return apiFetch(`/api/household/invites/${id}`, { method: "DELETE" });
 }
 
+// What an invite link shows before sign-in: the household's name and who sent
+// it. Needs no session; a dead code is a 404.
+export async function loadInvitePreview(code) {
+  return apiFetch(`/api/household/join/preview?code=${encodeURIComponent(code)}`);
+}
+
 export async function joinHousehold(inviteCode) {
   return householdTransition("/api/household/join", {
     method: "POST",
@@ -87,17 +94,48 @@ export async function transferOwnership(newOwnerId) {
   });
 }
 
-export function renderJoinView(code) {
-  return `<div class="auth-card">
+const AUTH_CHOICES = `<button type="button" class="btn btn-primary btn-block" data-action="show-register">Create Account</button>
+    <div class="auth-divider">or</div>
+    <button type="button" class="btn btn-secondary btn-block" data-action="show-login">Sign In</button>`;
+
+// The page an invite link opens for someone signed out. `invite` is the
+// preview's state: loading, ready (household, inviter), invalid or unavailable.
+export function renderJoinView(invite) {
+  if (invite?.status === "invalid") {
+    return `<div class="auth-card invite-card">
+    <h1 class="auth-title">This invite link isn't valid any more</h1>
+    <p class="text-center text-secondary mb-3">Ask whoever sent it for a new one. You can still create an account and set up your own household.</p>
+    ${AUTH_CHOICES}
+  </div>`;
+  }
+  if (invite?.status !== "ready") {
+    return `<div class="auth-card invite-card"${invite?.status === "loading" ? ' aria-busy="true"' : ""}>
     <h1 class="auth-title">You're Invited!</h1>
     <p class="text-center text-secondary mb-3">Create an account or sign in to join this household on Nabu.</p>
-    <button type="button" class="btn btn-primary btn-block" data-action="show-register">Create Account</button>
-    <div class="auth-divider">or</div>
-    <button type="button" class="btn btn-secondary btn-block" data-action="show-login">Sign In</button>
+    ${AUTH_CHOICES}
+  </div>`;
+  }
+  const { household, inviter } = invite;
+  const name = inviter?.displayName || "";
+  const color = /^#[0-9A-Fa-f]{6}$/.test(inviter?.avatarColor || "") ? inviter.avatarColor : "#19323C";
+  const badge = name
+    ? `<span class="invite-avatar" style="background:${escapeHTML(color)}" aria-hidden="true">${escapeHTML(Array.from(name)[0].toUpperCase())}</span>`
+    : household?.initials ? `<span class="invite-avatar invite-avatar--household" aria-hidden="true">${escapeHTML(household.initials)}</span>` : "";
+  return `<div class="auth-card invite-card">
+    ${badge}
+    <p class="invite-lead">${name ? `${escapeHTML(name)} invited you to join` : "You're invited to join"}</p>
+    <h1 class="auth-title">${escapeHTML(household?.name || "")}</h1>
+    <p class="text-center text-secondary mb-3">Nabu is one shared log for your home: feeds, meds, walks and chores. Everyone sees what's been done. Create an account or sign in to join.</p>
+    ${AUTH_CHOICES}
   </div>`;
 }
 
-export function renderHouseholdView(household, members, invites, currentUser) {
+// A QR code for an invite link, for someone in the room to scan.
+export function renderInviteQR(link) {
+  return `<div class="invite-qr">${renderQRCode(link, "QR code for the invite link")}</div>`;
+}
+
+export function renderHouseholdView(household, members, invites, currentUser, { showInviteQR = false } = {}) {
   if (!household) {
     return `<div class="card mt-3">
       <h3>Household</h3>
@@ -194,7 +232,9 @@ export function renderHouseholdView(household, members, invites, currentUser) {
     <div class="invite-link-row">
       <code class="invite-link-url">${escapeHTML(inviteLink)}</code>
       <button type="button" class="btn btn-sm btn-secondary" data-action="copy-invite-link" data-code="${escapeHTML(household.inviteCode)}">Copy</button>
+      <button type="button" class="btn btn-sm btn-secondary" data-action="toggle-invite-qr" aria-expanded="${showInviteQR}">${showInviteQR ? "Hide QR code" : "QR code"}</button>
     </div>
+    ${showInviteQR ? renderInviteQR(inviteLink) : ""}
     <div class="mt-2">
       <button type="button" class="btn btn-sm btn-primary" data-action="create-invite">New single-use link</button>
       <p class="text-secondary">New links expire after 7 days. Removing a member or changing a role revokes existing links.</p>
