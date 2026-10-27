@@ -2028,3 +2028,25 @@ describe("Tab routes", () => {
     }
   });
 });
+
+describe("Profile form", () => {
+  it("escapes the name and selects the current color", async () => {
+    const { renderProfileForm, PROFILE_COLORS } = await import("../profile.js");
+    const html = renderProfileForm({ displayName: '"><img src=x onerror=alert(1)>', avatarColor: "#2e86ab" });
+    assert.ok(!html.includes("<img"));
+    assert.ok(html.includes("&quot;&gt;&lt;img"));
+    const root = document.createElement("div");
+    root.innerHTML = html;
+    assert.equal(root.querySelector("#profile-name").value, '"><img src=x onerror=alert(1)>');
+    assert.deepEqual([...root.querySelectorAll('input[name="avatarColor"]:checked')].map(i => i.value), ["#2E86AB"]);
+    assert.equal(root.querySelectorAll('input[name="avatarColor"]').length, PROFILE_COLORS.length);
+    assert.equal(root.querySelector("#profile-name").maxLength, 50);
+  });
+
+  it("leaves a color outside the palette unchecked, so saving a name keeps it", async () => {
+    const { renderProfileForm } = await import("../profile.js");
+    const root = document.createElement("div");
+    root.innerHTML = renderProfileForm({ displayName: "Dana", avatarColor: "#123456" });
+    assert.equal(root.querySelectorAll('input[name="avatarColor"]:checked').length, 0);
+  });
+});

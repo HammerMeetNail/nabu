@@ -410,10 +410,12 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 		switch r.Method {
 		case http.MethodGet:
 			authHandler.Me(w, r)
+		case http.MethodPatch:
+			middleware.RequireAuth(authHandler.UpdateMe)(w, r)
 		case http.MethodDelete:
 			middleware.RequireAuth(accountHandler.DeleteMe)(w, r)
 		default:
-			w.Header().Set("Allow", "GET, DELETE")
+			w.Header().Set("Allow", "GET, PATCH, DELETE")
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})

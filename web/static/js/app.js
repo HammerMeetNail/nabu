@@ -45,7 +45,7 @@ import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid,
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
 import { renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
 import { renderScheduleTab } from "./schedule-tab.js";
-import { renderProfileSheet } from "./profile.js";
+import { renderProfileSheet, renderProfileForm } from "./profile.js";
 
 /**
  * Reads the current frequency settings from a bottom sheet's freq <select>
@@ -923,9 +923,9 @@ function renderSettingsView() {
     const householdCard = state.accessSuspended
       ? renderAccessSuspendedCard(state)
       : renderHouseholdView(null, null, null, state.user);
-    return `<div class="settings-view">${householdCard}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div>${aboutLine}</div>`;
+    return `<div class="settings-view">${householdCard}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div>${aboutLine}</div>`;
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div>${aboutLine}</div>`;
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div>${aboutLine}</div>`;
 }
 
 function loadAllStatsData() {
@@ -1646,6 +1646,29 @@ async function doResetPassword(form) {
   } catch (err) { await recoverIdentity(err); if (form.isConnected) setError("#reset-error",err.message || "Password reset failed"); }
   finally { delete form.dataset.busy; }
 }
+// Settings → Account: the name and color the household sees.
+async function doSaveProfile(form) {
+  if (form.dataset.busy) return;
+  hideError("#profile-error");
+  const displayName = form.querySelector("#profile-name").value.trim();
+  if (!displayName) { setError("#profile-error", "Enter your name"); return; }
+  const avatarColor = form.querySelector('input[name="avatarColor"]:checked')?.value;
+  const contextScope = captureScope(state);
+  form.dataset.busy = "true";
+  try {
+    const { data } = await withCurrentContext(apiFetch("/api/me", { method: "PATCH",
+      body: JSON.stringify(avatarColor ? { displayName, avatarColor } : { displayName }) }), contextScope);
+    if (!contextScope.current() || data?.user?.id !== state.user?.id) return;
+    const { displayName: name, avatarColor: color } = data.user;
+    state.user = { ...state.user, displayName: name, avatarColor: color };
+    state.members = (state.members || []).map(m => m.userId === state.user.id ? { ...m, displayName: name, avatarColor: color } : m);
+    render(document.querySelector("#app"));
+    showToast("Profile saved", "success");
+  } catch (err) {
+    if (contextScope.current() && form.isConnected) setError("#profile-error", err.message || "Could not save your profile. Please retry.");
+  } finally { delete form.dataset.busy; }
+}
+
 async function doChangePassword(form) {
   if (form.dataset.busy) return;
   hideError("#change-password-error");
@@ -3878,6 +3901,9 @@ export async function init() {
         break;
       case "change-password":
         doChangePassword(form);
+        break;
+      case "save-profile":
+        void doSaveProfile(form);
         break;
       case "create-api-key":
         void doCreateApiKey(form);

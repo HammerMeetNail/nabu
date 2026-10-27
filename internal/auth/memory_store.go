@@ -168,6 +168,21 @@ func (s *MemoryStore) VerifyEmail(_ context.Context, userID int64) (User, error)
 	return user, nil
 }
 
+func (s *MemoryStore) UpdateProfile(_ context.Context, userID int64, displayName, avatarColor string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	user, ok := s.usersByID[userID]
+	if !ok {
+		return ErrUserNotFound
+	}
+	user.DisplayName = displayName
+	user.AvatarColor = avatarColor
+	s.usersByID[userID] = user
+	s.usersByEmail[user.Email] = user
+	return nil
+}
+
 func (s *MemoryStore) UpdatePassword(_ context.Context, userID int64, passwordHash string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

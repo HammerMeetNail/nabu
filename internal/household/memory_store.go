@@ -2,17 +2,22 @@ package household
 
 import (
 	"context"
-	"github.com/HammerMeetNail/nabu/internal/readlimit"
 	"maps"
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/HammerMeetNail/nabu/internal/auth"
+	"github.com/HammerMeetNail/nabu/internal/readlimit"
 )
 
 type MemoryStore struct {
-	mu                sync.RWMutex
-	inTransaction     bool
-	userExists        func(context.Context, int64) error
+	mu            sync.RWMutex
+	inTransaction bool
+	userExists    func(context.Context, int64) error
+	// profile fills in a member's name, email and color, which the Postgres
+	// store joins from users. Called without holding mu.
+	profile           func(context.Context, int64) (auth.User, error)
 	onMembership      func(int64, int64, bool)
 	membershipChanges []membershipChange
 	idSeq             int64
@@ -210,6 +215,20 @@ func (s *MemoryStore) DeleteHousehold(_ context.Context, id int64) error {
 }
 
 func (s *MemoryStore) GetMembers(ctx context.Context, householdID int64) ([]Member, error) {
+	members, err := s.listMembers(ctx, householdID)
+	if err != nil || s.profile == nil {
+		return members, err
+	}
+	for i := range members {
+		if user, err := s.profile(ctx, members[i].UserID); err == nil {
+			members[i].Email, members[i].DisplayName = user.Email, user.DisplayName
+			members[i].AvatarColor, members[i].EmailVerified = user.AvatarColor, user.EmailVerified
+		}
+	}
+	return members, nil
+}
+
+func (s *MemoryStore) listMembers(ctx context.Context, householdID int64) ([]Member, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	var members []Member

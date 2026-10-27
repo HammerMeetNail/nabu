@@ -51,6 +51,8 @@ type Store interface {
 	GetUserByIDWithHash(ctx context.Context, id int64) (User, string, error)
 	FindUserByEmail(ctx context.Context, email string) (User, error)
 	VerifyEmail(ctx context.Context, userID int64) (User, error)
+	// UpdateProfile sets the user's display name and avatar color.
+	UpdateProfile(ctx context.Context, userID int64, displayName, avatarColor string) error
 	UpdatePassword(ctx context.Context, userID int64, passwordHash string) error
 	SetUserHousehold(ctx context.Context, userID, householdID int64, role string) error
 	CreateSession(ctx context.Context, userID, authVersion int64, tokenHash string, expiresAt, authenticatedAt time.Time) (Session, error)

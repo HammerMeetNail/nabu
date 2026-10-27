@@ -148,18 +148,22 @@ struct APIClient {
         let path = request.url?.path ?? ""
         let logout = path == "/api/auth/logout"
         let transition = identity.managed && Self.changesIdentity(request)
+        // Reading /api/me confirms the session. Updating the profile there is
+        // an ordinary write by the current identity: it needs a ready session
+        // and carries the identity claim like any other request.
+        let sessionRead = path == "/api/me" && request.httpMethod != "PATCH"
         var request = request
         var ticket: UUID?
         if transition {
             do { ticket = try identity.beginTransition(logout: logout, expected: owner) }
             catch { await identity.publish(); throw error }
             await identity.publish()
-        } else if identity.managed && path != "/api/me" && !path.hasPrefix("/api/auth/") {
+        } else if identity.managed && !sessionRead && !path.hasPrefix("/api/auth/") {
             guard owner.phase == .ready else { throw APIError.contextChanged }
         } else if identity.managed && (owner.phase == .logoutPending || owner.phase == .changing) {
             throw APIError.contextChanged
         }
-        if identity.managed, let user = owner.user, path != "/api/me" {
+        if identity.managed, let user = owner.user, !sessionRead {
             request.setValue(String(user.id), forHTTPHeaderField: "X-Nabu-User-ID")
             // A deliberate claim about the identity that authored the request,
             // including "this account has no active household" (0). The server
@@ -195,7 +199,7 @@ struct APIClient {
             }
         } else if identity.managed {
             guard identity.isCurrent(owner) else { throw APIError.contextChanged }
-            if path == "/api/me" {
+            if sessionRead {
                 if httpResponse.statusCode == 401 {
                     guard identity.accept(nil, expected: owner) else { throw APIError.contextChanged }
                 }

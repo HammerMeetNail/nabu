@@ -364,7 +364,7 @@ final class ReviewUITestResponses {
     let scenario: String
     private var user: User
     private var household: Household
-    private let members: [Member]
+    private var members: [Member]
     private let chores: [Chore]
     private var latestLogs: [Int: ChoreLog]
     private var todayLogs: [ChoreLog]
@@ -420,6 +420,21 @@ final class ReviewUITestResponses {
                 httpVersion: nil, headerFields: ["Content-Type": "application/json"])!)
         }
         if path == "/api/me" {
+            if request.httpMethod == "PATCH" {
+                // As the server: a trimmed 1-50 character name, a #RRGGBB color.
+                let body = try JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: String] ?? [:]
+                let name = (body["displayName"] ?? user.displayName).trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty, name.count <= 50 else { return try failed("name must be 1 to 50 characters", status: 400) }
+                let color = body["avatarColor"]?.uppercased() ?? user.avatarColor
+                user = User(id: user.id, householdId: user.householdId, email: user.email, displayName: name,
+                            avatarColor: color, emailVerified: user.emailVerified, role: user.role,
+                            createdAt: user.createdAt, hasPassword: user.hasPassword)
+                members = members.map { member in
+                    member.userId == user.id ? Member(userId: member.userId, email: member.email, displayName: name,
+                        avatarColor: color, emailVerified: member.emailVerified, role: member.role, suspended: member.suspended) : member
+                }
+                return try json(UserResponse(user: user))
+            }
             if request.httpMethod == "DELETE" {
                 if scenario == "delete-account-options" {
                     // Echo the opt-in choices so the UI test can assert them.
