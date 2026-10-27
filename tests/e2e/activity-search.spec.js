@@ -62,4 +62,29 @@ test.describe("Activity: search + day counts", () => {
     await input.fill("");
     await expect(page.locator(".hist-row")).toHaveCount(3, { timeout: 5000 });
   });
+
+  test("the search keeps focus while results load, so typing carries on", async ({ page }) => {
+    const { csrf, chores } = await setup(page);
+    const now = new Date();
+    for (const note of ["bath time", "walk", "bath toys"]) {
+      await page.request.post("/api/logs", {
+        data: { choreId: chores[0].id, note, completedAt: now.toISOString(), hour: now.getHours() },
+        headers: { "X-CSRF-Token": csrf },
+      });
+    }
+    await page.click("a[data-nav=\"activity\"]");
+    await expect(page.locator(".hist-row")).toHaveCount(3);
+    const input = page.locator("#history-search-input");
+    // A pause sends the search and shows its results. The box used to be
+    // rebuilt then, losing focus and the keys typed after the pause.
+    await input.click();
+    await page.keyboard.type("ba");
+    await expect(page.locator(".hist-row")).toHaveCount(2);
+    await expect(input).toBeFocused();
+    await page.keyboard.type("th to");
+    await expect(page.locator(".hist-row")).toHaveCount(1);
+    await expect(page.locator(".hist-row")).toContainText("bath toys");
+    await expect(input).toHaveValue("bath to");
+    await expect(input).toBeFocused();
+  });
 });

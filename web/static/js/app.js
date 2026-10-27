@@ -35,13 +35,14 @@ import {
   renderResetPasswordView,
 } from "./auth.js";
 import { loadHousehold, listHouseholds, activateHousehold, createHousehold, updateHousehold, joinHousehold, loadInvitePreview, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, setMemberAccess, transferOwnership, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
-import { loadToday, loadWeek, logChore, undoLog, updateLog, loadChores, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
+import { loadToday, loadWeek, loadHistory, logChore, undoLog, updateLog, loadChores, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
 import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS, choreHasAnalytics, renderWidgetWizard, widgetGrain, loadChoreSummary, choreAnalyticsGrain } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet, renderRecentAmounts } from "./schedule.js";
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone, saveVolumeUnit, saveStatsWidgets, saveHideNotificationBadge } from "./preferences.js";
 import { loadTimer, startTimer, stopTimer, clearFinishedTimer, elapsedSeconds, formatElapsed } from "./timer.js";
-import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeManageView, renderConfirmRemoveFromHomeSheet, refreshHomeCardTimes } from "./home.js";
+import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeActivity, renderHomeManageView, renderConfirmRemoveFromHomeSheet, refreshHomeCardTimes } from "./home.js";
+import { wideLayout, onWideLayoutChange, placeHomeTab, keyboardShortcut } from "./desktop.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
 import { renderNotificationPanel, maybeSubscribePush, pushOfferState, setPushOfferState, shouldOfferPush, renderPushOffer, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
 import { renderScheduleTab } from "./schedule-tab.js";
@@ -260,9 +261,12 @@ export function render(root) {
     syncAddressBar();
   }
 
-  if (state.user && !state.transitioning && state.pendingLogs?.length) html = renderPendingWork() + html;
-  if (state.user && state.offline) html = renderOfflineBanner() + html;
-  html = `<div class="view-root">${html}</div>`;
+  // Notices keep a container that is always rendered. morph.js matches nodes
+  // by position, so a notice coming or going must not move the view after
+  // it: that rebuilds the view, losing focus and unsaved field values.
+  const notices = (state.user && state.offline ? renderOfflineBanner() : "")
+    + (state.user && !state.transitioning && state.pendingLogs?.length ? renderPendingWork() : "");
+  html = `<div class="view-root"><div class="view-notices">${notices}</div>${html}</div>`;
 
   // Keep a log's live form intact through unrelated data refreshes. Inputs,
   // selected chips, focus and a frozen retry belong to this particular draft.
@@ -294,6 +298,9 @@ export function render(root) {
   renderedLogDraft = draft;
   updateTabs(tabRoute);
   updateTopBar();
+  // The wide layout sizes content for the tab on screen.
+  if (state.user) document.body.dataset.tab = tabRoute === "/" ? "today" : tabRoute.slice(1);
+  else delete document.body.dataset.tab;
   renderTimerChip();
   syncLogSaveControls(root);
   sheetController?.afterRender(root);
@@ -463,6 +470,19 @@ function renderDayNoteSheet() {
   </div>`;
 }
 
+// The "log" sheet a history row opens (Activity, and Home's activity
+// column), or "" when its activity is gone.
+function renderOpenLogSheet() {
+  const { choreId, logId, date } = state.activeSheetData || {};
+  const chore = (state.chores || []).find(c => c.id === choreId);
+  if (!chore) return "";
+  const log = logId ? findLogById(logId) : null;
+  const latestLogForChore = state.latestLogs[choreId] ?? null;
+  const cachedIndicatorVolumes = latestLogForChore?.indicatorVolumes ?? null;
+  const cachedIndicators = state.activeSheetData?.indicatorSelection ?? (latestLogForChore?.indicators ?? null);
+  return renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id), recentUnit:state.recentAmountUnits?.[chore.id], cachedMetricUnit:latestLogForChore?.metricUnit, cachedSubject: latestLogForChore?.subject || null, cachedAmount: latestLogForChore?.volumeML ?? null, metricUnit:state.activeSheetData?.metricUnit });
+}
+
 function renderHistoryView() {
   const mainView = renderHistoryPage(state);
   if (state.activeSheet === "day-note") {
@@ -472,22 +492,13 @@ function renderHistoryView() {
       ${renderDayNoteSheet()}
     </div>`;
   }
-  if (state.activeSheet === "log") {
-    const { choreId, logId, date } = state.activeSheetData || {};
-    const chore = (state.chores || []).find(c => c.id === choreId);
-    if (chore) {
-      const log = logId ? ((state.historyLogs || []).find(l => l.id === logId) || null) : null;
-      const latestLogForChore = state.latestLogs[choreId] ?? null;
-      const cachedIndicatorVolumes = latestLogForChore?.indicatorVolumes ?? null;
-      const cachedIndicators = state.activeSheetData?.indicatorSelection ?? (latestLogForChore?.indicators ?? null);
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id), recentUnit:state.recentAmountUnits?.[chore.id], cachedMetricUnit:latestLogForChore?.metricUnit, cachedSubject: latestLogForChore?.subject || null, cachedAmount: latestLogForChore?.volumeML ?? null, metricUnit:state.activeSheetData?.metricUnit });
-
-  return `<div class="sheet-overlay-wrapper">
+  const sheetHTML = state.activeSheet === "log" ? renderOpenLogSheet() : "";
+  if (sheetHTML) {
+    return `<div class="sheet-overlay-wrapper">
         ${mainView}
         <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
         ${sheetHTML}
       </div>`;
-    }
   }
   return mainView;
 }
@@ -511,9 +522,23 @@ function renderHomeViewWrapper() {
   }
   const header = renderHomeHeader(state);
   const isManage = state.homeView === "manage";
-  const mainView = isManage
+  const wide = wideLayout();
+  let mainView = isManage
     ? renderHomeManageView(state)
-    : (shouldOfferPush(state.user?.id) ? renderPushOffer() : "") + renderHomeViewGrid(state);
+    : (shouldOfferPush(state.user?.id) ? renderPushOffer() : "") + renderHomeViewGrid(state, { keyHints: wide });
+  if (homeShowsActivity()) {
+    mainView = `<div class="home-split"><div class="home-main">${mainView}</div>${renderHomeActivity(state)}</div>`;
+  }
+
+  const openLog = state.activeSheet === "log" ? renderOpenLogSheet() : "";
+  if (openLog) {
+    return `<div class="sheet-overlay-wrapper">
+      ${header}
+      ${mainView}
+      <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+      ${openLog}
+    </div>`;
+  }
 
   if (state.activeSheet === "home-log") {
     const { choreId } = state.activeSheetData || {};
@@ -1066,7 +1091,41 @@ function applyLatestLog(choreId, data) {
   if (data.latest) latestLogs[choreId] = data.latest;
   else delete latestLogs[choreId];
   state.latestLogs = latestLogs;
+  // A log was added, changed or removed: Home's activity column follows.
+  refreshHomeActivity();
   return true;
+}
+
+// Home's activity column shows in the wide layout's Log view.
+function homeShowsActivity() {
+  return wideLayout() && !!state.household && !needsOnboarding() && state.homeView !== "manage"
+    && ["/", "/today"].includes(activeRoute());
+}
+
+// loadHomeActivity reads Home's activity column: the first page of Activity,
+// kept apart from the Activity tab's search and loaded pages.
+async function loadHomeActivity() {
+  if (!homeShowsActivity()) return;
+  const contextScope = captureScope(state);
+  const scope = captureScope(state, "home-activity");
+  try {
+    const data = await withCurrentContext(loadHistory(""), contextScope);
+    if (!scope.current()) return;
+    if (!Array.isArray(data?.logs)) throw new Error("bad history");
+    state.homeActivity = { logs: data.logs, loaded: true, error: null };
+  } catch {
+    if (scope.current()) state.homeActivity = { ...state.homeActivity, error: "Couldn't load recent activity." };
+  }
+}
+
+// refreshHomeActivity reloads Home's activity column and shows it. With a
+// sheet open, other than a log's (which survives a render), the next render
+// shows it instead: a render resets a form's unfocused fields.
+function refreshHomeActivity() {
+  if (!homeShowsActivity()) return;
+  void loadHomeActivity().then(owned(() => {
+    if (!state.activeSheet || ["log", "home-log"].includes(state.activeSheet)) render(document.querySelector("#app"));
+  }));
 }
 
 async function loadLatestLogsData() {
@@ -1074,6 +1133,8 @@ async function loadLatestLogsData() {
   // The confirmed session already identifies the household. This read can
   // start alongside household metadata during bootstrap.
   if (!state.user?.householdId) return;
+  // Home's activity column changes with the tiles' latest logs.
+  refreshHomeActivity();
   try {
     const data = await withCurrentContext(loadLatestLogs(), contextScope);
     state.latestLogs = data?.latestLogs || {};
@@ -1239,7 +1300,7 @@ function showToastWithUndo(message, logId, choreId) {
 // Find a full log record by id across the loaded view collections, so a
 // removed log can be faithfully re-created if the user taps Undo.
 function findLogById(id) {
-  for (const pool of [state.historyLogs, state.todayLogs, state.weekLogs]) {
+  for (const pool of [state.historyLogs, state.homeActivity?.logs, state.todayLogs, state.weekLogs]) {
     const found = (pool || []).find(l => l.id === id);
     if (found) return found;
   }
@@ -1407,6 +1468,12 @@ function closeProfilePanel() {
 function closeAllPanels() {
   closeNotifPanel();
   closeProfilePanel();
+}
+
+// Whether the bell's or the household's panel is open.
+function anyPanelOpen() {
+  return ["#notif-panel-container", "#profile-panel-container"]
+    .some(id => document.querySelector(id)?.hidden === false);
 }
 
 function showToast(message, type) {
@@ -1611,8 +1678,10 @@ async function reloadAfterAuth() {
   await withCurrentContext(syncTimezone(state), contextScope);
   if (!scope.current() || !state.household) return;
   persistSnapshot();
-  // Notifications update their own panel/badge and must not delay Home.
+  // Notifications update their own panel/badge and must not delay Home, nor
+  // must the wide layout's activity column.
   void loadNotifData().catch(() => {});
+  refreshHomeActivity();
   const route = activeRoute();
   if (["/activity", "/stats", "/schedule"].includes(route)) {
     // Date-grouped views still load after timezone synchronization. Home
@@ -1899,6 +1968,15 @@ export async function init() {
   // reload, Back fires once the address bar already shows the next tab.
   if (tabForPath(window.location.pathname)) state.currentRoute = routeForPath(window.location.pathname);
   pendingStatsFocus = statsSectionForPath(window.location.pathname);
+  // The wide layout's sidebar lists Home first. Entering or leaving it
+  // re-renders, which adds or drops Home's activity column.
+  placeHomeTab(document.querySelector("#bottom-tabs"), wideLayout());
+  onWideLayoutChange(wide => {
+    placeHomeTab(document.querySelector("#bottom-tabs"), wide);
+    if (!state.user) return;
+    render(document.querySelector("#app"));
+    refreshHomeActivity();
+  });
   // Back and Forward between tabs. The sheet controller registered first: it
   // stops the step that removes a closed sheet's entry, and Back on an open
   // sheet lands on the same tab, which keeps its place.
@@ -2485,6 +2563,7 @@ export async function init() {
           state.activeSheet     = null;
           state.activeSheetData = {};
           state.historyLogs = (state.historyLogs || []).filter(l => l.id !== uLogId);
+          state.homeActivity = { ...state.homeActivity, logs: (state.homeActivity?.logs || []).filter(l => l.id !== uLogId) };
           const home = ["/", "/today"].includes(activeRoute());
           if (!(applyLatestLog(choreId, data) && home)) await withCurrentContext(reloadViewData(), contextScope);
           render(app);
@@ -3395,6 +3474,13 @@ export async function init() {
         void loadActivityPage();
         break;
 
+      case "retry-home-activity":
+        e.preventDefault();
+        state.homeActivity = { ...state.homeActivity, error: null };
+        render(app);
+        refreshHomeActivity();
+        break;
+
       case "history-filter-all": {
         e.preventDefault();
         // Clear the filter: show all activity, nothing highlighted.
@@ -3767,6 +3853,34 @@ export async function init() {
     }
     e.preventDefault();
     setStarRatingValue(container, next);
+  });
+
+  // ── Keyboard shortcuts ─────────────────────────────────────────────────────
+  // 1–9 open the log sheet of the Home tile in that place, as a tap does; u
+  // taps the newest Undo while its toast shows; / opens Activity's search.
+  // None of them act over an open sheet or panel.
+  document.addEventListener("keydown", (e) => {
+    const shortcut = keyboardShortcut(e);
+    if (!shortcut || !state.user || !state.household || needsOnboarding() || state.transitioning) return;
+    if (state.activeSheet || anyPanelOpen()) return;
+    if (shortcut.action === "log") {
+      if (!["/", "/today"].includes(activeRoute()) || state.homeView === "manage" || state.jiggleMode) return;
+      const tile = app.querySelectorAll('.home-chore-card[data-action="home-tap-chore"]')[shortcut.index];
+      if (!tile) return;
+      e.preventDefault();
+      // Closing the sheet returns focus to the tile, as after a tap.
+      tile.focus({preventScroll:true});
+      tile.click();
+    } else if (shortcut.action === "undo") {
+      const undo = [...document.querySelectorAll("#toast-container [data-undo-toast] button")].pop();
+      if (!undo) return;
+      e.preventDefault();
+      undo.click();
+    } else {
+      e.preventDefault();
+      if (activeRoute() !== "/activity") showTab("/activity");
+      document.querySelector("#history-search-input")?.focus();
+    }
   });
 
   // ── History text search (debounced) ────────────────────────────────────────
@@ -4576,10 +4690,16 @@ export async function init() {
 
   // Tick the home grid's "X ago" labels once a minute while the home tab is
   // visible, so relative times stay fresh without a navigation/re-render.
+  // A desktop window stays open for hours, so the wide layout also reloads
+  // Home's logs then, showing what others logged; an open sheet waits for
+  // the next minute.
   setInterval(() => {
     if (document.hidden || !state.user) return;
     const route = activeRoute();
     if (route === "/" || route === "/today") refreshHomeCardTimes(state);
+    if (homeShowsActivity() && !state.offline && !state.activeSheet && !state.jiggleMode) {
+      void loadLatestLogsData().then(owned(() => { if (!state.activeSheet) render(app); }));
+    }
   }, 60000);
 
   // ── Pull-to-refresh ────────────────────────────────────────────────────────

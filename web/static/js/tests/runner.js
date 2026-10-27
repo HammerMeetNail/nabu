@@ -2364,3 +2364,100 @@ describe("Notifications offer after the first log", () => {
       [["Turn on", "push-offer-enable"], ["Not now", "push-offer-dismiss"]]);
   });
 });
+
+describe("Wide layout", () => {
+  const press = (key, init = {}, target = document.body) => ({ key, target, ctrlKey: false, metaKey: false, altKey: false,
+    repeat: false, isComposing: false, defaultPrevented: false, ...init });
+
+  it("maps 1–9, u and / to shortcuts, outside text fields and without modifiers", async () => {
+    const { keyboardShortcut } = await import("../desktop.js");
+    assert.deepEqual(keyboardShortcut(press("1")), { action: "log", index: 0 });
+    assert.deepEqual(keyboardShortcut(press("9")), { action: "log", index: 8 });
+    assert.equal(keyboardShortcut(press("0")), null);
+    assert.deepEqual(keyboardShortcut(press("u")), { action: "undo" });
+    assert.deepEqual(keyboardShortcut(press("U")), { action: "undo" });
+    assert.deepEqual(keyboardShortcut(press("/")), { action: "search" });
+    for (const flag of ["ctrlKey", "metaKey", "altKey", "repeat", "isComposing", "defaultPrevented"]) {
+      assert.equal(keyboardShortcut(press("1", { [flag]: true })), null, flag);
+    }
+    const root = document.createElement("div");
+    root.innerHTML = '<input><textarea></textarea><select></select><div contenteditable="true"><span></span></div><button></button>';
+    for (const el of root.querySelectorAll("input, textarea, select, span")) {
+      assert.equal(keyboardShortcut(press("u", {}, el)), null, el.tagName);
+    }
+    assert.deepEqual(keyboardShortcut(press("1", {}, root.querySelector("button"))), { action: "log", index: 0 });
+  });
+
+  it("lists Home first in the sidebar and in the middle of the tab bar", async () => {
+    const { placeHomeTab } = await import("../desktop.js");
+    const nav = document.createElement("nav");
+    nav.innerHTML = '<span class="sidebar-brand"></span>'
+      + ["stats", "activity", "today", "schedule", "settings"].map(n => `<a class="tab-item" data-nav="${n}"></a>`).join("")
+      + '<p class="sidebar-shortcuts"></p>';
+    const order = () => [...nav.querySelectorAll(".tab-item")].map(a => a.dataset.nav).join(",");
+    placeHomeTab(nav, true);
+    assert.equal(order(), "today,stats,activity,schedule,settings");
+    placeHomeTab(nav, true);
+    assert.equal(order(), "today,stats,activity,schedule,settings");
+    assert.equal(nav.firstElementChild.className, "sidebar-brand");
+    placeHomeTab(nav, false);
+    assert.equal(order(), "stats,activity,today,schedule,settings");
+  });
+
+  it("numbers the first nine Home tiles", async () => {
+    const { renderHomeView } = await import("../home.js");
+    const chores = Array.from({ length: 11 }, (_, i) => ({ id: i + 1, name: `C${i + 1}`, icon: "x", color: "#000000" }));
+    const state = { user: { id: 1 }, household: { id: 1 }, chores, latestLogs: {} };
+    const root = document.createElement("div");
+    root.innerHTML = renderHomeView(state, { keyHints: true });
+    assert.deepEqual([...root.querySelectorAll(".home-chore-card")].map(t => t.getAttribute("aria-keyshortcuts")),
+      ["1", "2", "3", "4", "5", "6", "7", "8", "9", null, null]);
+    assert.deepEqual([...root.querySelectorAll(".home-card-key")].map(k => k.textContent),
+      ["1", "2", "3", "4", "5", "6", "7", "8", "9"]);
+    root.innerHTML = renderHomeView(state);
+    assert.equal(root.querySelectorAll(".home-card-key").length, 0, "no numbers outside the wide layout");
+    assert.equal(root.querySelectorAll("[aria-keyshortcuts]").length, 9);
+  });
+
+  it("shows the newest logs, pending ones included, under day headings, escaped", async () => {
+    const { renderHomeActivity } = await import("../home.js");
+    const evil = `<img src=x onerror=alert(1)>`;
+    const midnight = new Date(); midnight.setHours(0, 0, 0, 0);
+    const yesterday = new Date(midnight); yesterday.setDate(midnight.getDate() - 1); yesterday.setHours(12);
+    const state = {
+      chores: [{ id: 1, name: evil, icon: evil, color: `red;}</style>${evil}` }],
+      members: [{ userId: 1, displayName: evil }],
+      pendingLogs: [{ id: "pending-k1", choreId: 1, userId: 1, completedAt: new Date().toISOString(), _pending: true }],
+      homeActivity: { loaded: true, logs: [
+        { id: 3, choreId: 1, userId: 1, completedAt: yesterday.toISOString() },
+        { id: 2, choreId: 1, userId: 1, note: evil, subject: evil, completedAt: midnight.toISOString() },
+      ] },
+    };
+    const html = renderHomeActivity(state);
+    assert.ok(!html.includes("<img"), html);
+    assert.ok(!html.includes("</style>"), html);
+    const root = document.createElement("div");
+    root.innerHTML = html;
+    assert.deepEqual([...root.querySelectorAll("h3")].map(h => h.textContent), ["Today", "Yesterday"]);
+    const rows = [...root.querySelectorAll("button[data-log-id]")];
+    assert.deepEqual(rows.map(r => r.dataset.logId), ["pending-k1", "2", "3"]);
+    assert.ok(rows[0].disabled, "a pending log has nothing to open yet");
+    assert.equal(rows[1].dataset.action, "view-log");
+    assert.equal(root.querySelector('a[data-nav="activity"]').textContent, "See all");
+  });
+
+  it("shows at most 25 logs, and says when there are none or they failed", async () => {
+    const { renderHomeActivity } = await import("../home.js");
+    const logs = Array.from({ length: 30 }, (_, i) => ({ id: i + 1, choreId: 1, userId: 1,
+      completedAt: new Date(Date.now() - i * 60000).toISOString() }));
+    const root = document.createElement("div");
+    root.innerHTML = renderHomeActivity({ chores: [{ id: 1, name: "Feed", icon: "🍼", color: "#000000" }], homeActivity: { loaded: true, logs } });
+    assert.equal(root.querySelectorAll("button[data-log-id]").length, 25);
+    root.innerHTML = renderHomeActivity({ homeActivity: { loaded: false, logs: [] } });
+    assert.equal(root.querySelector(".home-activity-empty").textContent, "Loading…");
+    root.innerHTML = renderHomeActivity({ homeActivity: { loaded: true, logs: [] } });
+    assert.equal(root.querySelector(".home-activity-empty").textContent, "Nothing logged in the last 7 days.");
+    root.innerHTML = renderHomeActivity({ homeActivity: { loaded: false, logs: [], error: "Couldn't load recent activity." } });
+    assert.equal(root.querySelector('[data-action="retry-home-activity"]').textContent, "Retry");
+  });
+});

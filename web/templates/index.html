@@ -34,6 +34,7 @@
     </div>
 
     <nav id="bottom-tabs" hidden aria-label="Main navigation">
+      <span class="sidebar-brand" aria-hidden="true"><img src="/static/icons/icon.svg" alt="">{{.AppName}}</span>
       <a href="/stats" class="tab-item" data-nav="stats">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
           <line x1="18" y1="20" x2="18" y2="10"></line>
@@ -69,6 +70,7 @@
         </svg>
         <span>Settings</span>
       </a>
+      <p class="sidebar-shortcuts"><kbd>1</kbd>–<kbd>9</kbd> log a tile<br><kbd>U</kbd> undo the last log<br><kbd>/</kbd> search activity</p>
     </nav>
 
     <div id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
