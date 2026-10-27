@@ -2079,6 +2079,50 @@ final class NabuOnboardingUITests: XCTestCase {
     }
 }
 
+/// Notifications are offered on Home after the first log, never at sign-up
+/// (PWA `push-offer.spec.js`). `-pushUndecided` stands in for a device that
+/// hasn't decided on notifications.
+final class NabuPushOfferUITests: XCTestCase {
+    private func launch(resetting: Bool) -> XCUIApplication {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-disableAnimations", "-seedHomeForUITest", "-useMockAPI", "-pushUndecided",
+                               "-nabuBaseURL", "http://localhost:9998"]
+        if !resetting { app.launchArguments.append("-preserveTestState") }
+        app.launchForLocalTest()
+        return app
+    }
+
+    private func logWaterPlants(in app: XCUIApplication) {
+        let tile = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Water Plants")).firstMatch
+        XCTAssertTrue(tile.waitForExistence(timeout: 5))
+        tile.tap()
+        let save = app.buttons["save-log-button"]
+        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        for _ in 0..<8 where !(save.exists && save.isHittable) { app.swipeUp() }
+        save.tap()
+        XCTAssertTrue(save.waitForNonExistence(timeout: 5))
+    }
+
+    func testTheFirstLogOffersNotificationsAndNotNowKeepsThemAway() {
+        let app = launch(resetting: true)
+        let offer = app.descendants(matching: .any)["push-offer"]
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Water Plants")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(offer.exists, "nothing before a log")
+
+        logWaterPlants(in: app)
+        XCTAssertTrue(offer.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Get reminders on this device?"].exists)
+        app.buttons["push-offer-dismiss"].tap()
+        XCTAssertTrue(offer.waitForNonExistence(timeout: 5))
+
+        logWaterPlants(in: app)
+        XCTAssertFalse(offer.waitForExistence(timeout: 2), "answered: a later log doesn't offer again")
+        app.terminate()
+        let relaunched = launch(resetting: false)
+        XCTAssertTrue(relaunched.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Water Plants")).firstMatch.waitForExistence(timeout: 5))
+        XCTAssertFalse(relaunched.descendants(matching: .any)["push-offer"].exists)
+
 /// Invite links (PWA `invite-landing.spec.js`): one opened while signed out
 /// says who sent it and to which household, on sign-in and on sign-up, and a
 /// dead one says so. Settings shows the household's invite link as a QR code.

@@ -43,7 +43,7 @@ import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSection
 import { loadTimer, startTimer, stopTimer, clearFinishedTimer, elapsedSeconds, formatElapsed } from "./timer.js";
 import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeManageView, renderConfirmRemoveFromHomeSheet, refreshHomeCardTimes } from "./home.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
-import { renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
+import { renderNotificationPanel, maybeSubscribePush, pushOfferState, setPushOfferState, shouldOfferPush, renderPushOffer, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
 import { renderScheduleTab } from "./schedule-tab.js";
 import { renderProfileSheet, renderProfileForm } from "./profile.js";
 import { createOnboarding, duplicateName, householdNameFor, onboardingPicks, renderOnboarding, renderPacksSheet, MAX_PACK_NAMES } from "./onboarding.js";
@@ -513,7 +513,7 @@ function renderHomeViewWrapper() {
   const isManage = state.homeView === "manage";
   const mainView = isManage
     ? renderHomeManageView(state)
-    : renderHomeViewGrid(state);
+    : (shouldOfferPush(state.user?.id) ? renderPushOffer() : "") + renderHomeViewGrid(state);
 
   if (state.activeSheet === "home-log") {
     const { choreId } = state.activeSheetData || {};
@@ -1568,7 +1568,7 @@ async function doLogout() {
 }
 async function doLogin(form) {
   if (form.dataset.busy) return;
-  hideError("#login-error"); requestNotificationPermission();
+  hideError("#login-error");
   form.dataset.busy = "true";
   try {
     const result = await handleLogin(form.querySelector("#login-email").value, form.querySelector("#login-password").value);
@@ -1627,7 +1627,7 @@ async function doRegister(form) {
   hideError("#register-error"); hideError("#register-status");
   const email = form.querySelector("#reg-email").value, password = form.querySelector("#reg-password").value;
   if (password !== form.querySelector("#reg-confirm").value) { setError("#register-error","Passwords do not match"); return; }
-  requestNotificationPermission(); form.dataset.busy = "true";
+  form.dataset.busy = "true";
   try {
     const result = await handleRegister(email,password);
     if (!resultIsCurrent(result)) return;
@@ -2155,16 +2155,7 @@ export async function init() {
         const oauthPath = action === "apple-signin"
           ? "/api/auth/apple/web/login"
           : "/api/auth/google/login";
-        const oauthURL = oauthPath + (operatorLoginDestination() ? "?redirect=%2Foperator" : "");
-        if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-          Notification.requestPermission().then(owned(() => {
-            window.location.href = oauthURL;
-          })).catch(owned(() => {
-            window.location.href = oauthURL;
-          }));
-        } else {
-          window.location.href = oauthURL;
-        }
+        window.location.href = oauthPath + (operatorLoginDestination() ? "?redirect=%2Foperator" : "");
         break;
       }
       case "show-login":
@@ -2685,6 +2676,8 @@ export async function init() {
           if (newLogId) {
             const chore = (state.chores || []).find(c => c.id === choreId);
             showToastWithUndo(`${chore ? chore.icon + " " + chore.name : "Chore"}`, newLogId, choreId);
+            // The first log here earns the notifications offer on Home.
+            if (!pushOfferState(state.user?.id)) { setPushOfferState(state.user?.id, "due"); render(app); }
           }
         })).catch(owned(async err => {
   const contextScope = captureScope(state);
@@ -3449,6 +3442,22 @@ export async function init() {
           }));
         break;
       }
+
+      case "push-offer-enable":
+        e.preventDefault();
+        setPushOfferState(state.user?.id, "done");
+        // Ask from this tap: browsers only show the prompt for a user gesture.
+        Notification.requestPermission().then(owned(result => {
+          if (result === "granted") maybeSubscribePush().catch(() => {});
+          render(app);
+        })).catch(() => {});
+        render(app);
+        break;
+      case "push-offer-dismiss":
+        e.preventDefault();
+        setPushOfferState(state.user?.id, "done");
+        render(app);
+        break;
 
       case "enable-notifications": {
         e.preventDefault();

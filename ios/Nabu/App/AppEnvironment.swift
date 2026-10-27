@@ -50,12 +50,14 @@ final class AppEnvironment: ObservableObject {
         if args.contains("-resetState") {
 #if DEBUG
             apiClient.cookieStore.clearAll()
+            apiClient.identity.discardPendingLogoutForTests()
             apiClient.identity.accept(nil)
 #endif
             state.reset()
             state.activeTimer = nil
             DurationTimer.save(nil)
             OfflineLogQueue.shared.removeAll()
+            PushOffer.reset()
         }
 
         if TestHooks.seedHomeForUITest {

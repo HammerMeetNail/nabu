@@ -68,6 +68,9 @@ function morphAttributes(existing, incoming) {
 
   for (let i = existingAttrs.length - 1; i >= 0; i--) {
     const attr = existingAttrs[i];
+    // A <details> someone opened stays open: like an input's value, its
+    // "open" is their state, which markup without it doesn't undo.
+    if (attr.name === "open" && existing.tagName === "DETAILS") continue;
     if (!incoming.hasAttribute(attr.name)) {
       existing.removeAttribute(attr.name);
     }

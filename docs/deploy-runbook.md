@@ -199,4 +199,26 @@ that `IF NOT EXISTS` cannot repair: drop that invalid index concurrently and reb
 it before retrying. Startup migration rejects invalid prebuilds and times out a
 contended index build after 5 seconds waiting for locks / 60 seconds total.
 
+Migration 058 indexes the foreign keys that had none and drops three indexes
+that duplicated UNIQUE constraints. Its tables are small; on an installation
+where they are not (most likely `sessions`), prebuild the same way, one
+statement at a time:
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_user_households_household ON user_households (household_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_sessions_user ON sessions (user_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_auth_tokens_user ON auth_tokens (user_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_auth_mail_outbox_user ON auth_mail_outbox (user_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_schedule_reminders_user ON schedule_reminders (user_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_users_active_household ON users (active_household_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_chores_created_by ON chores (created_by);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_chore_schedules_assignee ON chore_schedules (assigned_to_user_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_invites_created_by ON invites (created_by);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_chore_reminder_prefs_chore ON chore_reminder_prefs (chore_id);
+```
+
+`internal/database/schema_indexes_test.go` fails when a foreign key has no
+index leading with its columns, or when two indexes repeat each other, so a
+new foreign key needs its index in the same migration.
+
 Database recovery and major-version changes use the separate [recovery runbook](recovery-runbook.md). Application deployments copy recovery tools but never apply the prepared PostgreSQL definition, replace `/etc/nabu` recovery secrets, or enable WAL timers automatically. Verify a recent isolated restore and working alert/deadman receiver before adopting that configuration.

@@ -19,7 +19,7 @@ type Service struct {
 	auditLogger   audit.Logger
 	logStore      chorelog.Store
 	userStore     interface {
-		GetUserByID(context.Context, int64) (auth.User, error)
+		GetUsersByIDs(context.Context, []int64) ([]auth.User, error)
 	}
 	// revokeSessions force-signs-out a user after their membership is
 	// disabled. Optional: nil when the auth store cannot revoke sessions.
@@ -115,7 +115,7 @@ func (s *Service) SetAuditLogger(logger audit.Logger) {
 // WithHistoricalMembers lets household responses identify the authors of
 // retained logs after their memberships have ended.
 func (s *Service) WithHistoricalMembers(logStore chorelog.Store, userStore interface {
-	GetUserByID(context.Context, int64) (auth.User, error)
+	GetUsersByIDs(context.Context, []int64) ([]auth.User, error)
 }) {
 	s.logStore = logStore
 	s.userStore = userStore
@@ -218,6 +218,23 @@ func (s *Service) GetHistoricalMembers(ctx context.Context, userID int64) ([]His
 	if err != nil {
 		return nil, err
 	}
+	// Everyone who has left, read in one query however many there are.
+	var departed []int64
+	for _, id := range userIDs {
+		if _, ok := active[id]; !ok && !IsFormerMember(id) {
+			departed = append(departed, id)
+		}
+	}
+	profiles := make(map[int64]auth.User, len(departed))
+	if len(departed) > 0 {
+		users, err := s.userStore.GetUsersByIDs(ctx, departed)
+		if err != nil {
+			return nil, err
+		}
+		for _, user := range users {
+			profiles[user.ID] = user
+		}
+	}
 	historical := make([]HistoricalMember, 0, len(userIDs))
 	for _, id := range userIDs {
 		if _, ok := active[id]; ok {
@@ -227,8 +244,8 @@ func (s *Service) GetHistoricalMembers(ctx context.Context, userID int64) ([]His
 			historical = append(historical, HistoricalMember{UserID: id, DisplayName: FormerMemberName, AvatarColor: FormerMemberColor})
 			continue
 		}
-		user, err := s.userStore.GetUserByID(ctx, id)
-		if err != nil {
+		user, ok := profiles[id]
+		if !ok {
 			continue // The account was deleted; its profile must remain private.
 		}
 		historical = append(historical, HistoricalMember{

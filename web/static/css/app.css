@@ -4803,6 +4803,13 @@ body.sheet-open .timer-chip { visibility: hidden; }
   line-height: 1.35;
 }
 
+/* Home: the offer to turn on notifications, after someone's first log. */
+.push-offer { margin: 8px 16px 12px; padding: 12px 14px; border-radius: var(--radius-card); background: var(--surface); box-shadow: var(--shadow); }
+.push-offer-title { margin: 0 0 4px; font-size: 16px; color: var(--text); }
+.push-offer-text { margin: 0 0 10px; font-size: 14px; line-height: 1.4; color: var(--text-secondary); }
+.push-offer-actions { display: flex; gap: 8px; }
+.push-offer-actions .btn { min-height: 44px; }
+
 /* Settings → Account: name and avatar color. */
 .profile-form { margin-bottom: 12px; }
 .profile-colors { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px; }
