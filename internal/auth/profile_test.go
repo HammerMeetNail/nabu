@@ -51,7 +51,7 @@ func TestUpdateProfile(t *testing.T) {
 			if _, err := svc.UpdateProfile(ctx, updated, &longest, nil); err != nil {
 				t.Errorf("a %d-character name: %v", MaxDisplayNameRunes, err)
 			}
-			for _, bad := range []string{"", "   ", strings.Repeat("a", MaxDisplayNameRunes+1), "Dana\x00", "Da\nna", "Dana‏\x7f"} {
+			for _, bad := range []string{"", "   ", strings.Repeat("a", MaxDisplayNameRunes+1), "Dana\x00", "Da\nna", "Dana\u200f\x7f"} {
 				if _, err := svc.UpdateProfile(ctx, updated, &bad, nil); !errors.Is(err, ErrInvalidDisplayName) {
 					t.Errorf("name %q: %v", bad, err)
 				}
