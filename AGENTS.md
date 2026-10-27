@@ -69,6 +69,7 @@ The main checkout at the workspace root stays clean and is only used for referen
 | Format Go | `make fmt` |
 | Run server (no DB) | `make run` |
 | Local stack (Podman) | `make local` |
+| Phone preview (Podman + Tailscale) | `make preview` (see `docs/local-preview.md`) |
 | Rebuild stack | `make local-fresh` |
 | Seed test user | `make seed` |
 | E2E tests | `make e2e` |

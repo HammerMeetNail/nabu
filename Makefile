@@ -2,7 +2,7 @@ GO ?= go
 COMPOSE ?= podman compose
 GOLANGCI_VERSION := 2.13.2
 
-.PHONY: test test-go test-js perf-stats fmt run e2e e2e-watch e2e-debug backup restore local local-fresh down seed lint coverage hooks check-parity deploy
+.PHONY: test test-go test-js perf-stats fmt run e2e e2e-watch e2e-debug backup restore local local-fresh down seed lint coverage hooks check-parity deploy preview preview-down preview-status preview-logs
 
 test: test-go test-js
 
@@ -30,6 +30,20 @@ local:
 	sh ./scripts/wait-for-stack.sh
 
 local-fresh: down local
+
+# Phone-testable preview of this checkout: a Podman pod published to your
+# tailnet with Tailscale Serve. See docs/local-preview.md.
+preview:
+	bash ./scripts/preview.sh up
+
+preview-down:
+	bash ./scripts/preview.sh down
+
+preview-status:
+	bash ./scripts/preview.sh status
+
+preview-logs:
+	bash ./scripts/preview.sh logs
 
 down:
 	$(COMPOSE) down -v
