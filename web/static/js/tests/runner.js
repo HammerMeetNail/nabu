@@ -61,6 +61,20 @@ describe("DOM Morphing", () => {
     morphInnerHTML(root, '<p class="new">Changed</p>');
     assert.equal(root.textContent, "Changed");
   });
+
+  it("keeps a <details> someone opened open, and opens one the markup opens", async () => {
+    const { morphInnerHTML } = await import("../morph.js");
+    const root = dom.window.document.createElement("div");
+    const markup = '<details class="member-row"><summary>Sam</summary><button>Remove</button></details><details class="card" open><summary>Feed</summary></details><details class="spare"><summary>Ada</summary></details>';
+    root.innerHTML = markup;
+    root.querySelector(".member-row").open = true;
+    morphInnerHTML(root, markup);
+    assert.deepEqual([...root.querySelectorAll("details")].map(d => d.open), [true, true, false]);
+    // Other attributes still follow the markup.
+    morphInnerHTML(root, markup.replace('class="member-row"', 'class="member-row member-row--self"'));
+    assert.equal(root.querySelector("details").className, "member-row member-row--self");
+    assert.equal(root.querySelector("details").open, true);
+  });
 });
 
 describe("API", () => {
