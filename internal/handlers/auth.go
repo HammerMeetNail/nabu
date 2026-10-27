@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"crypto/subtle"
+	"errors"
 	"net/http"
 	"net/url"
 	"strings"
@@ -97,6 +98,38 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"user": user})
+}
+
+// UpdateMe sets the signed-in user's display name and avatar color
+// (PATCH /api/me). An omitted field keeps its value.
+func (h *AuthHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
+	user, ok := middleware.CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "not authenticated")
+		return
+	}
+	var req struct {
+		DisplayName *string `json:"displayName"`
+		AvatarColor *string `json:"avatarColor"`
+	}
+	if _, err := readPatchJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.DisplayName == nil && req.AvatarColor == nil {
+		writeError(w, http.StatusBadRequest, "nothing to update")
+		return
+	}
+	updated, err := h.authService.UpdateProfile(r.Context(), user, req.DisplayName, req.AvatarColor)
+	if errors.Is(err, auth.ErrInvalidDisplayName) || errors.Is(err, auth.ErrInvalidAvatarColor) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		writeServerError(w, "failed to update profile", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"user": updated})
 }
 
 func (h *AuthHandler) ResendVerification(w http.ResponseWriter, r *http.Request) {

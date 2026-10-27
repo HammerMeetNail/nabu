@@ -1787,3 +1787,46 @@ final class NabuAccessibilityUITests: XCTestCase {
         }
     }
 }
+
+// MARK: - Profile
+
+/// Settings → Account sets the name and color the household sees (PWA
+/// `settings-profile.spec.js`). The fixture answers PATCH /api/me like the
+/// server, including its name rules.
+final class NabuProfileUITests: XCTestCase {
+    func testNameAndColorSaveAndABlankNameIsRefused() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-disableAnimations", "-seedHomeForUITest", "-useMockAPI", "-nabuBaseURL", "http://localhost:9998"]
+        app.launchForLocalTest()
+        app.tabBars.buttons["Settings"].tap()
+        let row = app.buttons["edit-profile"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("UI Tester"), row.label)
+
+        row.tap()
+        let field = app.textFields["profile-name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 12) + "Dana O'Connor")
+        app.buttons["Purple"].tap()
+        XCTAssertTrue(app.buttons["Purple"].isSelected)
+        app.buttons["save-profile"].tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        let saved = NSPredicate(format: "label CONTAINS %@", "Dana O'Connor")
+        expectation(for: saved, evaluatedWith: row)
+        waitForExpectations(timeout: 5)
+
+        row.tap()
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Purple"].isSelected, "the saved color is selected again")
+        field.tap()
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20) + "   ")
+        app.buttons["save-profile"].tap()
+        XCTAssertTrue(app.staticTexts["profile-error"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["profile-error"].label, "Enter your name")
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("Dana O'Connor"), row.label)
+    }
+}

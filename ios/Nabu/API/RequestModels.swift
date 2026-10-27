@@ -300,6 +300,13 @@ struct SetDayNoteRequest: Codable {
 /// so the account cannot be destroyed by a single stray request. By default
 /// the user's logs in shared households stay, shown as "Former member";
 /// `deleteLogs` / `deleteNotes` opt in to removing them or their notes.
+/// `PATCH /api/me`: the name and color the household sees. A nil color
+/// keeps the current one.
+struct UpdateProfileRequest: Codable, Equatable {
+    let displayName: String
+    var avatarColor: String?
+}
+
 struct DeleteAccountRequest: Codable {
     let confirm: String
     var deleteLogs = false

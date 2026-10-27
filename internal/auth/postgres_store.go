@@ -119,6 +119,18 @@ func (s *PostgresStore) VerifyEmail(ctx context.Context, userID int64) (User, er
 	return s.GetUserByID(ctx, userID)
 }
 
+func (s *PostgresStore) UpdateProfile(ctx context.Context, userID int64, displayName, avatarColor string) error {
+	result, err := s.q.ExecContext(ctx, `UPDATE users SET display_name = $1, avatar_color = $2 WHERE id = $3`,
+		displayName, avatarColor, userID)
+	if err != nil {
+		return err
+	}
+	if rows, _ := result.RowsAffected(); rows == 0 {
+		return ErrUserNotFound
+	}
+	return nil
+}
+
 func (s *PostgresStore) UpdatePassword(ctx context.Context, userID int64, passwordHash string) error {
 	result, err := s.q.ExecContext(ctx, `
 		UPDATE users SET password_hash = $1, auth_version = auth_version + 1 WHERE id = $2

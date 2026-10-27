@@ -71,6 +71,11 @@ func NewService(store Store, authStore AuthStore) *Service {
 		}); ok {
 			memory.userExists = users.UserExists
 		}
+		if users, ok := authStore.(interface {
+			Profile(context.Context, int64) (auth.User, error)
+		}); ok {
+			memory.profile = users.Profile
+		}
 	}
 	if revoker, ok := authStore.(interface {
 		RevokeSessions(context.Context, int64) error
