@@ -95,6 +95,34 @@ final class AuthStore: ObservableObject {
         }
     }
 
+    enum SessionCheck: Equatable {
+        case answered(User?)
+        /// No connection, a timeout, or a 5xx: the server said nothing about
+        /// the session (PWA `sessionError(...).unreachable`).
+        case unreachable
+        case failed
+    }
+
+    /// Like `loadSession`, but tells an unreachable server apart from an
+    /// answer, so launch can open Home saved on this device instead.
+    func checkSession() async -> SessionCheck {
+        do {
+            let response: UserResponse = try await api.get("/api/me")
+            return .answered(api.identity.managed ? api.identity.snapshot.user : response.user)
+        } catch APIError.serverError(statusCode: 401, _), APIError.httpError(statusCode: 401) {
+            return .answered(nil)
+        } catch {
+            return Self.serverUnreachable(error) ? .unreachable : .failed
+        }
+    }
+
+    static func serverUnreachable(_ error: Error) -> Bool {
+        switch error {
+        case APIError.serverError(let status, _), APIError.httpError(let status): return status >= 500
+        default: return LogStore.isNetworkFailure(error)
+        }
+    }
+
     // MARK: - Login / Register
 
     func login(email: String, password: String) async -> User? {

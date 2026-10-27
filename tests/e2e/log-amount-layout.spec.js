@@ -1,6 +1,17 @@
 import {test, expect} from '@playwright/test';
 import {fixture, postLog} from './review-fixtures.js';
 
+// Reads the boxes in one frame. The sheet is pinned to the bottom and grows
+// upward when recent-amount chips arrive, which moves every field above them,
+// so two separate boundingBox() reads can straddle that change.
+async function boxes(page, ...locators) {
+  const handles = await Promise.all(locators.map(locator => locator.elementHandle()));
+  return page.evaluate(elements => elements.map(element => {
+    const {x, y, width, height} = element.getBoundingClientRect();
+    return {x, y, width, height};
+  }), handles);
+}
+
 for (const [name, metricUnit] of [['Baby Meds', 'mg'], ['Bottle', 'mL']]) {
   test(`${name} keeps amount and unit aligned across screen sizes and editing`, async ({page}) => {
     const {chore} = await fixture(page, {name, metricUnit});
@@ -13,10 +24,7 @@ for (const [name, metricUnit] of [['Baby Meds', 'mg'], ['Bottle', 'mL']]) {
     await expect(page.locator('.volume-recent-chip')).toHaveText(`25 ${metricUnit}`);
 
     const expectAligned = async () => {
-      const amountBox = await amount.boundingBox();
-      const unitBox = await unit.boundingBox();
-      expect(amountBox).not.toBeNull();
-      expect(unitBox).not.toBeNull();
+      const [amountBox, unitBox] = await boxes(page, amount, unit);
       expect(Math.abs(amountBox.y - unitBox.y)).toBeLessThanOrEqual(1);
       expect(Math.abs(amountBox.height - unitBox.height)).toBeLessThanOrEqual(1);
       expect(amountBox.height).toBeGreaterThanOrEqual(44);
@@ -48,6 +56,9 @@ for (const [name, metricUnit] of [['Baby Meds', 'mg'], ['Bottle', 'mL']]) {
     await page.locator(`[data-action="view-log"][data-log-id="${log.id}"]`).click();
     await expect(amount).toHaveValue('25');
     await expect(unit).toHaveValue(metricUnit);
+    // Choosing capsules above loaded that unit's (empty) recent amounts, so
+    // this sheet fetches the original unit's again.
+    await expect(page.locator('.volume-recent-chip')).toHaveText(`25 ${metricUnit}`);
     await expectAligned();
   });
 }
@@ -64,8 +75,7 @@ test('default Feed Baby keeps its shared unit beside the amount inputs', async (
   const breast = page.getByRole('spinbutton', {name: '🤱 breast amount'});
   const unit = page.getByLabel('Unit', {exact: true});
   const expectAligned = async () => {
-    const amountBox = await formula.boundingBox();
-    const unitBox = await unit.boundingBox();
+    const [amountBox, unitBox] = await boxes(page, formula, unit);
     expect(Math.abs(amountBox.y - unitBox.y)).toBeLessThanOrEqual(1);
     expect(Math.abs(amountBox.height - unitBox.height)).toBeLessThanOrEqual(1);
     expect(amountBox.height).toBeGreaterThanOrEqual(44);
@@ -122,7 +132,7 @@ test('medication with custom types keeps one inline unit and preserves toggled a
   const unit = page.getByLabel('Unit', {exact: true});
   for (const width of [320, 390, 960]) {
     await page.setViewportSize({width, height: 844});
-    const amountBox = await morning.boundingBox(), unitBox = await unit.boundingBox();
+    const [amountBox, unitBox] = await boxes(page, morning, unit);
     expect(Math.abs(amountBox.y - unitBox.y)).toBeLessThanOrEqual(1);
     expect(Math.abs(amountBox.height - unitBox.height)).toBeLessThanOrEqual(1);
     expect(amountBox.height).toBeGreaterThanOrEqual(44);

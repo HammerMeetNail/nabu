@@ -3,7 +3,10 @@ import {fixture,headers,postLog,deferred,observeModuleCalls} from './review-fixt
 
 test.use({serviceWorkers:'block'});
 
-for (const resource of ['overview','time-series']) {
+// The page's section reads travel in one /api/stats/dashboard request; this
+// household's one chart read goes straight to its endpoint. Holding either
+// must not hold the other.
+for (const resource of ['sections','time-series']) {
   test(`Stats renders ready charts while ${resource} is pending and stays usable`,async({page})=>{
     const joinLoads=await observeModuleCalls(page,'app','loadAllStatsData',{exported:false});
     const {chore}=await fixture(page);
@@ -11,7 +14,7 @@ for (const resource of ['overview','time-series']) {
     const originalDocument=await page.evaluateHandle(()=>document);
     await postLog(page,chore,{volumeML:120});
     const entered=deferred(),release=deferred();
-    const path=resource==='overview' ? '**/api/stats/overview' : `**/api/stats/chores/${chore.id}/time-series?*`;
+    const path=resource==='sections' ? '**/api/stats/dashboard?*' : `**/api/stats/chores/${chore.id}/time-series?*`;
     await page.route(path,async route=>{
       entered.resolve();
       await release.promise;
@@ -23,7 +26,8 @@ for (const resource of ['overview','time-series']) {
       // A held HTTP response is the barrier: the page must not wait for it.
       await expect(page.locator('.stats-page')).toBeVisible();
       await expect(page.locator('.stats-page')).toContainText('Loading charts');
-      await expect(page.locator('.chore-stat-card')).toHaveCount(1);
+      if (resource==='sections') await expect(page.locator(`[data-stats-section="chore:${chore.id}"] .baby-member-row`)).toHaveCount(1);
+      else await expect(page.locator('.chore-stat-card')).toHaveCount(1);
       await page.getByRole('button',{name:'Customize stats'}).click();
       await expect(page.getByRole('button',{name:'Close customize'})).toBeVisible();
       await page.locator('[data-nav="schedule"]').click();
@@ -48,17 +52,19 @@ test('Stats preserves focused period controls when loading finishes and a recap 
   expect(saved.ok()).toBeTruthy();
   await page.reload();await expect(page.locator('.home-grid')).toBeVisible();
   const entered=deferred(),release=deferred();
-  await page.route('**/api/stats/overview',async route=>{
+  // Every section read of this page, the overview included, travels in one request.
+  await page.route('**/api/stats/dashboard?*',async route=>{
     entered.resolve();await release.promise;await route.continue();
   });
   try {
     await page.locator('[data-nav="stats"]').click();await entered.promise;
-    await expect(page.locator('.chore-stat-card')).toHaveCount(1);
     const selector='[data-action="stats-period"][data-section="categories"][data-period="month"]';
+    await expect(page.locator(selector)).toBeVisible();
     await page.locator(selector).evaluate(button=>{window.statsPeriodButton=button;button.focus();});
     release.resolve();await joinLoads();
     await expect(page.locator('.stats-page')).not.toContainText('Loading charts');
     await expect(page.getByRole('heading',{name:'Weekly Recap'})).toBeVisible();
+    await expect(page.locator('.chore-stat-card')).toHaveCount(1);
     expect(await page.locator(selector).evaluate(button=>button===window.statsPeriodButton&&document.activeElement===button)).toBe(true);
     await page.locator(selector).click();
     await expect(page.locator(selector)).toHaveClass(/period-toggle--active/);

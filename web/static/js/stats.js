@@ -1,4 +1,4 @@
-import { apiFetch } from "./api.js";
+import { statsGet } from "./stats-batch.js";
 import { escapeHTML, localDateStr, shiftDateStr, formatVolume, mlToOz, renderAccessSuspendedCard } from "./utils.js";
 import { formatTimeAgo } from "./home.js";
 
@@ -114,13 +114,11 @@ export function resolveStatsLayout(userOrder, userHidden, dynamicKeys = []) {
 }
 
 export async function loadOverview() {
-  const { data } = await apiFetch("/api/stats/overview");
-  return data;
+  return statsGet("/api/stats/overview");
 }
 
 export async function loadHeatmap() {
-  const { data } = await apiFetch("/api/stats/heatmap");
-  return data;
+  return statsGet("/api/stats/heatmap");
 }
 
 export async function loadBusyHours({ choreId, userId, start, end } = {}) {
@@ -130,9 +128,7 @@ export async function loadBusyHours({ choreId, userId, start, end } = {}) {
   if (start) params.set("start", start);
   if (end) params.set("end", end);
   const qs = params.toString();
-  const url = qs ? `/api/stats/busy-hours?${qs}` : "/api/stats/busy-hours";
-  const { data } = await apiFetch(url);
-  return data;
+  return statsGet(qs ? `/api/stats/busy-hours?${qs}` : "/api/stats/busy-hours");
 }
 
 export async function loadChoreStats({ start, end, period } = {}) {
@@ -144,14 +140,11 @@ export async function loadChoreStats({ start, end, period } = {}) {
     if (end) params.set("end", end);
   }
   const qs = params.toString();
-  const url = qs ? `/api/stats/chores?${qs}` : "/api/stats/chores";
-  const { data } = await apiFetch(url);
-  return data;
+  return statsGet(qs ? `/api/stats/chores?${qs}` : "/api/stats/chores");
 }
 
 export async function loadCategoryBreakdown(period) {
-  const { data } = await apiFetch(`/api/stats/breakdown?period=${period || "week"}`);
-  return data;
+  return statsGet(`/api/stats/breakdown?period=${period || "week"}`);
 }
 
 export async function loadTopChores(userId, period) {
@@ -159,30 +152,21 @@ export async function loadTopChores(userId, period) {
   if (userId) params.set("userId", userId);
   if (period) params.set("period", period);
   const qs = params.toString();
-  const url = qs ? `/api/stats/top-chores?${qs}` : "/api/stats/top-chores";
-  const { data } = await apiFetch(url);
-  return data;
+  return statsGet(qs ? `/api/stats/top-chores?${qs}` : "/api/stats/top-chores");
 }
 
 export async function loadLeaderboard(period) {
-  const { data } = await apiFetch(`/api/stats/leaderboard?period=${period || "week"}`);
-  return data;
+  return statsGet(`/api/stats/leaderboard?period=${period || "week"}`);
 }
 
 export async function loadChoreTimeSeries(choreId, period) {
-  const { data } = await apiFetch(
-    `/api/stats/chores/${choreId}/time-series?period=${period || "daily"}`
-  );
-  return data;
+  return statsGet(`/api/stats/chores/${choreId}/time-series?period=${period || "daily"}`);
 }
 
 // loadChoreSummary fetches a period-scoped aggregate (count/amount/duration +
 // per-member split) for one chore. Powers period-correct widgets (Phase 4).
 export async function loadChoreSummary(choreId, period) {
-  const { data } = await apiFetch(
-    `/api/stats/chores/${choreId}/summary?period=${period || "week"}`
-  );
-  return data;
+  return statsGet(`/api/stats/chores/${choreId}/summary?period=${period || "week"}`);
 }
 
 export async function loadFeedingGaps(start, end) {
@@ -190,9 +174,7 @@ export async function loadFeedingGaps(start, end) {
   if (start) params.set("start", start);
   if (end) params.set("end", end);
   const qs = params.toString();
-  const url = `/api/stats/feeding-gaps${qs ? "?" + qs : ""}`;
-  const { data } = await apiFetch(url);
-  return data;
+  return statsGet(`/api/stats/feeding-gaps${qs ? "?" + qs : ""}`);
 }
 
 function formatRangeLabel(start, end) {

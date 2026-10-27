@@ -47,7 +47,10 @@ struct ActivityView: View {
                     }
                 }
             }
-            .searchable(text: Binding(get: { model.query }, set: { model.selectQuery($0) }), prompt: "Search notes & titles")
+            // Always shown, like the PWA's search box: with automatic placement
+            // the field stays hidden until the list is pulled down.
+            .searchable(text: Binding(get: { model.query }, set: { model.selectQuery($0) }),
+                        placement: .navigationBarDrawer(displayMode: .always), prompt: "Search notes & titles")
             .sheet(isPresented: $showingFilter) {
                 ChoreFilterSheet(chores: state.chores, selected: $choreFilter)
             }
@@ -358,8 +361,10 @@ struct HistoryListView: View {
     private func deleteLog(_ log: ChoreLog) async {
         let owner = state.revision
         do {
-            let _: StatusResponse = try await logStore.deleteLog(logId: log.id)
+            let response = try await logStore.deleteLog(logId: log.id)
             guard state.revision == owner else { return }
+            // Home's tile for this chore no longer shows a deleted log.
+            if response.reportsLatest { state.applyLatestLog(response.latest, choreId: log.choreId) }
             model.confirmDeletion(log.id)
             await model.refresh()
         } catch {

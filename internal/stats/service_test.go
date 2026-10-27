@@ -2,6 +2,7 @@ package stats_test
 
 import (
 	"context"
+	"reflect"
 	"testing"
 	"time"
 
@@ -725,5 +726,72 @@ func TestGetFeedingGaps_SingleLog(t *testing.T) {
 	}
 	if len(gaps) != 0 {
 		t.Errorf("expected 0 gaps for single log, got %d", len(gaps))
+	}
+}
+
+// Ties in counts must not reorder Stats between two identical reads: the
+// dashboard's ETag only matches when the bytes match, and the in-memory path
+// must order ties as the aggregate path does (name or user ID ascending).
+func TestStatsOrderTiesDeterministically(t *testing.T) {
+	now := time.Now().UTC()
+	at := time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, utc)
+	var logs []chorelog.ChoreLog
+	// Users 12, 10 and 11 log once each on "kitchen" and "cleaning": every
+	// user, category and member count ties.
+	for _, uid := range []int64{12, 10, 11} {
+		for _, chore := range []int64{101, 100} {
+			logs = append(logs, chorelog.ChoreLog{HouseholdID: 1, UserID: uid, ChoreID: chore, CompletedAt: at})
+		}
+	}
+	svc, _ := seedService(t, logs)
+	ctx := context.Background()
+	first, err := svc.GetWeeklyOverview(ctx, 1, 10, utc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 20; i++ {
+		again, err := svc.GetWeeklyOverview(ctx, 1, 10, utc)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(again, first) {
+			t.Fatalf("overview changed between identical reads:\n%+v\n%+v", first, again)
+		}
+	}
+	for name, got := range map[string][]stats.CategoryBreakdown{"breakdown": first.Breakdown, "recap": first.Recap.ByCategory} {
+		if len(got) != 2 || got[0].Category != "cleaning" || got[1].Category != "kitchen" {
+			t.Errorf("%s categories %+v, want cleaning then kitchen", name, got)
+		}
+	}
+	if ids := []int64{first.Leaderboard[0].UserID, first.Leaderboard[1].UserID, first.Leaderboard[2].UserID}; !reflect.DeepEqual(ids, []int64{10, 11, 12}) {
+		t.Errorf("leaderboard order %v, want 10, 11, 12", ids)
+	}
+	if first.Recap.TopPerformer == nil || first.Recap.TopPerformer.UserID != 10 {
+		t.Errorf("top performer %+v, want user 10", first.Recap.TopPerformer)
+	}
+	if want := at.Weekday().String(); first.Recap.MostActiveDay != want {
+		t.Errorf("most active day %q, want %q", first.Recap.MostActiveDay, want)
+	}
+
+	recap, err := svc.GetWeeklyRecap(ctx, 1, utc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recap.TopPerformer == nil || recap.TopPerformer.UserID != 10 || len(recap.ByCategory) != 2 || recap.ByCategory[0].Category != "cleaning" {
+		t.Errorf("recap %+v, want user 10 and cleaning first", recap)
+	}
+	board, err := svc.GetWeeklyLeaderboard(ctx, 1, utc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(board) != 3 || board[0].UserID != 10 || board[2].UserID != 12 {
+		t.Errorf("weekly leaderboard %+v, want 10, 11, 12", board)
+	}
+	ts, err := svc.GetChoreTimeSeries(ctx, 1, 100, "daily", utc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ts.ByMember) != 3 || ts.ByMember[0].UserID != 10 || ts.ByMember[2].UserID != 12 {
+		t.Errorf("member split %+v, want 10, 11, 12", ts.ByMember)
 	}
 }

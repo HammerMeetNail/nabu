@@ -21,6 +21,7 @@ final class AppState: ObservableObject {
             revision = session.revision
         }
         sessionPhase = session.phase
+        showingSavedHome = session.resumedOffline
         logoutIsDurable = session.logoutIsDurable
         user = session.user
         activeHouseholdId = session.user?.householdId
@@ -91,11 +92,34 @@ final class AppState: ObservableObject {
     /// Connectivity from DataLoader's NWPathMonitor; drives the global
     /// offline banner (C4). Not reset on logout — it's device state.
     @Published var isOffline = false
+    /// Home shows the copy saved on this device: the server could not be
+    /// reached to confirm the session at launch. Cleared by the server's
+    /// answer, which reloads everything (`ClientIdentity.resumeSavedHome`).
+    @Published var showingSavedHome = false
     /// Stats customization (P4): stored section order/hidden sets and the
     /// user-defined widgets, synced via `/api/preferences`.
     @Published var statsSectionOrder: [String] = []
     @Published var statsSectionHidden: [String] = []
     @Published var statsWidgets: [StatsWidget] = []
+
+    /// Applies a log write's answer for its chore's latest log ("time ago" on
+    /// Home and the widget) instead of reloading every chore's latest log. A
+    /// latest-per-chore read already in flight no longer owns the result.
+    func applyLatestLog(_ latest: ChoreLog?, choreId: Int) {
+        _ = beginOperation("loadLatestLogsData")
+        if let latest { latestLogs[choreId] = latest } else { latestLogs.removeValue(forKey: choreId) }
+        WidgetDataCache.write(chores: WidgetDataCache.snapshots(from: self))
+    }
+
+    /// The chore's latest log after a save: the server's answer, or (from an
+    /// older server) the newer of the shown log and the saved one, so a
+    /// backdated save never replaces a newer time on Home.
+    func latestAfterSave(_ response: LogResponse, choreId: Int) -> ChoreLog {
+        if let latest = response.latest { return latest }
+        guard let shown = latestLogs[choreId],
+              (shown.completedAt, shown.id) > (response.log.completedAt, response.log.id) else { return response.log }
+        return shown
+    }
 
     var authorMembers: [Member] {
         members + historicalMembers.map {
@@ -109,6 +133,7 @@ final class AppState: ObservableObject {
         operations = [:]
         WidgetDataCache.write(chores: [])
         PushRegistrationController.shared.suspend()
+        showingSavedHome = false
         user = nil
         household = nil
         userHouseholds = []

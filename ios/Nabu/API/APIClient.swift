@@ -327,6 +327,9 @@ final class ClientIdentity: @unchecked Sendable {
         let phase: Phase
         let user: User?
         let logoutIsDurable: Bool
+        /// Ready from Home saved on this device: the launch session check could
+        /// not reach the server, and no server answer has confirmed it since.
+        var resumedOffline = false
         var origin: LogOrigin? {
             guard phase == .ready, let user, let household = user.householdId else { return nil }
             return LogOrigin(actorID: user.id, householdID: household)
@@ -339,7 +342,11 @@ final class ClientIdentity: @unchecked Sendable {
     private var phase: Phase
     private var user: User?
     private var logoutIsDurable = true
+    private var resumedOffline = false
+    /// Cleared by the first server answer or identity change after launch.
+    private var mayResumeSavedHome = true
     private let fileURL: URL?
+    private let homeURL: URL?
     @MainActor var observer: ((Snapshot) -> Void)?
 
     private static let registryLock = NSLock()
@@ -350,22 +357,27 @@ final class ClientIdentity: @unchecked Sendable {
         if let identity = registry[key] { return identity }
         let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let name = Data(key.utf8).base64EncodedString().replacingOccurrences(of: "/", with: "_")
-        let identity = ClientIdentity(fileURL: directory.appendingPathComponent("nabu-session-\(name).json"))
+        let identity = ClientIdentity(fileURL: directory.appendingPathComponent("nabu-session-\(name).json"),
+                                      homeURL: directory.appendingPathComponent("nabu-home-\(name).json"))
         registry[key] = identity
         return identity
     }
 
-    init(fileURL: URL? = nil, managed: Bool = true) {
+    init(fileURL: URL? = nil, homeURL: URL? = nil, managed: Bool = true) {
         self.fileURL = fileURL
+        self.homeURL = homeURL
         self.managed = managed
         // A marker is removed only after confirmed revocation. An unreadable
         // marker must not turn an unfinished logout into an automatic login.
         phase = fileURL.map { FileManager.default.fileExists(atPath: $0.path) } == true ? .logoutPending : .checking
+        // Saved Home data never outlives an unfinished sign-out.
+        if phase == .logoutPending { removeSavedHome() }
     }
 
     var snapshot: Snapshot {
         lock.lock(); defer { lock.unlock() }
-        return Snapshot(revision: revision, phase: phase, user: user, logoutIsDurable: logoutIsDurable)
+        return Snapshot(revision: revision, phase: phase, user: user, logoutIsDurable: logoutIsDurable,
+                        resumedOffline: resumedOffline)
     }
     func isCurrent(_ owner: Snapshot) -> Bool {
         !managed || snapshot.revision == owner.revision
@@ -382,20 +394,29 @@ final class ClientIdentity: @unchecked Sendable {
         if phase != (next == nil ? .anonymous : .ready) || user?.id != next?.id
             || user?.householdId != next?.householdId || user?.role != next?.role {
             revision = UUID()
+            if !savedHomeBelongs(to: next) { removeSavedHome() }
         }
         user = next
         phase = next == nil ? .anonymous : .ready
+        resumedOffline = false
+        mayResumeSavedHome = false
         return true
     }
     func invalidate(_ owner: Snapshot) {
         lock.lock(); defer { lock.unlock() }
         guard revision == owner.revision else { return }
         revision = UUID(); user = nil; phase = .checking
+        resumedOffline = false
+        mayResumeSavedHome = false
+        removeSavedHome()
     }
     func beginTransition(logout: Bool = false, expected owner: Snapshot? = nil) throws -> UUID {
         lock.lock(); defer { lock.unlock() }
         guard owner == nil || owner?.revision == revision,
               phase != .changing && (phase != .logoutPending || logout) else { throw APIError.contextChanged }
+        resumedOffline = false
+        mayResumeSavedHome = false
+        removeSavedHome()
         if logout, let fileURL {
             do {
                 try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -424,5 +445,54 @@ final class ClientIdentity: @unchecked Sendable {
         guard revision == ticket else { return }
         revision = UUID(); user = nil; phase = logout ? .logoutPending : .checking
     }
+
+    /// Offline launch: becomes the identity whose Home was last saved on this
+    /// device when the launch session check could not reach the server. Only
+    /// before any server answer or identity change, because an answer (no
+    /// session, a 401, a 409 context change) decides the session, never saved
+    /// data. Requests still carry this identity's claim, which the server
+    /// rejects if the session now belongs to someone else.
+    func resumeSavedHome() -> HomeSnapshot? {
+        lock.lock(); defer { lock.unlock() }
+        guard mayResumeSavedHome, phase == .checking, let saved = readSavedHome(),
+              saved.belongs(to: saved.user) else { return nil }
+        mayResumeSavedHome = false
+        revision = UUID(); user = saved.user; phase = .ready; resumedOffline = true
+        return saved
+    }
+
+    /// Saves Home for offline launch, only for the identity that is ready and
+    /// server-confirmed right now. Holding the lock across the write means a
+    /// sign-out or switch can never be followed by a save that began before it.
+    /// Protected like the journal: a launch while the device is locked must be
+    /// able to read it, or an identity change could not tell whose it is.
+    @discardableResult
+    func saveHome(_ home: HomeSnapshot, expected owner: Snapshot) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard let homeURL, owner.revision == revision, phase == .ready, !resumedOffline,
+              let user, home.belongs(to: user) else { return false }
+        do {
+            try FileManager.default.createDirectory(at: homeURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try HomeSnapshot.encoder.encode(home).write(to: homeURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            return true
+        } catch { return false }
+    }
+
+    // The callers below hold `lock`.
+    private func readSavedHome() -> HomeSnapshot? {
+        guard let homeURL, let data = try? Data(contentsOf: homeURL),
+              let saved = try? HomeSnapshot.decoder.decode(HomeSnapshot.self, from: data),
+              saved.version == HomeSnapshot.currentVersion else { return nil }
+        return saved
+    }
+    private func savedHomeBelongs(to next: User?) -> Bool {
+        guard let next, let saved = readSavedHome() else { return false }
+        return saved.belongs(to: next)
+    }
+    private func removeSavedHome() {
+        guard let homeURL, FileManager.default.fileExists(atPath: homeURL.path) else { return }
+        try? FileManager.default.removeItem(at: homeURL)
+    }
+
     @MainActor func publish() { observer?(snapshot) }
 }

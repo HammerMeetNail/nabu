@@ -607,6 +607,7 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	mux.HandleFunc("/api/stats/chores/{id}/time-series", method(http.MethodGet, middleware.RequireAuth(statsHandler.ChoreTimeSeries)))
 	mux.HandleFunc("/api/stats/chores/{id}/summary", method(http.MethodGet, middleware.RequireAuth(statsHandler.ChoreSummary)))
 	mux.HandleFunc("/api/stats/feeding-gaps", method(http.MethodGet, middleware.RequireAuth(statsHandler.FeedingGaps)))
+	mux.HandleFunc("/api/stats/dashboard", method(http.MethodGet, middleware.RequireAuth(statsHandler.Dashboard)))
 
 	mux.HandleFunc("/api/preferences", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
