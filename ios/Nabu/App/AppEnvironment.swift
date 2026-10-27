@@ -57,6 +57,7 @@ final class AppEnvironment: ObservableObject {
             state.activeTimer = nil
             DurationTimer.save(nil)
             OfflineLogQueue.shared.removeAll()
+            PushOffer.reset()
         }
 
         if TestHooks.seedHomeForUITest {

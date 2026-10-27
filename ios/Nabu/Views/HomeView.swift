@@ -11,6 +11,7 @@ struct HomeView: View {
     @State private var undoChoreId: Int?
     @State private var undoChoreName: String?
     @State private var undoError: String?
+    @State private var offeringPush = false
     private let logStore: LogStore
 
     init(logStore: LogStore) {
@@ -114,6 +115,30 @@ struct HomeView: View {
         undoLogId = log.id
         undoChoreId = log.choreId
         undoChoreName = choreName
+        // The first log here earns the notifications offer.
+        if let userId = state.user?.id {
+            PushOffer.markDue(for: userId)
+            Task { await refreshPushOffer() }
+        }
+    }
+
+    /// Shows the offer while it's due and this device hasn't decided on
+    /// notifications.
+    private func refreshPushOffer() async {
+        guard let userId = state.user?.id, PushOffer.state(for: userId) == "due" else {
+            offeringPush = false
+            return
+        }
+        var status = TestHooks.pushAuthorizationOverride
+        if status == nil { status = await PushRegistrationController.shared.authorizationStatus }
+        offeringPush = status == .notDetermined && PushOffer.state(for: userId) == "due"
+    }
+
+    private func answerPushOffer(enable: Bool) {
+        guard let userId = state.user?.id else { return }
+        PushOffer.markDone(for: userId)
+        offeringPush = false
+        if enable { Task { await PushRegistrationController.shared.requestAuthorizationAndRegister() } }
     }
 
     private func clearUndo(_ logId: Int) {
@@ -177,6 +202,11 @@ struct HomeView: View {
         }
         return AnyView(
             ScrollView {
+                if offeringPush {
+                    PushOfferCard(onEnable: { answerPushOffer(enable: true) },
+                                  onDismiss: { answerPushOffer(enable: false) })
+                        .padding([.horizontal, .top])
+                }
                 HomeGrid(
                     chores: chores,
                     latestLogs: state.latestLogs,
@@ -197,6 +227,7 @@ struct HomeView: View {
             .refreshable {
                 await refreshHome()
             }
+            .task(id: state.user?.id) { await refreshPushOffer() }
         )
     }
 
@@ -248,5 +279,38 @@ struct HomeView: View {
         return visible.sorted {
             (orderMap[$0.id] ?? Int.max) < (orderMap[$1.id] ?? Int.max)
         }
+    }
+}
+
+/// The offer to turn on notifications, on Home after someone's first log
+/// (the PWA's `.push-offer`).
+struct PushOfferCard: View {
+    let onEnable: () -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Get reminders on this device?")
+                .font(.headline)
+                .foregroundColor(DesignColors.textPrimary)
+            Text("Nabu can remind you when something's due and tell you when someone in your household logs. You can change this any time in Settings.")
+                .font(.subheadline)
+                .foregroundColor(DesignColors.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 12) {
+                Button("Turn on", action: onEnable)
+                    .buttonStyle(NabuPrimaryButtonStyle())
+                    .accessibilityIdentifier("push-offer-enable")
+                Button("Not now", action: onDismiss)
+                    .buttonStyle(NabuSecondaryButtonStyle())
+                    .accessibilityIdentifier("push-offer-dismiss")
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(DesignColors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("push-offer")
     }
 }

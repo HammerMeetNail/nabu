@@ -2140,3 +2140,57 @@ describe("Household setup", () => {
     assert.equal(root.querySelector('[data-action="onboarding-share"]'), null);
   });
 });
+
+describe("Notifications offer after the first log", () => {
+  // jsdom has no Web Push: stand in for a browser that supports it.
+  const withPush = async ({ permission = "default", vapid = "BPUBKEY" } = {}, run) => {
+    const saved = { Notification: globalThis.Notification, PushManager: globalThis.PushManager, localStorage: globalThis.localStorage, sw: navigator.serviceWorker };
+    globalThis.Notification = { permission };
+    globalThis.PushManager = function PushManager() {};
+    globalThis.localStorage = dom.window.localStorage;
+    navigator.serviceWorker = {};
+    const meta = document.createElement("meta");
+    meta.name = "vapid-public-key";
+    meta.content = vapid;
+    document.head.appendChild(meta);
+    try { await run(); } finally {
+      meta.remove();
+      dom.window.localStorage.clear();
+      globalThis.Notification = saved.Notification;
+      globalThis.PushManager = saved.PushManager;
+      globalThis.localStorage = saved.localStorage;
+      navigator.serviceWorker = saved.sw;
+    }
+  };
+
+  it("offers only after a log here, until answered, where Web Push works", async () => {
+    const { shouldOfferPush, pushOfferState, setPushOfferState } = await import("../notifications.js");
+    await withPush({}, async () => {
+      assert.equal(shouldOfferPush(7), false, "not before a log");
+      setPushOfferState(7, "due");
+      assert.equal(pushOfferState(7), "due");
+      assert.equal(shouldOfferPush(7), true);
+      assert.equal(shouldOfferPush(8), false, "per account");
+      assert.equal(shouldOfferPush(null), false);
+      setPushOfferState(7, "done");
+      assert.equal(shouldOfferPush(7), false, "answered");
+    });
+    for (const browser of [{ permission: "granted" }, { permission: "denied" }, { vapid: "" }]) {
+      await withPush(browser, async () => {
+        setPushOfferState(7, "due");
+        assert.equal(shouldOfferPush(7), false, JSON.stringify(browser));
+      });
+    }
+    // Without Web Push at all (no Notification), nothing is offered.
+    assert.equal(shouldOfferPush(7), false);
+  });
+
+  it("renders the offer with Turn on and Not now", async () => {
+    const { renderPushOffer } = await import("../notifications.js");
+    const root = document.createElement("div");
+    root.innerHTML = renderPushOffer();
+    assert.equal(root.querySelector("h2").textContent, "Get reminders on this device?");
+    assert.deepEqual([...root.querySelectorAll("button")].map(b => [b.textContent, b.dataset.action]),
+      [["Turn on", "push-offer-enable"], ["Not now", "push-offer-dismiss"]]);
+  });
+});

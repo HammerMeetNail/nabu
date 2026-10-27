@@ -156,3 +156,31 @@ final class PushRegistrationController: ObservableObject {
         phase = phase.applying(event)
     }
 }
+
+/// Notifications are offered on Home after someone's first log, not at sign-up
+/// (the PWA's `.push-offer`): "due" once they have logged on this device,
+/// "done" once they have answered. Per account, on this device only.
+enum PushOffer {
+    private static let prefix = "nabu.pushOffer."
+
+    static func state(for userId: Int, defaults: UserDefaults = .standard) -> String {
+        defaults.string(forKey: prefix + String(userId)) ?? ""
+    }
+
+    /// After a log: the offer is due unless this account has answered it.
+    static func markDue(for userId: Int, defaults: UserDefaults = .standard) {
+        guard state(for: userId, defaults: defaults).isEmpty else { return }
+        defaults.set("due", forKey: prefix + String(userId))
+    }
+
+    static func markDone(for userId: Int, defaults: UserDefaults = .standard) {
+        defaults.set("done", forKey: prefix + String(userId))
+    }
+
+    /// `-resetState`: every account starts unoffered.
+    static func reset(defaults: UserDefaults = .standard) {
+        for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(prefix) {
+            defaults.removeObject(forKey: key)
+        }
+    }
+}

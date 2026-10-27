@@ -19,15 +19,39 @@ export async function clearAppBadge() {
   } catch { /* SW not available */ }
 }
 
-/**
- * Request notification permission. Must be called directly from a user-gesture
- * handler (click, submit) before any async/await operations.
- */
-export function requestNotificationPermission() {
-  if (typeof Notification === 'undefined') return;
-  if (Notification.permission === 'default') {
-    Notification.requestPermission().catch(() => {});
-  }
+// Notifications are offered on Home after someone's first log, not at sign-up
+// (improvement plan, Phase 2): "due" once they have logged on this device,
+// "done" once they have answered. Per account, on this device only.
+const pushOfferKey = userId => `nabu.pushOffer.${userId}`;
+
+export function pushOfferState(userId) {
+  try { return localStorage.getItem(pushOfferKey(userId)) || ""; } catch { return ""; }
+}
+
+export function setPushOfferState(userId, value) {
+  try { localStorage.setItem(pushOfferKey(userId), value); } catch { /* offered again next time */ }
+}
+
+/** Web Push can work here: the browser supports it and the server has keys. */
+export function pushAvailable() {
+  return typeof Notification !== "undefined" && typeof PushManager !== "undefined" && !!navigator.serviceWorker
+    && !!document.querySelector('meta[name="vapid-public-key"]')?.content;
+}
+
+/** The offer shows once this person has logged here and not yet decided. */
+export function shouldOfferPush(userId) {
+  return !!userId && pushOfferState(userId) === "due" && pushAvailable() && Notification.permission === "default";
+}
+
+export function renderPushOffer() {
+  return `<section class="push-offer" aria-labelledby="push-offer-title">
+    <h2 id="push-offer-title" class="push-offer-title">Get reminders on this device?</h2>
+    <p class="push-offer-text">Nabu can remind you when something's due and tell you when someone in your household logs. You can change this any time in Settings.</p>
+    <div class="push-offer-actions">
+      <button type="button" class="btn btn-primary btn-sm" data-action="push-offer-enable">Turn on</button>
+      <button type="button" class="btn btn-ghost btn-sm" data-action="push-offer-dismiss">Not now</button>
+    </div>
+  </section>`;
 }
 
 /**
