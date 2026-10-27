@@ -754,6 +754,27 @@ struct DefaultsResponse: Codable {
 
 struct LogResponse: Codable {
     let log: ChoreLog
+    /// The chore's latest log after this save (another log when this one was
+    /// backdated). nil when the server did not report it.
+    var latest: ChoreLog? = nil
+}
+
+/// A log edit's or delete's answer. `reportsLatest` with a nil `latest` means
+/// the chore has no logs left; without `reportsLatest` (an older server) the
+/// client reloads latest-per-chore instead.
+struct LogChangeResponse: Decodable {
+    let status: String
+    let latest: ChoreLog?
+    let reportsLatest: Bool
+
+    enum CodingKeys: String, CodingKey { case status, latest }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
+        reportsLatest = container.contains(.latest)
+        latest = try container.decodeIfPresent(ChoreLog.self, forKey: .latest)
+    }
 }
 
 struct LogsResponse: Codable {

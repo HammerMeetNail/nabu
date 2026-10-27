@@ -97,6 +97,25 @@ final class AppState: ObservableObject {
     @Published var statsSectionHidden: [String] = []
     @Published var statsWidgets: [StatsWidget] = []
 
+    /// Applies a log write's answer for its chore's latest log ("time ago" on
+    /// Home and the widget) instead of reloading every chore's latest log. A
+    /// latest-per-chore read already in flight no longer owns the result.
+    func applyLatestLog(_ latest: ChoreLog?, choreId: Int) {
+        _ = beginOperation("loadLatestLogsData")
+        if let latest { latestLogs[choreId] = latest } else { latestLogs.removeValue(forKey: choreId) }
+        WidgetDataCache.write(chores: WidgetDataCache.snapshots(from: self))
+    }
+
+    /// The chore's latest log after a save: the server's answer, or (from an
+    /// older server) the newer of the shown log and the saved one, so a
+    /// backdated save never replaces a newer time on Home.
+    func latestAfterSave(_ response: LogResponse, choreId: Int) -> ChoreLog {
+        if let latest = response.latest { return latest }
+        guard let shown = latestLogs[choreId],
+              (shown.completedAt, shown.id) > (response.log.completedAt, response.log.id) else { return response.log }
+        return shown
+    }
+
     var authorMembers: [Member] {
         members + historicalMembers.map {
             Member(userId: $0.userId, email: "", displayName: $0.displayName,

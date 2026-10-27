@@ -124,16 +124,20 @@ struct HomeView: View {
     }
 
     /// Deletes the just-created log and restores the tile's previous
-    /// "time ago" by refetching latest-per-chore (the map is keyed by chore
-    /// ID, and the previous log is only known to the server).
+    /// "time ago" from the server's answer (only the server knows the
+    /// previous log), or by refetching latest-per-chore from an older server.
     private func undo(logId: Int, choreId: Int?) {
         let owner = state.revision
         clearUndo(logId)
         Task {
             do {
-                let _: StatusResponse = try await logStore.deleteLog(logId: logId)
+                let response = try await logStore.deleteLog(logId: logId)
                 guard state.revision == owner else { return }
                 state.todayLogs.removeAll { $0.id == logId }
+                if let choreId, response.reportsLatest {
+                    state.applyLatestLog(response.latest, choreId: choreId)
+                    return
+                }
                 if let choreId, state.latestLogs[choreId]?.id == logId {
                     state.latestLogs.removeValue(forKey: choreId)
                 }

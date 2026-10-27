@@ -394,6 +394,18 @@ final class ReviewUITestResponses {
         func failed(_ message: String, status: Int = 500) throws -> (Data, URLResponse) {
             try json(["error": message], status: status)
         }
+        // A log write's answer, as the server sends it: the chore's latest log,
+        // or an explicit null when it has none left.
+        func withLatest(_ body: [String: Any], choreId: Int?) throws -> (Data, URLResponse) {
+            var body = body
+            if let choreId, let latest = latestLogs[choreId] {
+                body["latest"] = try JSONSerialization.jsonObject(with: apiEncoder.encode(latest))
+            } else {
+                body["latest"] = NSNull()
+            }
+            return (try JSONSerialization.data(withJSONObject: body), HTTPURLResponse(url: url, statusCode: 200,
+                httpVersion: nil, headerFields: ["Content-Type": "application/json"])!)
+        }
         if path == "/api/me" {
             if request.httpMethod == "DELETE" {
                 if scenario == "delete-account-options" {
@@ -465,7 +477,8 @@ final class ReviewUITestResponses {
             lastLog = log
             latestLogs[log.choreId] = log
             todayLogs.insert(log, at: 0)
-            return response
+            let created = try JSONSerialization.jsonObject(with: response.0) as? [String: Any] ?? [:]
+            return try withLatest(created, choreId: log.choreId)
         }
         if path == "/api/logs/latest-per-chore" {
             return try json(LatestLogsResponse(latestLogs: Dictionary(uniqueKeysWithValues: latestLogs.map { (String($0.key), $0.value) })))
@@ -483,12 +496,13 @@ final class ReviewUITestResponses {
             lastLog = updated
             todayLogs = todayLogs.map { $0.id == updated.id ? updated : $0 }
             latestLogs[updated.choreId] = updated
-            return try json(StatusResponse(status: "ok"))
+            return try withLatest(["status": "updated"], choreId: updated.choreId)
         }
         if path.hasPrefix("/api/logs/"), request.httpMethod == "DELETE", let id = Int(path.split(separator: "/").last ?? "") {
+            let choreId = latestLogs.first { $0.value.id == id }?.key ?? todayLogs.first { $0.id == id }?.choreId
             todayLogs.removeAll { $0.id == id }
             latestLogs = latestLogs.filter { $0.value.id != id }
-            return try json(StatusResponse(status: "ok"))
+            return try withLatest(["status": "deleted"], choreId: choreId)
         }
         if path == "/api/logs/history" {
             if scenario == "activity", attempt == 1, query.isEmpty { return try failed("Could not load Activity. Retry.") }

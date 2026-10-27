@@ -485,11 +485,14 @@ struct LogSheet: View {
         errorMessage = nil
         Task {
             do {
-                let _: StatusResponse = try await logStore.deleteLog(logId: logId)
+                let response = try await logStore.deleteLog(logId: logId)
                 guard state.revision == owner else { return }
                 state.todayLogs.removeAll { $0.id == logId }
-                let loader = LogDataLoader(api: logStore.api, state: state)
-                await loader.loadLatestLogsData()
+                if response.reportsLatest {
+                    state.applyLatestLog(response.latest, choreId: chore.id)
+                } else {
+                    await LogDataLoader(api: logStore.api, state: state).loadLatestLogsData()
+                }
                 guard state.revision == owner else { return }
                 dismiss()
             } catch {
@@ -544,7 +547,7 @@ struct LogSheet: View {
             do {
                 if let logId = log?.id {
                     let changedWhen = whenDate != log?.completedAt
-                    let _ = try await logStore.updateLog(
+                    let response = try await logStore.updateLog(
                         logId: logId, note: note, indicators: selectedIndicators,
                         volumeML: chore.hasVolumeML ? .some(volumeML) : nil, userId: selectedUserId,
                         completedAt: changedWhen ? completedAtISO : nil, hour: changedWhen ? hour : nil,
@@ -558,8 +561,9 @@ struct LogSheet: View {
                     )
                     guard state.revision == owner else { return }
                     let loader = LogDataLoader(api: logStore.api, state: state)
+                    if response.reportsLatest { state.applyLatestLog(response.latest, choreId: chore.id) }
                     await loader.loadTodayData()
-                    guard state.revision == owner else { return }
+                    guard state.revision == owner, !response.reportsLatest else { return }
                     await loader.loadLatestLogsData()
                 } else {
                     let followUpMinutes = followUpDays * 1440 + followUpHours * 60 + followUpMins
@@ -589,7 +593,7 @@ struct LogSheet: View {
                     switch outcome {
                     case .created(let response):
                         state.todayLogs.insert(response.log, at: 0)
-                        state.latestLogs[chore.id] = response.log
+                        state.applyLatestLog(state.latestAfterSave(response, choreId: chore.id), choreId: chore.id)
                         onLogged?(response.log)
                     case .queued(let pending):
                         var row = pending
