@@ -1,4 +1,5 @@
 import { deviceRecord, newKey, withBrowserLock } from "./device-store.js";
+import { clearSnapshot } from "./snapshot.js";
 
 const MIRROR = "nabu-browser-identity";
 let current = null;
@@ -31,6 +32,9 @@ async function publish(record, { required = false } = {}) {
   let durable = false;
   try { await deviceRecord("identity", () => record); durable = true; } catch (err) { if (required) throw err; }
   try { localStorage.setItem(MIRROR, JSON.stringify(record)); } catch { /* online use can still proceed */ }
+  // Saved offline Home data belongs to one active identity. Sign-out, a
+  // switch or an invalidated session must never leave it on the device.
+  if (record?.status !== "active") await clearSnapshot().catch(() => {});
   // Close previously displayed notifications as well as gating queued ones.
   navigator.serviceWorker?.controller?.postMessage({ type: "identity-changed" });
   return durable;
@@ -47,9 +51,20 @@ export async function storedIdentity() {
   }
 }
 
+// An unreachable server (network failure, timeout, 5xx from a proxy) says
+// nothing about the session, unlike a response that names the signed-in user.
+function sessionError(status) {
+  const err = new Error("Could not check your session. Please retry.");
+  err.status = status;
+  err.unreachable = !status || status >= 500;
+  return err;
+}
 async function readSession() {
-  const response = await fetch("/api/me", { credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(15000) });
-  if (!response.ok) throw new Error("Could not check your session. Please retry.");
+  let response;
+  try {
+    response = await fetch("/api/me", { credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(15000) });
+  } catch { throw sessionError(0); }
+  if (!response.ok) throw sessionError(response.status);
   return (await response.json()).user || null;
 }
 
@@ -69,7 +84,13 @@ export async function bootstrapIdentity() {
     if (previous?.status === "logout-pending") return { user: null, logoutPending: true, identity:contextSnapshot() };
     let user;
     try { user = await readSession(); }
-    catch (err) { await publish({ ...previous, revision:newKey(), status:"unconfirmed" }); throw err; }
+    catch (err) {
+      // Offline launch: keep the last confirmed identity so its saved Home
+      // and journal stay usable. The server's next answer settles it.
+      if (err.unreachable && previous?.status === "active") return { user:null, logoutPending:false, offline:true, identity:contextSnapshot() };
+      await publish({ ...previous, revision:newKey(), status:"unconfirmed" });
+      throw err;
+    }
     await adopt(user, previous);
     return { user, logoutPending: false, identity:contextSnapshot() };
   });
@@ -109,6 +130,12 @@ export async function checkIdentity(expected = contextSnapshot(), { control = {i
         return { user, logoutPending:false, identity:contextSnapshot() };
       }
     } catch (err) {
+      // Unreachable without a 401: still offline, not a different session.
+      if (err.unreachable && !invalidation && previous?.status === "active") {
+        err.offline = true;
+        err.identity = contextSnapshot();
+        throw err;
+      }
       await publish({ ...previous, revision:newKey(), status:"unconfirmed" });
       err.identity = contextSnapshot();
       throw err;

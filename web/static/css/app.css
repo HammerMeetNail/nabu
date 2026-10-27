@@ -4759,3 +4759,16 @@ body.sheet-open .timer-chip { visibility: hidden; }
   flex: 0 0 auto;
   accent-color: var(--primary);
 }
+
+/* Offline launch notice: Home is showing data saved on this device, and new
+   logs queue until the server confirms the session. Dark text stays readable
+   on the warning yellow in both themes. */
+.offline-banner {
+  margin: 8px 16px 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-btn);
+  background: var(--warning);
+  color: #1A1A2E;
+  font-size: 14px;
+  line-height: 1.35;
+}

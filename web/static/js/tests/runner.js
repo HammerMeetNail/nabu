@@ -1817,3 +1817,45 @@ describe("Chore icon and member avatar sinks escape untrusted values", () => {
     assertInert(html);
   });
 });
+
+describe("Offline Home snapshot", () => {
+  const identity = { status:"active", userId:1, householdId:2, bindingId:"b1", revision:"r1" };
+  const state = { user:{id:1}, household:{id:2, name:"Home"}, members:[{userId:1}], chores:[{id:3}],
+    latestLogs:{3:{id:9}}, choreOrder:[3], hiddenHomeChoreIDs:[], volumeUnit:"oz",
+    notifications:[{id:1}], historyLogs:[{id:5}] };
+
+  it("saves only Home fields, bound to exactly this identity", async () => {
+    const { pickSnapshot, snapshotMatches } = await import("../snapshot.js");
+    const snapshot = pickSnapshot(state, identity);
+    assert.deepEqual(snapshot.data.chores, [{id:3}]);
+    assert.equal(snapshot.data.volumeUnit, "oz");
+    assert.ok(!("notifications" in snapshot.data));
+    assert.ok(!("historyLogs" in snapshot.data));
+    assert.ok(snapshotMatches(snapshot, identity));
+    for (const other of [{...identity, status:"unconfirmed"}, {...identity, status:"logout-pending"},
+      {...identity, status:"signed-out"}, {...identity, bindingId:"b2"}, {...identity, userId:7},
+      {...identity, householdId:8}, null]) {
+      assert.ok(!snapshotMatches(snapshot, other), JSON.stringify(other));
+    }
+  });
+
+  it("never saves offline, unconfirmed or mismatched state", async () => {
+    const { canSnapshot } = await import("../snapshot.js");
+    assert.ok(canSnapshot(state, identity));
+    for (const extra of [{offline:true}, {sessionUnconfirmed:true}, {logoutPending:true}, {transitioning:true},
+      {accessSuspended:{}}, {household:{id:99}}, {user:{id:5}}, {household:null}]) {
+      assert.ok(!canSnapshot({...state, ...extra}, identity), JSON.stringify(extra));
+    }
+    assert.ok(!canSnapshot(state, {...identity, status:"changing"}));
+  });
+
+  it("restores Home fields with safe empty defaults", async () => {
+    const { applySnapshot, pickSnapshot } = await import("../snapshot.js");
+    const restored = {};
+    applySnapshot(restored, pickSnapshot({ user:{id:1}, household:{id:2} }, identity));
+    assert.equal(restored.household.id, 2);
+    assert.deepEqual(restored.chores, []);
+    assert.deepEqual(restored.latestLogs, {});
+    assert.deepEqual(restored.members, []);
+  });
+});

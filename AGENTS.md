@@ -117,6 +117,7 @@ Session cookie name: `nabu_session`. CSRF cookie name: `nabu_csrf`.
 - **`home.js`** — Home-tab grid and quick-log sheet. All log paths from the home tab must pass `slotHour`; nothing from the home tab should ever land in the Anytime row.
 - **`schedule.js`** — Schedule CRUD, pick-chore sheet, quick-log sheet, drag-and-drop rescheduling.
 - **`preferences.js`** — Chore ordering preferences.
+- **`snapshot.js`** — Home data saved for offline launch. Bound to the active identity's user, household and binding; saved only from confirmed online state; deleted by `browser-context.js` whenever the identity stops being active. Never display it for any other identity state, and never let an unreachable server (network failure, timeout, 5xx) sign the user out or hide it: only a server answer (no session, 401, 409 context change) does.
 
 ### When adding or changing predefined chores
 

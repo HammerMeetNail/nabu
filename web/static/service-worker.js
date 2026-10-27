@@ -4,21 +4,30 @@
 // version-hashed JS modules alongside a newly-deployed app.
 const CACHE_NAME = "nabu-static-v3";
 const OFFLINE_URL = "/static/offline.html";
+// The app shell (index.html) is the same for every page and account and holds
+// no account data. The last one served is kept so an offline launch can boot
+// the app, which then opens the Home saved for this device's active identity.
+const SHELL_KEY = "/__nabu-shell";
+const SHELL_SOURCE = "/today";
+// The server replaces this with every file the current shell loads, at the
+// exact versioned URLs the page requests (buildVersionedSW in server.go).
+const PRECACHE_URLS = [];
 const STATIC_ASSETS = [
-  "/static/css/app.css",
-  "/static/js/app.js",
-  "/static/js/state.js",
-  "/static/js/morph.js",
-  "/static/js/api.js",
   "/static/manifest.webmanifest",
   "/static/icons/icon.svg",
   OFFLINE_URL,
 ];
 
+async function cacheShell(cache, response) {
+  if (response?.ok && response.headers.get("X-Nabu-Shell")) await cache.put(SHELL_KEY, response);
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
     const cache = await caches.open(CACHE_NAME);
-    await cache.addAll(STATIC_ASSETS);
+    // One unavailable file must not block an update: cache what loads.
+    await Promise.allSettled([...STATIC_ASSETS, ...PRECACHE_URLS].map((url) => cache.add(url)));
+    await cacheShell(cache, await fetch(SHELL_SOURCE, { credentials: "same-origin" }).catch(() => null));
     await self.skipWaiting();
   })());
 });
@@ -189,10 +198,12 @@ self.addEventListener("fetch", (event) => {
   if (event.request.mode === "navigate") {
     event.respondWith((async () => {
       try {
-        return await fetch(event.request);
+        const response = await fetch(event.request);
+        await cacheShell(await caches.open(CACHE_NAME), response.clone()).catch(() => {});
+        return response;
       } catch {
         const cache = await caches.open(CACHE_NAME);
-        return await cache.match(OFFLINE_URL) || Response.error();
+        return await cache.match(SHELL_KEY) || await cache.match(OFFLINE_URL) || Response.error();
       }
     })());
     return;

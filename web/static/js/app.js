@@ -7,6 +7,7 @@ import { loadRecentAmounts } from './recent-amounts.js';
 import { formatAmount, entryMetric, entryVolumeUnit, amountInputValue, storedAmount, amountInputMax } from './metrics.js';
 import { syncNumberInput, setNumberInputEnabled } from './number-input.js';
 import { newKey } from "./device-store.js";
+import { applySnapshot, loadSnapshot, saveSnapshot } from "./snapshot.js";
 import { morphInnerHTML } from "./morph.js";
 import { createSheetController } from "./sheets.js";
 import { apiMe, apiFetch } from "./api.js";
@@ -110,7 +111,7 @@ function startNotifPoll() {
     notifPollTimer = null;
     if (!state.user) return;
     notifPollTimer = setInterval(() => {
-      if (!document.hidden && state.user && !sessionCheck) {
+      if (!document.hidden && state.user && !sessionCheck && !state.offline) {
         // Keep a reader's loaded pages stable; the open panel offers Refresh.
         if (document.querySelector("#notif-panel-container")?.hidden !== false) void loadNotifData();
         if (state.household) {
@@ -246,6 +247,7 @@ export function render(root) {
   }
 
   if (state.user && !state.transitioning && state.pendingLogs?.length) html = renderPendingWork() + html;
+  if (state.user && state.offline) html = renderOfflineBanner() + html;
   html = `<div class="view-root">${html}</div>`;
 
   // Keep a log's live form intact through unrelated data refreshes. Inputs,
@@ -1375,6 +1377,27 @@ function adoptUser(user, route = "/") {
   startNotifPoll();
 }
 
+// Offline launch: open the Home saved for this exact active identity. Its
+// journal still accepts logs, which sync once the server confirms the session.
+async function openSavedHome() {
+  const snapshot = await loadSnapshot(contextSnapshot()).catch(() => null);
+  if (!snapshot) return false;
+  adoptUser(null);
+  applySnapshot(state, snapshot);
+  state.offline = true;
+  state.sessionUnconfirmed = false;
+  state.activeTimer = loadTimer(contextSnapshot());
+  await hydratePendingLogs();
+  return true;
+}
+function persistSnapshot() {
+  const identity = contextSnapshot();
+  if (identity) void saveSnapshot(state, identity).catch(() => {});
+}
+function renderOfflineBanner() {
+  return `<div class="offline-banner" role="status">You're offline. Showing what was saved on this device; new logs sync when you reconnect.</div>`;
+}
+
 let identityUIRevision = 0;
 let deleteAccountIntent = 0;
 let deleteAccountAttempt = null;
@@ -1409,9 +1432,17 @@ async function confirmBrowserSession({ invalidate = false, expected = contextSna
       }
       if (result.identity.revision !== expected?.revision || entry.invalidated) {
         await finishIdentity(result,entry.route,() => { state.logoutPending = result.logoutPending; });
-      } else state.user = result.user;
+      } else {
+        state.user = result.user;
+        if (state.offline) { state.offline = false; startNotifPoll(); }
+      }
       return !!result.user && resultIsCurrent(result);
     } catch (err) {
+      // Unreachable, not refused: keep showing this identity's saved data.
+      if (err.offline && entry.ticket === identityUIRevision && !entry.invalidated) {
+        if (state.user && !state.offline) { state.offline = true; render(document.querySelector("#app")); }
+        return false;
+      }
       if (entry.ticket === identityUIRevision && err.identity?.revision === contextSnapshot()?.revision) {
         closeAllPanels(); adoptUser(null,entry.route); state.sessionUnconfirmed = true;
         render(document.querySelector("#app"));
@@ -1506,6 +1537,7 @@ async function reloadAfterAuth() {
   }
   await withCurrentContext(syncTimezone(state), contextScope);
   if (!scope.current() || !state.household) return;
+  persistSnapshot();
   // Notifications update their own panel/badge and must not delay Home.
   void loadNotifData().catch(() => {});
   const route = state.currentRoute || window.location.pathname || "/";
@@ -1754,9 +1786,13 @@ export async function init() {
 
   try {
     const identity = await bootstrapIdentity();
-    state.user = identity.user;
-    state.logoutPending = identity.logoutPending;
-    state.activeTimer = loadTimer(contextSnapshot());
+    if (identity.offline) {
+      if (!await openSavedHome()) state.sessionUnconfirmed = true;
+    } else {
+      state.user = identity.user;
+      state.logoutPending = identity.logoutPending;
+      state.activeTimer = loadTimer(contextSnapshot());
+    }
   } catch { state.user = null; state.sessionUnconfirmed = true; }
 
   if (state.user && operatorLoginDestination()) {
@@ -1764,7 +1800,7 @@ export async function init() {
     return;
   }
 
-  if (state.user) {
+  if (state.user && !state.offline) {
     maybeSubscribePush().catch(() => {});
   }
 
@@ -1787,7 +1823,9 @@ export async function init() {
     if (record?.status !== "active") return;
     try {
       const result = await bootstrapIdentity();
-      if (ticket === identityUIRevision && resultIsCurrent(result)) await finishIdentity(result,route);
+      if (ticket !== identityUIRevision || !resultIsCurrent(result)) return;
+      if (result.offline) { if (await openSavedHome()) render(app); return; }
+      await finishIdentity(result,route);
     } catch { /* A newer identity event owns recovery. */ }
   });
 
@@ -2024,7 +2062,11 @@ export async function init() {
         break;
       case "retry-session":
         e.preventDefault();
-        bootstrapIdentity().then(result => finishIdentity(result)).catch(() => showToast("Could not check your session. Please retry.","error"));
+        bootstrapIdentity().then(async result => {
+          if (!result.offline) return finishIdentity(result);
+          if (await openSavedHome()) render(app);
+          else showToast("Still offline. Reconnect to continue.","error");
+        }).catch(() => showToast("Could not check your session. Please retry.","error"));
         break;
       case "logout":
       case "retry-logout":
@@ -3776,7 +3818,7 @@ export async function init() {
     }
   });
 
-  if (state.user) await reloadAfterAuth();
+  if (state.user && !state.offline) await reloadAfterAuth();
 
   // ── PWA manifest shortcuts (?quicklog=…) ───────────────────────────────────
   // Long-pressing the home-screen icon exposes "Log feed", "Log chore", and
@@ -4283,10 +4325,16 @@ export async function init() {
     // replay or push registration. Old UI data is never authority to resume.
     if (!await loadChoreData() || !scope.current()) return;
     const refreshNotifications = document.querySelector("#notif-panel-container")?.hidden !== false;
-    await Promise.all([refreshNotifications ? loadNotifData() : undefined,loadHouseholdData(),reloadViewData(),flushOfflineQueue(null,{confirmed:true})]);
-    if (scope.current()) { maybeSubscribePush().catch(() => {}); render(app); }
+    await Promise.all([refreshNotifications ? loadNotifData() : undefined,loadHouseholdData(),loadLatestLogsData(),reloadViewData(),flushOfflineQueue(null,{confirmed:true})]);
+    if (scope.current()) { maybeSubscribePush().catch(() => {}); render(app); persistSnapshot(); }
   }
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) void resumeSession(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) persistSnapshot();
+    else void resumeSession();
+  });
+  window.addEventListener("pagehide", persistSnapshot);
+  // An unreachable server sends no "online" event; keep trying while offline.
+  setInterval(() => { if (state.offline && !document.hidden) void resumeSession(); }, 30000);
   if (state.user) startNotifPoll();
 
   // Tick the home grid's "X ago" labels once a minute while the home tab is
