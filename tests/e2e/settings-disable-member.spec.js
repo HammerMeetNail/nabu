@@ -128,7 +128,7 @@ test.describe('Settings - Disable Member Access', () => {
     for (const route of ['/', '/schedule', '/activity', '/stats']) {
       await sitterPage.goto(route);
       await expect(sitterPage.getByText('Access disabled')).toBeVisible();
-      await expect(sitterPage.getByText('Set Up Household')).toHaveCount(0);
+      await expect(sitterPage.getByText(/Welcome to Nabu|Set up (your|a) household/)).toHaveCount(0);
     }
 
     // Stats explains the real reason rather than showing an empty household.

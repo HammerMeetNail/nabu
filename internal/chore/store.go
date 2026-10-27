@@ -39,6 +39,9 @@ type Chore struct {
 	// visible to all household members; "admins" is visible only to owners and
 	// admins (private household tasks).
 	Visibility string `json:"visibility"`
+	// DefaultName is the name a pack gave this activity ("Feed Mongo"), which
+	// Restore default returns to. Empty means the template's name.
+	DefaultName string `json:"-"`
 }
 
 // MarshalJSON encodes nil list fields as [] so clients can decode them into
@@ -128,4 +131,7 @@ type Store interface {
 	DeleteChore(ctx context.Context, id int64) error
 	ReorderChores(ctx context.Context, householdID int64, choreIDs []int64) error
 	SeedPredefinedChores(ctx context.Context, householdID int64) error
+	// AddPackChores inserts predefined activities, skipping any whose name the
+	// household already uses, and returns the ones it added.
+	AddPackChores(ctx context.Context, householdID int64, chores []Chore) ([]Chore, error)
 }

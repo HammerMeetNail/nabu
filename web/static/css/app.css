@@ -4801,3 +4801,21 @@ body.sheet-open .timer-chip { visibility: hidden; }
 .profile-color-swatch { width: 40px; height: 40px; border-radius: 50%; border: 3px solid var(--surface); box-shadow: 0 0 0 1px var(--border); }
 .profile-color input:checked + .profile-color-swatch { box-shadow: 0 0 0 3px var(--text); }
 .profile-color input:focus-visible + .profile-color-swatch { outline: 2px solid var(--primary); outline-offset: 3px; }
+
+/* Setup without a household: name, household, then the activity packs. */
+.onboarding h2 { margin-bottom: 8px; }
+.onboarding-step { font-size: 13px; color: var(--text-secondary); margin-bottom: 4px; }
+.onboarding-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+.onboarding-actions .btn { flex: 1 1 140px; min-height: 44px; }
+.pack-options { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.pack-option { border: 1px solid var(--border); border-radius: var(--radius-card); background: var(--surface); }
+.pack-option--on { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.pack-toggle { display: flex; align-items: center; gap: 12px; padding: 12px; min-height: 56px; cursor: pointer; }
+.pack-toggle input { width: 22px; height: 22px; flex: none; margin: 0; accent-color: var(--primary); }
+.pack-icon { font-size: 26px; line-height: 1; flex: none; }
+.pack-text { display: flex; flex-direction: column; min-width: 0; }
+.pack-title { font-weight: 600; color: var(--text); }
+.pack-summary { font-size: 13px; color: var(--text-secondary); }
+.pack-names { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px 46px; }
+.pack-name-input { width: 100%; min-height: 44px; }
+.pack-names .btn { align-self: flex-start; }

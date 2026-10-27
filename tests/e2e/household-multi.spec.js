@@ -60,17 +60,17 @@ test.describe('Multi-Household', () => {
     await page.click('button[type="submit"]');
     await page.waitForSelector('#hh-indicator:not([hidden])', { timeout: 10000 });
 
-    // Navigate to settings to see the create-household form
-    await page.click('[data-nav="settings"]');
-    await page.waitForSelector('#hh-name', { timeout: 5000 });
-
-    // Type a name; initials should auto-fill
-    await page.fill('#hh-name', 'Jones Home');
-    // Trigger the input event so auto-initials fires
-    await page.dispatchEvent('#hh-name', 'input');
-    await page.waitForTimeout(100);
-    const initials = await page.inputValue('#hh-initials');
-    expect(initials).toBe('JH');
+    // Setup's household step fills the initials from the name as it's typed
+    await page.fill('#onboarding-name', 'Sam Jones');
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await expect(page.locator('#onboarding-household')).toHaveValue("The Joneses' home");
+    await expect(page.locator('#onboarding-initials')).toHaveValue('TJH');
+    await page.fill('#onboarding-household', 'Jones Home');
+    await expect(page.locator('#onboarding-initials')).toHaveValue('JH');
+    // Initials typed by hand are kept.
+    await page.fill('#onboarding-initials', 'JNS');
+    await page.fill('#onboarding-household', 'Jones Family Home');
+    await expect(page.locator('#onboarding-initials')).toHaveValue('JNS');
   });
 
   test('user can create a second household via API', async ({ page }) => {

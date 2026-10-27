@@ -39,7 +39,7 @@ make fmt         # Format Go code
 | `app` | Route registration, middleware chain, dependency wiring, JS/SW cache-busting |
 | `auth` | Registration, login, sessions, magic link, password reset, Google OIDC |
 | `household` | Household creation, invite system, role management, multi-household switching |
-| `chore` | Chore CRUD, reorder, restore defaults, 16 predefined system chores |
+| `chore` | Chore CRUD, reorder, restore defaults, activity packs (`packs.go`) and the 16 predefined chores households got before packs |
 | `log` | Chore logging (idempotent per chore/day), today/week/month/history queries |
 | `schedule` | Recurring schedules with time-slot matching engine, drag-and-drop rescheduling |
 | `notification` | In-app notification store, per-type notification preferences, push dispatch |
@@ -150,7 +150,7 @@ Rate budgets apply independently to each server replica; they are not a distribu
 `GET /api/households` `POST /api/households/{id}/activate`
 
 ### Chores
-`GET /api/chores` `POST /api/chores` `GET /api/chores/{id}` `PATCH /api/chores/{id}` `DELETE /api/chores/{id}` `POST /api/chores/reorder` `GET /api/chores/defaults` `POST /api/chores/seed-defaults` `POST /api/chores/{id}/restore-default`
+`GET /api/chores` `POST /api/chores` `GET /api/chores/{id}` `PATCH /api/chores/{id}` `DELETE /api/chores/{id}` `POST /api/chores/reorder` `GET /api/chores/defaults` `POST /api/chores/seed-defaults` `POST /api/chores/packs` `POST /api/chores/{id}/restore-default` `GET /api/packs`
 
 ### Logging
 `POST /api/logs` `PATCH /api/logs/{id}` `DELETE /api/logs/{id}` `GET /api/logs/today` `GET /api/logs/week` `GET /api/logs/month` `GET /api/logs/history` `GET /api/logs/latest-per-chore`

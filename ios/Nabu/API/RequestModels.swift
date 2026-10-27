@@ -51,6 +51,17 @@ struct JoinHouseholdRequest: Codable {
     let inviteCode: String
 }
 
+/// A chosen activity pack and the names it applies to. No names: the field
+/// is left out.
+struct PackPick: Codable, Equatable {
+    let key: String
+    var names: [String]? = nil
+}
+
+struct AddPacksRequest: Codable, Equatable {
+    let packs: [PackPick]
+}
+
 struct UpdateMemberRoleRequest: Codable {
     let role: String
 }

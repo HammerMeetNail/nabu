@@ -215,26 +215,22 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     await expect(page.locator('#top-bar')).not.toBeHidden({ timeout: 5000 });
     await expect(page.locator('#bottom-tabs')).not.toBeHidden();
 
-    // === Welcome view (no household) ===
-    const welcomeText = page.locator('text=Set up your household');
-    await expect(welcomeText).toBeVisible({ timeout: 3000 });
-
-    // Click "Set Up Household" button
+    // === Setup (no household): Home asks for it, Settings links to it ===
+    await expect(page.getByRole('heading', { name: 'Welcome to Nabu' })).toBeVisible({ timeout: 3000 });
     await page.locator('a[data-nav="settings"]').first().click();
-
-    // Should be on settings page with household creation form
-    await expect(page.locator('#create-household-form')).toBeVisible({ timeout: 5000 });
-    // Should also see join household form
-    await expect(page.locator('#join-household-form')).toBeVisible();
+    await expect(page.locator('#join-household-form')).toBeVisible({ timeout: 5000 });
     // Sign Out is now in the profile sheet, not settings
     await expect(page.locator('button[data-action="logout"]')).toHaveCount(0);
+    await page.locator('.settings-view').getByRole('link', { name: 'Set up a household' }).click();
 
     // === Create Household ===
-    await page.fill('#hh-name', 'Exhaustive Test Home');
-    await page.locator('#create-household-form button[type="submit"]').click();
-
-    // Wait for household creation to finish and home grid to appear before
-    // navigating to calendar (avoids race with doCreateHousehold's final render).
+    await page.fill('#onboarding-name', 'Exhaustive Tester');
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.fill('#onboarding-household', 'Exhaustive Test Home');
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.locator('[data-onboarding-pack="home"]').check();
+    await page.getByRole('button', { name: 'Create household' }).click();
+    await page.getByRole('button', { name: 'Go to Home' }).click();
     await page.waitForSelector('.home-grid', { timeout: 15000 });
 
     // === Navigate to Settings ===
@@ -332,12 +328,9 @@ test.describe('Exhaustive: Settings Page States', () => {
 
     // Go to settings
     await page.click('a[data-nav="settings"]');
-    await expect(page.locator('#create-household-form')).toBeVisible({ timeout: 5000 });
 
-    // Should see create household form
-    await expect(page.locator('#create-household-form')).toBeVisible({ timeout: 3000 });
-    await expect(page.locator('#hh-name')).toBeVisible();
-    await expect(page.locator('#create-household-form button[type="submit"]')).toContainText('Create Household');
+    // Setup lives on Home; Settings links to it
+    await expect(page.locator('.settings-view').getByRole('link', { name: 'Set up a household' })).toBeVisible({ timeout: 5000 });
 
     // Should see join household form
     await expect(page.locator('#join-household-form')).toBeVisible();

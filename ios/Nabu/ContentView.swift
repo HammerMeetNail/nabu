@@ -6,6 +6,9 @@ struct ContentView: View {
     @StateObject private var auth = AuthStore(api: APIClient(baseURL: URL(string: "http://localhost:8080")!))
     @StateObject private var dataLoader = DataLoader()
     @StateObject private var accountDeletion = AccountDeletionModel()
+    /// Outlives the onboarding screen, which creating a household replaces
+    /// for a moment (see HouseholdSetup).
+    @StateObject private var householdSetup = HouseholdSetup()
     @State private var hasCheckedSession = false
     @State private var hasLoadedData = false
     /// Identity revision of the `loadAppData()` run currently in flight, so the
@@ -44,8 +47,8 @@ struct ContentView: View {
                     Task { _ = await auth.logout() }
                 }
                 .onAppear { auth.configure(api: environment.apiClient) }
-            } else if state.household == nil {
-                OnboardingView(auth: auth)
+            } else if state.household == nil || householdSetup.holdsMainTabs(for: state.user) {
+                OnboardingView(auth: auth, setup: householdSetup, reload: { await dataLoader.reloadAfterAuth() })
                     .onAppear { auth.configure(api: environment.apiClient) }
                     .onChange(of: state.household) { _, newHousehold in
                         if newHousehold != nil {
@@ -74,6 +77,8 @@ struct ContentView: View {
         .task {
             if !hasCheckedSession {
                 let args = ProcessInfo.processInfo.arguments
+                // The scene's onAppear may not have run yet.
+                environment.configure(with: state)
                 dataLoader.configure(api: environment.apiClient, state: state)
                 auth.configure(api: environment.apiClient)
                 if TestHooks.seedHomeForUITest {
@@ -191,7 +196,7 @@ struct ContentView: View {
         if let household = await auth.joinHousehold(code: code) {
             let owner = state.revision
             state.pendingInviteCode = nil
-            _ = await auth.seedDefaults()
+            // The household has its activities already: joining seeds none.
             guard state.revision == owner else { return }
             state.household = household
             state.activeHouseholdId = household.id

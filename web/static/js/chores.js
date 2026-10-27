@@ -26,6 +26,9 @@ const EDIT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"
  * Shows all chores (including hidden ones) sorted by user preference order,
  * with drag handles, visibility toggles, and edit buttons.
  */
+// Opens the activity pack picker (onboarding.js) for this household.
+const ADD_PACKS_BUTTON = `<button type="button" class="btn btn-secondary btn-sm" data-action="packs-open">Add activities</button>`;
+
 export function renderChoresView(state) {
   if (!state.household) {
     if (state.accessSuspended) {
@@ -40,7 +43,7 @@ export function renderChoresView(state) {
         <div class="empty-state-icon">🏠</div>
         <div class="empty-state-title">No household set up</div>
         <p>Set up your household to manage chores.</p>
-        <a class="btn btn-primary mt-2" href="#" data-nav="settings">Set Up Household</a>
+        <a class="btn btn-primary mt-2" href="/today" data-nav="home">Set up your household</a>
       </div>
     </div>`;
   }
@@ -50,7 +53,7 @@ export function renderChoresView(state) {
 
   if (sortedChores.length === 0) {
     return `<div class="chores-view">
-      <div class="chores-view-header"><h2>Chores</h2></div>
+      <div class="chores-view-header"><h2>Chores</h2>${ADD_PACKS_BUTTON}</div>
       <div class="empty-state">
         <div class="empty-state-icon">📋</div>
         <div class="empty-state-title">No chores yet</div>
@@ -85,7 +88,7 @@ export function renderChoresView(state) {
   }).join("");
 
   return `<div class="chores-view">
-    <div class="chores-view-header"><h2>Chores</h2></div>
+    <div class="chores-view-header"><h2>Chores</h2>${ADD_PACKS_BUTTON}</div>
     <p class="chores-view-hint">Drag ⋮⋮ to reorder · ${EYE_OPEN_SVG} to show/hide on Home</p>
     <div class="chore-list" id="chore-list">${rows}</div>
     <button type="button" class="fab" data-action="chore-add" aria-label="Add chore">+</button>

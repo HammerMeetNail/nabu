@@ -752,6 +752,28 @@ struct DefaultsResponse: Codable {
     @EmptyIfNull var defaults: [Chore]
 }
 
+/// An activity pack offered during setup and in Manage (`GET /api/packs`).
+struct ActivityPack: Codable, Identifiable, Equatable {
+    let key: String
+    let version: Int
+    let title: String
+    let icon: String
+    let summary: String
+    /// Set for a pack that takes names (a baby, pets): the label for one name.
+    let nameLabel: String?
+    var id: String { key }
+}
+
+struct ActivityPacksResponse: Codable {
+    @EmptyIfNull var packs: [ActivityPack]
+}
+
+/// The activities `POST /api/chores/packs` added; ones the household already
+/// had are left out.
+struct AddPacksResponse: Codable {
+    @EmptyIfNull var added: [Chore]
+}
+
 struct LogResponse: Codable {
     let log: ChoreLog
 }

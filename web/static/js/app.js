@@ -46,6 +46,7 @@ import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./ch
 import { renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
 import { renderScheduleTab } from "./schedule-tab.js";
 import { renderProfileSheet, renderProfileForm } from "./profile.js";
+import { createOnboarding, duplicateName, householdNameFor, onboardingPicks, renderOnboarding, renderPacksSheet, MAX_PACK_NAMES } from "./onboarding.js";
 
 /**
  * Reads the current frequency settings from a bottom sheet's freq <select>
@@ -427,8 +428,8 @@ function renderActivityView() {
     // inviting them to set one up.
     if (state.accessSuspended) return renderAccessSuspendedCard(state);
     return `<div class="card mt-3"><h2>Welcome!</h2>
-      <p>Hi ${escapeHTML(state.user.email || '')}! Set up your household to get started.</p>
-      <a class="btn btn-primary mt-2" href="#" data-nav="settings">Set Up Household</a></div>`;
+      <p>Hi ${escapeHTML(state.user.displayName || state.user.email || '')}! Set up your household to get started.</p>
+      <a class="btn btn-primary mt-2" href="/today" data-nav="home">Set up your household</a></div>`;
   }
   if (chores.length === 0) {
     return `<div class="today-view"><h2>Activity</h2>
@@ -488,7 +489,23 @@ function renderHistoryView() {
   return mainView;
 }
 
+// The pack picker's draft: Manage's sheet, or setup.
+function packDraft() {
+  return state.activeSheet === "packs" ? state.activeSheetData : state.onboarding;
+}
+
+// The server's answer, not loaded data, decides that the user has no
+// household: a failed household read must never offer to create another.
+function needsOnboarding() {
+  return !!state.user && !state.accessSuspended && (!state.user.householdId || !!state.onboarding?.active);
+}
+
 function renderHomeViewWrapper() {
+  if (needsOnboarding()) {
+    state.onboarding ||= createOnboarding(state.user);
+    if (state.onboarding.step === "packs" && !state.packs && !state.packsLoading && !state.packsError) void loadPacks();
+    return renderOnboarding(state);
+  }
   const header = renderHomeHeader(state);
   const isManage = state.homeView === "manage";
   const mainView = isManage
@@ -524,6 +541,15 @@ function renderHomeViewWrapper() {
       </div>`;
     }
   }
+  if (state.activeSheet === "packs") {
+    if (!state.packs && !state.packsLoading && !state.packsError) void loadPacks();
+    return `<div class="sheet-overlay-wrapper">
+      ${header}
+      ${mainView}
+      <div class="sheet-backdrop" data-action="close-sheet" aria-hidden="true"></div>
+      ${renderPacksSheet(state)}
+    </div>`;
+  }
   if (state.activeSheet === "chore-edit") {
     const { choreId } = state.activeSheetData || {};
     const isNew = choreId === null || choreId === undefined;
@@ -555,8 +581,8 @@ function renderCalendarView() {
     // inviting them to set one up.
     if (state.accessSuspended) return renderAccessSuspendedCard(state);
     return `<div class="card mt-3"><h2>Welcome!</h2>
-      <p>Hi ${escapeHTML(state.user.email || '')}! Set up your household to get started.</p>
-      <a class="btn btn-primary mt-2" href="#" data-nav="settings">Set Up Household</a></div>`;
+      <p>Hi ${escapeHTML(state.user.displayName || state.user.email || '')}! Set up your household to get started.</p>
+      <a class="btn btn-primary mt-2" href="/today" data-nav="home">Set up your household</a></div>`;
   }
   if (chores.length === 0) {
     return `<div class="today-view"><h2>Today</h2>
@@ -652,8 +678,8 @@ function renderScheduleView() {
     // inviting them to set one up.
     if (state.accessSuspended) return renderAccessSuspendedCard(state);
     return `<div class="card mt-3"><h2>Welcome!</h2>
-      <p>Hi ${escapeHTML(state.user.email || '')}! Set up your household to get started.</p>
-      <a class="btn btn-primary mt-2" href="#" data-nav="settings">Set Up Household</a></div>`;
+      <p>Hi ${escapeHTML(state.user.displayName || state.user.email || '')}! Set up your household to get started.</p>
+      <a class="btn btn-primary mt-2" href="/today" data-nav="home">Set up your household</a></div>`;
   }
   if (chores.length === 0) {
     return `<div class="schedule-view"><h2>Upcoming</h2>
@@ -1631,6 +1657,19 @@ async function doResetPassword(form) {
   } catch (err) { await recoverIdentity(err); if (form.isConnected) setError("#reset-error",err.message || "Password reset failed"); }
   finally { delete form.dataset.busy; }
 }
+// PATCH /api/me, then the signed-in user and their member row. False when a
+// newer identity owns the screen.
+async function saveProfile(displayName, avatarColor) {
+  const contextScope = captureScope(state);
+  const { data } = await withCurrentContext(apiFetch("/api/me", { method: "PATCH",
+    body: JSON.stringify(avatarColor ? { displayName, avatarColor } : { displayName }) }), contextScope);
+  if (!contextScope.current() || data?.user?.id !== state.user?.id) return false;
+  const { displayName: name, avatarColor: color } = data.user;
+  state.user = { ...state.user, displayName: name, avatarColor: color };
+  state.members = (state.members || []).map(m => m.userId === state.user.id ? { ...m, displayName: name, avatarColor: color } : m);
+  return true;
+}
+
 // Settings → Account: the name and color the household sees.
 async function doSaveProfile(form) {
   if (form.dataset.busy) return;
@@ -1641,12 +1680,7 @@ async function doSaveProfile(form) {
   const contextScope = captureScope(state);
   form.dataset.busy = "true";
   try {
-    const { data } = await withCurrentContext(apiFetch("/api/me", { method: "PATCH",
-      body: JSON.stringify(avatarColor ? { displayName, avatarColor } : { displayName }) }), contextScope);
-    if (!contextScope.current() || data?.user?.id !== state.user?.id) return;
-    const { displayName: name, avatarColor: color } = data.user;
-    state.user = { ...state.user, displayName: name, avatarColor: color };
-    state.members = (state.members || []).map(m => m.userId === state.user.id ? { ...m, displayName: name, avatarColor: color } : m);
+    if (!await saveProfile(displayName, avatarColor)) return;
     render(document.querySelector("#app"));
     showToast("Profile saved", "success");
   } catch (err) {
@@ -2256,6 +2290,38 @@ export async function init() {
             render(app);
           }
         }));
+        break;
+      case "onboarding-step": {
+        const draft = state.onboarding;
+        if (!draft || draft.saving) break;
+        draft.step = actionEl.dataset.step; draft.error = "";
+        render(app);
+        break;
+      }
+      case "packs-open":
+        state.activeSheet = "packs";
+        state.activeSheetData = { picks: {}, error: "", saving: false };
+        render(app);
+        break;
+      case "onboarding-add-name": {
+        const pick = packDraft()?.picks[actionEl.dataset.pack];
+        if (!pick || pick.names.length >= MAX_PACK_NAMES) break;
+        pick.names.push("");
+        render(app);
+        document.getElementById(`pack-${actionEl.dataset.pack}-name-${pick.names.length - 1}`)?.focus();
+        break;
+      }
+      case "onboarding-load-packs":
+        void loadPacks();
+        break;
+      case "onboarding-share": {
+        const url = `${window.location.origin}/join?code=${encodeURIComponent(actionEl.dataset.code)}`;
+        navigator.share?.({ title: "Join our household on Nabu", url }).catch(() => {});
+        break;
+      }
+      case "onboarding-done":
+        state.onboarding = null;
+        render(app);
         break;
       case "copy-invite-link": {
         e.preventDefault();
@@ -3667,8 +3733,28 @@ export async function init() {
   // Uses "change" (not "click") because <select> fires "change" on selection.
   document.addEventListener('input', (e) => {
     if (e.target.matches('.number-input input')) syncNumberInput(e.target);
+    const draft = state.onboarding, field = e.target.dataset?.onboardingField;
+    if (draft && field && field !== "color") {
+      draft[field] = e.target.value;
+      if (field === "initials") draft.initialsEdited = true;
+      if (field === "household" && !draft.initialsEdited) {
+        draft.initials = generateInitials(e.target.value);
+        const initials = document.getElementById("onboarding-initials");
+        if (initials) initials.value = draft.initials;
+      }
+    }
+    const pack = e.target.dataset?.onboardingPackName, picks = packDraft()?.picks;
+    if (pack && picks?.[pack]) picks[pack].names[Number(e.target.dataset.index)] = e.target.value;
   });
   document.addEventListener("change", (e) => {
+    if (state.onboarding && e.target.dataset?.onboardingField === "color") { state.onboarding.color = e.target.value; return; }
+    if (packDraft() && e.target.dataset?.onboardingPack) {
+      const draft = packDraft(), key = e.target.dataset.onboardingPack;
+      draft.picks[key] = { on: e.target.checked, names: draft.picks[key]?.names || [""] };
+      draft.error = "";
+      render(document.querySelector("#app"));
+      return;
+    }
     // Keep the deletion opt-ins in state so a re-render cannot untick them.
     if (e.target.id === "delete-account-logs") { state.deleteAccountLogs = e.target.checked; return; }
     if (e.target.id === "delete-account-notes") { state.deleteAccountNotes = e.target.checked; return; }
@@ -3886,14 +3972,28 @@ export async function init() {
       case "create-api-key":
         void doCreateApiKey(form);
         break;
-      case "create-household":
-        doCreateHousehold(form);
-        break;
       case "update-household":
         doUpdateHousehold(form);
         break;
       case "join-household":
         doJoinHousehold(form);
+        break;
+      case "onboarding-name":
+        void doOnboardingName();
+        break;
+      case "onboarding-household": {
+        const draft = state.onboarding;
+        if (!draft) break;
+        if (!draft.household.trim()) { draft.error = "Name your household"; render(document.querySelector("#app")); break; }
+        draft.error = ""; draft.step = "packs";
+        render(document.querySelector("#app"));
+        break;
+      }
+      case "onboarding-create":
+        void doOnboardingCreate();
+        break;
+      case "packs-add":
+        void doAddPacks();
         break;
       case "new-chore-from-sheet":
         doCreateChoreFromSheet(form);
@@ -4613,7 +4713,7 @@ async function reloadViewData() {
   if (scope.current()) await withCurrentContext(hydratePendingLogs(), contextScope);
 }
 
-async function runHouseholdTransition(run, {seed=false,route=activeRoute()} = {}) {
+async function runHouseholdTransition(run, {seed=null,route=activeRoute()} = {}) {
   if (state.transitioning) return;
   const ticket = ++identityUIRevision, app = document.querySelector("#app");
   closeAllPanels(); adoptUser(state.user,route); state.transitioning=true; render(app);
@@ -4622,7 +4722,7 @@ async function runHouseholdTransition(run, {seed=false,route=activeRoute()} = {}
     if (ticket !== identityUIRevision || !resultIsCurrent(result)) return;
     adoptUser(result.user,route);
     const scope = captureScope(state);
-    if (seed && result.ok) { await seedDefaultChores(); if (!scope.current()) return; }
+    if (seed && result.ok) { await seed(); if (!scope.current()) return; }
     await reloadAfterAuth();
     if (!scope.current()) return;
     if (!result.ok) showToast(result.error || "Could not change household. Please retry.","error");
@@ -4634,17 +4734,105 @@ async function runHouseholdTransition(run, {seed=false,route=activeRoute()} = {}
   if (ticket === identityUIRevision) { state.transitioning=false; render(app); }
 }
 
-async function doCreateHousehold(form) {
-  const name = form.querySelector("#hh-name").value;
-  const initials = (form.querySelector("#hh-initials")?.value || "").trim();
-  return runHouseholdTransition(() => createHousehold(name, initials || generateInitials(name)), {seed:true,route:"/"});
+async function loadPacks() {
+  const contextScope = captureScope(state);
+  state.packsLoading = true; state.packsError = false;
+  try {
+    const { data } = await withCurrentContext(apiFetch("/api/packs"), contextScope);
+    if (!contextScope.current()) return;
+    state.packs = Array.isArray(data?.packs) ? data.packs : [];
+  } catch {
+    if (contextScope.current()) state.packsError = true;
+  } finally {
+    if (contextScope.current()) { state.packsLoading = false; render(document.querySelector("#app")); }
+  }
 }
 
-async function seedDefaultChores() {
-  const contextScope = captureScope(state);
+async function doOnboardingName() {
+  const draft = state.onboarding;
+  if (!draft || draft.saving) return;
+  const name = draft.name.trim();
+  if (!name) { draft.error = "Enter your name"; render(document.querySelector("#app")); return; }
+  draft.saving = true; draft.error = ""; render(document.querySelector("#app"));
   try {
-    await withCurrentContext(apiFetch("/api/chores/seed-defaults", { method: "POST" }), contextScope);
-  } catch {}
+    if (!await saveProfile(name, draft.color)) return;
+    draft.name = name; draft.step = "household";
+    if (!draft.household) {
+      draft.household = householdNameFor(name);
+      if (!draft.initialsEdited) draft.initials = generateInitials(draft.household);
+    }
+  } catch (err) {
+    draft.error = err.message || "Could not save your name. Please retry.";
+  } finally {
+    draft.saving = false;
+    if (state.onboarding === draft) render(document.querySelector("#app"));
+  }
+}
+
+// Creates the household and seeds the picked packs in one transition, then
+// offers the invite link. A household created without its packs stays on the
+// picker to retry them.
+async function doOnboardingCreate() {
+  const draft = state.onboarding, app = document.querySelector("#app");
+  if (!draft || draft.saving) return;
+  const picks = onboardingPicks(draft, state.packs);
+  if (!picks.length) { draft.error = "Pick at least one"; render(app); return; }
+  const twice = duplicateName(picks);
+  if (twice) { draft.error = `"${twice}" is used twice; give each one a different name`; render(app); return; }
+  let seeded = false;
+  const seed = async () => {
+    const contextScope = captureScope(state);
+    try {
+      await withCurrentContext(apiFetch("/api/chores/packs", { method: "POST", body: JSON.stringify({ packs: picks }) }), contextScope);
+      seeded = true;
+    } catch (err) {
+      draft.error = err.message || "";
+    }
+  };
+  draft.saving = true; draft.error = ""; render(app);
+  const packs = state.packs;
+  if (draft.householdReady) {
+    await seed();
+    if (state.onboarding !== draft) return;
+    if (seeded) await loadChoreData();
+  } else {
+    const name = draft.household.trim();
+    await runHouseholdTransition(() => createHousehold(name, draft.initials.trim() || generateInitials(name)), {seed, route:"/"});
+    // The transition replaced the app state; carry the draft into the new one.
+    if (!state.user?.householdId || state.transitioning) { state.onboarding = { ...draft, saving:false }; state.packs = packs; render(app); return; }
+  }
+  state.packs = packs;
+  state.onboarding = seeded ? { step:"invite", active:true, picks:{} }
+    : { ...draft, step:"packs", active:true, householdReady:true, saving:false,
+        error:`Your household is ready, but its activities weren't added. ${draft.error || "Please retry."}` };
+  render(app);
+}
+
+async function doAddPacks() {
+  const draft = state.activeSheetData, app = document.querySelector("#app");
+  if (state.activeSheet !== "packs" || draft.saving) return;
+  const picks = onboardingPicks(draft, state.packs), twice = duplicateName(picks);
+  if (!picks.length || twice) {
+    draft.error = twice ? `"${twice}" is used twice; give each one a different name` : "Pick at least one";
+    render(app); return;
+  }
+  const contextScope = captureScope(state);
+  draft.saving = true; draft.error = ""; render(app);
+  try {
+    const { data } = await withCurrentContext(apiFetch("/api/chores/packs", { method: "POST", body: JSON.stringify({ packs: picks }) }), contextScope);
+    if (!contextScope.current() || state.activeSheetData !== draft) return;
+    await withCurrentContext(loadChoreData(), contextScope);
+    if (!contextScope.current()) return;
+    const added = data?.added?.length || 0;
+    state.activeSheet = null; state.activeSheetData = {};
+    render(app);
+    showToast(added ? `Added ${added} ${added === 1 ? "activity" : "activities"}` : "You have these activities already", added ? "success" : "info");
+  } catch (err) {
+    if (!contextScope.current() || state.activeSheetData !== draft) return;
+    draft.saving = false;
+    draft.error = err.message || "Could not add the activities. Please retry.";
+    render(app);
+  }
 }
 
 async function doJoinHousehold(form) {
