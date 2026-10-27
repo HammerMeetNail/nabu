@@ -47,7 +47,10 @@ struct ActivityView: View {
                     }
                 }
             }
-            .searchable(text: Binding(get: { model.query }, set: { model.selectQuery($0) }), prompt: "Search notes & titles")
+            // Always shown, like the PWA's search box: with automatic placement
+            // the field stays hidden until the list is pulled down.
+            .searchable(text: Binding(get: { model.query }, set: { model.selectQuery($0) }),
+                        placement: .navigationBarDrawer(displayMode: .always), prompt: "Search notes & titles")
             .sheet(isPresented: $showingFilter) {
                 ChoreFilterSheet(chores: state.chores, selected: $choreFilter)
             }

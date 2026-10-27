@@ -1,6 +1,10 @@
 import {test,expect} from '@playwright/test';
 import {fixture,postLog,rerender,deferred} from './review-fixtures.js';
 
+// In WebKit, page.route() stops seeing this page's API requests once the
+// service worker controls it, even though the worker leaves /api/ alone.
+test.use({serviceWorkers:'block'});
+
 test('a log sheet contains keyboard focus, preserves edits and returns focus on Escape and Back',async({page})=>{
   const {chore}=await fixture(page,{metricUnit:'g'});
   const card=page.locator(`[data-home-chore-id="${chore.id}"]`);

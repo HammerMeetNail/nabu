@@ -194,7 +194,12 @@ test('a late 401 from account A cannot clear a newer login for B',async({page,br
 });
 
 test('a context mismatch during foreground confirmation fences the old account immediately',async({page})=>{
+  const joinStartupConfirmation=await observeStartupConfirmation(page);
   const {chore}=await fixture(page);
+  // Startup's journal replay would otherwise send the row while the first
+  // household is still current, and its /api/me read would be taken for the
+  // foreground one below.
+  await joinStartupConfirmation();
   const key=await queueRow(page,chore,'Keep this only in the first household');
   const entered=deferred(),release=deferred();
   let meReads=0;

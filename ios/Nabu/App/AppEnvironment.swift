@@ -12,6 +12,7 @@ final class AppEnvironment: ObservableObject {
     }
 
     private(set) var apiClient: APIClient = APIClient(baseURL: URL(string: "https://nabu-app.com")!)
+    private var configured = false
 
     init() {
         baseURL = AppEnvironment.resolveBaseURL()
@@ -35,7 +36,12 @@ final class AppEnvironment: ObservableObject {
         return fallback
     }
 
+    /// Runs once. Both the scene's `onAppear` and ContentView's launch task
+    /// call it, because either can run first (the task does on iOS 27) and
+    /// nothing may read `apiClient` before it is configured.
     func configure(with state: AppState) {
+        guard !configured else { return }
+        configured = true
         let args = ProcessInfo.processInfo.arguments
 
         useMockAPI = args.contains("-useMockAPI") || TestHooks.seedHomeForUITest

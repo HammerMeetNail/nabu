@@ -74,6 +74,8 @@ struct ContentView: View {
         .task {
             if !hasCheckedSession {
                 let args = ProcessInfo.processInfo.arguments
+                // The scene's onAppear may not have run yet.
+                environment.configure(with: state)
                 dataLoader.configure(api: environment.apiClient, state: state)
                 auth.configure(api: environment.apiClient)
                 if TestHooks.seedHomeForUITest {
