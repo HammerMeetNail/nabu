@@ -21,6 +21,7 @@ final class AppState: ObservableObject {
             revision = session.revision
         }
         sessionPhase = session.phase
+        showingSavedHome = session.resumedOffline
         logoutIsDurable = session.logoutIsDurable
         user = session.user
         activeHouseholdId = session.user?.householdId
@@ -91,6 +92,10 @@ final class AppState: ObservableObject {
     /// Connectivity from DataLoader's NWPathMonitor; drives the global
     /// offline banner (C4). Not reset on logout — it's device state.
     @Published var isOffline = false
+    /// Home shows the copy saved on this device: the server could not be
+    /// reached to confirm the session at launch. Cleared by the server's
+    /// answer, which reloads everything (`ClientIdentity.resumeSavedHome`).
+    @Published var showingSavedHome = false
     /// Stats customization (P4): stored section order/hidden sets and the
     /// user-defined widgets, synced via `/api/preferences`.
     @Published var statsSectionOrder: [String] = []
@@ -109,6 +114,7 @@ final class AppState: ObservableObject {
         operations = [:]
         WidgetDataCache.write(chores: [])
         PushRegistrationController.shared.suspend()
+        showingSavedHome = false
         user = nil
         household = nil
         userHouseholds = []

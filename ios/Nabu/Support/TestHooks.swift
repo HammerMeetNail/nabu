@@ -34,6 +34,16 @@ enum TestHooks {
         ProcessInfo.processInfo.arguments.contains("-useMockAPI")
     }
 
+    /// Every request fails as if the server could not be reached, so a UI
+    /// test can relaunch a real server's account into offline launch.
+    static var serverUnreachable: Bool {
+#if DEBUG
+        return ProcessInfo.processInfo.arguments.contains("-serverUnreachable")
+#else
+        return false
+#endif
+    }
+
     /// Skips the auth/session check and seeds a logged-in state with a single
     /// chore on the home grid.  Used by XCUITests for the home tab.
     static var seedHomeForUITest: Bool {

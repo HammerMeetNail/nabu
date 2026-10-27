@@ -100,6 +100,17 @@ final class DataLoader: ObservableObject {
         }
         guard state.owns(owner) else { return }
         await flushOfflineQueue()
+        guard state.owns(owner) else { return }
+        saveHomeSnapshot()
+    }
+
+    /// Saves Home for offline launch from the data the server confirmed for
+    /// the identity that is current right now (PWA `persistSnapshot`).
+    @discardableResult
+    func saveHomeSnapshot() -> Bool {
+        let session = api.identity.snapshot
+        guard session.revision == state.revision, let home = state.homeSnapshot() else { return false }
+        return api.identity.saveHome(home, expected: session)
     }
 
     func foregroundRefresh() async {
@@ -108,7 +119,7 @@ final class DataLoader: ObservableObject {
         guard api.identity.snapshot.phase != .logoutPending else { return }
         guard let response: UserResponse = try? await api.get("/api/me"), response.user != nil else { return }
         let owner = state.beginOperation("foregroundRefresh")
-        let notifs = self.notifs!, household = self.household!, chores = self.chores!
+        let notifs = self.notifs!, household = self.household!, chores = self.chores!, logs = self.logs!
         await flushOfflineQueue()
         guard state.owns(owner) else { return }
         // Foreground refresh must not collapse pages being read in the panel.
@@ -121,7 +132,15 @@ final class DataLoader: ObservableObject {
         await household.loadHouseholdData()
         guard state.owns(owner) else { return }
         if state.household != nil {
-            await chores.loadChoreData()
+            // "Time ago" and the widget read the latest logs, which other
+            // members may have added while the app was in the background.
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await chores.loadChoreData() }
+                group.addTask { await logs.loadTodayData() }
+                group.addTask { await logs.loadLatestLogsData() }
+            }
         }
+        guard state.owns(owner) else { return }
+        saveHomeSnapshot()
     }
 }
