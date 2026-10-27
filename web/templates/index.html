@@ -12,7 +12,8 @@
     <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
     <link rel="stylesheet" href="/static/css/app.css?v={{.Version}}">
     <script src="/static/js/head-init.js?v={{.Version}}"></script>
-  </head>
+    {{range .ModulePreloads}}<link rel="modulepreload" href="{{.}}">
+    {{end}}  </head>
   <body data-app-version="{{.Version}}" data-google-oauth-enabled="{{.GoogleOAuthEnabled}}" data-apple-signin-enabled="{{.AppleSignInEnabled}}">
     <div class="app-shell">
       <header class="top-bar" id="top-bar" hidden>

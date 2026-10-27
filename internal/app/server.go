@@ -12,6 +12,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"path"
 	"regexp"
 	"slices"
 	"strings"
@@ -835,19 +836,30 @@ func renderOperator(w http.ResponseWriter) {
 func renderIndex(w http.ResponseWriter, cfg config.Config) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
+	// Marks the app shell for the service worker, which keeps the last one for
+	// offline launches. The shell holds no account data.
+	w.Header().Set("X-Nabu-Shell", "1")
 	googleOAuthEnabled := cfg.GoogleClientID != "" && cfg.GoogleClientSecret != ""
+	var preloads []string
+	for _, module := range shellModules() {
+		if module != "js/app.js" { // already the page's module script
+			preloads = append(preloads, versionedStaticURL(module, version.Version))
+		}
+	}
 	data := struct {
 		AppName            string
 		Version            string
 		VAPIDPublicKey     string
 		GoogleOAuthEnabled bool
 		AppleSignInEnabled bool
+		ModulePreloads     []string
 	}{
 		AppName:            "Nabu",
 		Version:            version.Version,
 		VAPIDPublicKey:     cfg.VAPIDPublicKey,
 		GoogleOAuthEnabled: googleOAuthEnabled,
 		AppleSignInEnabled: cfg.AppleWebClientID != "",
+		ModulePreloads:     preloads,
 	}
 	if err := indexTmpl.Execute(w, data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -1021,6 +1033,8 @@ func splitCommaList(s string) []string {
 
 var swCacheNameRE = regexp.MustCompile(`("nabu-static-)v\d+(")`)
 
+const swPrecachePlaceholder = "const PRECACHE_URLS = [];"
+
 func buildVersionedSW(fsys fs.FS, ver string) []byte {
 	raw, err := fs.ReadFile(fsys, "service-worker.js")
 	if err != nil {
@@ -1028,6 +1042,53 @@ func buildVersionedSW(fsys fs.FS, ver string) []byte {
 	}
 	replacement := []byte("${1}" + ver + "${2}")
 	modified := swCacheNameRE.ReplaceAll(raw, replacement)
+	// Precache exactly what the shell requests: its stylesheet, head script
+	// and every module, at their versioned URLs. Bare paths never match.
+	urls := []string{versionedStaticURL("css/app.css", ver), versionedStaticURL("js/head-init.js", ver)}
+	for _, module := range appModulePaths(fsys) {
+		urls = append(urls, versionedStaticURL(module, ver))
+	}
+	list, err := json.Marshal(urls)
+	if err != nil {
+		panic(err)
+	}
+	modified = bytes.Replace(modified, []byte(swPrecachePlaceholder), []byte("const PRECACHE_URLS = "+string(list)+";"), 1)
 	log.Printf("versioned service worker cache name to %q", ver)
 	return modified
 }
+
+func versionedStaticURL(file, ver string) string { return "/static/" + file + "?v=" + ver }
+
+// appModulePaths lists every module statically imported from js/app.js, app.js
+// first, in a stable order. The shell preloads them all and the service worker
+// precaches them, so neither a cold nor an offline launch walks the import
+// graph one level at a time.
+func appModulePaths(fsys fs.FS) []string {
+	var order []string
+	seen := map[string]bool{}
+	var visit func(string)
+	visit = func(file string) {
+		if seen[file] {
+			return
+		}
+		raw, err := fs.ReadFile(fsys, file)
+		if err != nil {
+			return
+		}
+		seen[file] = true
+		order = append(order, file)
+		for _, match := range relativeJSImport.FindAllSubmatch(raw, -1) {
+			visit(path.Join(path.Dir(file), string(match[2])))
+		}
+	}
+	visit("js/app.js")
+	return order
+}
+
+var shellModules = sync.OnceValue(func() []string {
+	staticFS, err := fs.Sub(webassets.Assets, "static")
+	if err != nil {
+		panic(err)
+	}
+	return appModulePaths(staticFS)
+})

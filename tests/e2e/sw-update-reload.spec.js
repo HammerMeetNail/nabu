@@ -38,14 +38,14 @@ test.describe('SW Update Reload', () => {
     await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
     await expect.poll(() => page.evaluate(() => !!navigator.serviceWorker.controller)).toBe(true);
 
-    // The previous release cached this unversioned URL. Keep its real CSS
-    // and mark it so we can detect which stylesheet the browser applies.
+    // Older releases precached this unversioned URL. Recreate that entry from
+    // the real CSS and mark it so we can detect which stylesheet is applied.
     await page.evaluate(async () => {
       const name = (await caches.keys()).find(key => key.startsWith('nabu-static-'));
       if (!name) throw new Error('The application service worker cache is missing');
       const cache = await caches.open(name);
-      const previous = await cache.match('/static/css/app.css');
-      if (!previous) throw new Error('The precached application stylesheet is missing');
+      const previous = await fetch('/static/css/app.css', { cache: 'no-store' });
+      if (!previous.ok) throw new Error('The application stylesheet is missing');
       const css = await previous.text();
       await cache.put('/static/css/app.css', new Response(
         `${css}\n:root { --nabu-stylesheet-release: previous; }`,
