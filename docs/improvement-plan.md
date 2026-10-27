@@ -215,9 +215,9 @@ Sizing assumes one senior engineer working with coding agents; S ≈ ≤2 days, 
 Nabu must open straight to a usable Home, online or not, and feel fast on both clients.
 
 1. **Smart defaults** (S–M).
-   - Feed Baby pre-fills the last amount and type; breast feeds get left/right/both and an optional timer.
+   - Feed Baby pre-fills the last amount and type. The owner declined a breast-feed side option (left/right/both); an optional feed timer is still open.
    - Meds pre-fill the last dose.
-   - "Usual time" hints come from history (already computable from the time-series data).
+   - The owner declined "usual time" hints.
 2. **Offline-first launch** (M each client).
    - **PWA:** cache the app shell in the SW (navigation → cached shell, then revalidate). Persist the last-known identity and the chores/latest/household snapshot in IndexedDB. **Render from the snapshot immediately**, then reconcile with `/api/me`. If the session turns out to be revoked, wipe the snapshot and drop to sign-in, but never block logging on a reachable-network check when the identity binding is valid. Pending logs already queue durably.
    - **iOS:** the same pattern. Persist a snapshot (JSON file in Application Support with file protection; SwiftData is unnecessary). Launch into Home from the snapshot. Treat `/api/me` failure from a network error as "offline", not "checking".
@@ -403,7 +403,7 @@ All third-party calls go through a server-side proxy with caching, per-household
 ## 9. Decisions needed from the owner
 
 1. **Account deletion semantics:** keep shared-household logs under an unlinkable "Former member" tombstone with opt-in deletion of the user's entries and notes (recommended, Phase 0.3), or delete them all (current behavior, but the copy must then say so).
-2. **Default packs:** confirm the pack list and whether "Personal" (books, movies) stays in Nabu's scope or is cut to sharpen positioning.
+2. **Default packs:** decided. The owner confirmed the pack list, and "Personal" (books, movies, workouts) stays.
 3. **Monetization:** the free-core / Plus split and price points (§5, Phase 6).
 4. **Apple Watch** in v1.0 or v1.1 (recommended: v1.1, right after App Store launch).
 5. **Hosting:** managed Postgres plus 2 replicas before paid launch, or stay single-node longer.
