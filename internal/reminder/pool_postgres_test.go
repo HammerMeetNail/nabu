@@ -142,9 +142,11 @@ func TestReservedDeliveryPoolKeepsHTTPAvailableAndReleasesLeader(t *testing.T) {
 	if err := leader.Release(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if got := deliveryDB.Stats().InUse; got != 0 {
-		t.Fatalf("shutdown retained %d connections", got)
-	}
+	// A canceled guard's transaction is rolled back by database/sql's own
+	// goroutine, which can return the connection just after the caller has
+	// seen the cancellation. Wait for that release: a leaked connection never
+	// comes back, so the deadline still catches one.
+	testsync.Eventually(t, ctx, func() bool { return deliveryDB.Stats().InUse == 0 })
 	if ok, err := follower.TryAcquire(ctx); err != nil || !ok {
 		t.Fatalf("leader handover=%v %v", ok, err)
 	}

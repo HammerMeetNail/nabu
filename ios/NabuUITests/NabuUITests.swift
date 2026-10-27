@@ -18,6 +18,10 @@ private extension XCTestCase {
     }
 }
 
+/// The local server the real-server tests use: `http://localhost:8080`, or
+/// another one set with `TEST_RUNNER_NABU_E2E_BASE_URL=<url> xcodebuild …`.
+private let e2eServerURL = ProcessInfo.processInfo.environment["NABU_E2E_BASE_URL"] ?? "http://localhost:8080"
+
 private extension XCUIApplication {
     func launchForLocalTest() {
         if launchArguments.contains("-seedHomeForUITest"),
@@ -48,14 +52,48 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         return app
     }
 
+    /// Scrolls until the whole control is on screen. A control cut off by the
+    /// screen edge still reports hittable, but its center, where a tap lands,
+    /// can be off screen.
     private func reveal(_ element: XCUIElement, in app: XCUIApplication, requireHit: Bool = true) {
+        let reachable = { element.exists && (!requireHit || (element.isHittable && app.frame.contains(element.frame))) }
         for upward in [true, false] {
             for _ in 0..<12 {
-                if element.exists && (!requireHit || element.isHittable) { return }
+                if reachable() { return }
                 if upward { app.swipeUp() } else { app.swipeDown() }
             }
         }
-        XCTAssertTrue(element.exists && (!requireHit || element.isHittable), "Expected reachable control: \(element)")
+        XCTAssertTrue(reachable(), "Expected reachable control: \(element)")
+    }
+
+    /// Scrolls a sheet's form until `element` is fully below the sheet's header
+    /// (its Cancel button). Focusing a field scrolls the form, which can leave a
+    /// control above it under the header, where a tap lands on the header.
+    private func revealBelowSheetHeader(_ element: XCUIElement, in app: XCUIApplication) {
+        let header = app.buttons["Cancel"].firstMatch
+        for _ in 0..<6 where element.frame.minY < header.frame.maxY + 4 {
+            let start = element.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: 0, dy: 100))
+            start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 80)))
+        }
+        XCTAssertGreaterThanOrEqual(element.frame.minY, header.frame.maxY, "\(element) is under the sheet header")
+    }
+
+    /// Opens the log sheet's unit menu, first bringing it out from under the
+    /// sheet header if a focused amount field scrolled the form.
+    private func openUnitMenu(in app: XCUIApplication) {
+        let picker = app.buttons["log-unit-picker"]
+        revealBelowSheetHeader(picker, in: app)
+        picker.tap()
+    }
+
+    /// The number wheel's value once its sheet has finished presenting; read
+    /// any earlier and the wheel reports an empty value.
+    private func expectWheel(_ value: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let wheel = app.pickerWheels.firstMatch
+        XCTAssertTrue(wheel.waitForExistence(timeout: 5), file: file, line: line)
+        let settled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", value), object: wheel)
+        _ = XCTWaiter.wait(for: [settled], timeout: 5)
+        XCTAssertEqual(wheel.value as? String, value, file: file, line: line)
     }
 
     private func waitForStableScreen(_ app: XCUIApplication) {
@@ -157,14 +195,14 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         app.buttons["120 g"].tap()
         let choices = app.buttons["Choose amount"]
         choices.tap()
-        XCTAssertEqual(app.pickerWheels.firstMatch.value as? String, "120 g")
+        expectWheel("120 g", in: app)
         app.buttons["number-choice-cancel"].tap()
         input.tap()
         input.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3) + "12345")
         choices.tap()
-        XCTAssertEqual(app.pickerWheels.firstMatch.value as? String, "12345 g")
+        expectWheel("12345 g", in: app)
         app.buttons["number-choice-done"].tap()
-        app.buttons["log-unit-picker"].tap()
+        openUnitMenu(in: app)
         app.buttons["tablets"].tap()
         XCTAssertEqual(input.value as? String, "12345")
         chooseNumber("2 tablets", from: choices, in: app)
@@ -178,7 +216,7 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()
         XCTAssertEqual(input.value as? String, "2")
-        app.buttons["log-unit-picker"].tap()
+        openUnitMenu(in: app)
         app.buttons["oz"].tap()
         chooseNumber("2.5 oz", from: choices, in: app)
         XCTAssertEqual(input.value as? String, "2.5")
@@ -191,7 +229,7 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         let exactText = input.value as? String ?? ""
         XCTAssertEqual((Double(exactText) ?? -1) * 29.5735, 74, accuracy: 0.03)
         choices.tap()
-        XCTAssertEqual(app.pickerWheels.firstMatch.value as? String, "\(exactText) oz")
+        expectWheel("\(exactText) oz", in: app)
         app.buttons["number-choice-cancel"].tap()
         chooseNumber("0 oz", from: choices, in: app)
         XCTAssertEqual(input.value as? String, "0")
@@ -225,7 +263,7 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         app.buttons["amount-keyboard-done"].tap()
         XCTAssertFalse(app.keyboards.firstMatch.exists)
         choices.tap()
-        XCTAssertEqual(app.pickerWheels.firstMatch.value as? String, "301 sec")
+        expectWheel("301 sec", in: app)
         try captureReviewScreen(app, named: "duration-number-wheel-large-text", element: app.pickerWheels.firstMatch)
         app.buttons["number-choice-done"].tap()
         XCTAssertEqual(input.value as? String, "301")
@@ -244,16 +282,16 @@ final class NabuReviewRecoveryUITests: XCTestCase {
     func testAmountUnitSelectorCancelAndSavedActivity() throws {
         let app = launch("units")
         openChore("Weigh flour", in: app)
-        app.buttons["log-unit-picker"].tap()
+        openUnitMenu(in: app)
         app.buttons["mg"].tap()
         app.buttons["Cancel"].tap()
         openChore("Weigh flour", in: app)
         XCTAssertEqual(app.buttons["log-unit-picker"].label, "Unit, g")
-        app.buttons["log-unit-picker"].tap()
+        openUnitMenu(in: app)
         app.buttons["mg"].tap()
         app.textFields["amount-input"].tap()
         app.textFields["amount-input"].typeText("200")
-        app.buttons["log-unit-picker"].tap()
+        openUnitMenu(in: app)
         app.buttons["L"].tap()
         XCTAssertEqual(app.textFields["amount-input"].value as? String, "200")
         app.buttons["amount-keyboard-done"].tap()
@@ -271,7 +309,7 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         waitForStableScreen(app)
         try captureReviewScreen(app, named: "medication-unit-selector",
                                 element: app.cells.containing(.button, identifier: "log-unit-picker").firstMatch)
-        app.buttons["log-unit-picker"].tap()
+        openUnitMenu(in: app)
         app.buttons["g"].tap()
         reveal(save, in: app)
         save.tap()
@@ -1329,7 +1367,7 @@ final class NabuHomeEndToEndUITests: XCTestCase {
         app.launchArguments = [
             "-disableAnimations",
             "-resetState",
-            "-nabuBaseURL", "http://localhost:8080",
+            "-nabuBaseURL", e2eServerURL,
             "-nabuAutoRegister", email, password,
         ]
         app.launchForLocalTest()
@@ -1417,7 +1455,7 @@ final class NabuMemberSuspensionUITests: XCTestCase {
     let password = "test123456"
     var ownerEmail = ""
     var memberEmail = ""
-    let baseURL = URL(string: "http://localhost:8080")!
+    let baseURL = URL(string: e2eServerURL)!
 
     override func setUpWithError() throws {
         continueAfterFailure = false
@@ -1563,12 +1601,15 @@ final class NabuMemberSuspensionUITests: XCTestCase {
         if signInButton.waitForExistence(timeout: 2) { signInButton.tap() }
     }
 
+    /// The save prompt arrives seconds after the form closes (about 7 s on
+    /// the iOS 27 simulator), over whatever screen the test has reached, so
+    /// wait for it here rather than let it intercept a later tap.
     private func waitForLoginFormToClose() {
         let deadline = Date().addingTimeInterval(uiTimeout)
         while Date() < deadline, app.secureTextFields.firstMatch.exists {
             usleep(250_000)
         }
-        dismissSavePasswordPrompt(waiting: 2)
+        dismissSavePasswordPrompt(waiting: uiTimeout)
     }
 
     private func signIn(_ email: String) {
@@ -1579,8 +1620,10 @@ final class NabuMemberSuspensionUITests: XCTestCase {
         submitLogin(password)
         if app.secureTextFields.firstMatch.exists {
             app.buttons["Sign In"].tap()
-            waitForLoginFormToClose()
         }
+        // Also on a first-try sign-in, which is when the save prompt used to
+        // go unhandled and cover the next step.
+        waitForLoginFormToClose()
         if app.secureTextFields.firstMatch.exists {
             submitLogin(password)
             waitForLoginFormToClose()
