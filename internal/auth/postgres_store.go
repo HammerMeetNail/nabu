@@ -104,6 +104,34 @@ func (s *PostgresStore) GetUserByEmail(ctx context.Context, email string) (User,
 func (s *PostgresStore) GetUserByIDWithHash(ctx context.Context, id int64) (User, string, error) {
 	return s.userWithHash(ctx, "u.id", id)
 }
+func (s *PostgresStore) GetUsersByIDs(ctx context.Context, ids []int64) ([]User, error) {
+	users := make([]User, 0, len(ids))
+	if len(ids) == 0 {
+		return users, nil
+	}
+	rows, err := s.q.QueryContext(ctx, `SELECT u.id, uh.household_id, u.email, u.password_hash <> '', u.display_name,
+  u.avatar_color, u.email_verified, COALESCE(uh.role, ''), u.created_at, u.auth_version
+  FROM users u LEFT JOIN user_households uh ON uh.user_id = u.id AND uh.household_id = u.active_household_id
+  WHERE u.id = ANY($1::bigint[])`, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var user User
+		var householdID sql.NullInt64
+		if err := rows.Scan(&user.ID, &householdID, &user.Email, &user.HasPassword, &user.DisplayName,
+			&user.AvatarColor, &user.EmailVerified, &user.Role, &user.CreatedAt, &user.AuthVersion); err != nil {
+			return nil, err
+		}
+		if householdID.Valid {
+			user.HouseholdID = &householdID.Int64
+		}
+		users = append(users, user)
+	}
+	return users, rows.Err()
+}
+
 func (s *PostgresStore) GetUserByID(ctx context.Context, id int64) (User, error) {
 	user, _, err := s.GetUserByIDWithHash(ctx, id)
 	return user, err
