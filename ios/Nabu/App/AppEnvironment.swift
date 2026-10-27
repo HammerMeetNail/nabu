@@ -16,6 +16,7 @@ final class AppEnvironment: ObservableObject {
     init() {
         baseURL = AppEnvironment.resolveBaseURL()
         apiClient = APIClient(baseURL: baseURL, identity: ClientIdentity.shared(for: baseURL))
+        applyUnreachableServerHook()
     }
 
     /// The server base URL from launch arguments / env, falling back to
@@ -332,6 +333,18 @@ final class AppEnvironment: ObservableObject {
         }
 #endif
         apiClient = APIClient(baseURL: baseURL, identity: ClientIdentity.shared(for: baseURL))
+        applyUnreachableServerHook()
+    }
+
+    /// UI tests: `-serverUnreachable` fails every request the way a lost
+    /// connection does. Installed with the client, because the launch session
+    /// check can start before `configure(with:)` runs.
+    private func applyUnreachableServerHook() {
+#if DEBUG
+        if TestHooks.serverUnreachable {
+            apiClient.mockAsyncHandler = { _ in throw URLError(.cannotConnectToHost) }
+        }
+#endif
     }
 
     private func launchArgumentValue(for key: String, in arguments: [String]) -> String? {

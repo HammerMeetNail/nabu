@@ -33,7 +33,7 @@ struct ContentView: View {
                     if state.sessionPhase == .changing { ProgressView() }
                     else {
                         Text("Reconnect and retry to continue.")
-                        Button("Retry") { Task { _ = await auth.loadSession() } }
+                        Button("Retry") { Task { await checkSession() } }
                     }
                 }.padding()
             } else if state.user == nil {
@@ -95,14 +95,14 @@ struct ContentView: View {
                     }
                     hasCheckedSession = true
                 } else {
-                    _ = await auth.loadSession()
+                    await checkSession()
                     hasCheckedSession = true
                     // Load regardless of /api/me's householdId: a membership an
                     // administrator has disabled has no active household, yet
                     // /api/household is what reports the suspension. Gating on
                     // householdId here would send a disabled member straight to
                     // the create/join onboarding screen.
-                    if state.user != nil {
+                    if state.user != nil, !state.showingSavedHome {
                         await loadAppData()
                     }
                 }
@@ -111,7 +111,7 @@ struct ContentView: View {
         .onChange(of: state.user) { oldUser, newUser in
             if newUser == nil {
                 hasLoadedData = false
-            } else if newUser != nil {
+            } else if !state.showingSavedHome {
                 // Load for every sign-in, not only ones with an active
                 // household: a disabled membership has none, and /api/household
                 // is what surfaces the suspension message.
@@ -121,14 +121,34 @@ struct ContentView: View {
                 // Fresh sign-in: re-register the push token if permission was
                 // already granted (mirrors the PWA's maybeSubscribePush after
                 // login), and consume a /join link that arrived logged-out.
-                Task { await PushRegistrationController.shared.syncIfAuthorized() }
+                if !state.showingSavedHome {
+                    Task { await PushRegistrationController.shared.syncIfAuthorized() }
+                }
                 if let code = state.pendingInviteCode, newUser?.householdId == nil {
                     Task { await consumePendingInvite(code) }
                 }
             }
         }
+        .onChange(of: state.showingSavedHome) { wasSaved, isSaved in
+            // The server confirmed the identity whose saved Home was showing:
+            // load fresh data and replay the journal, as after a sign-in.
+            guard wasSaved, !isSaved, state.user != nil else { return }
+            Task { await loadAppData() }
+            Task { await PushRegistrationController.shared.syncIfAuthorized() }
+        }
+        .task(id: state.showingSavedHome) {
+            // An unreachable server sends no connectivity change; keep asking.
+            while state.showingSavedHome {
+                try? await Task.sleep(for: .seconds(30))
+                guard !Task.isCancelled, state.showingSavedHome else { return }
+                await dataLoader.foregroundRefresh()
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task { await dataLoader.foregroundRefresh() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            dataLoader.saveHomeSnapshot()
         }
         // Universal links (verify email, magic login, invite) and the
         // quicklog deep link. SwiftUI delivers universal links through
@@ -198,6 +218,19 @@ struct ContentView: View {
         }
     }
 
+    /// The launch session check. An unreachable server says nothing about the
+    /// session, so Home opens from this device's copy for the last confirmed
+    /// identity, whose journal keeps accepting logs (PWA `openSavedHome`).
+    private func checkSession() async {
+        guard await auth.checkSession() == .unreachable,
+              let saved = environment.apiClient.identity.resumeSavedHome() else { return }
+        // Adopt directly: this check can finish before `AppEnvironment.configure`
+        // installs the identity observer.
+        state.adopt(environment.apiClient.identity.snapshot)
+        state.applyHomeSnapshot(saved)
+        hasLoadedData = true
+    }
+
     func loadAppData() async {
         guard state.user != nil else { return }
         let owner = state.revision
@@ -245,13 +278,13 @@ struct MainTabView: View {
                 VStack(spacing: 6) {
                     TimerChipView()
                     PendingSavesButton(dataLoader: dataLoader)
-                    if state.isOffline {
-                        OfflineBanner()
+                    if state.isOffline || state.showingSavedHome {
+                        OfflineBanner(savedHome: state.showingSavedHome)
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
                 }
                 .padding(.top, 4)
-                .animation(Motion.slide ?? Motion.fade, value: state.isOffline)
+                .animation(Motion.slide ?? Motion.fade, value: state.isOffline || state.showingSavedHome)
             }
     }
 

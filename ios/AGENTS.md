@@ -94,6 +94,13 @@ xcodebuild test-without-building \
   -only-testing:NabuUITests/NabuHomeEndToEndUITests
 ```
 
+`NabuOfflineLaunchUITests` covers offline launch against the same server: it
+registers online, relaunches with `-serverUnreachable` (a debug-only hook that
+fails every request like a lost connection), logs from the saved Home, then
+relaunches online and waits for the queued log to sync. To use a server on
+another port, prefix the command with
+`TEST_RUNNER_NABU_E2E_BASE_URL=http://localhost:<port>`.
+
 **How it works:**
 
 The test generates a unique email, then launches the app with these launch arguments:
