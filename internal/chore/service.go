@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/HammerMeetNail/nabu/internal/audit"
 )
@@ -304,39 +305,41 @@ func (s *Service) RestoreDefaultChoreForUser(ctx context.Context, choreID int64,
 	if !existing.IsPredefined || existing.PredefinedKey == "" {
 		return fmt.Errorf("chore is not a predefined chore")
 	}
-	for _, pc := range PredefinedChores {
-		if pc.Name == existing.PredefinedKey {
-			vis := existing.Visibility
-			existing.Name = pc.Name
-			existing.Icon = pc.Icon
-			existing.Color = pc.Color
-			existing.Category = pc.Category
-			existing.IndicatorLabels = pc.IndicatorLabels
-			existing.IndicatorDefaults = pc.IndicatorDefaults
-			existing.HasVolumeML = pc.HasVolumeML
-			existing.HasRating = pc.HasRating
-			existing.MetricType = pc.MetricType
-			existing.MetricUnit = pc.MetricUnit
-			existing.NormalizeMetric()
-			existing.Visibility = vis
-			existing.FollowUpEnabled = true
-			if existing.IndicatorLabels == nil {
-				existing.IndicatorLabels = []string{}
-			}
-			if existing.IndicatorDefaults == nil {
-				existing.IndicatorDefaults = []string{}
-			}
-			if err := s.store.UpdateChore(ctx, existing); err != nil {
-				return err
-			}
-			s.logAudit(ctx, "chore.default_restored", map[string]string{
-				"household_id": idStr(householdID),
-				"chore_id":     idStr(choreID),
-			})
-			return nil
-		}
+	pc, ok := templateFor(existing.PredefinedKey)
+	if !ok {
+		return fmt.Errorf("original predefined chore definition not found")
 	}
-	return fmt.Errorf("original predefined chore definition not found")
+	vis := existing.Visibility
+	existing.Name = pc.Name
+	if existing.DefaultName != "" {
+		existing.Name = existing.DefaultName
+	}
+	existing.Icon = pc.Icon
+	existing.Color = pc.Color
+	existing.Category = pc.Category
+	existing.IndicatorLabels = pc.IndicatorLabels
+	existing.IndicatorDefaults = pc.IndicatorDefaults
+	existing.HasVolumeML = pc.HasVolumeML
+	existing.HasRating = pc.HasRating
+	existing.MetricType = pc.MetricType
+	existing.MetricUnit = pc.MetricUnit
+	existing.NormalizeMetric()
+	existing.Visibility = vis
+	existing.FollowUpEnabled = true
+	if existing.IndicatorLabels == nil {
+		existing.IndicatorLabels = []string{}
+	}
+	if existing.IndicatorDefaults == nil {
+		existing.IndicatorDefaults = []string{}
+	}
+	if err := s.store.UpdateChore(ctx, existing); err != nil {
+		return err
+	}
+	s.logAudit(ctx, "chore.default_restored", map[string]string{
+		"household_id": idStr(householdID),
+		"chore_id":     idStr(choreID),
+	})
+	return nil
 }
 
 func (s *Service) GetSystemDefaults() []Chore {
@@ -362,7 +365,19 @@ func (s *Service) GetSystemDefaults() []Chore {
 	return result
 }
 
+// SeedDefaultChores seeds the full predefined set into a household that has
+// no predefined activities yet. Otherwise it does nothing, so a household set
+// up with packs keeps only the packs it picked.
 func (s *Service) SeedDefaultChores(ctx context.Context, householdID int64) error {
+	existing, err := s.store.ListChores(ctx, householdID)
+	if err != nil {
+		return err
+	}
+	for _, c := range existing {
+		if c.IsPredefined {
+			return nil
+		}
+	}
 	if err := s.store.SeedPredefinedChores(ctx, householdID); err != nil {
 		return err
 	}
@@ -372,6 +387,54 @@ func (s *Service) SeedDefaultChores(ctx context.Context, householdID int64) erro
 	return nil
 }
 
+// AddPacks seeds the picked packs into a household and returns the activities
+// it added, after the household's existing ones. Activities the household
+// already has stay as they are: a shared one (Clean Litter Box) is skipped when
+// any activity has its key, even renamed, and a named one when its name is
+// taken. It returns a *PackError for a pick the user can correct.
+func (s *Service) AddPacks(ctx context.Context, householdID int64, picks []PackPick) ([]Chore, error) {
+	planned, err := PlanPacks(picks)
+	if err != nil {
+		return nil, err
+	}
+	existing, err := s.store.ListChores(ctx, householdID)
+	if err != nil {
+		return nil, err
+	}
+	keys, names := map[string]bool{}, map[string]bool{}
+	next := 0
+	for _, c := range existing {
+		keys[c.PredefinedKey] = true
+		names[strings.ToLower(c.Name)] = true
+		next = max(next, c.SortOrder+1)
+	}
+	var add []Chore
+	for _, c := range planned {
+		if names[strings.ToLower(c.Name)] || (c.Name == c.PredefinedKey && keys[c.PredefinedKey]) {
+			continue
+		}
+		c.HouseholdID = householdID
+		c.SortOrder = next + len(add)
+		add = append(add, c)
+	}
+	added, err := s.store.AddPackChores(ctx, householdID, add)
+	if err != nil {
+		return nil, err
+	}
+	packKeys := make([]string, 0, len(picks))
+	for _, p := range picks {
+		packKeys = append(packKeys, p.Key)
+	}
+	s.logAudit(ctx, "chore.packs_added", map[string]string{
+		"household_id": idStr(householdID),
+		"packs":        strings.Join(packKeys, ","),
+		"added":        strconv.Itoa(len(added)),
+	})
+	return added, nil
+}
+
+// PredefinedChores is the full set seed-defaults seeds. New activities go in
+// packs (packs.go); this list stays as households created before packs got it.
 var PredefinedChores = []Chore{
 	{Name: "Feed Cats", Icon: "🐱", Color: "#F59E0B", Category: "feeding", SortOrder: 0},
 	{Name: "Feed Baby", Icon: "🍼", Color: "#EC4899", Category: "feeding", SortOrder: 1, HasVolumeML: true, MetricType: MetricAmount, MetricUnit: "mL", IndicatorLabels: []string{"🍼 formula", "🤱 breast"}, IndicatorDefaults: []string{"🍼 formula"}},

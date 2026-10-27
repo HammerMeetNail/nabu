@@ -505,6 +505,8 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	}))
 	mux.HandleFunc("/api/chores/defaults", method(http.MethodGet, choreHandler.GetDefaults))
 	mux.HandleFunc("/api/chores/seed-defaults", method(http.MethodPost, middleware.RequireAuth(choreHandler.SeedDefaults)))
+	mux.HandleFunc("/api/chores/packs", method(http.MethodPost, middleware.RequireAuth(choreHandler.AddPacks)))
+	mux.HandleFunc("/api/packs", method(http.MethodGet, middleware.RequireAuth(choreHandler.Packs)))
 	mux.HandleFunc("/api/chores/reorder", method(http.MethodPost, middleware.RequireAuth(choreHandler.Reorder)))
 	mux.HandleFunc("/api/chores/{id}/restore-default", method(http.MethodPost, middleware.RequireAuth(choreHandler.RestoreDefault)))
 	mux.HandleFunc("/api/chores/{id}", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {

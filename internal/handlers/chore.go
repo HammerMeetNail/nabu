@@ -453,6 +453,39 @@ func (h *ChoreHandler) GetDefaults(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"defaults": defaults})
 }
 
+// Packs lists the activity packs offered during setup and in Manage.
+func (h *ChoreHandler) Packs(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"packs": chore.Packs})
+}
+
+// AddPacks seeds activity packs into the current household, named for the
+// baby and pets given, and answers with the activities it added.
+func (h *ChoreHandler) AddPacks(w http.ResponseWriter, r *http.Request) {
+	user, _ := middleware.CurrentUser(r.Context())
+	if user.HouseholdID == nil {
+		writeError(w, http.StatusUnauthorized, "no household")
+		return
+	}
+	var req struct {
+		Packs []chore.PackPick `json:"packs"`
+	}
+	if err := readJSON(r, &req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	added, err := h.service.AddPacks(r.Context(), *user.HouseholdID, req.Packs)
+	var packErr *chore.PackError
+	if errors.As(err, &packErr) {
+		writeError(w, http.StatusBadRequest, packErr.Message)
+		return
+	}
+	if err != nil {
+		writeServerError(w, "failed to add activities", err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"added": added})
+}
+
 func (h *ChoreHandler) SeedDefaults(w http.ResponseWriter, r *http.Request) {
 	user, _ := middleware.CurrentUser(r.Context())
 	if user.HouseholdID == nil {

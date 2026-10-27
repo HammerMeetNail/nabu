@@ -185,6 +185,16 @@ final class AppEnvironment: ObservableObject {
                 state.todayLogs = []
             }
             if scenario == "recent-error" { state.recentAmounts[6] = [75]; state.recentAmountUnits[6] = "g" }
+            if scenario.hasPrefix("onboarding"), let user = state.user {
+                // A new account: no household yet, named after its email.
+                state.user = User(id: user.id, householdId: nil, email: "dana.oconnor@nabu.local", displayName: "dana.oconnor",
+                    avatarColor: "#19323C", emailVerified: true, role: "", createdAt: user.createdAt)
+                state.household = nil
+                state.members = []
+                state.chores = []
+                state.latestLogs = [:]
+                state.todayLogs = []
+            }
             if scenario == "midnight" {
                 let prior = Calendar.current.startOfDay(for: TestHooks.reviewDate ?? now).addingTimeInterval(-60)
                 state.latestLogs[4] = ChoreLog(id: 104, householdId: 1, userId: 1, choreId: 4,
@@ -370,8 +380,10 @@ final class ReviewUITestResponses {
     let scenario: String
     private var user: User
     private var household: Household
+    /// False for an "onboarding" account until it creates its household.
+    private var hasHousehold: Bool
     private var members: [Member]
-    private let chores: [Chore]
+    private var chores: [Chore]
     private var latestLogs: [Int: ChoreLog]
     private var todayLogs: [ChoreLog]
     private var preferences: UserPreferences
@@ -385,7 +397,8 @@ final class ReviewUITestResponses {
     init(scenario: String, state: AppState) {
         self.scenario = scenario
         user = state.user!
-        household = state.household!
+        hasHousehold = state.household != nil
+        household = state.household ?? Household(id: 1, name: "", initials: "", inviteCode: nil, createdAt: state.user!.createdAt)
         members = state.members
         chores = state.chores
         latestLogs = state.latestLogs
@@ -397,6 +410,63 @@ final class ReviewUITestResponses {
     private struct HouseholdFixture: Encodable {
         let household: Household
         let members: [Member]
+    }
+
+    /// The packs every scenario offers (setup, Manage → Add activities), with
+    /// the server's names for them (internal/chore/packs.go).
+    static let onboardingPacks = [
+        ActivityPack(key: "baby", version: 1, title: "Baby", icon: "👶", summary: "Feeds, changes and baths", nameLabel: "Baby's name"),
+        ActivityPack(key: "cat", version: 1, title: "Cats", icon: "🐱", summary: "Feeding and the litter box", nameLabel: "Cat's name"),
+        ActivityPack(key: "plants", version: 1, title: "Plants", icon: "🌱", summary: "Watering", nameLabel: nil),
+    ]
+
+    private func packsResponse(_ request: URLRequest, url: URL, path: String, attempt: Int) throws -> (Data, URLResponse)? {
+        func json<T: Encodable>(_ body: T, _ status: Int) throws -> (Data, URLResponse) {
+            (try apiEncoder.encode(body), HTTPURLResponse(url: url, statusCode: status,
+                httpVersion: nil, headerFields: ["Content-Type": "application/json"])!)
+        }
+        func failed(_ message: String, _ status: Int) throws -> (Data, URLResponse) { try json(["error": message], status) }
+        switch (request.httpMethod ?? "GET", path) {
+        case ("GET", "/api/packs"):
+            return try json(ActivityPacksResponse(packs: Self.onboardingPacks), 200)
+        case ("POST", "/api/household") where scenario.hasPrefix("onboarding"):
+            let body = try JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as? [String: String] ?? [:]
+            household = Household(id: 1, name: body["name"] ?? "", initials: body["initials"] ?? "", inviteCode: "SETUP1", createdAt: user.createdAt)
+            hasHousehold = true
+            user = User(id: user.id, householdId: household.id, email: user.email, displayName: user.displayName,
+                avatarColor: user.avatarColor, emailVerified: user.emailVerified, role: "owner", createdAt: user.createdAt)
+            members = [Member(userId: user.id, email: user.email, displayName: user.displayName, avatarColor: user.avatarColor,
+                emailVerified: true, role: "owner", suspended: false)]
+            return try json(HouseholdOnlyResponse(household: household), 201)
+        case ("POST", "/api/chores/packs"):
+            if scenario == "onboarding-pack-error", attempt == 1 { return try failed("failed to add activities", 500) }
+            let picks = try apiDecoder.decode(AddPacksRequest.self, from: request.httpBody ?? Data()).packs
+            var names: [(String, String)] = []
+            for pick in picks {
+                let given = pick.names ?? []
+                switch pick.key {
+                case "baby": names += (given.isEmpty ? ["Baby"] : given).flatMap { [("Feed \($0)", "🍼"), ("Change \($0)", "👶")] }
+                case "cat": names += (given.isEmpty ? [("Feed Cats", "🐱")] : given.map { ("Feed \($0)", "🐱") }) + [("Clean Litter Box", "🧹")]
+                case "plants": names.append(("Water Plants", "🌱"))
+                default: break
+                }
+            }
+            var added: [Chore] = []
+            for (name, icon) in names where !chores.contains(where: { $0.name == name }) {
+                let chore = Chore(id: 100 + chores.count, householdId: household.id, name: name, icon: icon, color: "#F59E0B",
+                    sortOrder: chores.count, category: "care", isPredefined: true, predefinedKey: name, createdBy: nil,
+                    createdAt: user.createdAt, indicatorLabels: [], indicatorDefaults: [], hasVolumeML: false)
+                chores.append(chore)
+                added.append(chore)
+            }
+            return try json(AddPacksResponse(added: added), 200)
+        case ("GET", "/api/household") where !hasHousehold:
+            return try failed("no household found", 404)
+        case ("GET", "/api/households") where !hasHousehold:
+            return try json(HouseholdsResponse(households: []), 200)
+        default:
+            return nil
+        }
     }
 
     func respond(to request: URLRequest) async throws -> (Data, URLResponse) {
@@ -424,6 +494,9 @@ final class ReviewUITestResponses {
             }
             return (try JSONSerialization.data(withJSONObject: body), HTTPURLResponse(url: url, statusCode: 200,
                 httpVersion: nil, headerFields: ["Content-Type": "application/json"])!)
+        }
+        if let response = try packsResponse(request, url: url, path: path, attempt: attempt) {
+            return response
         }
         if path == "/api/me" {
             if request.httpMethod == "PATCH" {

@@ -197,13 +197,12 @@ test.describe('Settings - Remove Member', () => {
     // The removed member should see no household when they reload.
     await memberPage.goto('/');
     await memberPage.waitForTimeout(2000);
-    // After being removed, the home page shows "Welcome!" and a prompt
-    // to set up a household.
+    // After being removed, Home offers to set up a household or join one.
     await expect(
-      memberPage.locator('text=Welcome!')
+      memberPage.getByRole('heading', { name: 'Welcome to Nabu' })
     ).toBeVisible({ timeout: 10000 });
     await expect(
-      memberPage.locator('text=Set up your household to get started')
+      memberPage.getByRole('button', { name: 'Joining someone? Enter an invite code' })
     ).toBeVisible();
 
     await memberCtx.close();

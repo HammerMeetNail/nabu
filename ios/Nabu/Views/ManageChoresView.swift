@@ -4,6 +4,7 @@ struct ManageChoresView: View {
     @EnvironmentObject var state: AppState
     @EnvironmentObject var environment: AppEnvironment
     @State private var showingAddSheet = false
+    @State private var showingPacks = false
     @State private var editingChore: Chore?
 
     private let choreStore: ChoreStore
@@ -14,6 +15,14 @@ struct ManageChoresView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            Button {
+                showingPacks = true
+            } label: {
+                Label("Add activities", systemImage: "square.grid.2x2")
+            }
+            .buttonStyle(.bordered)
+            .padding(.top, 8)
+            .accessibilityIdentifier("add-packs")
             if sortedChores.isEmpty {
                 emptyState
             } else {
@@ -55,6 +64,11 @@ struct ManageChoresView: View {
         }
         .sheet(item: $editingChore) { chore in
             ChoreEditView(chore: chore, choreStore: choreStore)
+        }
+        .sheet(isPresented: $showingPacks) {
+            AddPacksSheet {
+                await ChoreDataLoader(api: environment.apiClient, state: state).loadChoreData()
+            }
         }
     }
 
@@ -159,5 +173,61 @@ struct ManageChoresView: View {
         Task {
             let _: UserPreferencesResponse? = try? await environment.apiClient.patch("/api/preferences", body: patch)
         }
+    }
+}
+
+/// Manage → Add activities: the setup's pack picker for this household
+/// (PWA `renderPacksSheet`). Activities the household has are kept.
+struct AddPacksSheet: View {
+    @EnvironmentObject var environment: AppEnvironment
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var selection = PackSelection()
+    @State private var saving = false
+    @State private var message: String?
+    /// Reloads the household's activities after an add.
+    let reload: () async -> Void
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Add a pack, or name a new baby or pet to give them their own. Activities you have already are kept as they are.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                    PackPicker(selection: selection, api: environment.apiClient)
+                    if let message = message ?? selection.error {
+                        Text(message)
+                            .foregroundColor(selection.error == nil && message == Self.nothingNew ? .secondary : DesignColors.danger)
+                            .accessibilityIdentifier("add-packs-message")
+                    }
+                }
+                .padding()
+            }
+            .navigationTitle("Add activities")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") { Task { await add() } }
+                        .disabled(saving || selection.packs == nil)
+                        .accessibilityIdentifier("add-packs-confirm")
+                }
+            }
+        }
+    }
+
+    static let nothingNew = "You have these activities already"
+
+    private func add() async {
+        if let problem = selection.problem { message = problem; return }
+        message = nil
+        saving = true
+        defer { saving = false }
+        guard let added = await selection.add(api: environment.apiClient) else { return }
+        if added == 0 { message = Self.nothingNew; return }
+        await reload()
+        dismiss()
     }
 }

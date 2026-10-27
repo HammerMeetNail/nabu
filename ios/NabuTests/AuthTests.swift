@@ -452,3 +452,142 @@ final class ProfileEditorTests: XCTestCase {
         XCTAssertNil(body?["avatarColor"])
     }
 }
+
+@MainActor
+final class HouseholdSetupTests: XCTestCase {
+    final class Sent: @unchecked Sendable { var requests: [URLRequest] = [] }
+    final class Server: @unchecked Sendable { var created = false; var packFailures = 1 }
+
+    private let catalog = ##"{"packs":[{"key":"baby","version":1,"title":"Baby","icon":"👶","summary":"Feeds, changes and baths","nameLabel":"Baby's name"},{"key":"cat","version":1,"title":"Cats","icon":"🐱","summary":"Feeding and the litter box","nameLabel":"Cat's name"},{"key":"plants","version":1,"title":"Plants","icon":"🌱","summary":"Watering"}]}"##
+
+    private func packs() throws -> [ActivityPack] {
+        try apiDecoder.decode(ActivityPacksResponse.self, from: Data(catalog.utf8)).packs
+    }
+
+    /// A signed-in account without a household, against a scripted server.
+    private func newAccount(_ reply: @escaping (URLRequest) -> (Int, String)) -> (APIClient, Sent) {
+        let identity = ClientIdentity()
+        identity.accept(User(id: 7, householdId: nil, email: "dana.oconnor@example.com", displayName: "dana.oconnor",
+                             avatarColor: "#19323C", emailVerified: true, role: "", createdAt: Date(timeIntervalSince1970: 0)))
+        let sent = Sent()
+        var api = APIClient(baseURL: URL(string: "http://localhost:9999")!, identity: identity)
+        api.mockHandler = { request in
+            sent.requests.append(request)
+            let (status, body) = reply(request)
+            return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
+        }
+        return (api, sent)
+    }
+
+    func testTheCatalogDecodesAndPicksEncodeWithoutEmptyNames() throws {
+        let decoded = try packs()
+        XCTAssertEqual(decoded.map(\.key), ["baby", "cat", "plants"])
+        XCTAssertEqual(decoded[1].nameLabel, "Cat's name")
+        XCTAssertNil(decoded[2].nameLabel)
+        // Key order isn't fixed, so compare the structure: no "names" when there are none.
+        let body = try apiEncoder.encode(AddPacksRequest(packs: [PackPick(key: "plants"), PackPick(key: "cat", names: ["Mongo"])]))
+        let sent = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: [[String: Any]]])["packs"]
+        XCTAssertEqual(sent?.map { $0 as NSDictionary }, [["key": "plants"], ["key": "cat", "names": ["Mongo"]]] as [NSDictionary])
+    }
+
+    func testPicksFollowTheCatalogAndDropBlankNames() throws {
+        let selection = PackSelection()
+        selection.packs = try packs()
+        XCTAssertEqual(selection.problem, "Pick at least one")
+        selection.toggle("cat")
+        selection.toggle("plants")
+        selection.toggle("baby")
+        selection.toggle("baby")
+        selection.names["cat"] = [" Mongo ", "", "Roger"]
+        selection.names["plants"] = ["ignored"]
+        XCTAssertEqual(selection.picks, [PackPick(key: "cat", names: ["Mongo", "Roger"]), PackPick(key: "plants")])
+        XCTAssertNil(selection.problem)
+        for _ in 0..<10 { selection.addName(to: "cat") }
+        XCTAssertEqual(selection.names["cat"]?.count, PackSelection.maxNames)
+        selection.names["cat"] = ["Max", "max"]
+        XCTAssertEqual(selection.problem, #""max" is used twice; give each one a different name"#)
+    }
+
+    func testSuggestionsMatchThePWA() {
+        XCTAssertEqual(HouseholdSetup.householdName(for: "Dana O'Connor"), "The O'Connors' home")
+        XCTAssertEqual(HouseholdSetup.householdName(for: "  Sam   Jones "), "The Joneses' home")
+        XCTAssertEqual(HouseholdSetup.householdName(for: "Ada Fox"), "The Foxes' home")
+        XCTAssertEqual(HouseholdSetup.householdName(for: "Dana"), "Dana's home")
+        XCTAssertEqual(HouseholdSetup.householdName(for: ""), "")
+        XCTAssertEqual(HouseholdSetup.householdName(for: "A " + String(repeating: "x", count: 60)), "")
+        XCTAssertEqual(HouseholdSetup.initials(for: "The O'Connors' home"), "TOH")
+        XCTAssertEqual(HouseholdSetup.initials(for: "Home"), "HO")
+        XCTAssertEqual(HouseholdSetup.initials(for: "Flat"), "FL")
+        XCTAssertEqual(HouseholdSetup.initials(for: "Ark"), "ARK")
+    }
+
+    func testStartPrefillsANameTheUserChoseAndAPaletteColor() {
+        let setup = HouseholdSetup()
+        setup.start(user: User(id: 1, householdId: nil, email: "dana.oconnor@example.com", displayName: "dana.oconnor",
+                               avatarColor: "#123456", emailVerified: true, role: "", createdAt: Date()))
+        XCTAssertEqual(setup.name, "")
+        XCTAssertEqual(setup.color, "#19323C")
+        let named = HouseholdSetup()
+        named.start(user: User(id: 2, householdId: nil, email: "d@example.com", displayName: "Dana",
+                               avatarColor: "#7b5ea7", emailVerified: true, role: "", createdAt: Date()))
+        XCTAssertEqual(named.name, "Dana")
+        XCTAssertEqual(named.color, "#7B5EA7")
+        // Initials follow the household name until typed by hand.
+        named.setHouseholdName("Jones Home")
+        XCTAssertEqual(named.initials, "JH")
+        named.setInitials("JNS")
+        named.setHouseholdName("Jones Family Home")
+        XCTAssertEqual(named.initials, "JNS")
+    }
+
+    func testCreatingAddsThePacksAndRetriesOnlyThePacks() async throws {
+        let server = Server()
+        let user = ##"{"id":7,"householdId":%@,"email":"dana.oconnor@example.com","displayName":"Dana","avatarColor":"#19323C","emailVerified":true,"role":"%@","createdAt":"1970-01-01T00:00:00Z"}"##
+        let (api, sent) = newAccount { request in
+            switch (request.httpMethod ?? "GET", request.url?.path ?? "") {
+            case ("POST", "/api/household"):
+                server.created = true
+                return (201, #"{"household":{"id":12,"name":"The O'Connors' home","initials":"TOH","inviteCode":"ABC123","createdAt":"1970-01-01T00:00:00Z"}}"#)
+            case ("GET", "/api/me"):
+                return (200, "{\"user\":" + String(format: user, server.created ? "12" : "null", server.created ? "owner" : "") + "}")
+            case ("POST", "/api/chores/packs"):
+                if server.packFailures > 0 { server.packFailures -= 1; return (500, #"{"error":"failed to add activities"}"#) }
+                return (200, ##"{"added":[{"id":40,"householdId":12,"name":"Feed Mongo","icon":"🐱","color":"#F59E0B","sortOrder":0,"category":"feeding","isPredefined":true,"predefinedKey":"Feed Cats","createdBy":null,"createdAt":"1970-01-01T00:00:00Z","indicatorLabels":[],"indicatorDefaults":[],"hasVolumeML":false}]}"##)
+            default:
+                return (404, #"{"error":"not found"}"#)
+            }
+        }
+        let auth = AuthStore(api: api)
+        let setup = HouseholdSetup()
+        setup.start(user: api.identity.snapshot.user)
+        setup.setHouseholdName("The O'Connors' home")
+        setup.packs.packs = try packs()
+        setup.packs.toggle("cat")
+        setup.packs.names["cat"] = ["Mongo"]
+        setup.step = .packs
+
+        await setup.create(auth: auth, api: api)
+        XCTAssertEqual(setup.created?.inviteCode, "ABC123")
+        XCTAssertEqual(setup.step, .packs, "stays on the picker until the packs are added")
+        XCTAssertEqual(setup.error, "Your household is ready, but its activities weren't added. failed to add activities")
+        XCTAssertTrue(setup.holdsMainTabs(for: api.identity.snapshot.user))
+        let pack = try XCTUnwrap(sent.requests.first { $0.url?.path == "/api/chores/packs" })
+        XCTAssertEqual(try apiDecoder.decode(AddPacksRequest.self, from: pack.httpBody ?? Data()), AddPacksRequest(packs: [PackPick(key: "cat", names: ["Mongo"])]))
+        // The pack request carries the new household's claim.
+        XCTAssertEqual(pack.value(forHTTPHeaderField: "X-Nabu-Household-ID"), "12")
+
+        await setup.create(auth: auth, api: api)
+        XCTAssertEqual(setup.step, .invite)
+        XCTAssertNil(setup.error)
+        XCTAssertEqual(sent.requests.filter { $0.url?.path == "/api/household" }.count, 1, "the household is created once")
+        // Another account never sees this setup's hold on the main tabs.
+        XCTAssertFalse(setup.holdsMainTabs(for: User(id: 8, householdId: 12, email: "sam@example.com", displayName: "Sam",
+            avatarColor: "#19323C", emailVerified: true, role: "member", createdAt: Date())))
+
+        var reloaded = false
+        await setup.finish { reloaded = true }
+        XCTAssertTrue(reloaded)
+        XCTAssertFalse(setup.holdsMainTabs(for: api.identity.snapshot.user))
+        XCTAssertNil(setup.created)
+    }
+}

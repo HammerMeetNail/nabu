@@ -2050,3 +2050,79 @@ describe("Profile form", () => {
     assert.equal(root.querySelectorAll('input[name="avatarColor"]:checked').length, 0);
   });
 });
+
+describe("Household setup", () => {
+  const packs = [
+    { key: "baby", title: "Baby", icon: "👶", summary: "Feeds", nameLabel: "Baby's name" },
+    { key: "plants", title: "Plants", icon: "🌱", summary: "Watering" },
+    { key: "cat", title: '<b>Cats</b>', icon: '"><img src=x>', summary: "<i>s</i>", nameLabel: 'Cat"s name' },
+  ];
+
+  it("suggests a household name from the user's name", async () => {
+    const { householdNameFor } = await import("../onboarding.js");
+    assert.equal(householdNameFor("Dana O'Connor"), "The O'Connors' home");
+    assert.equal(householdNameFor("  Sam   Jones "), "The Joneses' home");
+    assert.equal(householdNameFor("Ada Fox"), "The Foxes' home");
+    assert.equal(householdNameFor("Dana"), "Dana's home");
+    assert.equal(householdNameFor(""), "");
+    assert.equal(householdNameFor(`A ${"x".repeat(60)}`), "");
+  });
+
+  it("doesn't prefill the email-derived name and keeps a palette color", async () => {
+    const { createOnboarding } = await import("../onboarding.js");
+    const fresh = createOnboarding({ email: "dana.oconnor82@example.com", displayName: "dana.oconnor82", avatarColor: "#123456" });
+    assert.equal(fresh.name, "");
+    assert.equal(fresh.color, "#19323C");
+    const named = createOnboarding({ email: "d@example.com", displayName: "Dana", avatarColor: "#7b5ea7" });
+    assert.equal(named.name, "Dana");
+    assert.equal(named.color, "#7B5EA7");
+  });
+
+  it("sends the picked packs in catalog order, without blank names", async () => {
+    const { onboardingPicks } = await import("../onboarding.js");
+    const draft = { picks: { cat: { on: true, names: [" Mongo ", "", "Roger"] }, plants: { on: true, names: ["ignored"] }, baby: { on: false, names: ["Ada"] } } };
+    assert.deepEqual(onboardingPicks(draft, packs), [{ key: "plants" }, { key: "cat", names: ["Mongo", "Roger"] }]);
+    assert.deepEqual(onboardingPicks({ picks: { cat: { on: true, names: ["  "] } } }, packs), [{ key: "cat" }]);
+  });
+
+  it("finds a name used twice across packs, ignoring case", async () => {
+    const { duplicateName } = await import("../onboarding.js");
+    assert.equal(duplicateName([{ key: "baby", names: ["Max"] }, { key: "plants" }, { key: "dog", names: ["Rex", "max"] }]), "max");
+    assert.equal(duplicateName([{ key: "cat", names: ["Mongo", "Roger"] }]), "");
+  });
+
+  it("renders the picker from the draft and escapes pack metadata", async () => {
+    const { renderOnboarding } = await import("../onboarding.js");
+    const state = { packs, onboarding: { step: "packs", picks: { cat: { on: true, names: ["Mongo", '"><b>x'] } }, error: "", saving: false, name: "", household: "" } };
+    const html = renderOnboarding(state);
+    assert.ok(!html.includes("<img") && !html.includes("<b>") && !html.includes("<i>"));
+    const root = document.createElement("div");
+    root.innerHTML = html;
+    assert.deepEqual([...root.querySelectorAll("[data-onboarding-pack]")].map(i => [i.dataset.onboardingPack, i.checked]), [["baby", false], ["plants", false], ["cat", true]]);
+    assert.deepEqual([...root.querySelectorAll('[data-onboarding-pack-name="cat"]')].map(i => i.value), ["Mongo", '"><b>x']);
+    assert.equal(root.querySelector("#pack-cat-name-1").getAttribute("aria-label"), 'Cat"s name 2');
+    // Unpicked packs show no name fields; the picked one offers another.
+    assert.equal(root.querySelectorAll('[data-onboarding-pack-name="baby"]').length, 0);
+    assert.ok(root.querySelector('[data-action="onboarding-add-name"][data-pack="cat"]'));
+    assert.equal(root.querySelector('#onboarding-packs-form button[type="submit"]').textContent, "Create household");
+  });
+
+  it("offers a retry of the packs once the household exists", async () => {
+    const { renderOnboarding } = await import("../onboarding.js");
+    const root = document.createElement("div");
+    root.innerHTML = renderOnboarding({ packs, onboarding: { step: "packs", householdReady: true, picks: {}, error: "Your household is ready, but its activities weren't added.", saving: false } });
+    assert.equal(root.querySelector('[data-step="household"]'), null);
+    assert.equal(root.querySelector('#onboarding-packs-form button[type="submit"]').textContent, "Add activities");
+    assert.equal(root.querySelector(".form-error").textContent, "Your household is ready, but its activities weren't added.");
+  });
+
+  it("links the new household's invite", async () => {
+    const { renderOnboarding } = await import("../onboarding.js");
+    const root = document.createElement("div");
+    root.innerHTML = renderOnboarding({ household: { inviteCode: "AB&CD" }, onboarding: { step: "invite", picks: {} } });
+    assert.equal(root.querySelector(".invite-link-url").textContent, "http://localhost:8080/join?code=AB%26CD");
+    assert.equal(root.querySelector('[data-action="copy-invite-link"]').dataset.code, "AB&CD");
+    // No Web Share in this browser, so only Copy.
+    assert.equal(root.querySelector('[data-action="onboarding-share"]'), null);
+  });
+});

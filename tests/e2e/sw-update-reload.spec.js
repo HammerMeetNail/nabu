@@ -98,7 +98,8 @@ test.describe('SW Update Reload', () => {
 
     // Verify the page shows chore content, not the setup/welcome message
     const body = await page.textContent('body');
-    expect(body).not.toContain('Set Up Household');
+    expect(body).not.toContain('Set up your household');
+    expect(body).not.toContain('Welcome to Nabu');
     expect(body).not.toContain('No chores set up yet');
   });
 

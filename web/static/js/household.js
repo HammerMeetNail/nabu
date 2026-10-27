@@ -103,17 +103,7 @@ export function renderHouseholdView(household, members, invites, currentUser) {
       <h3>Household</h3>
       <div class="empty-state">
         <p class="mt-2">You're not part of a household yet.</p>
-        <form id="create-household-form" data-action="create-household" class="mt-3">
-          <div class="form-group">
-            <label class="form-label" for="hh-name">Household Name</label>
-            <input id="hh-name" type="text" name="name" required placeholder="Our Home" data-autoinitials="hh-initials">
-          </div>
-          <div class="form-group">
-            <label class="form-label" for="hh-initials">Initials <span class="form-label-hint">(shown in header)</span></label>
-            <input id="hh-initials" type="text" name="initials" maxlength="4" placeholder="OH" autocomplete="off" class="hh-initials-input">
-          </div>
-          <button type="submit" class="btn btn-primary btn-block">Create Household</button>
-        </form>
+        <a class="btn btn-primary btn-block mt-3" href="/today" data-nav="home">Set up a household</a>
         <div class="auth-divider">or</div>
         <form id="join-household-form" data-action="join-household">
           <div class="form-group">

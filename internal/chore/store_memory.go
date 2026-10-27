@@ -94,12 +94,44 @@ func (s *MemoryStore) UpdateChore(_ context.Context, chore Chore) error {
 	}
 	chore.HouseholdID = existing.HouseholdID
 	chore.IsPredefined = existing.IsPredefined
+	chore.PredefinedKey = existing.PredefinedKey
+	chore.DefaultName = existing.DefaultName
 	chore.CreatedAt = existing.CreatedAt
 	chore.CreatedBy = existing.CreatedBy
 	chore.NormalizeVisibility()
 	chore.NormalizeMetric()
 	s.chores[chore.ID] = chore
 	return nil
+}
+
+func (s *MemoryStore) AddPackChores(_ context.Context, householdID int64, chores []Chore) ([]Chore, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.deleted.Check(0, householdID, 0, 0, 0); err != nil {
+		return nil, err
+	}
+	added := []Chore{}
+	for _, c := range chores {
+		taken := false
+		for _, existing := range s.chores {
+			if existing.HouseholdID == householdID && existing.Name == c.Name {
+				taken = true
+				break
+			}
+		}
+		if taken {
+			continue
+		}
+		c.ID = s.nextID()
+		c.HouseholdID = householdID
+		c.IsPredefined = true
+		c.CreatedAt = time.Now().UTC()
+		c.NormalizeVisibility()
+		c.NormalizeMetric()
+		s.chores[c.ID] = c
+		added = append(added, c)
+	}
+	return added, nil
 }
 
 func (s *MemoryStore) DeleteChore(_ context.Context, id int64) error {

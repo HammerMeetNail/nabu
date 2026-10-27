@@ -1923,3 +1923,155 @@ final class NabuProfileUITests: XCTestCase {
         XCTAssertTrue(row.label.contains("Dana O'Connor"), row.label)
     }
 }
+
+/// A new account sets up its household: name and color, the household's
+/// name, then who and what it looks after, which seeds only those packs (PWA
+/// `onboarding-packs.spec.js`). Also Manage → Add activities.
+final class NabuOnboardingUITests: XCTestCase {
+    private func launch(_ scenario: String) -> XCUIApplication {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-disableAnimations", "-seedHomeForUITest", "-useMockAPI", "-reviewScenario", scenario,
+                               "-nabuBaseURL", "http://localhost:9998"]
+        app.launchForLocalTest()
+        return app
+    }
+
+    private func type(_ text: String, into field: XCUIElement) {
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "\(field)")
+        field.tap()
+        field.typeText(text)
+    }
+
+    /// The setup screen scrolls; bring a control on screen before tapping it.
+    private func tapScrolling(_ element: XCUIElement, in app: XCUIApplication) {
+        XCTAssertTrue(element.waitForExistence(timeout: 5), "\(element)")
+        for _ in 0..<5 where !(element.isHittable && app.frame.contains(element.frame)) { app.swipeUp() }
+        element.tap()
+    }
+
+    private func tile(_ name: String, in app: XCUIApplication) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
+    }
+
+    private func expectError(_ message: String, in app: XCUIApplication, file: StaticString = #filePath, line: UInt = #line) {
+        let error = app.staticTexts["onboarding-error"]
+        XCTAssertTrue(error.waitForExistence(timeout: 5), file: file, line: line)
+        let shown = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label BEGINSWITH %@", message), object: error)
+        XCTAssertEqual(XCTWaiter.wait(for: [shown], timeout: 5), .completed, "error: \(error.label)", file: file, line: line)
+    }
+
+    func testSetupSeedsThePickedPacksNamedForTheBabyAndPets() {
+        let app = launch("onboarding")
+        XCTAssertTrue(app.staticTexts["Welcome to Nabu"].waitForExistence(timeout: 10))
+        type("Dana O'Connor\n", into: app.textFields["onboarding-name"])
+        app.buttons["Purple"].tap()
+        app.buttons["onboarding-continue"].tap()
+
+        let household = app.textFields["onboarding-household"]
+        XCTAssertTrue(household.waitForExistence(timeout: 5))
+        XCTAssertEqual(household.value as? String, "The O'Connors' home")
+        XCTAssertEqual(app.textFields["onboarding-initials"].value as? String, "TOH")
+        app.buttons["onboarding-continue"].tap()
+
+        let baby = app.buttons["pack-baby"]
+        XCTAssertTrue(baby.waitForExistence(timeout: 5))
+        baby.tap()
+        XCTAssertTrue(baby.isSelected)
+        type("Ada\n", into: app.textFields["pack-baby-name-0"])
+        app.buttons["pack-cat"].tap()
+        type("Mongo\n", into: app.textFields["pack-cat-name-0"])
+        tapScrolling(app.buttons["pack-cat-add-name"], in: app)
+        type("Roger\n", into: app.textFields["pack-cat-name-1"])
+        tapScrolling(app.buttons["onboarding-create"], in: app)
+
+        let link = app.staticTexts["onboarding-invite-link"]
+        XCTAssertTrue(link.waitForExistence(timeout: 10))
+        XCTAssertTrue(link.label.hasSuffix("/join?code=SETUP1"), link.label)
+        XCTAssertTrue(app.buttons["onboarding-share"].exists)
+        app.buttons["onboarding-done"].tap()
+
+        for name in ["Feed Ada", "Change Ada", "Feed Mongo", "Feed Roger", "Clean Litter Box"] {
+            XCTAssertTrue(tile(name, in: app).waitForExistence(timeout: 10), name)
+        }
+        XCTAssertFalse(tile("Water Plants", in: app).exists, "only the picked packs")
+    }
+
+    func testRefusalsAndGoingBackKeepWhatWasTyped() {
+        let app = launch("onboarding")
+        let continueButton = app.buttons["onboarding-continue"]
+        XCTAssertTrue(continueButton.waitForExistence(timeout: 10))
+        continueButton.tap()
+        expectError("Enter your name", in: app)
+
+        type("Sam\n", into: app.textFields["onboarding-name"])
+        continueButton.tap()
+        let household = app.textFields["onboarding-household"]
+        XCTAssertTrue(household.waitForExistence(timeout: 5))
+        XCTAssertEqual(household.value as? String, "Sam's home")
+        app.buttons["Back"].tap()
+        XCTAssertEqual(app.textFields["onboarding-name"].value as? String, "Sam")
+        continueButton.tap()
+        XCTAssertTrue(household.waitForExistence(timeout: 5))
+        continueButton.tap()
+
+        XCTAssertTrue(app.buttons["pack-baby"].waitForExistence(timeout: 5))
+        tapScrolling(app.buttons["onboarding-create"], in: app)
+        expectError("Pick at least one", in: app)
+        app.buttons["pack-baby"].tap()
+        type("Max\n", into: app.textFields["pack-baby-name-0"])
+        app.buttons["pack-cat"].tap()
+        type("max\n", into: app.textFields["pack-cat-name-0"])
+        tapScrolling(app.buttons["onboarding-create"], in: app)
+        expectError("\"max\" is used twice", in: app)
+        XCTAssertEqual(app.buttons["onboarding-create"].label, "Create household", "nothing was created")
+    }
+
+    func testAFailedSeedKeepsTheHouseholdAndRetriesThePacks() {
+        let app = launch("onboarding-pack-error")
+        type("Lee\n", into: app.textFields["onboarding-name"])
+        app.buttons["onboarding-continue"].tap()
+        XCTAssertTrue(app.textFields["onboarding-household"].waitForExistence(timeout: 5))
+        app.buttons["onboarding-continue"].tap()
+        let plants = app.buttons["pack-plants"]
+        XCTAssertTrue(plants.waitForExistence(timeout: 5))
+        plants.tap()
+        tapScrolling(app.buttons["onboarding-create"], in: app)
+
+        expectError("Your household is ready, but its activities weren't added.", in: app)
+        XCTAssertTrue(app.buttons["pack-plants"].isSelected, "the picks are kept")
+        XCTAssertFalse(app.buttons["Back"].exists)
+        XCTAssertEqual(app.buttons["onboarding-create"].label, "Add activities")
+        tapScrolling(app.buttons["onboarding-create"], in: app)
+        XCTAssertTrue(app.buttons["onboarding-done"].waitForExistence(timeout: 10))
+        app.buttons["onboarding-done"].tap()
+        XCTAssertTrue(tile("Water Plants", in: app).waitForExistence(timeout: 10))
+    }
+
+    func testManageAddsAPackNamedForANewPet() {
+        let app = launch("home")
+        app.buttons["Manage"].tap()
+        let add = app.buttons["add-packs"]
+        XCTAssertTrue(add.waitForExistence(timeout: 5))
+        add.tap()
+        let cats = app.buttons["pack-cat"]
+        XCTAssertTrue(cats.waitForExistence(timeout: 5))
+        cats.tap()
+        type("Luna\n", into: app.textFields["pack-cat-name-0"])
+        app.buttons["add-packs-confirm"].tap()
+        XCTAssertTrue(add.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Feed Luna"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Clean Litter Box"].exists)
+
+        // The same pack again adds nothing and says so.
+        add.tap()
+        XCTAssertTrue(cats.waitForExistence(timeout: 5))
+        cats.tap()
+        type("Luna\n", into: app.textFields["pack-cat-name-0"])
+        app.buttons["add-packs-confirm"].tap()
+        let message = app.staticTexts["add-packs-message"]
+        XCTAssertTrue(message.waitForExistence(timeout: 5))
+        XCTAssertEqual(message.label, "You have these activities already")
+        app.buttons["Cancel"].tap()
+    }
+}

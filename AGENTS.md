@@ -121,12 +121,15 @@ Session cookie name: `nabu_session`. CSRF cookie name: `nabu_csrf`.
 - **`stats-batch.js`** — Stats reads that start in the same synchronous pass leave as `/api/stats/dashboard` requests in two lanes (sections, and per-chore time-series/summary charts), each caller getting its own data or error; a lone read goes to its endpoint. Keeps the last fully successful page per identity in memory and revalidates it with `If-None-Match`. Every Stats fetcher in `stats.js` goes through `statsGet()`.
 - **`snapshot.js`** — Home data saved for offline launch. Bound to the active identity's user, household and binding; saved only from confirmed online state; deleted by `browser-context.js` whenever the identity stops being active. Never display it for any other identity state, and never let an unreachable server (network failure, timeout, 5xx) sign the user out or hide it: only a server answer (no session, 401, 409 context change) does.
 
-### When adding or changing predefined chores
+### When adding or changing predefined activities
 
-**Adding a new predefined chore or changing an existing one's fields (icon, color, indicatorLabels, hasVolumeML, hasRating, etc.) requires two changes — never skip either one:**
+New households pick **activity packs** during setup (`internal/chore/packs.go`), and any household can add packs later from Manage. Every pack activity is a predefined template whose name is its `predefined_key`. A pack can name an activity for a baby or pet ("Feed Mongo", stored as `default_name`), but never changes its key.
 
-1. **Update `PredefinedChores`** in `internal/chore/service.go` — this defines what new households get.
-2. **Add a migration** that upserts the change for every existing household. The migration must use `WHERE NOT EXISTS` (for new chores) or `UPDATE` (for field changes) keyed on `predefined_key`, so it is idempotent on re-run. Without this step, existing users never see the new or updated defaults.
+- **Changing an existing template's fields** (icon, color, indicatorLabels, hasVolumeML, hasRating, metric, etc.) requires two changes — never skip either one:
+  1. **Update the template**: `PredefinedChores` in `internal/chore/service.go`, or `packOnlyChores` in `internal/chore/packs.go`.
+  2. **Add a migration** that `UPDATE`s every existing household's activities keyed on `predefined_key`, so it is idempotent on re-run. Named activities share their template's key, so they get the change too. Without this step, existing users never see the updated defaults.
+- **Adding an activity to a pack** needs a template in `packOnlyChores` and an entry in the pack. Do **not** add a migration that inserts it into every household: that brings back "every household gets every tile". Households get it with the pack.
+- **`PredefinedChores` is frozen.** It is the full set `POST /api/chores/seed-defaults` seeds, which households from before packs received and E2E fixtures rely on. That endpoint does nothing for a household that already has predefined activities.
 
 ### Key patterns
 
