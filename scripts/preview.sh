@@ -13,7 +13,10 @@
 # NABU_PREVIEW_* variables below; NABU_PREVIEW_TAILSCALE=0 skips Tailscale.
 set -euo pipefail
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+# Build the checkout this is run from (any worktree), falling back to the one
+# that contains this script.
+ROOT=$(git rev-parse --show-toplevel 2>/dev/null || (CDPATH= cd -- "$(dirname -- "$0")/.." && pwd))
+[ -f "$ROOT/cmd/vapid-keygen/main.go" ] || { echo "preview: run this from a Nabu checkout" >&2; exit 1; }
 NAME=${NABU_PREVIEW_NAME:-nabu-preview}
 APP_PORT=${NABU_PREVIEW_PORT:-18080}
 MAIL_PORT=${NABU_PREVIEW_MAIL_PORT:-18025}

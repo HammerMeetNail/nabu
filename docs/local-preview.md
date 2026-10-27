@@ -1,6 +1,6 @@
 # Phone preview (Podman + Tailscale)
 
-`make preview` builds the current checkout and runs it on your Mac as a Podman pod (app, PostgreSQL, Mailpit). It then publishes it to your tailnet with Tailscale Serve, so you can use it from your phone over HTTPS. Run it from any worktree to preview that branch.
+`make preview` builds the current checkout and runs it on your Mac as a Podman pod (app, PostgreSQL, Mailpit). It then publishes it to your tailnet with Tailscale Serve, so you can use it from your phone over HTTPS. Run it from any worktree to preview that branch. For a branch that doesn't have the script yet, run `bash /path/to/a/checkout/scripts/preview.sh up` from that branch's directory; the script builds whichever checkout it is run from.
 
 ## Requirements
 
