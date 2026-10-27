@@ -147,16 +147,15 @@ func (s *PostgresStore) AddPackChores(ctx context.Context, householdID int64, ch
 		subjects, _ := json.Marshal(nilToEmpty(c.Subjects))
 		err := tx.QueryRowContext(ctx, `
 			INSERT INTO chores (household_id, name, icon, color, sort_order, category, is_predefined, predefined_key, default_name, indicator_labels, has_volume_ml, indicator_defaults, follow_up_enabled, has_rating, metric_type, metric_unit, subjects, visibility)
-			VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
 			ON CONFLICT (household_id, name) DO NOTHING RETURNING id, created_at
-		`, c.HouseholdID, c.Name, c.Icon, c.Color, c.SortOrder, c.Category, c.PredefinedKey, nullableString(c.DefaultName), string(labels), c.HasVolumeML, string(defaults), c.FollowUpEnabled, c.HasRating, c.MetricType, c.MetricUnit, string(subjects), c.Visibility).Scan(&c.ID, &c.CreatedAt)
+		`, c.HouseholdID, c.Name, c.Icon, c.Color, c.SortOrder, c.Category, c.IsPredefined, nullableString(c.PredefinedKey), nullableString(c.DefaultName), string(labels), c.HasVolumeML, string(defaults), c.FollowUpEnabled, c.HasRating, c.MetricType, c.MetricUnit, string(subjects), c.Visibility).Scan(&c.ID, &c.CreatedAt)
 		if err == sql.ErrNoRows {
 			continue
 		}
 		if err != nil {
 			return nil, err
 		}
-		c.IsPredefined = true
 		added = append(added, c)
 	}
 	return added, tx.Commit()

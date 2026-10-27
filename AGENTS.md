@@ -123,11 +123,11 @@ Session cookie name: `nabu_session`. CSRF cookie name: `nabu_csrf`.
 
 ### When adding or changing predefined activities
 
-New households pick **activity packs** during setup (`internal/chore/packs.go`), and any household can add packs later from Manage. Every pack activity is a predefined template whose name is its `predefined_key`. A pack can name an activity for a baby or pet ("Feed Mongo", stored as `default_name`), but never changes its key.
+New households pick **activity packs** during setup (`internal/chore/packs.go`), and any household can add packs later from Manage. A shared pack activity ("Clean Litter Box") is a predefined template whose name is its `predefined_key`. A baby's or pet's own activity ("Feed Mongo") is a **custom task** that starts with its template's fields: no template change or migration alters it. A shared activity for several of them (meds for two cats) asks which one, with their names as its subjects.
 
 - **Changing an existing template's fields** (icon, color, indicatorLabels, hasVolumeML, hasRating, metric, etc.) requires two changes — never skip either one:
   1. **Update the template**: `PredefinedChores` in `internal/chore/service.go`, or `packOnlyChores` in `internal/chore/packs.go`.
-  2. **Add a migration** that `UPDATE`s every existing household's activities keyed on `predefined_key`, so it is idempotent on re-run. Named activities share their template's key, so they get the change too. Without this step, existing users never see the updated defaults.
+  2. **Add a migration** that `UPDATE`s every existing household's activities keyed on `predefined_key`, so it is idempotent on re-run. A baby's or pet's own activities are custom tasks and keep their fields. Without this step, existing users never see the updated defaults.
 - **Adding an activity to a pack** needs a template in `packOnlyChores` and an entry in the pack. Do **not** add a migration that inserts it into every household: that brings back "every household gets every tile". Households get it with the pack.
 - **`PredefinedChores` is frozen.** It is the full set `POST /api/chores/seed-defaults` seeds, which households from before packs received and E2E fixtures rely on. That endpoint does nothing for a household that already has predefined activities.
 

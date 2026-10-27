@@ -61,13 +61,26 @@ test.describe('Household setup', () => {
     const { user } = await (await page.request.get('/api/me')).json();
     expect(user).toMatchObject({ email, displayName: "Dana O'Connor", avatarColor: '#7B5EA7' });
     const { chores } = await (await page.request.get('/api/chores')).json();
-    expect(chores.find(c => c.name === 'Feed Ada')).toMatchObject({ isPredefined: true, predefinedKey: 'Feed Baby', metricType: 'amount', metricUnit: 'mL' });
-    expect(chores.find(c => c.name === 'Feed Roger')).toMatchObject({ predefinedKey: 'Feed Cats' });
+    // A baby's or pet's own activities are custom tasks with their template's
+    // fields; the cats' shared meds keep the template and ask which cat.
+    expect(chores.find(c => c.name === 'Feed Ada')).toMatchObject({ isPredefined: false, predefinedKey: '', metricType: 'amount', metricUnit: 'mL' });
+    expect(chores.find(c => c.name === 'Feed Roger')).toMatchObject({ isPredefined: false, predefinedKey: '', icon: '🐱' });
+    expect(chores.find(c => c.name === 'Cat Meds')).toMatchObject({ isPredefined: true, predefinedKey: 'Cat Meds', subjects: ['Mongo', 'Roger'] });
 
     // Logging works on a named activity.
     await page.locator('.home-chore-card', { hasText: 'Feed Mongo' }).click();
     await page.locator('[data-action="save-log"]').click();
     await expect(page.locator('.home-chore-card', { hasText: 'Feed Mongo' }).locator('.home-card-time')).not.toHaveText('never');
+
+    // The cats' meds ask which cat.
+    await page.locator('.home-chore-card', { hasText: 'Cat Meds' }).click();
+    await expect(page.locator('.subject-chip')).toHaveText(['Mongo', 'Roger']);
+    await page.locator('.subject-chip', { hasText: 'Roger' }).click();
+    await page.locator('[data-action="save-log"]').click();
+    await expect(page.locator('.home-chore-card', { hasText: 'Cat Meds' }).locator('.home-card-time')).not.toHaveText('never');
+    const meds = chores.find(c => c.name === 'Cat Meds');
+    const { latestLogs } = await (await page.request.get('/api/logs/latest-per-chore')).json();
+    expect(latestLogs[meds.id]).toMatchObject({ subject: 'Roger' });
   });
 
   test('refuses a blank name or no packs, and going back keeps what was typed', async ({ page }) => {
@@ -197,7 +210,7 @@ test.describe('Manage → Add activities', () => {
 
     const { chores } = await (await page.request.get('/api/chores')).json();
     expect(chores).toHaveLength(18);
-    expect(chores.find(c => c.name === 'Walk Rex')).toMatchObject({ isPredefined: true, predefinedKey: 'Walk Dog' });
+    expect(chores.find(c => c.name === 'Walk Rex')).toMatchObject({ isPredefined: false, predefinedKey: '' });
     await page.locator('[data-action="switch-home-view"][data-view="log"]').click();
     await expect(page.locator('.home-chore-card', { hasText: 'Feed Rex' })).toBeVisible();
   });
