@@ -476,7 +476,7 @@ function renderHistoryView() {
       const latestLogForChore = state.latestLogs[choreId] ?? null;
       const cachedIndicatorVolumes = latestLogForChore?.indicatorVolumes ?? null;
       const cachedIndicators = state.activeSheetData?.indicatorSelection ?? (latestLogForChore?.indicators ?? null);
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id), recentUnit:state.recentAmountUnits?.[chore.id], cachedMetricUnit:latestLogForChore?.metricUnit, cachedSubject: latestLogForChore?.subject || null, metricUnit:state.activeSheetData?.metricUnit });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id), recentUnit:state.recentAmountUnits?.[chore.id], cachedMetricUnit:latestLogForChore?.metricUnit, cachedSubject: latestLogForChore?.subject || null, cachedAmount: latestLogForChore?.volumeML ?? null, metricUnit:state.activeSheetData?.metricUnit });
 
   return `<div class="sheet-overlay-wrapper">
         ${mainView}
@@ -502,7 +502,7 @@ function renderHomeViewWrapper() {
       const latestLogForChore = state.latestLogs[choreId] ?? null;
       const cachedIndicatorVolumes = latestLogForChore?.indicatorVolumes ?? null;
       const cachedIndicators = state.activeSheetData?.indicatorSelection ?? (latestLogForChore?.indicators ?? null);
-      const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, null, { showWhen: true, cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id), recentUnit:state.recentAmountUnits?.[chore.id], cachedMetricUnit:latestLogForChore?.metricUnit, cachedSubject: latestLogForChore?.subject || null, metricUnit:state.activeSheetData?.metricUnit });
+      const sheetHTML = renderLogSheet(chore, null, todayISO(0), state.members || [], state.user?.id, null, { showWhen: true, cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id), recentUnit:state.recentAmountUnits?.[chore.id], cachedMetricUnit:latestLogForChore?.metricUnit, cachedSubject: latestLogForChore?.subject || null, cachedAmount: latestLogForChore?.volumeML ?? null, metricUnit:state.activeSheetData?.metricUnit });
       return `<div class="sheet-overlay-wrapper">
         ${header}
         ${mainView}
@@ -623,7 +623,7 @@ function renderCalendarView() {
       const latestLogForChore = state.latestLogs[choreId] ?? null;
       const cachedIndicatorVolumes = latestLogForChore?.indicatorVolumes ?? null;
       const cachedIndicators = state.activeSheetData?.indicatorSelection ?? (latestLogForChore?.indicators ?? null);
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id), recentUnit:state.recentAmountUnits?.[chore.id], cachedMetricUnit:latestLogForChore?.metricUnit, cachedSubject: latestLogForChore?.subject || null, metricUnit:state.activeSheetData?.metricUnit });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id), recentUnit:state.recentAmountUnits?.[chore.id], cachedMetricUnit:latestLogForChore?.metricUnit, cachedSubject: latestLogForChore?.subject || null, cachedAmount: latestLogForChore?.volumeML ?? null, metricUnit:state.activeSheetData?.metricUnit });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}
@@ -713,7 +713,7 @@ function renderScheduleView() {
       const latestLogForChore = state.latestLogs[choreId] ?? null;
       const cachedIndicatorVolumes = latestLogForChore?.indicatorVolumes ?? null;
       const cachedIndicators = state.activeSheetData?.indicatorSelection ?? (latestLogForChore?.indicators ?? null);
-      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), scheduleId, slotTime, cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id), recentUnit:state.recentAmountUnits?.[chore.id], cachedMetricUnit:latestLogForChore?.metricUnit, cachedSubject: latestLogForChore?.subject || null, metricUnit:state.activeSheetData?.metricUnit });
+      const sheetHTML = renderLogSheet(chore, log, date || "", state.members || [], state.user?.id, null, { showWhen: true, slotHour: state.activeSheetData?.slotHour ?? new Date().getHours(), scheduleId, slotTime, cachedIndicators, cachedIndicatorVolumes, volumeUnit: state.volumeUnit, recentVolumes: recentVolumesForChore(chore.id), recentUnit:state.recentAmountUnits?.[chore.id], cachedMetricUnit:latestLogForChore?.metricUnit, cachedSubject: latestLogForChore?.subject || null, cachedAmount: latestLogForChore?.volumeML ?? null, metricUnit:state.activeSheetData?.metricUnit });
       return `<div class="sheet-overlay-wrapper">
         ${mainView}
         ${fab}

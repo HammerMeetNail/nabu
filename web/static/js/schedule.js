@@ -406,7 +406,7 @@ function renderIndicatorVolumeRow(label, on, selectedML = null, unit = "mL") {
  * @param {number}      currentUserId  Current auth user's ID
  * @param {number|null} cachedVolumeML Volume from previous log or null (DEPRECATED; use cachedIndicatorVolumes)
  * @param {object}      cachedIndicatorVolumes Map of indicator label -> volume mL (from latest log)
- * @param {object}      opts   { showWhen: bool, slotHour: number|null, cachedIndicators: string[]|null, cachedSubject: string|null }
+ * @param {object}      opts   { showWhen: bool, slotHour: number|null, cachedIndicators: string[]|null, cachedSubject: string|null, cachedAmount: number|null }
  */
 export function renderLogSheet(chore, log, date, members, currentUserId, cachedVolumeML = null, opts = {}) {
   const selectedUnit = opts.metricUnit || log?.metricUnit || (isVolumeMetric(chore) ? (opts.volumeUnit === 'oz' ? 'oz' : 'mL') : chore.metricUnit || 'mL');
@@ -471,12 +471,17 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     </div>`;
   })();
 
+  // A new log of a plain amount chore (e.g. a medication dose) starts from the
+  // latest log's amount, but only when it was recorded in this sheet's unit.
+  const cachedAmount = log || volumeTypeChore || (opts.cachedMetricUnit && opts.cachedMetricUnit !== selectedUnit)
+    ? null : (opts.cachedAmount ?? null);
+
   // Indicator amounts share one unit alongside their input column above.
   const amountSection = chore.hasVolumeML && !volumeTypeChore
     ? `<div class="sheet-amount-row">
         <div class="sheet-amount-field">
           <label for="log-volume" class="field-label">Amount</label>
-          ${renderNumberInput({id: 'log-volume', className: 'volume-select', label: 'Amount', pickerLabel: 'Choose amount', unit: selectedUnit, value: amountInputValue(log?.volumeML ?? cachedVolumeML, selectedUnit)})}
+          ${renderNumberInput({id: 'log-volume', className: 'volume-select', label: 'Amount', pickerLabel: 'Choose amount', unit: selectedUnit, value: amountInputValue(log?.volumeML ?? cachedVolumeML ?? cachedAmount, selectedUnit)})}
         </div>
         <div class="sheet-amount-field">${unitField}</div>
       </div>` : '';

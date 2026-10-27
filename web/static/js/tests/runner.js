@@ -1860,6 +1860,31 @@ describe("Offline Home snapshot", () => {
   });
 });
 
+describe("Log sheet: last dose prefill", () => {
+  const meds = { id: 5, icon: "💊", name: "Cat Meds", color: "#000", hasVolumeML: true,
+    metricType: "amount", metricUnit: "mg", indicatorLabels: [], indicatorDefaults: [] };
+  const amountValue = html => html.match(/id="log-volume"[^>]*value="([^"]*)"/)?.[1];
+
+  it("a new log of a plain amount chore starts from the latest dose", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const html = renderLogSheet(meds, null, "2026-10-26", [], 1, null, { volumeUnit: "ml", cachedAmount: 5, cachedMetricUnit: "mg" });
+    assert.equal(amountValue(html), "5");
+  });
+
+  it("never shows a dose recorded in a different unit", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const html = renderLogSheet(meds, null, "2026-10-26", [], 1, null, { volumeUnit: "ml", cachedAmount: 5, cachedMetricUnit: "mL" });
+    assert.equal(amountValue(html), "");
+  });
+
+  it("editing a log shows that log's amount, not the latest", async () => {
+    const { renderLogSheet } = await import("../schedule.js");
+    const html = renderLogSheet(meds, { id: 9, volumeML: 2, metricUnit: "mg", indicators: [] }, "2026-10-26", [], 1, null,
+      { volumeUnit: "ml", cachedAmount: 5, cachedMetricUnit: "mg" });
+    assert.equal(amountValue(html), "2");
+  });
+});
+
 describe("Tab routes", () => {
   it("maps paths to tabs, with Home's alias and Stats deep links", async () => {
     const { tabForPath, routeForPath, statsSectionForPath } = await import("../router.js");
