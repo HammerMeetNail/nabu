@@ -61,6 +61,8 @@ func TestEmptyHouseholdResponsesHaveNoNullArrays(t *testing.T) {
 		"/api/stats/top-chores",
 		"/api/stats/chores",
 		"/api/stats/feeding-gaps",
+		"/api/stats/dashboard?read=overview&read=leaderboard&read=top-chores&read=chores%3Fperiod%3Dmonth" +
+			"&read=breakdown%3Fperiod%3Dweek&read=heatmap&read=busy-hours&read=feeding-gaps&read=recap&read=streaks",
 	}
 
 	check := func(phase string, paths []string) {
@@ -103,6 +105,7 @@ func TestEmptyHouseholdResponsesHaveNoNullArrays(t *testing.T) {
 	for _, suffix := range []string{"", "/time-series", "/summary"} {
 		seeded = append(seeded, fmt.Sprintf("/api/stats/chores/%d%s", id, suffix))
 	}
+	seeded = append(seeded, fmt.Sprintf("/api/stats/dashboard?read=chores%%2F%d&read=chores%%2F%d%%2Ftime-series&read=chores%%2F%d%%2Fsummary", id, id, id))
 	check("seeded", seeded)
 }
 

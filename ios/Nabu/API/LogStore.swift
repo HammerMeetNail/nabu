@@ -84,7 +84,7 @@ final class LogStore {
                    date: String? = nil, indicatorVolumes: [String: Int]? = nil,
                    rating: Int?? = nil, title: String?? = nil,
                    durationSeconds: Int?? = nil,
-                   subject: String?? = nil, metricUnit: String? = nil) async throws -> StatusResponse {
+                   subject: String?? = nil, metricUnit: String? = nil) async throws -> LogChangeResponse {
         let body = UpdateLogRequest(
             note: note, indicators: indicators, volumeML: volumeML,
             userId: userId, completedAt: completedAt, hour: hour, date: date,
@@ -94,7 +94,7 @@ final class LogStore {
         return try await api.patch("/api/logs/\(logId)", body: body)
     }
 
-    func deleteLog(logId: Int) async throws -> StatusResponse {
+    func deleteLog(logId: Int) async throws -> LogChangeResponse {
         return try await api.delete("/api/logs/\(logId)")
     }
 

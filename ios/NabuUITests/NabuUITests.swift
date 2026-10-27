@@ -1393,6 +1393,56 @@ final class NabuHomeEndToEndUITests: XCTestCase {
     }
 }
 
+// MARK: - Offline launch (real server)
+
+/// The iOS counterpart of `tests/e2e/offline-launch.spec.js`: a cold launch
+/// that cannot reach the server opens the Home saved for the signed-in
+/// account, a new log waits on the device, and it syncs once a later launch
+/// confirms the session. `-serverUnreachable` fails every request the way a
+/// missing connection does.
+final class NabuOfflineLaunchUITests: XCTestCase {
+    /// `http://localhost:8080` like the other real-server tests; run with
+    /// `TEST_RUNNER_NABU_E2E_BASE_URL=<url>` to use another local server.
+    private let server = ProcessInfo.processInfo.environment["NABU_E2E_BASE_URL"] ?? "http://localhost:8080"
+
+    func testOfflineLaunchOpensSavedHomeAndQueuedLogSyncs() {
+        continueAfterFailure = false
+        let email = "offline-ios-\(Int(Date().timeIntervalSince1970))-\(Int.random(in: 0...9999))@nabu.local"
+        let app = XCUIApplication()
+        app.launchArguments = ["-disableAnimations", "-resetState", "-nabuBaseURL", server,
+                               "-nabuAutoRegister", email, "test123456"]
+        app.launchForLocalTest()
+        let water = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Water Plants")).firstMatch
+        XCTAssertTrue(water.waitForExistence(timeout: 30), "Home should load online first")
+        XCTAssertTrue(water.label.contains("never done"), water.label)
+        // Leave the app as a person would, so the session cookie is stored.
+        XCUIDevice.shared.press(.home)
+        sleep(2)
+        app.terminate()
+
+        app.launchArguments = ["-disableAnimations", "-serverUnreachable", "-nabuBaseURL", server]
+        app.launch()
+        XCTAssertTrue(water.waitForExistence(timeout: 15), "Saved Home should open without the server")
+        let banners = app.descendants(matching: .any).matching(identifier: "offline-banner")
+        let savedHomeBanner = banners.matching(NSPredicate(format: "label CONTAINS %@", "saved on this device")).firstMatch
+        XCTAssertTrue(savedHomeBanner.waitForExistence(timeout: 5))
+        water.tap()
+        XCTAssertTrue(app.buttons["save-log-button"].waitForExistence(timeout: 5))
+        app.buttons["save-log-button"].tap()
+        let pending = app.buttons["pending-saves"]
+        XCTAssertTrue(pending.waitForExistence(timeout: 10), "The log should wait on the device")
+        app.terminate()
+
+        app.launchArguments = ["-disableAnimations", "-nabuBaseURL", server]
+        app.launch()
+        XCTAssertTrue(water.waitForExistence(timeout: 30))
+        XCTAssertTrue(pending.waitForNonExistence(timeout: 30), "the queued log should sync once the server confirms the session")
+        XCTAssertFalse(banners.firstMatch.exists)
+        let label = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Water Plants")).firstMatch.label
+        XCTAssertTrue(label.contains("done") && !label.contains("never done"), "The synced log shows on Home: \(label)")
+    }
+}
+
 // MARK: - Member Access Suspension (real server)
 
 /// Owner disable/enable flow against a real server, the iOS counterpart of
@@ -1828,5 +1878,48 @@ final class NabuAccessibilityUITests: XCTestCase {
             print("AXAUDIT issue: type=\(issue.auditType) desc=\(issue.compactDescription) element=\(issue.element?.description ?? "nil") frame=\(frame)")
             return false
         }
+    }
+}
+
+// MARK: - Profile
+
+/// Settings → Account sets the name and color the household sees (PWA
+/// `settings-profile.spec.js`). The fixture answers PATCH /api/me like the
+/// server, including its name rules.
+final class NabuProfileUITests: XCTestCase {
+    func testNameAndColorSaveAndABlankNameIsRefused() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-disableAnimations", "-seedHomeForUITest", "-useMockAPI", "-nabuBaseURL", "http://localhost:9998"]
+        app.launchForLocalTest()
+        app.tabBars.buttons["Settings"].tap()
+        let row = app.buttons["edit-profile"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("UI Tester"), row.label)
+
+        row.tap()
+        let field = app.textFields["profile-name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 12) + "Dana O'Connor")
+        app.buttons["Purple"].tap()
+        XCTAssertTrue(app.buttons["Purple"].isSelected)
+        app.buttons["save-profile"].tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        let saved = NSPredicate(format: "label CONTAINS %@", "Dana O'Connor")
+        expectation(for: saved, evaluatedWith: row)
+        waitForExpectations(timeout: 5)
+
+        row.tap()
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Purple"].isSelected, "the saved color is selected again")
+        field.tap()
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20) + "   ")
+        app.buttons["save-profile"].tap()
+        XCTAssertTrue(app.staticTexts["profile-error"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["profile-error"].label, "Enter your name")
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        XCTAssertTrue(row.label.contains("Dana O'Connor"), row.label)
     }
 }

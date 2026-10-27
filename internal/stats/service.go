@@ -310,7 +310,7 @@ func (s *Service) GetAllTimeLeaderboard(ctx context.Context, householdID int64, 
 	for uid, c := range counts {
 		entries = append(entries, LeaderboardEntry{UserID: uid, Count: c})
 	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Count > entries[j].Count })
+	sortLeaderboard(entries)
 	return entries, nil
 }
 
@@ -338,7 +338,7 @@ func (s *Service) getLeaderboard(ctx context.Context, householdID int64, start, 
 	for uid, c := range counts {
 		entries = append(entries, LeaderboardEntry{UserID: uid, Count: c})
 	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Count > entries[j].Count })
+	sortLeaderboard(entries)
 	return entries, nil
 }
 
@@ -459,7 +459,7 @@ func (s *Service) GetCategoryBreakdown(ctx context.Context, householdID int64, s
 	for cat, c := range catCount {
 		breakdown = append(breakdown, CategoryBreakdown{Category: cat, Count: c})
 	}
-	sort.Slice(breakdown, func(i, j int) bool { return breakdown[i].Count > breakdown[j].Count })
+	sortCategories(breakdown)
 	return breakdown, nil
 }
 
@@ -543,23 +543,8 @@ func (s *Service) GetWeeklyRecap(ctx context.Context, householdID int64, loc *ti
 		recap.TotalChores += c
 	}
 
-	var top *LeaderboardEntry
-	for uid, c := range counts {
-		if top == nil || c > top.Count {
-			top = &LeaderboardEntry{UserID: uid, Count: c}
-		}
-	}
-	recap.TopPerformer = top
-
-	var bestDay string
-	bestCount := 0
-	for d, c := range dayCounts {
-		if c > bestCount {
-			bestDay = d
-			bestCount = c
-		}
-	}
-	recap.MostActiveDay = bestDay
+	recap.TopPerformer = topPerformer(counts)
+	recap.MostActiveDay = mostActiveDay(dayCounts)
 
 	chores, err := s.visibleChoresForContext(ctx, householdID)
 	if err != nil {
@@ -582,8 +567,35 @@ func (s *Service) GetWeeklyRecap(ctx context.Context, householdID int64, loc *ti
 	for cat, c := range catCount {
 		recap.ByCategory = append(recap.ByCategory, CategoryBreakdown{Category: cat, Count: c})
 	}
+	sortCategories(recap.ByCategory)
 
 	return recap, nil
+}
+
+// topPerformer is the first leaderboard entry for counts (most logs, then the
+// lowest user ID), as the aggregate path reports it.
+func topPerformer(counts map[int64]int) *LeaderboardEntry {
+	entries := make([]LeaderboardEntry, 0, len(counts))
+	for uid, c := range counts {
+		entries = append(entries, LeaderboardEntry{UserID: uid, Count: c})
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+	sortLeaderboard(entries)
+	return &entries[0]
+}
+
+// mostActiveDay is the weekday with the most logs, the earliest from Sunday on
+// a tie, as the aggregate path picks it.
+func mostActiveDay(dayCounts map[string]int) string {
+	best, bestCount := "", 0
+	for day := time.Sunday; day <= time.Saturday; day++ {
+		if c := dayCounts[day.String()]; c > bestCount {
+			best, bestCount = day.String(), c
+		}
+	}
+	return best
 }
 
 func wkStart(t time.Time, loc *time.Location) time.Time {
@@ -737,9 +749,7 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 	for uid, c := range counts {
 		overview.Leaderboard = append(overview.Leaderboard, LeaderboardEntry{UserID: uid, Count: c})
 	}
-	sort.Slice(overview.Leaderboard, func(i, j int) bool {
-		return overview.Leaderboard[i].Count > overview.Leaderboard[j].Count
-	})
+	sortLeaderboard(overview.Leaderboard)
 
 	// Streaks (for the requesting user) — computed from the same year fetch.
 	overview.Streaks = computeStreaks(logs, userID, yearStart, yearEnd, loc)
@@ -763,9 +773,7 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 	for cat, c := range catCount {
 		overview.Breakdown = append(overview.Breakdown, CategoryBreakdown{Category: cat, Count: c})
 	}
-	sort.Slice(overview.Breakdown, func(i, j int) bool {
-		return overview.Breakdown[i].Count > overview.Breakdown[j].Count
-	})
+	sortCategories(overview.Breakdown)
 
 	// Recap
 	overview.Recap.TotalChores = 0
@@ -773,13 +781,7 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 		overview.Recap.TotalChores += c
 	}
 
-	var top *LeaderboardEntry
-	for uid, c := range counts {
-		if top == nil || c > top.Count {
-			top = &LeaderboardEntry{UserID: uid, Count: c}
-		}
-	}
-	overview.Recap.TopPerformer = top
+	overview.Recap.TopPerformer = topPerformer(counts)
 
 	dayCounts := map[string]int{}
 	for _, l := range logs {
@@ -787,19 +789,12 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 			dayCounts[l.CompletedAt.In(loc).Weekday().String()]++
 		}
 	}
-	var bestDay string
-	bestCount := 0
-	for d, c := range dayCounts {
-		if c > bestCount {
-			bestDay = d
-			bestCount = c
-		}
-	}
-	overview.Recap.MostActiveDay = bestDay
+	overview.Recap.MostActiveDay = mostActiveDay(dayCounts)
 
 	for cat, c := range catCount {
 		overview.Recap.ByCategory = append(overview.Recap.ByCategory, CategoryBreakdown{Category: cat, Count: c})
 	}
+	sortCategories(overview.Recap.ByCategory)
 
 	return overview, nil
 }
@@ -1017,7 +1012,7 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 	for uid, c := range byMember {
 		memberEntries = append(memberEntries, LeaderboardEntry{UserID: uid, Count: c})
 	}
-	sort.Slice(memberEntries, func(i, j int) bool { return memberEntries[i].Count > memberEntries[j].Count })
+	sortLeaderboard(memberEntries)
 
 	type bucketData struct {
 		amountsByUnit     map[string]int

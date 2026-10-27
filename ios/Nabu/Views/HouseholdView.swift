@@ -24,6 +24,7 @@ struct HouseholdView: View {
     @State private var showingLeaveConfirm = false
     @State private var verificationSent = false
 	@State private var showingPassword = false
+	@State private var showingProfile = false
 
     private var canExportHousehold: Bool {
         let role = state.members.first(where: { $0.userId == state.user?.id })?.role ?? state.user?.role
@@ -37,6 +38,18 @@ struct HouseholdView: View {
                 // things about *you*, then the household, then device prefs.
                 if let user = state.user {
                     Section("Account") {
+                        Button {
+                            showingProfile = true
+                        } label: {
+                            HStack {
+                                Text("Name")
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                Text(user.displayName)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .accessibilityIdentifier("edit-profile")
                         HStack {
                             Text("Email")
                             Spacer()
@@ -356,6 +369,9 @@ struct HouseholdView: View {
         }
         .sheet(isPresented: $showingPassword) {
             PasswordChangeSheet()
+        }
+        .sheet(isPresented: $showingProfile) {
+            ProfileEditSheet()
         }
         .sheet(isPresented: $showingEdit) {
             NavigationStack {
@@ -941,6 +957,124 @@ struct MemberRow: View {
                 } message: {
                     Text("They will be signed out and cannot view or change anything in this household until you re-enable them.")
                 }
+            }
+        }
+    }
+}
+
+// MARK: - Profile
+
+/// Settings → Account: the name and color the household sees
+/// (`PATCH /api/me`, PWA `renderProfileForm`).
+@MainActor
+enum ProfileEditor {
+    /// The PWA's `PROFILE_COLORS`: each carries white initials legibly; the
+    /// first is the color every account starts with.
+    static let colors: [(hex: String, name: String)] = [
+        ("#19323C", "Dark teal"), ("#2E86AB", "Blue"), ("#7B5EA7", "Purple"), ("#C2185B", "Magenta"),
+        ("#D84315", "Orange"), ("#2E7D32", "Green"), ("#00838F", "Teal"), ("#6D4C41", "Brown"),
+    ]
+
+    /// Saves the profile. Returns nil on success, otherwise the message to
+    /// show. A nil color keeps the current one (one outside the palette).
+    static func save(name: String, color: String?, api: APIClient, state: AppState) async -> String? {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "Enter your name" }
+        let scoped = api.scoped()
+        let owner = scoped.requestContext
+        do {
+            let response: UserResponse = try await scoped.patch("/api/me", body: UpdateProfileRequest(displayName: trimmed, avatarColor: color))
+            guard let user = response.user, user.id == owner.user?.id else { return "Could not save your profile. Please retry." }
+            // Same account, household and role: no identity change, only its profile.
+            if api.identity.accept(user, expected: owner) { api.identity.publish() }
+            state.members = state.members.map { member in
+                guard member.userId == user.id else { return member }
+                return Member(userId: member.userId, email: member.email, displayName: user.displayName,
+                              avatarColor: user.avatarColor, emailVerified: member.emailVerified,
+                              role: member.role, suspended: member.suspended)
+            }
+            return nil
+        } catch APIError.serverError(_, let message) {
+            return message
+        } catch {
+            return "Could not save your profile. Please retry."
+        }
+    }
+}
+
+struct ProfileEditSheet: View {
+    @EnvironmentObject var state: AppState
+    @EnvironmentObject var environment: AppEnvironment
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var color: String?
+    @State private var error: String?
+    @State private var saving = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Your name", text: $name)
+                        .textContentType(.name)
+                        .accessibilityIdentifier("profile-name")
+                        .onChange(of: name) { _, value in
+                            if value.count > 50 { name = String(value.prefix(50)) }
+                        }
+                } header: {
+                    Text("Your name")
+                } footer: {
+                    Text("How your household sees you in Activity, Stats and Settings.")
+                }
+                Section("Color") {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 44))], spacing: 8) {
+                        ForEach(ProfileEditor.colors, id: \.hex) { option in
+                            Button {
+                                color = option.hex
+                            } label: {
+                                Circle()
+                                    .fill(Color(hex: option.hex) ?? .gray)
+                                    .frame(width: 40, height: 40)
+                                    .overlay(Circle().strokeBorder(Color.primary, lineWidth: color == option.hex ? 3 : 0))
+                                    .frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(option.name)
+                            .accessibilityAddTraits(color == option.hex ? .isSelected : [])
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+                if let error {
+                    Section {
+                        Text(error).foregroundColor(.red)
+                            .accessibilityIdentifier("profile-error")
+                    }
+                }
+            }
+            .navigationTitle("Profile")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        Task {
+                            saving = true
+                            error = await ProfileEditor.save(name: name, color: color, api: environment.apiClient, state: state)
+                            saving = false
+                            if error == nil { dismiss() }
+                        }
+                    }
+                    .disabled(saving)
+                    .accessibilityIdentifier("save-profile")
+                }
+            }
+            .onAppear {
+                name = state.user?.displayName ?? ""
+                let current = state.user?.avatarColor.uppercased()
+                color = ProfileEditor.colors.contains { $0.hex == current } ? current : nil
             }
         }
     }

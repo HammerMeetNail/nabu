@@ -45,7 +45,7 @@ import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid,
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
 import { renderNotificationPanel, maybeSubscribePush, requestNotificationPermission, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
 import { renderScheduleTab } from "./schedule-tab.js";
-import { renderProfileSheet } from "./profile.js";
+import { renderProfileSheet, renderProfileForm } from "./profile.js";
 
 /**
  * Reads the current frequency settings from a bottom sheet's freq <select>
@@ -923,9 +923,9 @@ function renderSettingsView() {
     const householdCard = state.accessSuspended
       ? renderAccessSuspendedCard(state)
       : renderHouseholdView(null, null, null, state.user);
-    return `<div class="settings-view">${householdCard}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div>${aboutLine}</div>`;
+    return `<div class="settings-view">${householdCard}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div>${aboutLine}</div>`;
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3><p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div>${aboutLine}</div>`;
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user)}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div>${aboutLine}</div>`;
 }
 
 function loadAllStatsData() {
@@ -1023,6 +1023,21 @@ function renderStatsPageView() {
   } catch {
     return '<div class="stats-page"><h2>Stats</h2><p class="text-center text-secondary">Stats unavailable</p></div>';
   }
+}
+
+// A log write answers with its chore's latest log ("latest", or null when the
+// chore has none left). Apply it to that one tile instead of reloading every
+// chore's latest log; a latest-logs read already in flight no longer owns the
+// result. False when the answer has no "latest" (a save queued on this device,
+// or an older server): the caller reloads instead.
+function applyLatestLog(choreId, data) {
+  if (!choreId || !data || !Object.hasOwn(data, "latest")) return false;
+  captureScope(state, "latest-logs");
+  const latestLogs = { ...state.latestLogs };
+  if (data.latest) latestLogs[choreId] = data.latest;
+  else delete latestLogs[choreId];
+  state.latestLogs = latestLogs;
+  return true;
 }
 
 async function loadLatestLogsData() {
@@ -1162,7 +1177,7 @@ function dismissUndoToasts() {
   document.querySelectorAll("#toast-container [data-undo-toast]").forEach(t => t.remove());
 }
 
-function showToastWithUndo(message, logId) {
+function showToastWithUndo(message, logId, choreId) {
   // Haptic tick on a successful log where supported (Android; harmless no-op
   // on iOS). This is the shared success path for logging a chore.
   if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate(10);
@@ -1180,9 +1195,9 @@ function showToastWithUndo(message, logId) {
   undoBtn.style.cssText = "background:rgba(255,255,255,0.2);border:none;color:white;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;margin-left:auto;min-height:32px;";
   undoBtn.addEventListener("click", () => {
     toast.remove();
-    undoLog(logId).then(owned(async () => {
+    undoLog(logId).then(owned(async data => {
   const contextScope = captureScope(state);
-      await withCurrentContext(loadLatestLogsData(), contextScope);
+      if (!applyLatestLog(choreId, data)) await withCurrentContext(loadLatestLogsData(), contextScope);
       render(document.querySelector("#app"));
     })).catch(owned(() => showToast("Failed to undo", "error")));
   });
@@ -1631,6 +1646,29 @@ async function doResetPassword(form) {
   } catch (err) { await recoverIdentity(err); if (form.isConnected) setError("#reset-error",err.message || "Password reset failed"); }
   finally { delete form.dataset.busy; }
 }
+// Settings → Account: the name and color the household sees.
+async function doSaveProfile(form) {
+  if (form.dataset.busy) return;
+  hideError("#profile-error");
+  const displayName = form.querySelector("#profile-name").value.trim();
+  if (!displayName) { setError("#profile-error", "Enter your name"); return; }
+  const avatarColor = form.querySelector('input[name="avatarColor"]:checked')?.value;
+  const contextScope = captureScope(state);
+  form.dataset.busy = "true";
+  try {
+    const { data } = await withCurrentContext(apiFetch("/api/me", { method: "PATCH",
+      body: JSON.stringify(avatarColor ? { displayName, avatarColor } : { displayName }) }), contextScope);
+    if (!contextScope.current() || data?.user?.id !== state.user?.id) return;
+    const { displayName: name, avatarColor: color } = data.user;
+    state.user = { ...state.user, displayName: name, avatarColor: color };
+    state.members = (state.members || []).map(m => m.userId === state.user.id ? { ...m, displayName: name, avatarColor: color } : m);
+    render(document.querySelector("#app"));
+    showToast("Profile saved", "success");
+  } catch (err) {
+    if (contextScope.current() && form.isConnected) setError("#profile-error", err.message || "Could not save your profile. Please retry.");
+  } finally { delete form.dataset.busy; }
+}
+
 async function doChangePassword(form) {
   if (form.dataset.busy) return;
   hideError("#change-password-error");
@@ -2361,12 +2399,14 @@ export async function init() {
         const uLogId = parseInt(actionEl.dataset.logId);
         // Capture the log before deleting so removal is undoable (2.3).
         const removedLog = findLogById(uLogId);
-        undoLog(uLogId).then(owned(async () => {
+        undoLog(uLogId).then(owned(async data => {
   const contextScope = captureScope(state);
+          const choreId = removedLog?.choreId ?? state.activeSheetData?.choreId;
           state.activeSheet     = null;
           state.activeSheetData = {};
           state.historyLogs = (state.historyLogs || []).filter(l => l.id !== uLogId);
-          await withCurrentContext(reloadViewData(), contextScope);
+          const home = ["/", "/today"].includes(activeRoute());
+          if (!(applyLatestLog(choreId, data) && home)) await withCurrentContext(reloadViewData(), contextScope);
           render(app);
           showToastWithRestore("Log removed", removedLog);
         })).catch(owned((err) => {
@@ -2543,16 +2583,19 @@ export async function init() {
           await withCurrentContext(hydratePendingLogs(), contextScope);
           if (!actionScope.current()) return;
           if (data.queued) showToast("Saved on this device. Waiting to sync.", "info");
-          if (state.currentRoute === "/" || state.currentRoute === "/today") {
-            await withCurrentContext(loadLatestLogsData(), contextScope);
+          // The answer has this chore's latest log for Home's tile. On Home
+          // nothing else changed, so nothing is reloaded.
+          const home = ["/", "/today"].includes(activeRoute());
+          if (!(applyLatestLog(choreId, data) && home)) {
+            if (home) await withCurrentContext(loadLatestLogsData(), contextScope);
+            if (!actionScope.current()) return;
+            await withCurrentContext(reloadViewData(), contextScope);
           }
-          if (!actionScope.current()) return;
-          await withCurrentContext(reloadViewData(), contextScope);
           if (!actionScope.current()) return;
           render(app);
           if (newLogId) {
             const chore = (state.chores || []).find(c => c.id === choreId);
-            showToastWithUndo(`${chore ? chore.icon + " " + chore.name : "Chore"}`, newLogId);
+            showToastWithUndo(`${chore ? chore.icon + " " + chore.name : "Chore"}`, newLogId, choreId);
           }
         })).catch(owned(async err => {
   const contextScope = captureScope(state);
@@ -3048,7 +3091,9 @@ export async function init() {
           await withCurrentContext(clearFinishedTimer(t.id, actionScope.origin), contextScope);
           if (!actionScope.current()) return;
           if (state.activeTimer?.id === t.id) state.activeTimer = null;
-          await withCurrentContext(Promise.all([loadTodayData(), loadLatestLogsData(), hydratePendingLogs()]), contextScope);
+          const home = ["/", "/today"].includes(activeRoute());
+          await withCurrentContext(applyLatestLog(t.choreId, data) && home ? hydratePendingLogs()
+            : Promise.all([loadTodayData(), loadLatestLogsData(), hydratePendingLogs()]), contextScope);
           if (!actionScope.current()) return;
           render(app);
           showToast(data.queued ? `Saved ${formatElapsed(elapsedSeconds(t))} on this device. Waiting to sync.` : `Logged ${formatElapsed(elapsedSeconds(t))}`, data.queued ? "info" : "success");
@@ -3856,6 +3901,9 @@ export async function init() {
         break;
       case "change-password":
         doChangePassword(form);
+        break;
+      case "save-profile":
+        void doSaveProfile(form);
         break;
       case "create-api-key":
         void doCreateApiKey(form);

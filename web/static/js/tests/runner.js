@@ -1181,6 +1181,21 @@ describe("Browser ownership lock", () => {
   });
 });
 
+// Answers /api/stats/dashboard the way the server does: every read goes to
+// `respond` as its own endpoint request and keeps its own status.
+function statsServer(respond) {
+  return async (path, options) => {
+    const url = new URL(path, 'http://localhost:8080');
+    if (url.pathname !== '/api/stats/dashboard') return respond(path, options);
+    const results = await Promise.all(url.searchParams.getAll('read').map(async read => {
+      const response = await respond(`/api/stats/${read}`, options);
+      return {status:response.status, data:await response.json()};
+    }));
+    return new Response(JSON.stringify({results}), {headers:{'Content-Type':'application/json'}});
+  };
+}
+const nextTask = () => new Promise(resolve => setTimeout(resolve, 0));
+
 describe('Scoped chart loading and metric rendering', () => {
   it('rejects a late chart response after the period changes', async () => {
     const {createAppState} = await import('../state.js');
@@ -1193,6 +1208,8 @@ describe('Scoped chart loading and metric rendering', () => {
       return new Response(JSON.stringify({breakdown:[{category:path.endsWith('period=week') ? 'old' : 'new'}]}), {headers:{'Content-Type':'application/json'}});
     };
     const pending = loadStatsResource(state,'categories');
+    // Reads that start together share a request; a period switch comes later.
+    await nextTask();
     try {
       state.stats.categoriesPeriod = 'month';
       await loadStatsResource(state,'categories');
@@ -1265,14 +1282,17 @@ describe('Chart loading cleanup',()=>{
     const {createAppState}=await import('../state.js');
     const {loadStatsPage}=await import('../stats-data.js');
     const state=createAppState();
-    state.stats.sectionHidden=['activity','busy-hours','chores','top-chores','leaderboard','baby'];
+    state.chores=[{id:7,name:'Water Plants',metricType:'amount',indicatorLabels:[]}];
+    state.stats.sectionHidden=['activity','busy-hours','chores','categories','top-chores','leaderboard','baby'];
     let release, ready;
     const gate=new Promise(resolve=>{release=resolve;});
     const progressed=new Promise(resolve=>{ready=resolve;});
-    globalThis.fetch=async path=>{
-      if(path.includes('breakdown?period=week')) await gate;
-      return new Response(JSON.stringify(path.includes('/overview') ? {overview:{recap:{totalChores:42}}} : {breakdown:[]}),{headers:{'Content-Type':'application/json'}});
-    };
+    // Per-chore charts travel apart from the sections, so the overview
+    // renders while a slower chart is still loading.
+    globalThis.fetch=statsServer(async path=>{
+      if(path.includes('/chores/7/time-series?period=daily')) await gate;
+      return new Response(JSON.stringify(path.includes('/overview') ? {overview:{recap:{totalChores:42}}} : {timeSeries:{periods:[]}}),{headers:{'Content-Type':'application/json'}});
+    });
     let updates=0;
     const pending=loadStatsPage(state,()=>{
       updates++;
@@ -1280,14 +1300,14 @@ describe('Chart loading cleanup',()=>{
     });
     try {
       await progressed;
-      assert.equal(state.stats.loading.categories,true);
+      assert.equal(state.stats.loading['chore:7'],true);
       assert.equal(state.stats.overview.recap.totalChores,42);
-      state.stats.categoriesPeriod='month';
+      state.stats.choreAnalyticsPeriod={7:'week'};
       await loadStatsPage(state);
       const before=updates;
       release();await pending;
       assert.equal(updates,before);
-      assert.equal(state.stats.loading.categories,false);
+      assert.equal(state.stats.loading['chore:7'],false);
     } finally {release();await pending;}
   });
   it('loads every server-supported widget and shares identical child reads',async()=>{
@@ -1312,6 +1332,7 @@ describe('Chart loading cleanup',()=>{
       return new Response(JSON.stringify({leaderboard:[],summary:{count:1},overview:{}}),{headers:{'Content-Type':'application/json'}});
     };
     const first=loadStatsResource(state,'leaderboard');
+    await nextTask();
     state.stats.leaderboardPeriod='day';await loadStatsResource(state,'leaderboard');
     release();await first;
     assert.equal(state.stats.loading['leaderboard:week'],false);
@@ -1330,6 +1351,76 @@ describe('Chart loading cleanup',()=>{
     releaseWidget();await widget;
     assert.equal(state.stats.widgetData.new,undefined);
     assert.ok(Object.values(state.stats.loading).every(value=>!value));
+  });
+});
+
+describe('Stats read batching',()=>{
+  const json=(body,init={})=>new Response(JSON.stringify(body),{...init,headers:{'Content-Type':'application/json',...(init.headers||{})}});
+  it('sends reads that start together as one request per lane and answers each caller',async()=>{
+    const {statsGet,resetStatsBatch}=await import('../stats-batch.js');
+    resetStatsBatch();
+    const requests=[];
+    globalThis.fetch=statsServer(async(path,options)=>json({path}));
+    const recorded=globalThis.fetch;
+    globalThis.fetch=async(path,options)=>{requests.push(path);return recorded(path,options);};
+    const reads=['/api/stats/overview','/api/stats/leaderboard?period=week','/api/stats/overview',
+      '/api/stats/chores/1/time-series?period=daily','/api/stats/chores/2/summary?period=week'];
+    const results=await Promise.all(reads.map(path=>statsGet(path)));
+    assert.deepEqual(results.map(result=>result.path),reads);
+    assert.notEqual(results[0],results[2],'each caller gets its own copy');
+    assert.deepEqual(requests.map(path=>new URL(path,'http://localhost').searchParams.getAll('read')),[
+      ['overview','leaderboard?period=week'],
+      ['chores/1/time-series?period=daily','chores/2/summary?period=week'],
+    ]);
+    requests.length=0;
+    assert.deepEqual(await statsGet('/api/stats/heatmap'),{path:'/api/stats/heatmap'});
+    assert.deepEqual(requests,['/api/stats/heatmap'],'a lone read uses its endpoint');
+  });
+  it('fails only the read the server refused, with its status and message',async()=>{
+    const {statsGet,resetStatsBatch}=await import('../stats-batch.js');
+    resetStatsBatch();
+    globalThis.fetch=statsServer(async path=>path.includes('/chores/9/')
+      ? json({error:'chore not found'},{status:404}) : json({ok:path}));
+    const [missing,overview]=await Promise.allSettled([
+      statsGet('/api/stats/chores/9/summary?period=week'),statsGet('/api/stats/chores/1/summary?period=week')]);
+    assert.equal(missing.status,'rejected');
+    assert.equal(missing.reason.status,404);
+    assert.equal(missing.reason.message,'chore not found');
+    assert.deepEqual(overview.value,{ok:'/api/stats/chores/1/summary?period=week'});
+  });
+  it('revalidates a repeated page with its ETag and splits more than 64 reads',async()=>{
+    const {statsGet,resetStatsBatch}=await import('../stats-batch.js');
+    resetStatsBatch();
+    const seen=[];let version='v1';
+    globalThis.fetch=async(path,options)=>{
+      const reads=new URL(path,'http://localhost').searchParams.getAll('read');
+      const tag=options.headers.get('If-None-Match');
+      seen.push({count:reads.length,tag});
+      if(tag===`"${version}"`) return new Response(null,{status:304,headers:{ETag:tag}});
+      return json({results:reads.map(read=>({status:200,data:{read,version}}))},{headers:{ETag:`"${version}"`}});
+    };
+    const page=()=>Promise.all(['/api/stats/overview','/api/stats/heatmap'].map(path=>statsGet(path)));
+    assert.equal((await page())[0].version,'v1');
+    assert.deepEqual((await page()).map(result=>result.read),['overview','heatmap'],'304 reuses the kept results');
+    version='v2';
+    assert.equal((await page())[1].version,'v2');
+    assert.deepEqual(seen,[{count:2,tag:null},{count:2,tag:'"v1"'},{count:2,tag:'"v1"'}]);
+
+    seen.length=0;
+    const charts=Array.from({length:70},(_,i)=>`/api/stats/chores/${i+1}/time-series?period=daily`);
+    const results=await Promise.all(charts.map(path=>statsGet(path)));
+    assert.deepEqual(results.map(result=>result.read),charts.map(path=>path.slice('/api/stats/'.length)));
+    assert.deepEqual(seen.map(request=>request.count),[64,6]);
+
+    // A page with a failed read is not kept, so its retry asks for fresh results.
+    resetStatsBatch();seen.length=0;
+    globalThis.fetch=async(path,options)=>{
+      seen.push(options.headers.get('If-None-Match'));
+      return json({results:[{status:500,data:{error:'failed'}},{status:200,data:{}}]},{headers:{ETag:'"v3"'}});
+    };
+    await Promise.allSettled([statsGet('/api/stats/overview'),statsGet('/api/stats/heatmap')]);
+    await Promise.allSettled([statsGet('/api/stats/overview'),statsGet('/api/stats/heatmap')]);
+    assert.deepEqual(seen,[null,null]);
   });
 });
 
@@ -1935,5 +2026,27 @@ describe("Tab routes", () => {
       globalThis.history = saved.history;
       page.window.close();
     }
+  });
+});
+
+describe("Profile form", () => {
+  it("escapes the name and selects the current color", async () => {
+    const { renderProfileForm, PROFILE_COLORS } = await import("../profile.js");
+    const html = renderProfileForm({ displayName: '"><img src=x onerror=alert(1)>', avatarColor: "#2e86ab" });
+    assert.ok(!html.includes("<img"));
+    assert.ok(html.includes("&quot;&gt;&lt;img"));
+    const root = document.createElement("div");
+    root.innerHTML = html;
+    assert.equal(root.querySelector("#profile-name").value, '"><img src=x onerror=alert(1)>');
+    assert.deepEqual([...root.querySelectorAll('input[name="avatarColor"]:checked')].map(i => i.value), ["#2E86AB"]);
+    assert.equal(root.querySelectorAll('input[name="avatarColor"]').length, PROFILE_COLORS.length);
+    assert.equal(root.querySelector("#profile-name").maxLength, 50);
+  });
+
+  it("leaves a color outside the palette unchecked, so saving a name keeps it", async () => {
+    const { renderProfileForm } = await import("../profile.js");
+    const root = document.createElement("div");
+    root.innerHTML = renderProfileForm({ displayName: "Dana", avatarColor: "#123456" });
+    assert.equal(root.querySelectorAll('input[name="avatarColor"]:checked').length, 0);
   });
 });

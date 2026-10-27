@@ -21,6 +21,10 @@ func NewStatsHandler(service *stats.Service, prefsStore userprefs.Store) *StatsH
 }
 
 func (h *StatsHandler) userLocation(r *http.Request) *time.Location {
+	// A dashboard request resolves the time zone once for all its reads.
+	if loc, ok := r.Context().Value(statsLocationKey{}).(*time.Location); ok {
+		return loc
+	}
 	if h.prefsStore == nil {
 		return time.UTC
 	}

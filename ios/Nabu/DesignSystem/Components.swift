@@ -353,8 +353,13 @@ struct InlineErrorView: View {
 /// Global connectivity banner. Log writes keep working offline via the
 /// idempotent queue; the banner says so instead of pretending it's an error.
 struct OfflineBanner: View {
+    /// Home is the copy saved on this device (see `AppState.showingSavedHome`).
+    var savedHome = false
+
     var body: some View {
-        Label("Offline — logs you add will sync when you're back online", systemImage: "wifi.slash")
+        Label(savedHome ? "Offline — showing what's saved on this device. Logs you add sync when you reconnect."
+                        : "Offline — logs you add will sync when you're back online",
+              systemImage: "wifi.slash")
             .font(.footnote.weight(.medium))
             .foregroundColor(.white)
             .padding(.horizontal, 14)

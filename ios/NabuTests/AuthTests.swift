@@ -382,3 +382,73 @@ final class AuthTests: XCTestCase {
         XCTAssertTrue(true) // Behavior encoded in ForgotPasswordView
     }
 }
+
+/// Settings → Account: the name and color the household sees (PATCH /api/me,
+/// PWA `settings-profile.spec.js`).
+@MainActor
+final class ProfileEditorTests: XCTestCase {
+    final class Sent: @unchecked Sendable { var requests: [URLRequest] = [] }
+
+    private func signedIn(_ reply: @escaping (URLRequest) -> (Int, String)) -> (APIClient, AppState, Sent) {
+        let identity = ClientIdentity()
+        identity.accept(User(id: 7, householdId: 3, email: "dana@example.com", displayName: "dana", avatarColor: "#19323C",
+                             emailVerified: true, role: "owner", createdAt: Date(timeIntervalSince1970: 0)))
+        let state = AppState()
+        state.adopt(identity.snapshot)
+        identity.observer = { state.adopt($0) }
+        state.members = [
+            Member(userId: 7, email: "dana@example.com", displayName: "dana", avatarColor: "#19323C", emailVerified: true, role: "owner"),
+            Member(userId: 8, email: "sam@example.com", displayName: "Sam", avatarColor: "#2E86AB", emailVerified: true, role: "member"),
+        ]
+        let sent = Sent()
+        var api = APIClient(baseURL: URL(string: "http://localhost:9999")!, identity: identity)
+        api.mockHandler = { request in
+            sent.requests.append(request)
+            let (status, body) = reply(request)
+            return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
+        }
+        return (api, state, sent)
+    }
+
+    func testSavingSendsAClaimedPatchAndUpdatesTheAccountAndMembers() async throws {
+        let updated = ##"{"user":{"id":7,"householdId":3,"email":"dana@example.com","displayName":"Dana O'Connor","avatarColor":"#7B5EA7","emailVerified":true,"role":"owner","createdAt":"1970-01-01T00:00:00Z"}}"##
+        let (api, state, sent) = signedIn { _ in (200, updated) }
+        let revision = state.revision
+        let error = await ProfileEditor.save(name: "  Dana O'Connor ", color: "#7B5EA7", api: api, state: state)
+        XCTAssertNil(error)
+        let request = try XCTUnwrap(sent.requests.first)
+        XCTAssertEqual(request.httpMethod, "PATCH")
+        XCTAssertEqual(request.url?.path, "/api/me")
+        // An ordinary write by the current identity: it carries the claim.
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-Nabu-User-ID"), "7")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-Nabu-Household-ID"), "3")
+        XCTAssertEqual(try apiDecoder.decode(UpdateProfileRequest.self, from: request.httpBody ?? Data()),
+                       UpdateProfileRequest(displayName: "Dana O'Connor", avatarColor: "#7B5EA7"))
+        XCTAssertEqual(state.user?.displayName, "Dana O'Connor")
+        XCTAssertEqual(state.user?.avatarColor, "#7B5EA7")
+        XCTAssertEqual(state.revision, revision, "a profile change is not an identity change")
+        XCTAssertEqual(state.members.map(\.displayName), ["Dana O'Connor", "Sam"])
+        XCTAssertEqual(state.members.map(\.avatarColor), ["#7B5EA7", "#2E86AB"])
+    }
+
+    func testTheServersMessageIsShownAndNothingChanges() async {
+        let (api, state, _) = signedIn { _ in (400, #"{"error":"name must be 1 to 50 characters"}"#) }
+        let error = await ProfileEditor.save(name: String(repeating: "a", count: 51), color: nil, api: api, state: state)
+        XCTAssertEqual(error, "name must be 1 to 50 characters")
+        XCTAssertEqual(state.user?.displayName, "dana")
+        XCTAssertEqual(state.members.first?.displayName, "dana")
+    }
+
+    func testABlankNameNeverLeavesTheDevice() async {
+        let (api, state, sent) = signedIn { _ in (200, "{}") }
+        let error = await ProfileEditor.save(name: "   ", color: "#7B5EA7", api: api, state: state)
+        XCTAssertEqual(error, "Enter your name")
+        XCTAssertTrue(sent.requests.isEmpty)
+    }
+
+    func testAColorOutsideThePaletteIsKeptByOmittingIt() throws {
+        let body = try JSONSerialization.jsonObject(with: apiEncoder.encode(UpdateProfileRequest(displayName: "Dana"))) as? [String: Any]
+        XCTAssertEqual(body?["displayName"] as? String, "Dana")
+        XCTAssertNil(body?["avatarColor"])
+    }
+}

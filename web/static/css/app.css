@@ -4305,6 +4305,20 @@ body.sheet-open .timer-chip { visibility: hidden; }
   font-size: 15px;
 }
 
+.profile-name {
+  font-weight: 600;
+  font-size: 15px;
+  overflow-wrap: anywhere;
+}
+
+/* Under a name, the email is the secondary line. */
+.profile-name + .profile-email {
+  font-weight: 400;
+  font-size: 13px;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
 .profile-household {
   font-size: 13px;
   color: var(--text-secondary);
@@ -4777,3 +4791,13 @@ body.sheet-open .timer-chip { visibility: hidden; }
   font-size: 14px;
   line-height: 1.35;
 }
+
+/* Settings → Account: name and avatar color. */
+.profile-form { margin-bottom: 12px; }
+.profile-colors { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 4px; }
+.profile-colors legend { width: 100%; margin-bottom: 6px; padding: 0; }
+.profile-color { position: relative; display: inline-flex; padding: 2px; cursor: pointer; }
+.profile-color input { position: absolute; inset: 0; margin: 0; opacity: 0; cursor: pointer; }
+.profile-color-swatch { width: 40px; height: 40px; border-radius: 50%; border: 3px solid var(--surface); box-shadow: 0 0 0 1px var(--border); }
+.profile-color input:checked + .profile-color-swatch { box-shadow: 0 0 0 3px var(--text); }
+.profile-color input:focus-visible + .profile-color-swatch { outline: 2px solid var(--primary); outline-offset: 3px; }

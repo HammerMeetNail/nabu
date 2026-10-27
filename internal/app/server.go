@@ -410,10 +410,12 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 		switch r.Method {
 		case http.MethodGet:
 			authHandler.Me(w, r)
+		case http.MethodPatch:
+			middleware.RequireAuth(authHandler.UpdateMe)(w, r)
 		case http.MethodDelete:
 			middleware.RequireAuth(accountHandler.DeleteMe)(w, r)
 		default:
-			w.Header().Set("Allow", "GET, DELETE")
+			w.Header().Set("Allow", "GET, PATCH, DELETE")
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
@@ -603,6 +605,7 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	mux.HandleFunc("/api/stats/chores/{id}/time-series", method(http.MethodGet, middleware.RequireAuth(statsHandler.ChoreTimeSeries)))
 	mux.HandleFunc("/api/stats/chores/{id}/summary", method(http.MethodGet, middleware.RequireAuth(statsHandler.ChoreSummary)))
 	mux.HandleFunc("/api/stats/feeding-gaps", method(http.MethodGet, middleware.RequireAuth(statsHandler.FeedingGaps)))
+	mux.HandleFunc("/api/stats/dashboard", method(http.MethodGet, middleware.RequireAuth(statsHandler.Dashboard)))
 
 	mux.HandleFunc("/api/preferences", middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {

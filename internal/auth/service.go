@@ -8,8 +8,11 @@ import (
 	"errors"
 	"fmt"
 	"net/mail"
+	"regexp"
 	"strings"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/HammerMeetNail/nabu/internal/audit"
 	nabumail "github.com/HammerMeetNail/nabu/internal/mail"
@@ -28,7 +31,39 @@ var (
 	ErrOIDCEmailUnverified = errors.New("google account email must be verified")
 	ErrAppleUnavailable    = errors.New("sign in with apple is not configured")
 	ErrAppleNoEmail        = errors.New("apple did not return a verified email")
+	ErrInvalidDisplayName  = errors.New("name must be 1 to 50 characters")
+	ErrInvalidAvatarColor  = errors.New("color must be a hex color like #2E86AB")
 )
+
+// MaxDisplayNameRunes bounds a name set in the app. Names derived from an
+// email address at sign-up can be longer and stay as they are.
+const MaxDisplayNameRunes = 50
+
+var avatarColorPattern = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
+// UpdateProfile sets the name and avatar color the household sees. A nil
+// field keeps its current value. Names are trimmed and must be 1 to 50
+// characters without control characters; colors are #RRGGBB.
+func (s *Service) UpdateProfile(ctx context.Context, user User, displayName, avatarColor *string) (User, error) {
+	if displayName != nil {
+		name := strings.TrimSpace(*displayName)
+		if name == "" || utf8.RuneCountInString(name) > MaxDisplayNameRunes || strings.IndexFunc(name, unicode.IsControl) >= 0 {
+			return User{}, ErrInvalidDisplayName
+		}
+		user.DisplayName = name
+	}
+	if avatarColor != nil {
+		if !avatarColorPattern.MatchString(*avatarColor) {
+			return User{}, ErrInvalidAvatarColor
+		}
+		user.AvatarColor = strings.ToUpper(*avatarColor)
+	}
+	if err := s.store.UpdateProfile(ctx, user.ID, user.DisplayName, user.AvatarColor); err != nil {
+		return User{}, err
+	}
+	s.logAudit(ctx, "auth.profile_updated", map[string]string{"user_id": fmt.Sprintf("%d", user.ID)})
+	return user, nil
+}
 
 type MembershipResolver func(context.Context, int64) (*int64, string, error)
 
@@ -610,6 +645,12 @@ func passwordResetTemplate(baseURL, token string) string {
 
 // UserExists checks raw identity without resolving household membership. The
 // memory lifecycle coordinator calls this while holding its household lock.
+// Profile reads a user's own record (name, email, color) without resolving
+// household membership, for a household store that cannot join users.
+func (s *Service) Profile(ctx context.Context, userID int64) (User, error) {
+	return s.store.GetUserByID(ctx, userID)
+}
+
 func (s *Service) UserExists(ctx context.Context, userID int64) error {
 	_, err := s.store.GetUserByID(ctx, userID)
 	return err
