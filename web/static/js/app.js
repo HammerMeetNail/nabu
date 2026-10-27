@@ -10,6 +10,7 @@ import { newKey } from "./device-store.js";
 import { applySnapshot, loadSnapshot, saveSnapshot } from "./snapshot.js";
 import { morphInnerHTML } from "./morph.js";
 import { createSheetController } from "./sheets.js";
+import { routeForPath, statsSectionForPath, syncTabURL, tabForPath } from "./router.js";
 import { apiMe, apiFetch } from "./api.js";
 import { loadNotificationPage, mutateNotification } from "./notification-data.js";
 import { renderExports, downloadCSV } from "./exports.js";
@@ -129,6 +130,12 @@ function startNotifPoll() {
 
 // Capture ownership when a continuation is attached, before its request settles.
 function owned(callback) { return captureScope(state).guard(callback); }
+// The route on screen: set by navigation, otherwise read from the address bar.
+function activeRoute() { return state.currentRoute || routeForPath(window.location.pathname); }
+// Point the address bar at the signed-in tab; sign-in pages keep their URL.
+function syncAddressBar(push = false) {
+  if (state.user && !state.transitioning && !state.sessionUnconfirmed && !state.logoutPending) syncTabURL(activeRoute(), {push});
+}
 async function withCurrentContext(promise, scope) {
   const result = await promise;
   if (!scope.current()) throw new ContextChangedError();
@@ -153,7 +160,7 @@ export function render(root) {
   // action sits; opening any sheet dismisses it so it cannot cover Log/Save.
   if (state.activeSheet) dismissUndoToasts();
 
-  const route = state.currentRoute || window.location.pathname || "/";
+  const route = activeRoute();
   // Effective route for tab highlighting: unknown/auth-only paths fall back to
   // home ("/") so the "today" tab is always active when the home grid renders.
   const knownTabRoutes = ["/", "/today", "/activity", "/schedule", "/settings", "/stats"];
@@ -244,6 +251,9 @@ export function render(root) {
       default:
         html = renderHomeViewWrapper();
     }
+    // A route the app chose (sign-in, an invite, a reminder action) replaces
+    // the URL; tab taps already pushed theirs.
+    syncAddressBar();
   }
 
   if (state.user && !state.transitioning && state.pendingLogs?.length) html = renderPendingWork() + html;
@@ -349,7 +359,7 @@ async function loadMoreHistoryPage() {
 async function refreshActiveTab() {
   const contextScope = captureScope(state);
   const scope = captureScope(state);
-  if ((state.currentRoute || window.location.pathname) === "/settings") await withCurrentContext(Promise.all([loadHouseholdData(), loadApiKeysData()]), contextScope);
+  if (activeRoute() === "/settings") await withCurrentContext(Promise.all([loadHouseholdData(), loadApiKeysData()]), contextScope);
   else await withCurrentContext(reloadViewData(), contextScope);
   if (scope.current()) render(document.querySelector("#app"));
 }
@@ -922,12 +932,12 @@ function loadAllStatsData() {
   const scope = captureScope(state, 'stats-page-render');
   let frame = null;
   const renderCurrentStats = () => {
-    if (scope.current() && state.currentRoute === '/stats') render(document.querySelector('#app'));
+    if (scope.current() && activeRoute() === '/stats') render(document.querySelector('#app'));
   };
   const pending = loadStatsPage(state, () => {
     // A burst of chart responses should cause at most one full DOM morph per
     // frame. Old households, refreshes and tabs must not repaint this page.
-    if (frame !== null || !scope.current() || state.currentRoute !== '/stats') return;
+    if (frame !== null || !scope.current() || activeRoute() !== '/stats') return;
     frame = requestAnimationFrame(() => { frame = null; renderCurrentStats(); });
   });
   // The Today card owns its read; Home no longer preloads calendar data.
@@ -936,7 +946,20 @@ function loadAllStatsData() {
   return Promise.all([pending, today]).finally(() => {
     if (frame !== null) cancelAnimationFrame(frame);
     renderCurrentStats();
+    // Every section has its final height now, so a deep link lands exactly.
+    if (scope.current()) revealStatsFocus();
   });
+}
+
+// A Stats deep link ("/stats/chore/12") opens at that activity's section once
+// Stats has loaded. A hidden or unknown section leaves Stats at the top.
+let pendingStatsFocus = null;
+function revealStatsFocus() {
+  const key = pendingStatsFocus;
+  if (!key || activeRoute() !== "/stats" || statsSectionForPath(window.location.pathname) !== key) return;
+  pendingStatsFocus = null;
+  const section = [...document.querySelectorAll("[data-stats-section]")].find(el => el.dataset.statsSection === key);
+  section?.scrollIntoView({block: "start"});
 }
 function loadWidgetData() { return loadStatsWidgets(state); }
 
@@ -1239,6 +1262,8 @@ function updateTabs(route) {
   tabs.querySelectorAll(".tab-item").forEach((tab) => {
     const active = route === "/" + tab.dataset.nav || (route === "/" && tab.dataset.nav === "today");
     tab.classList.toggle("active", active);
+    if (active) tab.setAttribute("aria-current", "page");
+    else tab.removeAttribute("aria-current");
   });
 }
 
@@ -1404,7 +1429,7 @@ let deleteAccountAttempt = null;
 let sessionCheck = null;
 async function confirmBrowserSession({ invalidate = false, expected = contextSnapshot() } = {}) {
   if (!contextIsCurrent(expected) || state.logoutPending || state.transitioning) return false;
-  const route = state.currentRoute || window.location.pathname;
+  const route = activeRoute();
   const hide = entry => {
     entry.invalidated = true;
     entry.invalidate?.();
@@ -1507,7 +1532,9 @@ async function doLogin(form) {
     if (result.ok && result.user) {
       const destination = operatorLoginDestination();
       if (destination) { window.location.assign(destination); return; }
-      if (!await finishIdentity(result)) return;
+      // Signing in from a tab link (e.g. a shared Stats link) opens that tab.
+      const path = window.location.pathname;
+      if (!await finishIdentity(result, tabForPath(path) ? routeForPath(path) : "/")) return;
       if (state._pendingInviteCode && !state.household) await doJoinWithCode(state._pendingInviteCode);
     } else if (form.isConnected) setError("#login-error",result.data?.error || "Invalid email or password");
   } catch (err) {
@@ -1532,15 +1559,17 @@ async function reloadAfterAuth() {
     loadLatestLogsData(),
   ]), contextScope);
   if (!scope.current()) return;
-  if ((state.currentRoute || window.location.pathname) === "/settings") {
-    void loadApiKeysData().then(() => { if (scope.current()) render(document.querySelector("#app")); });
+  if (activeRoute() === "/settings") {
+    // A reload on Settings loads what opening the tab loads.
+    void Promise.all([loadNotificationPrefs(), loadChoreReminderPrefsData(), loadApiKeysData()])
+      .then(() => { if (scope.current()) render(document.querySelector("#app")); });
   }
   await withCurrentContext(syncTimezone(state), contextScope);
   if (!scope.current() || !state.household) return;
   persistSnapshot();
   // Notifications update their own panel/badge and must not delay Home.
   void loadNotifData().catch(() => {});
-  const route = state.currentRoute || window.location.pathname || "/";
+  const route = activeRoute();
   if (["/activity", "/stats", "/schedule"].includes(route)) {
     // Date-grouped views still load after timezone synchronization. Home
     // needs neither today's calendar logs nor schedules; navigation loads them.
@@ -1712,11 +1741,83 @@ async function doDeleteAccount() {
   }
 }
 
+// Show a tab. A tap pushes its URL so Back returns to the previous tab; Back
+// and Forward pass push=false because the browser has already moved.
+function showTab(route, push = true) {
+  const app = document.querySelector("#app");
+  if (deleteAccountAttempt) {
+    deleteAccountIntent++;
+    state.deleteAccountOpen = false;
+    state.deleteAccountError = null;
+  }
+  closeAllPanels();
+  state.currentRoute = route;
+  if (push) {
+    pendingStatsFocus = null;
+    syncAddressBar(true);
+  }
+  if (route === "/settings") {
+    state._loadedHousehold = true;
+    render(app);
+    Promise.all([loadNotificationPrefs(), loadChoreReminderPrefsData(), loadApiKeysData()]).then(owned(() => render(app)));
+    return;
+  }
+  if (route === "/activity") {
+    if (state.activityView === "history") {
+      loadActivityPage().catch(() => {});
+    } else {
+      render(app);
+      (state.calendarView === "week" ? loadWeekData() : loadTodayData())
+        .then(owned(() => render(app)));
+    }
+    return;
+  }
+  if (route === "/today") {
+    state.homeView = "log";
+    // Home shows its current data at once, then refreshes "time ago".
+    render(app);
+    loadLatestLogsData().then(owned(() => render(app)));
+    return;
+  }
+  if (route === "/stats") {
+    state.stats = state.stats || {};
+    loadAllStatsData();
+    return;
+  }
+  if (route === "/schedule") {
+    render(app);
+    Promise.all([loadChoreData(), loadSchedules()]).then(owned(async ([, schedules]) => {
+      const contextScope = captureScope(state);
+      state.schedules = schedules;
+      await withCurrentContext(loadTodayData(), contextScope);
+      render(app);
+    }));
+    return;
+  }
+  render(app);
+}
+
 export async function init() {
   state = createAppState();
+  // A closed sheet's step back can land on the entry of a tab the app has
+  // since left (a reminder opened Home); re-point it at the current tab.
   sheetController = createSheetController(() => {
     state.activeSheet = null; state.activeSheetData = {};
     render(document.querySelector('#app'));
+  }, () => syncAddressBar());
+  // The launch URL's tab is the route on screen. Keep it in state: after a
+  // reload, Back fires once the address bar already shows the next tab.
+  if (tabForPath(window.location.pathname)) state.currentRoute = routeForPath(window.location.pathname);
+  pendingStatsFocus = statsSectionForPath(window.location.pathname);
+  // Back and Forward between tabs. The sheet controller registered first: it
+  // stops the step that removes a closed sheet's entry, and Back on an open
+  // sheet lands on the same tab, which keeps its place.
+  window.addEventListener("popstate", () => {
+    if (!state.user || state.transitioning || state.sessionUnconfirmed || state.logoutPending) return;
+    const tab = tabForPath(window.location.pathname);
+    if (!tab || tab === tabForPath(activeRoute())) return;
+    pendingStatsFocus = statsSectionForPath(window.location.pathname);
+    showTab(tab, false);
   });
 
   state.googleOAuthEnabled = document.body?.dataset?.googleOauthEnabled === "true";
@@ -1814,7 +1915,7 @@ export async function init() {
   });
 
   onExternalIdentityChange(async record => {
-    const ticket = ++identityUIRevision, route = state.currentRoute || window.location.pathname;
+    const ticket = ++identityUIRevision, route = activeRoute();
     adoptUser(null,route);
     state.logoutPending = record?.status === "logout-pending";
     state.transitioning = record?.status === "changing";
@@ -1836,9 +1937,11 @@ export async function init() {
   const jiggleDrag = { active: false, choreId: null, targetChoreId: null };
 
   document.addEventListener("click", (e) => {
+    const navEl = e.target.closest("[data-nav]");
+    // A modified click on a tab link is the browser's: a new tab or window.
+    if (navEl?.getAttribute("href")?.startsWith("/") && (e.metaKey || e.ctrlKey || e.shiftKey)) return;
     // Always prevent default for nav links so a long-press residual click
     // never causes a full-page navigation via the href attribute.
-    const navEl = e.target.closest("[data-nav]");
     if (navEl) e.preventDefault();
 
     // Only swallow the residual click on the card / cell that was long-pressed.
@@ -1859,50 +1962,7 @@ export async function init() {
 
     // data-nav SPA navigation: check first so it works without data-action
     if (navEl) {
-      if (deleteAccountAttempt) {
-        deleteAccountIntent++;
-        state.deleteAccountOpen = false;
-        state.deleteAccountError = null;
-      }
-      closeAllPanels();
-      state.currentRoute = `/${navEl.dataset.nav}`;
-      if (state.currentRoute === "/settings") {
-        state._loadedHousehold = true;
-        render(app);
-        Promise.all([loadNotificationPrefs(), loadChoreReminderPrefsData(), loadApiKeysData()]).then(owned(() => render(app)));
-        return;
-      }
-      if (state.currentRoute === "/activity") {
-        if (state.activityView === "history") {
-          loadActivityPage().catch(() => {});
-        } else {
-          render(app);
-          (state.calendarView === "week" ? loadWeekData() : loadTodayData())
-            .then(owned(() => render(app)));
-        }
-        return;
-      }
-      if (state.currentRoute === "/today") {
-        state.homeView = "log";
-        loadLatestLogsData().then(owned(() => render(app)));
-        return;
-      }
-      if (state.currentRoute === "/stats") {
-        state.stats = state.stats || {};
-        loadAllStatsData();
-        return;
-      }
-      if (state.currentRoute === "/schedule") {
-        render(app);
-        Promise.all([loadChoreData(), loadSchedules()]).then(owned(async ([, schedules]) => {
-  const contextScope = captureScope(state);
-          state.schedules = schedules;
-          await withCurrentContext(loadTodayData(), contextScope);
-          render(app);
-        }));
-        return;
-      }
-      render(app);
+      showTab(navEl.dataset.nav === "home" ? "/today" : `/${navEl.dataset.nav}`);
       return;
     }
 
@@ -2157,11 +2217,7 @@ export async function init() {
       }
       case "profile-nav-settings": {
         e.preventDefault();
-        closeProfilePanel();
-        state._loadedHousehold = true;
-        state.currentRoute = "/settings";
-        render(app);
-        Promise.all([loadNotificationPrefs(), loadChoreReminderPrefsData(), loadApiKeysData()]).then(owned(() => render(app)));
+        showTab("/settings");
         break;
       }
       case "create-invite":
@@ -2707,6 +2763,7 @@ export async function init() {
       case "switch-home-view": {
         e.preventDefault();
         state.currentRoute = "/";
+        syncAddressBar(true);
         state.homeView = actionEl.dataset.view || "log";
         state.jiggleMode = false;
         loadLatestLogsData().then(owned(() => render(app)));
@@ -4341,7 +4398,7 @@ export async function init() {
   // visible, so relative times stay fresh without a navigation/re-render.
   setInterval(() => {
     if (document.hidden || !state.user) return;
-    const route = state.currentRoute || window.location.pathname || "/";
+    const route = activeRoute();
     if (route === "/" || route === "/today") refreshHomeCardTimes(state);
   }, 60000);
 
@@ -4517,7 +4574,7 @@ async function reloadViewData() {
   const contextScope = captureScope(state);
   if (!state.user || !state.household) return;
   const scope = captureScope(state);
-  const route = state.currentRoute || window.location.pathname || "/";
+  const route = activeRoute();
   if (route === "/activity") {
     await withCurrentContext(Promise.all([loadActivity(state,{preservePages:true}),loadDayNotesData()]), contextScope);
   } else if (route === "/stats") {
@@ -4530,7 +4587,7 @@ async function reloadViewData() {
   if (scope.current()) await withCurrentContext(hydratePendingLogs(), contextScope);
 }
 
-async function runHouseholdTransition(run, {seed=false,route=state.currentRoute || window.location.pathname || "/"} = {}) {
+async function runHouseholdTransition(run, {seed=false,route=activeRoute()} = {}) {
   if (state.transitioning) return;
   const ticket = ++identityUIRevision, app = document.querySelector("#app");
   closeAllPanels(); adoptUser(state.user,route); state.transitioning=true; render(app);

@@ -1859,3 +1859,56 @@ describe("Offline Home snapshot", () => {
     assert.deepEqual(restored.members, []);
   });
 });
+
+describe("Tab routes", () => {
+  it("maps paths to tabs, with Home's alias and Stats deep links", async () => {
+    const { tabForPath, routeForPath, statsSectionForPath } = await import("../router.js");
+    assert.equal(tabForPath("/"), "/today");
+    assert.equal(tabForPath("/today"), "/today");
+    for (const path of ["/activity", "/schedule", "/settings", "/stats"]) assert.equal(tabForPath(path), path);
+    assert.equal(tabForPath("/stats/chore/12"), "/stats");
+    assert.equal(routeForPath("/stats/chore/12"), "/stats");
+    assert.equal(statsSectionForPath("/stats/chore/12"), "chore:12");
+    // Sign-in pages, email links, the marketing page and malformed links are not tabs.
+    for (const path of ["/login", "/register", "/join", "/verify-email", "/home", "/stats/", "/stats/chore/0",
+      "/stats/chore/012", "/stats/chore/1234567890", "/stats/chore/12/x", "/stats/chore/12%3Cb%3E", "/stats/chore/abc"]) {
+      assert.equal(tabForPath(path), null, path);
+      assert.equal(statsSectionForPath(path), null, path);
+    }
+    assert.equal(routeForPath("/login"), "/login");
+    assert.equal(routeForPath(""), "/");
+  });
+
+  it("pushes a new tab, replaces in place, and leaves a URL that already shows the tab", async () => {
+    const { syncTabURL } = await import("../router.js");
+    const page = new JSDOM("<!doctype html><html><body></body></html>", { url: "http://localhost:8080/today" });
+    const saved = { location: globalThis.location, history: globalThis.history };
+    globalThis.location = page.window.location;
+    globalThis.history = page.window.history;
+    try {
+      const entries = page.window.history.length;
+      assert.equal(syncTabURL("/stats", { push: true }), true);
+      assert.equal(page.window.location.pathname, "/stats");
+      assert.equal(page.window.history.length, entries + 1);
+      assert.equal(syncTabURL("/stats", { push: true }), false, "same tab adds no entry");
+
+      // A replace keeps the entry's state, such as an open sheet's marker.
+      page.window.history.replaceState({ nabuSheet: "t1" }, "", "/stats");
+      assert.equal(syncTabURL("/"), true);
+      assert.equal(page.window.location.pathname, "/today");
+      assert.equal(page.window.history.state.nabuSheet, "t1");
+      assert.equal(page.window.history.length, entries + 1);
+
+      page.window.history.replaceState(null, "", "/");
+      assert.equal(syncTabURL("/today"), false, "/ already shows Home");
+      page.window.history.replaceState(null, "", "/stats/chore/12");
+      assert.equal(syncTabURL("/stats"), false, "a deep link already shows Stats");
+      assert.equal(syncTabURL("/login"), false, "sign-in pages are not tabs");
+      assert.equal(page.window.location.pathname, "/stats/chore/12");
+    } finally {
+      globalThis.location = saved.location;
+      globalThis.history = saved.history;
+      page.window.close();
+    }
+  });
+});

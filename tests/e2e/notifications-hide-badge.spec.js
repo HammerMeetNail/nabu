@@ -155,10 +155,10 @@ test.describe('Hide notification badge preference', () => {
         { timeout: 10000, intervals: [500] }
       ).toBeGreaterThanOrEqual(2);
 
-      // The preference survives a reload and the badge stays hidden even
-      // though there are now 2+ unread notifications.
+      // The preference survives a reload (which keeps the Settings tab) and the
+      // badge stays hidden even though there are now 2+ unread notifications.
       await memberPage.reload();
-      await memberPage.waitForSelector('.home-grid', { timeout: 15000 });
+      await memberPage.waitForSelector('.settings-view', { timeout: 15000 });
       await expect.poll(
         async () => (await fetchNotifications(memberPage)).unreadCount,
         { timeout: 10000, intervals: [500] }

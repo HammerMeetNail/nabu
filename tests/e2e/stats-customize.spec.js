@@ -87,10 +87,10 @@ test.describe("Stats customize", () => {
 
     await expect(page.locator("h3:has-text(\"Leaderboard\")")).toHaveCount(0);
 
+    // Reload keeps the Stats tab.
     await page.reload();
-    await page.waitForSelector(".home-grid", { timeout: 15000 });
-    await page.click("a[data-nav=\"stats\"]");
-    await page.waitForSelector(".stats-page");
+    await page.waitForSelector(".stats-page", { timeout: 15000 });
+    await expect(page.getByRole("heading", {name:"Activity", exact:true})).toBeVisible();
     await expect(page.locator("h3:has-text(\"Leaderboard\")")).toHaveCount(0);
   });
 
@@ -157,10 +157,10 @@ test.describe("Stats customize", () => {
     await babyRow.locator("input[type=\"checkbox\"]").uncheck();
     await expect(page.getByRole("heading", {name:"Baby", exact:true})).toHaveCount(0);
 
+    // Reload keeps the Stats tab.
     await page.reload();
-    await page.waitForSelector(".home-grid", { timeout: 15000 });
-    await page.click("a[data-nav=\"stats\"]");
-    await page.waitForSelector(".stats-page");
+    await page.waitForSelector(".stats-page", { timeout: 15000 });
+    await expect(page.getByRole("heading", {name:"Activity", exact:true})).toBeVisible();
     await expect(page.getByRole("heading", {name:"Baby", exact:true})).toHaveCount(0);
 
     await page.click("button[data-action=\"toggle-customize-stats\"]");

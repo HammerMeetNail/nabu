@@ -1,5 +1,7 @@
 // Shared keyboard, focus and browser-back lifecycle for the existing sheets.
-export function createSheetController(close) {
+// afterBack runs when the controller has removed a closed sheet's entry from
+// the browser's back stack, so the page can re-point the address bar.
+export function createSheetController(close, afterBack = () => {}) {
   let dialog = null, opener = null, candidate = null, before = null;
   let historyToken = null, consumingBack = false;
   const inert = new Map();
@@ -63,8 +65,12 @@ export function createSheetController(close) {
   });
   window.addEventListener('popstate', event => {
     if (consumingBack) {
+      // This step back only removed a closed sheet's entry. It is not a
+      // navigation, so later listeners (the tab router) must not see it.
+      event.stopImmediatePropagation();
       consumingBack = false;
       if (dialog) pushHistory();
+      afterBack();
       return;
     }
     if (dialog && event.state?.nabuSheet !== historyToken) {
