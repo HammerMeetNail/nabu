@@ -1,7 +1,26 @@
 # Nabu — Plan to Become a Product People Choose
 
 **Date:** 2026-10-13 · **Baseline:** `main` @ `3547d67` · **Scope:** PWA, iOS app, Go backend, ops, product, go-to-market
-**Status:** Proposal. Nothing in this document has been implemented. Every bug listed below was reproduced or confirmed in code; file:line references are against the baseline commit.
+**Status:** In progress; see Progress below. Every bug listed below was reproduced or confirmed in code; file:line references are against the baseline commit.
+
+## Progress (2026-10-27)
+
+| Item | State |
+|---|---|
+| Phase 0 (all of 0.1–0.9) | Merged: #155 (all of Phase 0), #157 (AGENTS.md invariant). |
+| 1.1 Smart defaults | Merged: a new dose starts from the last one (#161). |
+| 1.2 Offline-first launch | Merged: PWA (#160), iOS (#163). |
+| 1.3 PWA rendering and data layer | Merged: router (#162), modulepreload and a versioned precache (#160), and Home updated from the save's answer instead of 3 refetches (#165). Not started: the SWR data store, keyed morphing and splitting `app.js`. |
+| 1.4 iOS architecture | Not started. |
+| 1.5 Stats API consolidation | Merged: `GET /api/stats/dashboard`, two requests per visit (#164). |
+| 2.1 Onboarding, steps 1–4 | Merged: name and color (#166), setup with packs (#168). |
+| 2.1 step 5 (QR) and 2.5 (invite page) | Open: #170. |
+| 2.1 step 6 (reminders after the first log) | Open: #171. |
+| 2.2 Activity packs | Merged: #168. |
+| 2.3 Subjects as first-class | Needs a decision: packs now name an activity per pet or baby ("Feed Mongo"), which one "Feed" tile asking "who?" would replace. |
+| 2.4 Sign-up polish | Next, after #170 and #171: their new specs fill the confirm field this removes. |
+| 5.4 Database | Open: #172 (every foreign key indexed, duplicate indexes dropped, former members read in one query). Not started: statement timeouts on hot paths. |
+| Fixes found along the way | Merged: #167 (iOS 27 UI tests, flaky specs). Open: #169 (iOS edit sheet stayed open after Save), #173 (Settings member row snapped shut on re-render). |
 
 ---
 
