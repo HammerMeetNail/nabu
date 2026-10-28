@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -166,7 +166,7 @@ func TestExportWriteDeadlineBoundsUnreadSocketThroughMiddleware(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	entered, done := make(chan struct{}), make(chan struct{})
-	server := httptest.NewUnstartedServer(middleware.RequestLogger(log.New(io.Discard, "", 0))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewUnstartedServer(middleware.RequestLogger(slog.New(slog.DiscardHandler))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b := &exportBuffer{ctx: context.Background()}
 		if _, err := b.Write([]byte(strings.Repeat("x", exportByteLimit))); err != nil {
 			return

@@ -2,8 +2,8 @@ package audit
 
 import (
 	"context"
-	"encoding/json"
-	"log"
+	"log/slog"
+	"sort"
 	"strconv"
 	"sync"
 )
@@ -20,25 +20,35 @@ type NopLogger struct{}
 
 func (NopLogger) Log(context.Context, string, map[string]string) {}
 
-// StdLogger writes each event as a single JSON object to an *log.Logger.
+// StdLogger writes each event as one "audit" record with the event and its
+// attributes, a JSON line with the server's handler. A nil logger means
+// slog.Default() when the event is logged.
 type StdLogger struct {
-	logger *log.Logger
+	logger *slog.Logger
 }
 
-func NewStdLogger(logger *log.Logger) StdLogger {
-	if logger == nil {
-		logger = log.Default()
-	}
+func NewStdLogger(logger *slog.Logger) StdLogger {
 	return StdLogger{logger: logger}
 }
 
-func (l StdLogger) Log(_ context.Context, event string, attrs map[string]string) {
-	payload := map[string]any{"event": event}
-	for key, value := range attrs {
-		payload[key] = value
+func (l StdLogger) Log(ctx context.Context, event string, attrs map[string]string) {
+	keys := make([]string, 0, len(attrs))
+	for key := range attrs {
+		if key != "event" {
+			keys = append(keys, key)
+		}
 	}
-	encoded, _ := json.Marshal(payload)
-	l.logger.Println(string(encoded))
+	sort.Strings(keys)
+	fields := make([]slog.Attr, 0, len(keys)+1)
+	fields = append(fields, slog.String("event", event))
+	for _, key := range keys {
+		fields = append(fields, slog.String(key, attrs[key]))
+	}
+	out := l.logger
+	if out == nil {
+		out = slog.Default()
+	}
+	out.LogAttrs(ctx, slog.LevelInfo, "audit", fields...)
 }
 
 // Actor describes the authenticated principal that performed an action. It is
