@@ -196,7 +196,7 @@ export function renderNotificationPanel(notifications, state = {}) {
     ? notifications
         .map(
           (n) => `
-    <li class="notif-item${n.isRead ? ' notif-read' : ''}" data-notif-id="${n.id}">
+    <li class="notif-item${n.isRead ? ' notif-read' : ''}" data-key="notification-${n.id}" data-notif-id="${n.id}">
       <button type="button" class="notif-content" data-action="mark-notif-read" data-notif-id="${n.id}" aria-label="${n.isRead ? 'Read notification' : 'Mark notification read'}"${disabled}>
         <span class="notif-title">${escapeHTML(n.title)}</span>
         <span class="notif-body">${escapeHTML(n.body)}</span>

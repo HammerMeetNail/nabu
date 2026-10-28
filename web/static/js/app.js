@@ -276,9 +276,8 @@ export function render(root) {
   if (retainedSheet) retainedSheet.replaceWith(retainedSheet.cloneNode(false));
 
   // Preserve the day-hour-grid-wrapper scroll position across re-renders.
-  // morph.js reuses DOM nodes by position, but template whitespace differences
-  // (e.g. when a sheet opens/closes) can cause it to destroy and recreate the
-  // wrapper element, resetting scrollTop to 0 and triggering the auto-scroll.
+  // Opening or closing a sheet replaces the whole view (below), recreating
+  // the wrapper, which resets scrollTop to 0 and triggers the auto-scroll.
   const prevWrapper = root.querySelector(".day-hour-grid-wrapper");
   const savedScroll = prevWrapper ? prevWrapper.scrollTop : -1;
 
@@ -4764,7 +4763,7 @@ function renderPendingWork() {
   const rows = state.pendingLogs || [];
   return `<details class="pending-work"><summary>${rows.length} log${rows.length === 1 ? "" : "s"} saved on this device · awaiting confirmation</summary>${rows.map(log => {
     const chore = (state.chores || []).find(c => c.id === log.choreId);
-    return `<div class="pending-work-row" data-pending-key="${escapeHTML(log.idempotencyKey)}"><strong>${escapeHTML(chore?.name || "Saved log")}</strong>
+    return `<div class="pending-work-row" data-key="pending-${escapeHTML(log.idempotencyKey)}" data-pending-key="${escapeHTML(log.idempotencyKey)}"><strong>${escapeHTML(chore?.name || "Saved log")}</strong>
       ${log.note ? `<p>${escapeHTML(log.note)}</p>` : ""}${log.durationSeconds != null ? `<p>${formatElapsed(log.durationSeconds)}</p>` : ""}
       <p>${escapeHTML(log._error || "Waiting to sync.")}</p>
       <button type="button" class="btn btn-sm" data-action="retry-pending-log" data-key="${escapeHTML(log.idempotencyKey)}">Retry</button>

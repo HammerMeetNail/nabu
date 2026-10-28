@@ -28,3 +28,49 @@ test('an opened member row survives a re-render', async ({ page }) => {
   await expect(settings).not.toHaveAttribute('data-e2e-before-render', '');
   await expect(row).toHaveAttribute('open', '');
 });
+
+// Registers through the API in this page's browser context.
+async function register(page) {
+  await page.goto('/register');
+  const csrf = (await page.context().cookies()).find(c => c.name === 'nabu_csrf').value;
+  const headers = { 'X-CSRF-Token': csrf };
+  const email = `e2e-member-row-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@test.com`;
+  const response = await page.request.post('/api/auth/register', { data: { email, password: 'test123456' }, headers });
+  expect(response.status()).toBe(201);
+  return { user: (await response.json()).user, headers };
+}
+
+// Rows are matched by their key. When the member above an opened row
+// leaves, the opened row used to take the leaver's closed row's place.
+test('an opened member row stays open when a member above it leaves', async ({ page, browser }) => {
+  const owner = await register(page);
+  const created = await page.request.post('/api/household', { data: { name: 'Home' }, headers: owner.headers });
+  expect(created.status()).toBe(201);
+  const { inviteCode } = (await created.json()).household;
+  const contexts = [await browser.newContext(), await browser.newContext()];
+  try {
+    const members = [];
+    for (const context of contexts) {
+      const memberPage = await context.newPage();
+      const member = await register(memberPage);
+      expect((await memberPage.request.post('/api/household/join', { data: { inviteCode }, headers: member.headers })).ok()).toBeTruthy();
+      members.push({ page: memberPage, ...member });
+    }
+    await page.goto('/settings');
+    const rows = page.locator('.member-row');
+    await expect(rows).toHaveCount(3);
+    const order = await rows.evaluateAll(els => els.map(el => Number(el.dataset.userId)));
+    const [leaving, staying] = members.sort((a, b) => order.indexOf(a.user.id) - order.indexOf(b.user.id));
+    const row = page.locator(`.member-row[data-user-id="${staying.user.id}"]`);
+    await row.locator('summary').click();
+    await expect(row).toHaveAttribute('open', '');
+
+    expect((await leaving.page.request.post('/api/household/leave', { headers: leaving.headers })).ok()).toBeTruthy();
+    // Coming back to the page reloads the household.
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await expect(rows).toHaveCount(2);
+    await expect(row).toHaveAttribute('open', '');
+  } finally {
+    for (const context of contexts) await context.close();
+  }
+});

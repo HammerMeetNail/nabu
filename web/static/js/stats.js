@@ -340,7 +340,7 @@ export function renderStatsPage(state) {
   // Keep each section in its own stable position while requests complete.
   // morph.js matches by position: inserting/removing a loading message or an
   // empty section must not turn a focused Categories control into Chores.
-  const body = order.map(k => `<div data-stats-section="${escapeHTML(k)}">${renderSection(k)}</div>`).join('\n');
+  const body = order.map(k => `<div data-stats-section="${escapeHTML(k)}" data-key="section-${escapeHTML(k)}">${renderSection(k)}</div>`).join('\n');
 
   return `<div class="stats-page">
     <div class="stats-header-row">
