@@ -101,6 +101,17 @@ relaunches online and waits for the queued log to sync. To use a server on
 another port, prefix the command with
 `TEST_RUNNER_NABU_E2E_BASE_URL=http://localhost:<port>`.
 
+`NabuShortcutsEndToEndUITests` runs the "Log Activity" App Intent from the
+Shortcuts app against the same server and checks Siri's answer and Home. It
+keeps Nabu running in the background: killing the app right after sign-up
+loses the session cookie iOS has not yet written to disk, so a cold
+background launch would find no session. iOS applies the app's activity
+list about a minute late after another run's household, and a stale tile
+logs nothing, so the test retries; a run right after another can take two
+minutes. The intents' logic is in
+`Nabu/App/AppIntents.swift` (`IntentActions`), unit-tested in
+`AppIntentsTests`; a log there must stay the body a Home log sends.
+
 **How it works:**
 
 The test generates a unique email, then launches the app with these launch arguments:

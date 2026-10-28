@@ -18,6 +18,9 @@ final class AppEnvironment: ObservableObject {
         baseURL = AppEnvironment.resolveBaseURL()
         apiClient = APIClient(baseURL: baseURL, identity: ClientIdentity.shared(for: baseURL))
         applyUnreachableServerHook()
+        // App Intents use this client while the app runs: its session, and in
+        // UI tests its mock server.
+        IntentSession.appClient = { [weak self] in self?.apiClient }
     }
 
     /// The server base URL from launch arguments / env, falling back to

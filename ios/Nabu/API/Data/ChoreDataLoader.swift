@@ -18,6 +18,9 @@ final class ChoreDataLoader {
             guard state.owns(owner) else { return }
             NSLog("[Nabu] ChoreDataLoader OK: \(data.chores.count) chores")
             state.chores = data.chores
+            // Siri learns the activities' names for "Log … in Nabu".
+            IntentSession.noteLoaded(data.chores, for: api.requestContext)
+            NabuShortcuts.updateAppShortcutParameters()
         } catch {
             NSLog("[Nabu] ChoreDataLoader failed: \(String(describing: error))")
         }
