@@ -153,6 +153,10 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
             Task { await dataLoader.foregroundRefresh() }
         }
+        // Siri or Shortcuts logged or removed a log while the app is open.
+        .onReceive(NotificationCenter.default.publisher(for: .nabuIntentChangedLogs)) { _ in
+            Task { await dataLoader.foregroundRefresh() }
+        }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
             dataLoader.saveHomeSnapshot()
         }
