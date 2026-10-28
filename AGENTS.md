@@ -110,7 +110,7 @@ Session cookie name: `nabu_session`. CSRF cookie name: `nabu_csrf`.
 
 - **`app.js`** — Entry point. Wires all event listeners on a single `#app` container via event delegation.
 - **`state.js`** — `createAppState()` returns the single mutable state object. All UI derives from this.
-- **`morph.js`** — DOM morphing: updates existing DOM to match new HTML without destroying focus or form state.
+- **`morph.js`** — DOM morphing: updates existing DOM to match new HTML without destroying focus or form state. It matches children by position, whitespace text nodes included: an element that comes and goes must sit in a container that is always rendered (as `render()` does for the offline and pending-log notices), or every node after it is rebuilt and loses focus and unsaved values.
 - **`api.js`** — `apiFetch()` wraps `fetch()` adding `Content-Type` and CSRF token for state-changing requests.
 - **`today.js`** — Chore grid, tap-to-log, `logChore(choreId, note, date, indicators, slotHour, completedAt)` API wrapper. `slotHour` is an integer (0–23) or `null`.
 - **`calendar.js`** — Day and week calendar views. Ad-hoc log placement: `slotHour === null` → Anytime row; `slotHour === hour` → that hour row. Both `renderDayView` and `renderWeekView` follow this rule.
@@ -119,6 +119,7 @@ Session cookie name: `nabu_session`. CSRF cookie name: `nabu_csrf`.
 - **`preferences.js`** — Chore ordering preferences.
 - **`router.js`** — Tab URLs (`/today`, `/activity`, `/schedule`, `/settings`, `/stats`, plus `/stats/chore/<id>`). Tab taps go through `showTab()` in `app.js`, which pushes the URL; a route the app picks on its own (sign-in, invite, reminder action) is replaced in `render()`. `sheets.js` stops the back step that removes a closed sheet's entry, so it must stay the first `popstate` listener. Opening a tab by reload or link must load the same data as tapping it.
 - **`stats-batch.js`** — Stats reads that start in the same synchronous pass leave as `/api/stats/dashboard` requests in two lanes (sections, and per-chore time-series/summary charts), each caller getting its own data or error; a lone read goes to its endpoint. Keeps the last fully successful page per identity in memory and revalidates it with `If-None-Match`. Every Stats fetcher in `stats.js` goes through `statsGet()`.
+- **`desktop.js`** — The wide layout (900 px and up, over 520 px tall). `WIDE_LAYOUT` must equal the media query in `app.css` that turns the tab bar into a sidebar and sheets into dialogs; the JS side renders what only that layout shows (Home's activity column, tile shortcut numbers) and maps keys 1–9, u and / to shortcuts. Phones, including in landscape, keep the bottom tab bar.
 - **`snapshot.js`** — Home data saved for offline launch. Bound to the active identity's user, household and binding; saved only from confirmed online state; deleted by `browser-context.js` whenever the identity stops being active. Never display it for any other identity state, and never let an unreachable server (network failure, timeout, 5xx) sign the user out or hide it: only a server answer (no session, 401, 409 context change) does.
 
 ### When adding or changing predefined activities

@@ -43,6 +43,7 @@ export function createAppState() {
     jiggleMode: false,         // home grid reorder mode
     homeView: "log",           // "log" | "manage"
     latestLogs: {},            // map of choreId -> ChoreLog (most recent per chore)
+    homeActivity: { logs: [], loaded: false, error: null }, // Home's activity column (wide layout)
     notificationPrefs: null,
     availableNotificationTypes: [],
     choreReminderPrefs: [],     // array of {userId, choreId, enabled, leadMinutes}
