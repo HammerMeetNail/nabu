@@ -165,6 +165,21 @@ Rate limits are per server replica. Verify trusted-client attribution and IPv4/I
 behavior using authorized test traffic before changing replica count or proxy
 topology. A local proxy-chain test does not establish production network behavior.
 
+### Statement and lock timeouts
+
+Every app connection starts with `statement_timeout` 30s and `lock_timeout` 15s
+(`internal/database/open.go`). A runaway query or a stuck lock wait fails its
+own request with a server error instead of holding a pooled connection while
+others queue behind it. The lock timeout stays above the 10s a push send may
+hold its subscription and session rows, so a sign-out waiting behind a send
+still succeeds. Migrations run without these, as before: each migration's
+transaction lifts both, and a migration may still set its own (048, 049 and 051
+do). The migration lock wait is not bounded either, so an instance waits for
+another instance's migration however long it takes.
+
+To change them, add `statement_timeout=<ms>` and `lock_timeout=<ms>` to the
+`DATABASE_URL` query string; values there win over the defaults.
+
 ### History index migration
 
 Migration 048 adds a household/chore/time index and a `pg_trgm` GIN index for

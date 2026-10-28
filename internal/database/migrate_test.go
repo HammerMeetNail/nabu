@@ -14,6 +14,8 @@ import (
 // expectLock/expectUnlock set expectations for the session advisory lock that
 // Migrate acquires (and releases) around the migration run.
 func expectLock(mock sqlmock.Sqlmock) {
+	mock.ExpectExec(regexp.QuoteMeta(liftTimeouts)).
+		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec(regexp.QuoteMeta(`SELECT pg_advisory_lock($1)`)).
 		WithArgs(migrateLockKey).
 		WillReturnResult(sqlmock.NewResult(0, 0))
@@ -22,6 +24,15 @@ func expectLock(mock sqlmock.Sqlmock) {
 func expectUnlock(mock sqlmock.Sqlmock) {
 	mock.ExpectExec(regexp.QuoteMeta(`SELECT pg_advisory_unlock($1)`)).
 		WithArgs(migrateLockKey).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectExec(regexp.QuoteMeta(`RESET statement_timeout; RESET lock_timeout`)).
+		WillReturnResult(sqlmock.NewResult(0, 0))
+}
+
+// expectBeginMigration: each migration's transaction lifts the timeouts.
+func expectBeginMigration(mock sqlmock.Sqlmock) {
+	mock.ExpectBegin()
+	mock.ExpectExec(regexp.QuoteMeta(liftTimeoutsForTx)).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 }
 
@@ -50,7 +61,7 @@ func TestMigrateAppliesPendingMigrations(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ReadFile returned error: %v", err)
 		}
-		mock.ExpectBegin()
+		expectBeginMigration(mock)
 		mock.ExpectExec(regexp.QuoteMeta(string(body))).
 			WillReturnResult(sqlmock.NewResult(0, 0))
 		mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO schema_migrations(name) VALUES ($1)`)).
@@ -152,7 +163,7 @@ func TestMigrateReturnsApplyErrors(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT name FROM schema_migrations`)).
 		WillReturnRows(sqlmock.NewRows([]string{"name"}))
-	mock.ExpectBegin()
+	expectBeginMigration(mock)
 	mock.ExpectExec(regexp.QuoteMeta(string(body))).
 		WillReturnError(errors.New("syntax error"))
 	mock.ExpectRollback()
@@ -189,7 +200,7 @@ func TestMigrateReturnsRecordErrors(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectQuery(regexp.QuoteMeta(`SELECT name FROM schema_migrations`)).
 		WillReturnRows(sqlmock.NewRows([]string{"name"}))
-	mock.ExpectBegin()
+	expectBeginMigration(mock)
 	mock.ExpectExec(regexp.QuoteMeta(string(body))).
 		WillReturnResult(sqlmock.NewResult(0, 0))
 	mock.ExpectExec(regexp.QuoteMeta(`INSERT INTO schema_migrations(name) VALUES ($1)`)).

@@ -27,6 +27,14 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("acquire migration connection: %w", err)
 	}
 	defer conn.Close()
+	// Another instance may migrate for longer than the app's statement and
+	// lock timeouts allow (see open.go); this connection waits for it.
+	if _, err := conn.ExecContext(ctx, liftTimeouts); err != nil {
+		return fmt.Errorf("lift migration lock timeouts: %w", err)
+	}
+	defer func() {
+		_, _ = conn.ExecContext(context.Background(), `RESET statement_timeout; RESET lock_timeout`)
+	}()
 	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, migrateLockKey); err != nil {
 		return fmt.Errorf("acquire migration lock: %w", err)
 	}
@@ -35,6 +43,13 @@ func Migrate(ctx context.Context, db *sql.DB) error {
 	}()
 	return migrateLocked(ctx, db)
 }
+
+// liftTimeouts removes the session's statement and lock timeouts.
+const liftTimeouts = `SET statement_timeout = 0; SET lock_timeout = 0`
+
+// liftTimeoutsForTx does so until the transaction ends: an index build or
+// table rewrite may take longer than any request should.
+const liftTimeoutsForTx = `SET LOCAL statement_timeout = 0; SET LOCAL lock_timeout = 0`
 
 // migrateLocked runs the migration loop. The caller must already hold the
 // migration advisory lock. The reads of schema_migrations happen after the lock
@@ -80,23 +95,35 @@ func migrateLocked(ctx context.Context, db *sql.DB) error {
 		if err != nil {
 			return fmt.Errorf("read migration %s: %w", name, err)
 		}
-
-		tx, err := db.BeginTx(ctx, nil)
-		if err != nil {
-			return fmt.Errorf("begin migration %s: %w", name, err)
-		}
-		if _, err := tx.ExecContext(ctx, string(body)); err != nil {
-			_ = tx.Rollback()
-			return fmt.Errorf("apply migration %s: %w", name, err)
-		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations(name) VALUES ($1)`, name); err != nil {
-			_ = tx.Rollback()
-			return fmt.Errorf("record migration %s: %w", name, err)
-		}
-		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("commit migration %s: %w", name, err)
+		if err := applyMigration(ctx, db, name, string(body)); err != nil {
+			return err
 		}
 	}
 
+	return nil
+}
+
+// applyMigration runs one migration and records it, in one transaction
+// without the app's statement and lock timeouts.
+func applyMigration(ctx context.Context, db *sql.DB, name, body string) error {
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin migration %s: %w", name, err)
+	}
+	if _, err := tx.ExecContext(ctx, liftTimeoutsForTx); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("lift timeouts for migration %s: %w", name, err)
+	}
+	if _, err := tx.ExecContext(ctx, body); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("apply migration %s: %w", name, err)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations(name) VALUES ($1)`, name); err != nil {
+		_ = tx.Rollback()
+		return fmt.Errorf("record migration %s: %w", name, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit migration %s: %w", name, err)
+	}
 	return nil
 }

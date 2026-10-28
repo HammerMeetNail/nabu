@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -43,9 +44,27 @@ func ForkDeliveryPool(ctx context.Context, db *sql.DB) (*sql.DB, *QueryMetrics, 
 	return background, metrics, nil
 }
 
+// Every statement on the app's connections is bounded, so a runaway query or
+// a stuck lock wait fails its own request instead of holding a pooled
+// connection while others queue behind it. Migrations lift both for their own
+// work. A value given in DATABASE_URL (statement_timeout=…, lock_timeout=…)
+// wins.
+//
+// The lock timeout stays above the 10s a push send may take: a send holds its
+// subscription and session rows for that long (push.PostgresStore
+// WithSubscription), and a sign-out waiting behind one must still succeed.
+// Tighten both once push I/O runs outside transactions (plan 5.2).
+const (
+	DefaultStatementTimeout = 30 * time.Second
+	DefaultLockTimeout      = 15 * time.Second
+)
+
 type PoolOptions struct {
 	MaxOpen int
 	MaxIdle int
+	// Zero means the default above.
+	StatementTimeout time.Duration
+	LockTimeout      time.Duration
 }
 
 func Open(databaseURL string) (*sql.DB, error) {
@@ -63,6 +82,7 @@ func OpenMeasured(databaseURL string, options PoolOptions) (*sql.DB, *QueryMetri
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid database connection configuration")
 	}
+	boundStatements(cfg, options)
 	metrics := NewQueryMetrics()
 	cfg.Tracer = metrics
 	db := stdlib.OpenDB(*cfg)
@@ -71,4 +91,23 @@ func OpenMeasured(databaseURL string, options PoolOptions) (*sql.DB, *QueryMetri
 	db.SetConnMaxLifetime(5 * time.Minute)
 	db.SetConnMaxIdleTime(1 * time.Minute)
 	return db, metrics, nil
+}
+
+// boundStatements sets the session timeouts every connection starts with.
+// The delivery pool copies this configuration, so it is bounded too.
+func boundStatements(cfg *pgx.ConnConfig, options PoolOptions) {
+	if cfg.RuntimeParams == nil {
+		cfg.RuntimeParams = map[string]string{}
+	}
+	set := func(name string, value, fallback time.Duration) {
+		if _, given := cfg.RuntimeParams[name]; given {
+			return
+		}
+		if value <= 0 {
+			value = fallback
+		}
+		cfg.RuntimeParams[name] = strconv.FormatInt(value.Milliseconds(), 10)
+	}
+	set("statement_timeout", options.StatementTimeout, DefaultStatementTimeout)
+	set("lock_timeout", options.LockTimeout, DefaultLockTimeout)
 }
