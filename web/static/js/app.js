@@ -1943,12 +1943,8 @@ function showTab(route, push = true) {
   }
   if (route === "/schedule") {
     render(app);
-    Promise.all([loadChoreData(), loadSchedules()]).then(owned(async ([, schedules]) => {
-      const contextScope = captureScope(state);
-      state.schedules = schedules;
-      await withCurrentContext(loadTodayData(), contextScope);
-      render(app);
-    }));
+    // loadTodayData reads the schedules along with today's logs.
+    Promise.all([loadChoreData(), loadTodayData()]).then(owned(() => render(app)));
     return;
   }
   render(app);
@@ -4734,7 +4730,9 @@ export async function init() {
     void resumeSession();
   });
   await hydratePendingLogs();
-  if (state.user && navigator.onLine !== false) void flushOfflineQueue();
+  // bootstrapIdentity has just confirmed the session. Replaying needs it
+  // confirmed again, so replay only when the journal has logs to send.
+  if (state.user && navigator.onLine !== false && await journalWaiting()) void flushOfflineQueue();
 
   render(app);
 }
@@ -4780,6 +4778,12 @@ async function hydratePendingLogs() {
     state.pendingLogs = entries.map(entry => ({ ...entry.body, id:`pending-${entry.idempotencyKey}`, userId:entry.body.userId || entry.actorId,
       _pending:true, _error:entry.error, _status:entry.status }));
   } catch { /* preserve last good rows if storage is temporarily unavailable */ }
+}
+// Whether this account's journal may hold logs to send. One that can't be
+// read may, so a replay finds out.
+async function journalWaiting() {
+  try { return (await queuedLogs(captureScope(state, "journal").origin)).length > 0; }
+  catch { return true; }
 }
 async function flushOfflineQueue(retryKey = null, {confirmed=false} = {}) {
   if (!state.user?.householdId || state.logoutPending || state.transitioning || state.sessionUnconfirmed) return;

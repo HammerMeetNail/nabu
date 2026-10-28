@@ -62,6 +62,20 @@ test('cold startup loads independent Home data together after confirming the ses
   }
 });
 
+// A launch confirms the session once. Logs waiting in the journal need it
+// confirmed again before they are sent; with none, there is nothing to send.
+test('a launch with no logs waiting confirms the session once', async ({ page }) => {
+  await fixture(page);
+  let checks = 0;
+  page.on('request', request => {
+    if (request.method() === 'GET' && new URL(request.url()).pathname === '/api/me') checks++;
+  });
+  await page.reload();
+  await expect(page.locator('.home-grid')).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  expect(checks).toBe(1);
+});
+
 test('Home is usable while notifications are pending and loads calendar data on navigation', async ({ page }) => {
   const { chore, headers } = await fixture(page, { metricType: '', metricUnit: '' });
   await postLog(page, chore);

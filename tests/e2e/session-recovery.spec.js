@@ -2,28 +2,19 @@ import {test,expect} from '@playwright/test';
 import {fixture,headers,postLog,signIn,deferred} from './review-fixtures.js';
 
 async function observeStartupConfirmation(page) {
-  // Home can render before bootstrap registers foreground recovery and starts
-  // its journal session check. Observe that check without disabling the SW.
+  // Home can render before bootstrap registers foreground recovery. Wait for
+  // that, then drain the identity lock: the launch's session check has been
+  // read and published. (It checks again only to send logs left in the
+  // journal, and these tests start with none.)
   await page.addInitScript(() => {
     const addEventListener = document.addEventListener;
     document.addEventListener = function(type, listener, options) {
       addEventListener.call(this, type, listener, options);
       if (type === 'visibilitychange') window.foregroundRecoveryReady = true;
     };
-    const fetch = window.fetch;
-    window.fetch = async function(input, options) {
-      const response = await fetch.call(this, input, options);
-      const url = input instanceof Request ? input.url : input;
-      if (window.foregroundRecoveryReady && new URL(url, location.href).pathname === '/api/me') {
-        window.foregroundBootstrapResponseReceived = true;
-      }
-      return response;
-    };
   });
   return async () => {
-    await page.waitForFunction(() => window.foregroundBootstrapResponseReceived === true && !document.hidden);
-    // The response alone is not enough: drain the identity lock to wait for
-    // response consumption and publication of the confirmed session.
+    await page.waitForFunction(() => window.foregroundRecoveryReady === true && !document.hidden);
     await page.evaluate(async () => {
       const suffix = new URL(document.querySelector('script[src*="/static/js/app.js"]').src).search;
       const {withBrowserLock} = await import(`/static/js/device-store.js${suffix}`);
@@ -115,6 +106,23 @@ test('session expiry hides account data and keeps its queue until that account r
   await expect.poll(async()=>(await allRows(page)).length).toBe(0);
   const history=await (await page.request.get('/api/logs/history')).json();
   expect(history.logs.filter(log=>log.note==='Saved before session expired')).toHaveLength(1);
+});
+
+test('a launch confirms the session again before sending logs left in the journal',async({page})=>{
+  const {chore}=await fixture(page);
+  // Only a resume, a reconnect or a launch sends the journal.
+  const key=await queueRow(page,chore,'Left in the journal before a reload');
+  expect((await allRows(page)).map(row=>row.idempotencyKey)).toEqual([key]);
+  const order=[];
+  page.on('request',request=>{
+    const path=new URL(request.url()).pathname;
+    if ((path==='/api/me'&&request.method()==='GET')||(path==='/api/logs'&&request.method()==='POST')) order.push(path);
+  });
+  await page.reload();
+  await expect.poll(async()=>(await allRows(page)).length).toBe(0);
+  expect(order).toEqual(['/api/me','/api/me','/api/logs']);
+  const history=await (await page.request.get('/api/logs/history')).json();
+  expect(history.logs.filter(log=>log.note==='Left in the journal before a reload')).toHaveLength(1);
 });
 
 test('foreground confirms session before polling, push or journal replay',async({page})=>{
