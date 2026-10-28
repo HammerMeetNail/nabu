@@ -55,7 +55,9 @@ func TestAddPacksSeedsTheCurrentHousehold(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil || w.Code != http.StatusOK {
 		t.Fatalf("status %d, %v: %s", w.Code, err, w.Body)
 	}
-	if len(got.Added) != 4 || got.Added[0].Name != "Feed Ada" || got.Added[0].HouseholdID != hid || !got.Added[0].IsPredefined || got.Added[0].PredefinedKey != "Feed Baby" {
+	// Ada's own activities are custom tasks; Water Plants keeps its template.
+	if len(got.Added) != 4 || got.Added[0].Name != "Feed Ada" || got.Added[0].HouseholdID != hid || got.Added[0].IsPredefined || got.Added[0].PredefinedKey != "" ||
+		got.Added[3].Name != "Water Plants" || !got.Added[3].IsPredefined || got.Added[3].PredefinedKey != "Water Plants" {
 		t.Fatalf("added = %+v", got.Added)
 	}
 	if strings.Contains(w.Body.String(), "defaultName") || strings.Contains(w.Body.String(), "DefaultName") {

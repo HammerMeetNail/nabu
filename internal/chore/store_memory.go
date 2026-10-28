@@ -124,7 +124,6 @@ func (s *MemoryStore) AddPackChores(_ context.Context, householdID int64, chores
 		}
 		c.ID = s.nextID()
 		c.HouseholdID = householdID
-		c.IsPredefined = true
 		c.CreatedAt = time.Now().UTC()
 		c.NormalizeVisibility()
 		c.NormalizeMetric()
