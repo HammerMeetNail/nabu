@@ -10,7 +10,7 @@
 | Phase 0 (all of 0.1–0.9) | Merged: #155 (all of Phase 0), #157 (AGENTS.md invariant). |
 | 1.1 Smart defaults | Merged: a new dose starts from the last one (#161). |
 | 1.2 Offline-first launch | Merged: PWA (#160), iOS (#163). |
-| 1.3 PWA rendering and data layer | Merged: router (#162), modulepreload and a versioned precache (#160), and Home updated from the save's answer instead of 3 refetches (#165). Not started: the SWR data store, keyed morphing and splitting `app.js`. |
+| 1.3 PWA rendering and data layer | Merged: router (#162), modulepreload and a versioned precache (#160), and Home updated from the save's answer instead of 3 refetches (#165). Open: keyed morphing (#177). Not started: the SWR data store and splitting `app.js`. |
 | 1.4 iOS architecture | Not started. |
 | 1.5 Stats API consolidation | Merged: `GET /api/stats/dashboard`, two requests per visit (#164). |
 | 2.1 Onboarding, steps 1–4 | Merged: name and color (#166), setup with packs (#168). |
@@ -19,9 +19,13 @@
 | 2.2 Activity packs | Merged: #168. |
 | 2.3 Subjects as first-class | Decided: a baby's or pet's own activities ("Feed Mongo") stay custom tasks that no template change alters; a medication for two or more of one kind ("Cat Meds") asks which of them. Open: #174. |
 | 2.4 Sign-up polish | Open: #175 (logo and tagline, one password with Show/Hide, Apple and Google first on iOS). |
-| 3 Desktop web | Open: #176 (sidebar, Home's activity column, two-column Stats, keys 1–9, u and /). Not started: the other Phase 3 surfaces. |
-| 5.4 Database | Merged: #172 (every foreign key indexed, duplicate indexes dropped, former members read in one query). Not started: statement timeouts on hot paths. |
-| Fixes found along the way | Merged: #167 (iOS 27 UI tests, flaky specs), #169 (iOS edit sheet stayed open after Save), #173 (Settings member row snapped shut on re-render). Open: in #176, Activity's search lost focus after the first pause in typing, and Home lost focus after each save; in #175, showing a password on iOS made it offer to save the password. |
+| 3 Desktop web | Open: #176 (sidebar, Home's activity column, two-column Stats, keys 1–9, u and /). |
+| 3 App Intents | Open: #180 (Log Activity, Undo Last Log, When Was It Last Done; Siri phrases; logs offline through the journal). |
+| 3 Other surfaces | Needs a decision: interactive widgets and Control Center buttons run their intent in the widget extension, so logging there means sharing the session cookie and journal through the app group; they, and notification actions that log in the background, log without the sheet. Not started: Live Activity (owner sign-off requested), Apple Watch, Mac, kitchen display, Android. |
+| 5.1 Observability | Open: #179 (one JSON object per log line). Not started: tracing, a metrics endpoint, error reporting. |
+| 5.3 Sweeps | Needs a decision: sessions idle out after 24 hours and push registrations go with them, so sweeping idle sessions could stop reminders to someone who hasn't opened the app in a day. |
+| 5.4 Database | Merged: #172 (every foreign key indexed, duplicate indexes dropped, former members read in one query). Open: #178 (every statement and lock wait bounded; migrations exempt). |
+| Fixes found along the way | Merged: #167 (iOS 27 UI tests, flaky specs), #169 (iOS edit sheet stayed open after Save), #173 (Settings member row snapped shut on re-render). Open: in #175, showing a password on iOS made it offer to save the password; in #176, Activity's search lost focus after the first pause in typing and Home lost focus after each save; in #177, an opened member row closed when a member above it left. |
 
 ---
 
