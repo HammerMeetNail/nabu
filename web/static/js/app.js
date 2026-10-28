@@ -1,5 +1,8 @@
 import { createAppState, resetAuthedState } from "./state.js";
-import { bootstrapIdentity, checkIdentity, changeIdentity, contextSnapshot, contextIsCurrent, resultIsCurrent, ContextChangedError, sameOrigin, storedIdentity, onExternalIdentityChange, clearBrowserIdentity } from "./browser-context.js";
+import { state, initState, setRenderer, owned, withCurrentContext } from "./app-core.js";
+import { runAction } from "./actions.js";
+import { showToast } from "./toast.js";
+import { bootstrapIdentity, checkIdentity, changeIdentity, contextSnapshot, contextIsCurrent, resultIsCurrent, sameOrigin, storedIdentity, onExternalIdentityChange, clearBrowserIdentity } from "./browser-context.js";
 import { loadActivity, prepareActivity, setActivityChoreFilter } from "./activity-data.js";
 import { captureScope } from "./request-scope.js";
 import { loadStatsPage, loadStatsResource, loadStatsWidgets } from "./stats-data.js";
@@ -13,8 +16,8 @@ import { createSheetController } from "./sheets.js";
 import { routeForPath, statsSectionForPath, syncTabURL, tabForPath } from "./router.js";
 import { apiMe, apiFetch } from "./api.js";
 import { loadNotificationPage, mutateNotification } from "./notification-data.js";
-import { renderExports, downloadCSV } from "./exports.js";
-import { renderApiKeys, loadApiKeys, createApiKey, revokeApiKey } from "./api-keys.js";
+import { renderExports, cancelExport } from "./exports.js";
+import { renderApiKeys, loadApiKeysData } from "./api-keys.js";
 import { replayQueue, queuedLogs, discardQueuedLog } from "./offline-queue.js";
 import { escapeHTML, localDateStr, shiftDateStr, formatVolume, renderAccessSuspendedCard } from "./utils.js";
 import {
@@ -104,11 +107,9 @@ function readSheetFreq(prefix, date) {
   return payload;
 }
 
-let state;
 let sheetController = null, renderedLogDraft = null;
 let notifPollTimer = null;
 let _lastHHRefresh = 0;
-let activeExport = null;
 function startNotifPoll() {
     if (notifPollTimer) clearInterval(notifPollTimer);
     notifPollTimer = null;
@@ -130,18 +131,11 @@ function startNotifPoll() {
   }
 
 
-// Capture ownership when a continuation is attached, before its request settles.
-function owned(callback) { return captureScope(state).guard(callback); }
 // The route on screen: set by navigation, otherwise read from the address bar.
 function activeRoute() { return state.currentRoute || routeForPath(window.location.pathname); }
 // Point the address bar at the signed-in tab; sign-in pages keep their URL.
 function syncAddressBar(push = false) {
   if (state.user && !state.transitioning && !state.sessionUnconfirmed && !state.logoutPending) syncTabURL(activeRoute(), {push});
-}
-async function withCurrentContext(promise, scope) {
-  const result = await promise;
-  if (!scope.current()) throw new ContextChangedError();
-  return result;
 }
 
 let lastSWUpdateCheck = 0;
@@ -155,6 +149,7 @@ function maybeCheckSWUpdate() {
   window.__swReg.update().catch(() => {});
 }
 
+setRenderer(render);
 export function render(root) {
   maybeCheckSWUpdate();
   sheetController?.beforeRender();
@@ -1180,56 +1175,6 @@ async function updateNotification(action, id) {
   renderNotifPanel();
 }
 
-async function loadApiKeysData() {
-  const scope = captureScope(state, "api-keys");
-  if (!state.user) return;
-  try {
-    state.apiKeys = await withCurrentContext(loadApiKeys(), scope);
-  } catch {}
-}
-
-async function doCreateApiKey(form) {
-  if (state.apiKeyBusy) return;
-  const name = form.querySelector("#api-key-name").value.trim();
-  if (!name) return;
-  const app = document.querySelector("#app");
-  captureScope(state, "api-keys"); // supersede list reads started before this change
-  const scope = captureScope(state);
-  state.apiKeyBusy = true;
-  state.apiKeyError = null;
-  render(app);
-  try {
-    const data = await createApiKey(name);
-    if (!scope.current()) return;
-    state.apiKeyIssued = data.token;
-    state.apiKeys = [data.key, ...(state.apiKeys || [])];
-    form.reset();
-  } catch (err) {
-    if (scope.current()) state.apiKeyError = err.message || "Could not create the key. Please retry.";
-  } finally {
-    if (scope.current()) { state.apiKeyBusy = false; render(app); }
-  }
-}
-
-async function doRevokeApiKey(id, name) {
-  if (state.apiKeyBusy || !window.confirm(`Revoke "${name}"? Scripts using it will stop working right away.`)) return;
-  const app = document.querySelector("#app");
-  captureScope(state, "api-keys"); // supersede list reads started before this change
-  const scope = captureScope(state);
-  state.apiKeyBusy = true;
-  state.apiKeyError = null;
-  render(app);
-  try {
-    await revokeApiKey(id);
-    if (!scope.current()) return;
-    state.apiKeys = await loadApiKeys();
-  } catch (err) {
-    if (scope.current()) state.apiKeyError = err.message || "Could not revoke the key. Please retry.";
-  } finally {
-    if (scope.current()) { state.apiKeyBusy = false; render(app); }
-  }
-}
-
 async function loadNotificationPrefs() {
   const contextScope = captureScope(state);
   if (!state.user) return;
@@ -1475,16 +1420,6 @@ function anyPanelOpen() {
     .some(id => document.querySelector(id)?.hidden === false);
 }
 
-function showToast(message, type) {
-  const container = document.querySelector("#toast-container");
-  if (!container) return;
-  const toast = document.createElement("div");
-  toast.className = `toast toast-${type}`;
-  toast.textContent = message;
-  container.appendChild(toast);
-  setTimeout(() => toast.remove(), 3000);
-}
-
 function setError(containerId, message) {
   const el = document.querySelector(containerId);
   if (!el) return;
@@ -1500,8 +1435,7 @@ function hideError(containerId) {
 
 function adoptUser(user, route = "/") {
   const invite = state._pendingInviteCode;
-  activeExport?.controller.abort();
-  activeExport = null;
+  cancelExport();
   resetAuthedState(state);
   state.user = user;
   state.currentRoute = route;
@@ -1955,7 +1889,7 @@ function showTab(route, push = true) {
 }
 
 export async function init() {
-  state = createAppState();
+  initState(createAppState());
   // A closed sheet's step back can land on the entry of a tab the app has
   // since left (a reminder opened Home); re-point it at the current tab.
   sheetController = createSheetController(() => {
@@ -2134,39 +2068,7 @@ export async function init() {
 
     const action = actionEl?.dataset?.action;
     if (!action) return;
-
-    if (action === "export-csv") {
-      if (state.exportBusy) return;
-      const scope = captureScope(state, "export");
-      const ticket = {scope, controller:new AbortController()};
-      activeExport = ticket;
-      state.exportBusy = true;
-      state.exportError = null;
-      state.exportStatus = null;
-      const range = {...(state.exportRange || {})};
-      render(app);
-      downloadCSV(actionEl.dataset.kind, range, scope.origin, ticket.controller.signal)
-        .then(() => { if (scope.current()) state.exportStatus = "Export ready."; })
-        .catch(err => {
-          if (scope.current() && !ticket.controller.signal.aborted) state.exportError = err.name === "TimeoutError"
-            ? "Export took too long. Choose a smaller date range and retry." : err.message;
-        })
-        .finally(() => {
-          if (activeExport === ticket) activeExport = null;
-          if (scope.current()) { state.exportBusy = false; render(app); }
-        });
-      return;
-    }
-    if (action === "cancel-export") {
-      activeExport?.controller.abort();
-      activeExport = null;
-      captureScope(state, "export");
-      state.exportBusy = false;
-      state.exportError = null;
-      state.exportStatus = "Export canceled.";
-      render(app);
-      return;
-    }
+    if (runAction("click", action, e, actionEl)) return;
 
     // ── Weekday pill: toggle on/off ─────────────────────────────────────────
     if (action === "toggle-day") {
@@ -2326,24 +2228,6 @@ export async function init() {
       case "confirm-delete-account":
         e.preventDefault();
         void doDeleteAccount();
-        break;
-      case "revoke-api-key":
-        e.preventDefault();
-        void doRevokeApiKey(actionEl.dataset.keyId, actionEl.dataset.keyName || "this key");
-        break;
-      case "copy-api-key": {
-        e.preventDefault();
-        const token = state.apiKeyIssued;
-        if (!token) break;
-        navigator.clipboard?.writeText(token).then(
-          () => showToast("API key copied", "success"),
-          () => showToast("Copy failed. Select the key and copy it manually.", "error"));
-        break;
-      }
-      case "dismiss-api-key":
-        e.preventDefault();
-        state.apiKeyIssued = null;
-        render(app);
         break;
 
       case "open-notifications": {
@@ -3958,12 +3842,7 @@ export async function init() {
     }
 
     const actionEl = e.target.closest("[data-action]");
-    if (actionEl?.dataset?.action === "export-range") {
-      state.exportRange = {...(state.exportRange || {}), [actionEl.dataset.field]:actionEl.value};
-      state.exportError = null;
-      state.exportStatus = null;
-      return;
-    }
+    if (actionEl && runAction("change", actionEl.dataset.action, e, actionEl)) return;
 
     if (actionEl?.dataset?.action === "change-frequency") {
       const sheet   = actionEl.closest(".bottom-sheet");
@@ -4124,6 +4003,7 @@ export async function init() {
     const form = e.target;
     const action = form.dataset.action;
     e.preventDefault();
+    if (runAction("submit", action, e, form)) return;
 
     switch (action) {
       case "login":
@@ -4146,9 +4026,6 @@ export async function init() {
         break;
       case "save-profile":
         void doSaveProfile(form);
-        break;
-      case "create-api-key":
-        void doCreateApiKey(form);
         break;
       case "update-household":
         doUpdateHousehold(form);
