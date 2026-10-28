@@ -58,7 +58,9 @@ if git rev-parse -q --verify "refs/tags/$NEXT_TAG" >/dev/null; then
 fi
 
 COUNT="$(git rev-list --count "${LATEST_TAG}..HEAD")"
-SUBJECT="$(git log --reverse --format=%s "${LATEST_TAG}..HEAD" | head -1)"
+# sed reads all of git's output. head would exit after one line, and git,
+# still writing, would die of SIGPIPE and abort this script under pipefail.
+SUBJECT="$(git log --reverse --format=%s "${LATEST_TAG}..HEAD" | sed -n 1p)"
 
 echo "Deploying $COUNT commit(s) since $LATEST_TAG:"
 git log --oneline "${LATEST_TAG}..HEAD"
