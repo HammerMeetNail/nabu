@@ -4,13 +4,14 @@ import (
 	"cmp"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"slices"
 	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/chore"
-	"github.com/HammerMeetNail/nabu/internal/household"
+	"github.com/HammerMeetNail/nabu/internal/push"
 	"github.com/HammerMeetNail/nabu/internal/schedule"
 )
 
@@ -63,12 +64,12 @@ func (s *Scheduler) tick(parent context.Context) (err error) {
 	if s.now != nil {
 		now = s.now()
 	}
-	maxCandidates, maxDeliveries := s.maxCandidates, s.maxDeliveries
+	maxCandidates, maxReminders := s.maxCandidates, s.maxReminders
 	if maxCandidates == 0 {
 		maxCandidates = 8192
 	}
-	if maxDeliveries == 0 {
-		maxDeliveries = 64
+	if maxReminders == 0 {
+		maxReminders = 64
 	}
 	process := func(c candidate) error {
 		if err := ctx.Err(); err != nil {
@@ -83,35 +84,24 @@ func (s *Scheduler) tick(parent context.Context) (err error) {
 		}
 		r.Due++
 		date := day.Format("2006-01-02")
+		// PostgreSQL pages carry dedup dates from the same bounded read, which
+		// saves a claim; the claim itself is the dedup.
 		if quietAt(c.Preferences, now) || slices.Contains(c.SentDates, date) {
 			r.Skipped++
 			return nil
 		}
-		// Memory/test stores retain their explicit dedup path. PostgreSQL pages
-		// already carry dedup dates from the same bounded read.
-		if _, bulk := s.store.(candidateReader); !bulk {
-			already, err := s.store.HasReminder(ctx, c.Schedule.ID, c.UserID, date)
-			if err != nil {
-				r.Failed++
-				return nil
-			}
-			if already {
-				r.Skipped++
-				return nil
-			}
-		}
 		lag := now.Sub(computeRemindTime(day, c.Schedule.SpecificTime, c.LeadMinutes)).Milliseconds()
 		r.MaxLagMS = max(r.MaxLagMS, lag)
-		deliveryStarted := time.Now()
-		err := s.deliverCandidate(ctx, c)
-		r.DeliveryMS += time.Since(deliveryStarted).Milliseconds()
+		queueStarted := time.Now()
+		queued, err := s.queueReminder(ctx, c, day, date, now)
+		r.DeliveryMS += time.Since(queueStarted).Milliseconds()
 		if err != nil {
 			r.Failed++
 			return ctx.Err()
 		}
-		if err = s.store.RecordReminder(ctx, c.Schedule.ID, c.UserID, date); err != nil {
-			r.Failed++
-			return err
+		if !queued {
+			r.Skipped++
+			return nil
 		}
 		r.Reminded++
 		return nil
@@ -131,7 +121,7 @@ func (s *Scheduler) tick(parent context.Context) (err error) {
 				if err := process(c); err != nil {
 					return err
 				}
-				if r.Candidates >= maxCandidates || r.Reminded+r.Failed >= maxDeliveries {
+				if r.Candidates >= maxCandidates || r.Reminded+r.Failed >= maxReminders {
 					r.BudgetReached = true
 					return ctx.Err()
 				}
@@ -171,7 +161,7 @@ func (s *Scheduler) tick(parent context.Context) (err error) {
 			if err := process(candidate{Schedule: sch, UserID: uid, LeadMinutes: s.getLeadMinutes(ctx, uid, sch.ChoreID), Preferences: pref, UserTimezone: up.Timezone}); err != nil {
 				return err
 			}
-			if r.Candidates >= maxCandidates || r.Reminded+r.Failed >= maxDeliveries {
+			if r.Candidates >= maxCandidates || r.Reminded+r.Failed >= maxReminders {
 				r.BudgetReached = true
 				return ctx.Err()
 			}
@@ -181,27 +171,38 @@ func (s *Scheduler) tick(parent context.Context) (err error) {
 	return ctx.Err()
 }
 
-func (s *Scheduler) deliverCandidate(ctx context.Context, c candidate) error {
-	deliveryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+// queueReminder claims a due reminder and queues its push job, which a push
+// worker delivers once it has checked the recipient may still see the
+// activity. It reports false when the reminder was already claimed. The job
+// expires when the reminder stops being due, as the tick would no longer
+// send it.
+func (s *Scheduler) queueReminder(ctx context.Context, c candidate, day time.Time, date string, now time.Time) (bool, error) {
 	sch := c.Schedule
-	return household.WithMember(deliveryCtx, s.hhStore, c.UserID, sch.HouseholdID, func(role string) error {
-		current, err := s.choreStore.GetChore(deliveryCtx, sch.ChoreID)
-		if err != nil || current.HouseholdID != sch.HouseholdID {
-			return chore.ErrNotFound
-		}
-		if current.Visibility == chore.VisibilityAdmins && role != household.RoleOwner && role != household.RoleAdmin {
-			return household.ErrNotAuthorized
-		}
-		title := fmt.Sprintf("%s %s", current.Icon, current.Name)
-		body := fmt.Sprintf("Due at %s", formatTime(sch.SpecificTime))
-		if ds, ok := s.pushSender.(interface {
-			SendPushToUserWithData(context.Context, int64, string, string, map[string]any) error
-		}); ok {
-			data := reminderPushData(sch.ChoreID)
-			data["householdId"] = sch.HouseholdID
-			return ds.SendPushToUserWithData(deliveryCtx, c.UserID, title, body, data)
-		}
-		return s.pushSender.SendPushToUser(deliveryCtx, c.UserID, title, body)
-	})
+	current, err := s.choreStore.GetChore(ctx, sch.ChoreID)
+	if errors.Is(err, chore.ErrNotFound) || (err == nil && current.HouseholdID != sch.HouseholdID) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	data := reminderPushData(sch.ChoreID)
+	data["householdId"] = sch.HouseholdID
+	// A minute at least, so one due at the window's edge still goes out.
+	dueUntil := computeScheduleTime(day, sch.SpecificTime).Add(time.Duration(c.LeadMinutes+5) * time.Minute)
+	if earliest := now.Add(time.Minute); dueUntil.Before(earliest) {
+		dueUntil = earliest
+	}
+	job := push.Job{
+		UserID: c.UserID, HouseholdID: sch.HouseholdID, ChoreID: sch.ChoreID, Type: "schedule_reminder",
+		Title:     fmt.Sprintf("%s %s", current.Icon, current.Name),
+		Body:      fmt.Sprintf("Due at %s", formatTime(sch.SpecificTime)),
+		Data:      data,
+		DedupeKey: fmt.Sprintf("reminder:%d:%d:%s", sch.ID, c.UserID, date),
+		ExpiresAt: dueUntil,
+	}
+	queued, err := s.store.ClaimReminder(ctx, sch.ID, c.UserID, date, job)
+	if queued && s.wakePushes != nil {
+		s.wakePushes()
+	}
+	return queued, err
 }

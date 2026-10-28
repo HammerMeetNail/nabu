@@ -17,21 +17,11 @@ import (
 	"github.com/HammerMeetNail/nabu/internal/testsync"
 )
 
-// Hold the actual nested authorization transaction through a paused provider.
-// Both completion and cancellation are observable; the parent joins each send.
-type sessionHeldPush struct {
-	db      *sql.DB
-	entered chan int64
-}
-
-func (p *sessionHeldPush) SendPushToUser(ctx context.Context, uid int64, _, _ string) error {
-	return lifecycle.WithSQLSession(ctx, p.db, uid, fmt.Sprintf("session-%d", uid), func(*sql.Tx) error {
-		p.entered <- uid
-		<-ctx.Done()
-		return ctx.Err()
-	})
-}
-
+// Every delivery worker holds what it can at once: each push worker a
+// recipient's membership guard and, nested in it, a device's session guard
+// through a paused provider; the fan-out worker a membership guard while it
+// writes on a second connection. The reminder tick still claims with the one
+// connection left, and HTTP keeps its own pool.
 func TestReservedDeliveryPoolKeepsHTTPAvailableAndReleasesLeader(t *testing.T) {
 	httpDB, _ := schedulerDatabase(t, 3, 1, 1)
 	httpDB.SetMaxOpenConns(2) // smallest HTTP share of the 10-connection budget.
@@ -78,27 +68,47 @@ func TestReservedDeliveryPoolKeepsHTTPAvailableAndReleasesLeader(t *testing.T) {
 
 	sendCtx, stopSends := context.WithCancel(ctx)
 	defer stopSends()
-	push := &sessionHeldPush{db: deliveryDB, entered: make(chan int64, 3)}
-	notificationDone := make(chan error, 2)
-	for _, uid := range []int64{1, 2} {
+	entered := make(chan int64, database.PushWorkers+1)
+	workersDone := make(chan error, database.PushWorkers+1)
+	for uid := range int64(database.PushWorkers) {
+		uid++
 		go func() {
-			notificationDone <- household.WithMember(sendCtx, household.NewPostgresStore(deliveryDB), uid, uid, func(string) error {
-				return push.SendPushToUser(sendCtx, uid, "", "")
+			workersDone <- household.WithMember(sendCtx, household.NewPostgresStore(deliveryDB), uid, uid, func(string) error {
+				return lifecycle.WithSQLSession(sendCtx, deliveryDB, uid, fmt.Sprintf("session-%d", uid), func(*sql.Tx) error {
+					entered <- uid
+					<-sendCtx.Done()
+					return sendCtx.Err()
+				})
 			})
 		}()
 	}
-	s := postgresScheduler(deliveryDB, push)
-	s.now = func() time.Time { return time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC) }
-	done := make(chan error, 1)
-	go func() { done <- s.tick(sendCtx) }()
-	for range 3 {
-		testsync.Receive(t, ctx, push.entered)
+	go func() {
+		workersDone <- household.WithMember(sendCtx, household.NewPostgresStore(deliveryDB), 3, 3, func(string) error {
+			conn, err := deliveryDB.Conn(sendCtx)
+			if err != nil {
+				return err
+			}
+			defer conn.Close()
+			entered <- 3
+			<-sendCtx.Done()
+			return sendCtx.Err()
+		})
+	}()
+	for range database.PushWorkers + 1 {
+		testsync.Receive(t, ctx, entered)
 	}
-	if got := deliveryDB.Stats().InUse; got != 7 {
-		t.Fatalf("expected leader + three nested guards, in use=%d", got)
+	if got := deliveryDB.Stats().InUse; got != 2*database.PushWorkers+3 {
+		t.Fatalf("expected leader, push guards and a fan-out, in use=%d", got)
+	}
+	s := postgresScheduler(deliveryDB)
+	s.now = func() time.Time { return time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC) }
+	var report TickReport
+	s.observe = func(r TickReport) { report = r }
+	if err := s.tick(ctx); err != nil || report.Reminded != 1 {
+		t.Fatalf("tick with the spare connection: %v %+v", err, report)
 	}
 	if deliveryDB.Stats().WaitCount != 0 {
-		t.Fatal("reserved delivery pool already starved")
+		t.Fatal("reserved delivery pool starved")
 	}
 	// Real HTTP requests issue database reads while all three providers wait.
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -129,15 +139,12 @@ func TestReservedDeliveryPoolKeepsHTTPAvailableAndReleasesLeader(t *testing.T) {
 	if httpDB.Stats().WaitCount != 0 || metrics.Snapshot().Count != before {
 		t.Fatal("HTTP used delivery connections or waited for provider")
 	}
-	t.Logf("30 HTTP/database reads while three providers held guards: max=%s HTTP pool waits=0 delivery pool waits=0", maxLatency)
+	t.Logf("30 HTTP/database reads while every delivery worker held its connections: max=%s HTTP pool waits=0 delivery pool waits=0", maxLatency)
 	stopSends()
-	for range 2 {
-		if err := testsync.Receive(t, ctx, notificationDone); !errors.Is(err, context.Canceled) {
-			t.Fatalf("canceled notification: %v", err)
+	for range database.PushWorkers + 1 {
+		if err := testsync.Receive(t, ctx, workersDone); !errors.Is(err, context.Canceled) {
+			t.Fatalf("canceled worker: %v", err)
 		}
-	}
-	if err := testsync.Receive(t, ctx, done); err == nil {
-		t.Fatal("canceled scheduler reported success")
 	}
 	if err := leader.Release(ctx); err != nil {
 		t.Fatal(err)

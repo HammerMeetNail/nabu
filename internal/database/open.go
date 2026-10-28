@@ -11,11 +11,15 @@ import (
 	"github.com/jackc/pgx/v5/stdlib"
 )
 
-// Two notification tasks plus one sequential reminder tick can each hold a
-// membership transaction and a nested session transaction. Reserve one leader
-// connection and one spare for candidate reads. This is part of the configured
-// process budget, not additional capacity on the database server.
+// Each push worker holds a membership transaction and a nested session
+// transaction through one send. The fan-out worker holds a membership
+// transaction while it writes on another connection, and the reminder tick
+// reads and claims on one. Reserve one leader connection. This is part of the
+// configured process budget, not additional capacity on the database server.
 const DeliveryConnections = 8
+
+// PushWorkers deliver push jobs concurrently on each instance.
+const PushWorkers = 2
 
 func ForkDeliveryPool(ctx context.Context, db *sql.DB) (*sql.DB, *QueryMetrics, error) {
 	conn, err := db.Conn(ctx)
@@ -50,10 +54,11 @@ func ForkDeliveryPool(ctx context.Context, db *sql.DB) (*sql.DB, *QueryMetrics, 
 // work. A value given in DATABASE_URL (statement_timeout=…, lock_timeout=…)
 // wins.
 //
-// The lock timeout stays above the 10s a push send may take: a send holds its
-// subscription and session rows for that long (push.PostgresStore
-// WithSubscription), and a sign-out waiting behind one must still succeed.
-// Tighten both once push I/O runs outside transactions (plan 5.2).
+// The lock timeout stays above the 10s one push send may take. A send holds its
+// recipient's membership and its device's registration and session for that
+// long (push.Deliverer, push.PostgresStore WithSubscription), so a removal or
+// sign-out never overlaps it, and one that waits behind it still succeeds.
+// Each send is guarded on its own, so no wait is longer than one send.
 const (
 	DefaultStatementTimeout = 30 * time.Second
 	DefaultLockTimeout      = 15 * time.Second

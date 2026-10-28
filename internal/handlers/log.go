@@ -20,15 +20,11 @@ import (
 )
 
 type LogHandler struct {
-	service            *log.Service
-	notifService       *notification.Service // optional; nil disables notifications
-	deliveryChores     chore.Store
-	deliveryHouseholds household.Store
-	choreStore         chore.Store
-	householdStore     household.Store
-	scheduleStore      schedule.Store
-	dispatch           func(func())
-	background         context.Context
+	service        *log.Service
+	notifService   *notification.Service // optional; nil disables notifications
+	choreStore     chore.Store
+	householdStore household.Store
+	scheduleStore  schedule.Store
 }
 
 // backdateFollowUpTolerance is the grace period used to decide whether a log
@@ -48,18 +44,13 @@ type LogHandler struct {
 const backdateFollowUpTolerance = 6 * time.Hour
 
 func NewLogHandler(service *log.Service) *LogHandler {
-	return &LogHandler{service: service, background: context.Background(), dispatch: func(f func()) { f() }}
+	return &LogHandler{service: service}
 }
 
-func (h *LogHandler) SetBackground(ctx context.Context, dispatch func(func())) {
-	h.background, h.dispatch = ctx, dispatch
-}
-
-// WithNotification attaches the services required to fan out chore-logged
-// notifications to other household members after a successful log creation.
+// WithNotification attaches the service that queues chore-logged
+// notifications for other household members after a successful log creation.
 func (h *LogHandler) WithNotification(ns *notification.Service, cs chore.Store, hs household.Store) *LogHandler {
 	h.notifService = ns
-	h.deliveryChores, h.deliveryHouseholds = cs, hs
 	if h.choreStore == nil {
 		h.WithChoreStore(cs, hs)
 	}
@@ -141,47 +132,15 @@ func filterLogsByVisible(logs []log.ChoreLog, visible map[int64]struct{}) []log.
 	return out
 }
 
-// fanOutNotification creates notifications for all household members except
-// the one attributed on the log and the one who performed the action.
-// It is always called in a goroutine so that push / DB latency never delays
-// the HTTP response.
-func (h *LogHandler) fanOutNotification(householdID, loggerID, actorID, choreID int64) {
-	if h.notifService == nil {
-		return
-	}
-	ctx, cancel := context.WithTimeout(h.background, 20*time.Second)
+// queueNotification writes a notification event before the response, so it
+// survives a restart; workers fan it out. A client that goes away doesn't
+// cancel it, and a failure is only logged: the change itself succeeded.
+func queueNotification(w http.ResponseWriter, r *http.Request, enqueue func(context.Context) error) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
 	defer cancel()
-
-	c, err := h.deliveryChores.GetChore(ctx, choreID)
-	if err != nil {
-		return
+	if err := enqueue(ctx); err != nil {
+		diagnoseError(w, "queue notifications", err)
 	}
-	// For Admins-only tasks, only notify other admins/owners.
-	isPrivate := c.Visibility == chore.VisibilityAdmins
-	members, err := h.deliveryHouseholds.GetMembers(ctx, householdID)
-	if err != nil {
-		return
-	}
-	// Disabled members receive no activity notifications.
-	var filtered []household.Member
-	for _, m := range members {
-		if m.Suspended {
-			continue
-		}
-		if isPrivate && m.Role != household.RoleOwner && m.Role != household.RoleAdmin {
-			continue
-		}
-		filtered = append(filtered, m)
-	}
-	members = filtered
-	if len(members) == 0 {
-		return
-	}
-	mi := make([]notification.MemberInfo, len(members))
-	for i, m := range members {
-		mi[i] = notification.MemberInfo{UserID: m.UserID, DisplayName: m.DisplayName}
-	}
-	h.notifService.NotifyChoreLogged(ctx, mi, loggerID, actorID, c.Name, c.Icon, notification.Scope{HouseholdID: householdID, ChoreID: choreID})
 }
 
 func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -357,12 +316,12 @@ func (h *LogHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Fire-and-forget: notify other household members.
+	// Notify the other household members: everyone except the member the
+	// log is for and the one who logged it.
 	if applied && h.notifService != nil {
-		hhID := *user.HouseholdID
-		loggerID := logUserID
-		choreID := req.ChoreID
-		h.dispatch(func() { h.fanOutNotification(hhID, loggerID, user.ID, choreID) })
+		queueNotification(w, r, func(ctx context.Context) error {
+			return h.notifService.EnqueueChoreLogged(ctx, *user.HouseholdID, req.ChoreID, logUserID, user.ID)
+		})
 	}
 
 	writeJSON(w, http.StatusCreated, h.withLatest(r.Context(), user.ID, *user.HouseholdID, req.ChoreID, map[string]any{"log": entry}))

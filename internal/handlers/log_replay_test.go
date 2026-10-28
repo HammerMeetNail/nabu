@@ -30,11 +30,11 @@ func (s *failFirstLogEffects) ApplyLogEffects(ctx context.Context, e schedule.Lo
 func TestLogReplayFinishesEffectsOnce(t *testing.T) {
 	for _, failFirst := range []bool{false, true} {
 		h, session, authService, schedules, _, hid := setupLogTestWithFollowUp(t)
-		// Execute the real notification fanout inline so completion is observable
-		// without sleeps or assertions racing detached goroutines.
-		h.dispatch = func(f func()) { f() }
+		// Each applied log queues one notification event; fanning the queue
+		// out afterwards shows it held exactly one.
 		notifs := notification.NewMemoryStore()
-		h.notifService = notification.NewService(notifs)
+		events := notification.NewMemoryEventStore()
+		h.notifService = notification.NewService(notifs).WithAuthorization(h.householdStore, h.choreStore).WithEvents(events, nil)
 		recipient, _ := quickRegister(authService, "recipient@example.invalid")
 		if err := h.householdStore.AddMember(context.Background(), hid, recipient.ID, household.RoleMember); err != nil {
 			t.Fatal(err)
@@ -87,6 +87,10 @@ func TestLogReplayFinishesEffectsOnce(t *testing.T) {
 		if err != nil || len(after) != 1 || after[0].ID != before[0].ID {
 			t.Fatalf("follow-up repeated: %v %v", after, err)
 		}
+		if pending := events.Pending(); len(pending) != 1 {
+			t.Fatalf("queued %d notification events, want one", len(pending))
+		}
+		h.notifService.DeliverPendingEvents(context.Background())
 		notifications, err := notifs.ListNotifications(context.Background(), recipient.ID, 50, 0)
 		if err != nil || len(notifications) != 1 {
 			t.Fatalf("notifications=%d err=%v", len(notifications), err)

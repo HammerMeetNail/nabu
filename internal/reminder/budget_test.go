@@ -6,23 +6,31 @@ import (
 	"testing"
 	"time"
 
+	"github.com/HammerMeetNail/nabu/internal/push"
 	"github.com/HammerMeetNail/nabu/internal/testsync"
 )
 
-type heldPush struct{ entered chan context.Context }
-
-func (p *heldPush) SendPushToUser(ctx context.Context, _ int64, _, _ string) error {
-	p.entered <- ctx
-	<-ctx.Done()
-	return ctx.Err()
+// slowClaims holds each claim until its context ends, as a stalled database
+// would.
+type slowClaims struct {
+	Store
+	entered chan context.Context
 }
 
-func TestReminderTickBoundsSlowProviderAndJoinsCancellation(t *testing.T) {
+func (s *slowClaims) ClaimReminder(ctx context.Context, _, _ int64, _ string, _ push.Job) (bool, error) {
+	s.entered <- ctx
+	<-ctx.Done()
+	return false, ctx.Err()
+}
+
+// The tick only queues reminders, so a slow provider can't hold it; a slow
+// database is bounded by its deadline and ends with the tick.
+func TestReminderTickBoundsSlowClaimsAndJoinsCancellation(t *testing.T) {
 	for _, cancelParent := range []bool{true, false} {
 		t.Run(map[bool]string{true: "shutdown", false: "tick deadline"}[cancelParent], func(t *testing.T) {
 			s, _, _, _ := reminderFixture(t, time.Now().UTC(), "UTC")
-			push := &heldPush{entered: make(chan context.Context, 1)}
-			s.pushSender = push
+			claims := &slowClaims{Store: s.store, entered: make(chan context.Context, 1)}
+			s.store = claims
 			s.tickTimeout = 250 * time.Millisecond
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -30,27 +38,27 @@ func TestReminderTickBoundsSlowProviderAndJoinsCancellation(t *testing.T) {
 			defer waitCancel()
 			done := make(chan error, 1)
 			go func() { done <- s.tick(ctx) }()
-			deliveryCtx := testsync.Receive(t, waitCtx, push.entered)
-			deadline, ok := deliveryCtx.Deadline()
+			claimCtx := testsync.Receive(t, waitCtx, claims.entered)
+			deadline, ok := claimCtx.Deadline()
 			if !ok || time.Until(deadline) > 250*time.Millisecond {
-				t.Fatal("provider escaped tick deadline")
+				t.Fatal("claim escaped tick deadline")
 			}
 			if cancelParent {
 				cancel()
 			}
 			err := testsync.Receive(t, waitCtx, done)
 			if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-				t.Fatalf("tick completed before joining provider: %v", err)
+				t.Fatalf("tick completed before joining its claim: %v", err)
 			}
-			if deliveryCtx.Err() == nil {
-				t.Fatal("delivery still active after tick returned")
+			if claimCtx.Err() == nil {
+				t.Fatal("claim still active after tick returned")
 			}
 		})
 	}
 }
 
 func TestMemoryReminderCursorMakesProgressAfterBudget(t *testing.T) {
-	s, _, push, first := reminderFixture(t, time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC), "UTC")
+	s, _, queued, first := reminderFixture(t, time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC), "UTC")
 	for range 4 {
 		copy := first
 		copy.ID = 0
@@ -64,13 +72,13 @@ func TestMemoryReminderCursorMakesProgressAfterBudget(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if push.calls != 5 || s.cursor != (candidateCursor{}) {
-		t.Fatalf("budget starved schedules: pushes=%d cursor=%+v", push.calls, s.cursor)
+	if queued.count() != 5 || s.cursor != (candidateCursor{}) {
+		t.Fatalf("budget starved schedules: queued=%d cursor=%+v", queued.count(), s.cursor)
 	}
 	if err := s.tick(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if push.calls != 5 {
+	if queued.count() != 5 {
 		t.Fatal("cursor wrapped without dedup")
 	}
 }

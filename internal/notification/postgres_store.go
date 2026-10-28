@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 )
 
 type PostgresStore struct {
@@ -16,11 +17,17 @@ func NewPostgresStore(db *sql.DB) *PostgresStore {
 
 func (s *PostgresStore) CreateNotification(ctx context.Context, n Notification) (Notification, error) {
 	err := s.db.QueryRowContext(ctx,
-		`INSERT INTO notifications (user_id, type, title, body)
-		 VALUES ($1, $2, $3, $4)
+		`INSERT INTO notifications (user_id, type, title, body, dedupe_key)
+		 VALUES ($1, $2, $3, $4, NULLIF($5, ''))
+		 ON CONFLICT (dedupe_key) WHERE dedupe_key IS NOT NULL DO NOTHING
 		 RETURNING id, created_at`,
-		n.UserID, n.Type, n.Title, n.Body,
+		n.UserID, n.Type, n.Title, n.Body, n.DedupeKey,
 	).Scan(&n.ID, &n.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) && n.DedupeKey != "" {
+		// A retried fan-out already wrote it.
+		err = s.db.QueryRowContext(ctx, `SELECT id, created_at FROM notifications WHERE dedupe_key = $1`,
+			n.DedupeKey).Scan(&n.ID, &n.CreatedAt)
+	}
 	return n, err
 }
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/HammerMeetNail/nabu/internal/database"
 	"github.com/HammerMeetNail/nabu/internal/household"
 	"github.com/HammerMeetNail/nabu/internal/notification"
+	"github.com/HammerMeetNail/nabu/internal/push"
 	"github.com/HammerMeetNail/nabu/internal/schedule"
 	"github.com/HammerMeetNail/nabu/internal/testdb"
 	"github.com/HammerMeetNail/nabu/internal/userprefs"
@@ -42,15 +44,31 @@ func schedulerDatabase(t *testing.T, households, members, chores int) (*sql.DB, 
 	return db, metrics
 }
 
-func postgresScheduler(db *sql.DB, push notification.PushSender) *Scheduler {
+func postgresScheduler(db *sql.DB) *Scheduler {
 	return NewScheduler(NewPostgresStore(db), schedule.NewPostgresStore(db), schedule.NewService(),
-		notification.NewPostgresStore(db), chore.NewPostgresStore(db), household.NewPostgresStore(db), userprefs.NewPostgresStore(db), push)
+		notification.NewPostgresStore(db), chore.NewPostgresStore(db), household.NewPostgresStore(db), userprefs.NewPostgresStore(db))
+}
+
+// queuedJobs counts the push jobs reminders queued.
+func queuedJobs(t *testing.T, db *sql.DB) int {
+	t.Helper()
+	var n int
+	if err := db.QueryRow(`SELECT count(*) FROM push_jobs WHERE type='schedule_reminder'`).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	return n
+}
+
+// postgresGuard is the push workers' check that a recipient may still see a
+// reminder.
+func postgresGuard(db *sql.DB) push.Guard {
+	return notification.NewService(notification.NewPostgresStore(db)).
+		WithAuthorization(household.NewPostgresStore(db), chore.NewPostgresStore(db)).PushGuard()
 }
 
 func TestPostgresSchedulerCandidateBudget(t *testing.T) {
 	db, metrics := schedulerDatabase(t, 60, 6, 12) // 720 schedules, 4,320 eligible pairs.
-	push := &countPush{}
-	s := postgresScheduler(db, push)
+	s := postgresScheduler(db)
 	s.now = func() time.Time { return time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC) }
 	s.SetQueryCounter(func() uint64 { return metrics.Snapshot().Count })
 	var reports []TickReport
@@ -59,8 +77,8 @@ func TestPostgresSchedulerCandidateBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := reports[0]
-	if r.Candidates != 4320 || r.CandidateQueries != 17 || r.PoolQueries != 17 || r.Due != 0 || push.calls != 0 || r.BudgetReached {
-		t.Fatalf("non-due workload=%+v pushes=%d", r, push.calls)
+	if r.Candidates != 4320 || r.CandidateQueries != 17 || r.PoolQueries != 17 || r.Due != 0 || queuedJobs(t, db) != 0 || r.BudgetReached {
+		t.Fatalf("non-due workload=%+v queued=%d", r, queuedJobs(t, db))
 	}
 	// One assigned schedule per household is due; assigned recipients do not
 	// need an enabled chore preference. Other candidates still share one page.
@@ -71,13 +89,13 @@ func TestPostgresSchedulerCandidateBudget(t *testing.T) {
 		t.Fatal(err)
 	}
 	r = reports[1]
-	if r.Reminded != 60 || push.calls != 60 || r.CandidateQueries > 17 || r.PoolQueries > 380 || r.Failed != 0 {
-		t.Fatalf("due workload=%+v pushes=%d", r, push.calls)
+	if r.Reminded != 60 || queuedJobs(t, db) != 60 || r.CandidateQueries > 17 || r.PoolQueries > 380 || r.Failed != 0 {
+		t.Fatalf("due workload=%+v queued=%d", r, queuedJobs(t, db))
 	}
 	if err := s.tick(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if push.calls != 60 || reports[2].PoolQueries > 17 {
+	if queuedJobs(t, db) != 60 || reports[2].PoolQueries > 17 {
 		t.Fatalf("repeated delivery or per-recipient dedup query: %+v", reports[2])
 	}
 	if path := os.Getenv("NABU_SCHEDULER_REPORT"); path != "" {
@@ -109,7 +127,8 @@ func TestPostgresReminderSnapshotLocalDatesAndAccess(t *testing.T) {
 	if err != nil || len(page) != 1 {
 		t.Fatalf("assigned default candidate: %d %v", len(page), err)
 	}
-	s := postgresScheduler(db, &countPush{})
+	s := postgresScheduler(db)
+	guard := postgresGuard(db)
 	now := time.Date(2026, 9, 7, 0, 30, 0, 0, time.UTC)
 	c := page[0]
 	day, due := s.dueDate(c.Schedule, now.In(reminderLocation(c.Preferences.Timezone, c.UserTimezone)), c.LeadMinutes)
@@ -125,8 +144,10 @@ func TestPostgresReminderSnapshotLocalDatesAndAccess(t *testing.T) {
 	if _, err := db.Exec(`UPDATE chores SET visibility='admins' WHERE id=1`); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.deliverCandidate(context.Background(), c); err == nil {
-		t.Fatal("private change after page read allowed delivery")
+	job := push.Job{UserID: c.UserID, HouseholdID: c.Schedule.HouseholdID, ChoreID: c.Schedule.ChoreID}
+	deliver := func() error { t.Fatal("delivered"); return nil }
+	if err := guard(context.Background(), job, deliver); !errors.Is(err, push.ErrNoAccess) {
+		t.Fatalf("private change after page read allowed delivery: %v", err)
 	}
 	page, err = store.CandidatePage(context.Background(), candidateCursor{}, 256, time.Date(2026, 9, 7, 0, 30, 0, 0, time.UTC))
 	if err != nil || len(page) != 0 {
@@ -135,8 +156,8 @@ func TestPostgresReminderSnapshotLocalDatesAndAccess(t *testing.T) {
 	if _, err := db.Exec(`UPDATE chores SET visibility='household' WHERE id=1; DELETE FROM user_households WHERE user_id=2`); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.deliverCandidate(context.Background(), c); err == nil {
-		t.Fatal("removed member snapshot allowed delivery")
+	if err := guard(context.Background(), job, deliver); !errors.Is(err, push.ErrNoAccess) {
+		t.Fatalf("removed member snapshot allowed delivery: %v", err)
 	}
 	page, err = store.CandidatePage(context.Background(), candidateCursor{}, 256, time.Date(2026, 9, 7, 0, 30, 0, 0, time.UTC))
 	if err != nil || len(page) != 0 {

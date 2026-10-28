@@ -24,7 +24,6 @@ import (
 	"github.com/HammerMeetNail/nabu/internal/apns"
 	"github.com/HammerMeetNail/nabu/internal/audit"
 	"github.com/HammerMeetNail/nabu/internal/auth"
-	"github.com/HammerMeetNail/nabu/internal/background"
 	"github.com/HammerMeetNail/nabu/internal/chore"
 	"github.com/HammerMeetNail/nabu/internal/clientip"
 	"github.com/HammerMeetNail/nabu/internal/config"
@@ -121,6 +120,8 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	var dayNoteStore daynote.Store
 	var apnsStore apns.Store
 	var apiKeyStore apikey.Store
+	var notifEvents notification.EventStore
+	var pushJobs push.JobStore
 
 	if db != nil {
 		authStore = auth.NewPostgresStore(db)
@@ -133,6 +134,7 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 		dayNoteStore = daynote.NewPostgresStore(db)
 		apnsStore = apns.NewPostgresStore(db)
 		apiKeyStore = apikey.NewPostgresStore(db)
+		notifEvents = notification.NewPostgresEventStore(db)
 	} else {
 		authStore = auth.NewMemoryStore()
 		householdStore = household.NewMemoryStore()
@@ -144,6 +146,8 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 		dayNoteStore = daynote.NewMemoryStore()
 		apnsStore = apns.NewMemoryStore()
 		apiKeyStore = apikey.NewMemoryStore()
+		notifEvents = notification.NewMemoryEventStore()
+		pushJobs = push.NewMemoryJobStore()
 		pushStore.(*push.MemoryStore).BindSessions(authStore.(*auth.MemoryStore))
 		apnsStore.(*apns.MemoryStore).BindSessions(authStore.(*auth.MemoryStore))
 	}
@@ -183,7 +187,7 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	notifService := notification.NewService(notifStore).WithAuthorization(householdStore, choreStore)
 	notifHandler := handlers.NewNotificationHandler(notifService)
 	logHandler.WithNotification(notifService, choreStore, householdStore)
-	householdHandler.WithNotification(notifService, householdStore)
+	householdHandler.WithNotification(notifService)
 
 	var scheduleStore schedule.Store
 	if db != nil {
@@ -211,7 +215,7 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 			d := lifecycle.NewDeletion(userID, householdIDs)
 			d.DeleteLogs, d.DeleteNotes = opts.DeleteLogs, opts.DeleteNotes
 			// Collect dependent IDs under each domain mutex, then clean dependents.
-			for _, store := range []any{choreStore, logStore, scheduleStore, reminderStore, notifStore, pushStore, apnsStore, userPrefsStore, dayNoteStore} {
+			for _, store := range []any{choreStore, logStore, scheduleStore, reminderStore, notifStore, notifEvents, pushJobs, pushStore, apnsStore, userPrefsStore, dayNoteStore} {
 				store.(interface{ CleanupAccount(*lifecycle.Deletion) }).CleanupAccount(d)
 			}
 		})
@@ -235,35 +239,17 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 			vapidSigner = nil
 		}
 	}
-	pushService := push.NewService(pushStore, vapidSigner)
 	pushHandler := handlers.NewPushHandler(pushStore).WithChores(choreStore)
 	pushHandler.SetAuditLogger(auditLog)
 
-	// APNs sender for the native iOS app; a graceful no-op unless all four
-	// APNS_* settings are configured (mirrors the VAPID signer's behavior).
-	apnsClient := newAPNsClient(cfg, apnsStore)
 	apnsHandler := handlers.NewAPNsHandler(apnsStore)
 	apnsHandler.SetAuditLogger(auditLog)
 
-	// Every push fans out to all configured channels: Web Push for the PWA,
-	// APNs for the native app.
-	var pushChannels []push.DataSender
-	if vapidSigner != nil {
-		pushChannels = append(pushChannels, pushService)
-	}
-	if apnsClient != nil {
-		pushChannels = append(pushChannels, apnsClient)
-	}
-	pushFanout := push.NewFanoutSender(pushChannels...)
-	if len(pushChannels) > 0 {
-		notifService.WithPushSender(pushFanout)
-	}
-
 	// Background tasks use their reserved pool for every nested store and
-	// provider lookup. HTTP push-test/registration requests retain the HTTP pool.
+	// provider lookup. HTTP push registration requests retain the HTTP pool.
 	deliveryHouseholds, deliveryChores, deliveryNotifs := householdStore, choreStore, notifStore
 	deliveryReminders, deliverySchedules, deliveryPrefs := reminderStore, scheduleStore, userPrefsStore
-	deliveryPush := pushFanout
+	deliveryPushStore, deliveryAPNsStore, deliveryEvents := pushStore, apnsStore, notifEvents
 	if deliveryDB != nil {
 		deliveryHouseholds = household.NewPostgresStore(deliveryDB)
 		deliveryChores = chore.NewPostgresStore(deliveryDB)
@@ -271,23 +257,38 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 		deliveryReminders = reminder.NewPostgresStore(deliveryDB)
 		deliverySchedules = schedule.NewPostgresStore(deliveryDB)
 		deliveryPrefs = userprefs.NewPostgresStore(deliveryDB)
-		var channels []push.DataSender
-		if vapidSigner != nil {
-			channels = append(channels, push.NewService(push.NewPostgresStore(deliveryDB), vapidSigner))
-		}
-		if client := newAPNsClient(cfg, apns.NewPostgresStore(deliveryDB)); client != nil {
-			channels = append(channels, client)
-		}
-		deliveryPush = push.NewFanoutSender(channels...)
+		deliveryPushStore = push.NewPostgresStore(deliveryDB)
+		deliveryAPNsStore = apns.NewPostgresStore(deliveryDB)
+		deliveryEvents = notification.NewPostgresEventStore(deliveryDB)
+		pushJobs = push.NewPostgresJobStore(deliveryDB)
+	} else {
+		reminderStore.(*reminder.MemoryStore).WithJobs(pushJobs)
 	}
+
+	// Every push goes to all configured channels: Web Push for the PWA, APNs
+	// for the native app. Each is a graceful no-op unless configured.
+	var pushChannels []push.Channel
+	if vapidSigner != nil {
+		pushChannels = append(pushChannels, push.NewService(deliveryPushStore, vapidSigner))
+	}
+	if client := newAPNsClient(cfg, deliveryAPNsStore); client != nil {
+		pushChannels = append(pushChannels, client)
+	}
+
+	// Notification work is durable. A log or a join writes an event; the
+	// fan-out worker turns it into in-app notifications and push jobs, and
+	// push workers deliver those, retrying a provider's transient failures.
+	// Every instance runs the workers: claims skip work another one holds.
 	deliveryNotifications := notification.NewService(deliveryNotifs).WithAuthorization(deliveryHouseholds, deliveryChores)
+	pushDelivery := push.NewDeliverer(pushJobs, deliveryNotifications.PushGuard(), pushChannels...)
+	deliveryNotifications.WithEvents(deliveryEvents, deliveryNotifications.WakeEvents)
 	if len(pushChannels) > 0 {
-		deliveryNotifications.WithPushSender(deliveryPush)
+		deliveryNotifications.WithPushQueue(pushJobs, pushDelivery.Wake)
 	}
-	logHandler.WithNotification(deliveryNotifications, deliveryChores, deliveryHouseholds)
-	householdHandler.WithNotification(deliveryNotifications, deliveryHouseholds)
+	notifService.WithEvents(notifEvents, deliveryNotifications.WakeEvents)
 	reminderSched := reminder.NewScheduler(deliveryReminders, deliverySchedules, scheduleService,
-		deliveryNotifs, deliveryChores, deliveryHouseholds, deliveryPrefs, deliveryPush)
+		deliveryNotifs, deliveryChores, deliveryHouseholds, deliveryPrefs)
+	reminderSched.SetPushWake(pushDelivery.Wake)
 	// Guard the scheduler with a Postgres advisory lock so that running multiple
 	// app instances does not emit duplicate reminders (only the leader ticks).
 	// In-memory mode (db == nil) is single-instance, so no lock is needed.
@@ -302,12 +303,13 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 		backgroundWG.Add(1)
 		go func() { defer backgroundWG.Done(); deliveryMetrics.MonitorPoolNamed(ctx, deliveryDB, nil, "delivery") }()
 	}
-	notificationWork := background.New(ctx, &backgroundWG, 2, 64)
-	logHandler.SetBackground(ctx, notificationWork.Submit)
-	householdHandler.SetBackground(ctx, notificationWork.Submit)
-	backgroundWG.Add(2)
+	backgroundWG.Add(3 + database.PushWorkers)
 	go func() { defer backgroundWG.Done(); reminderSched.Start(ctx) }()
 	go func() { defer backgroundWG.Done(); authService.RunMailOutbox(ctx) }()
+	go func() { defer backgroundWG.Done(); deliveryNotifications.RunEvents(ctx) }()
+	for range database.PushWorkers {
+		go func() { defer backgroundWG.Done(); pushDelivery.Run(ctx) }()
+	}
 
 	reminderHandler := handlers.NewChoreReminderPrefsHandler(reminderStore).WithChoreStore(choreStore).WithHouseholdStore(householdStore)
 	userPrefsService := userprefs.NewService(userPrefsStore)

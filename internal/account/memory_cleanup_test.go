@@ -38,8 +38,10 @@ func TestMemoryDeletionCleansDependentDataAndRejectsStaleWrites(t *testing.T) {
 	chores := chore.NewMemoryStore()
 	logs := chorelog.NewMemoryStore()
 	schedules := schedule.NewMemoryStore()
-	reminders := reminder.NewMemoryStore()
+	jobs := push.NewMemoryJobStore()
+	reminders := reminder.NewMemoryStore().WithJobs(jobs)
 	notifications := notification.NewMemoryStore()
+	events := notification.NewMemoryEventStore()
 	pushes := push.NewMemoryStore()
 	devices := apns.NewMemoryStore()
 	prefs := userprefs.NewMemoryStore()
@@ -47,7 +49,7 @@ func TestMemoryDeletionCleansDependentDataAndRejectsStaleWrites(t *testing.T) {
 	svc.SetMemoryCleanup(func(uid int64, hhs []int64, opts auth.DeleteOptions) {
 		d := lifecycle.NewDeletion(uid, hhs)
 		d.DeleteLogs, d.DeleteNotes = opts.DeleteLogs, opts.DeleteNotes
-		for _, s := range []any{chores, logs, schedules, reminders, notifications, pushes, devices, prefs, notes} {
+		for _, s := range []any{chores, logs, schedules, reminders, notifications, events, jobs, pushes, devices, prefs, notes} {
 			s.(interface{ CleanupAccount(*lifecycle.Deletion) }).CleanupAccount(d)
 		}
 	})
@@ -72,7 +74,12 @@ func TestMemoryDeletionCleansDependentDataAndRejectsStaleWrites(t *testing.T) {
 	_, err = schedules.Create(ctx, schedule.ChoreSchedule{HouseholdID: solo.ID, ChoreID: ownChore.ID})
 	must(err)
 	must(reminders.UpdateChoreReminderPref(ctx, reminder.ChoreReminderPref{UserID: deleting.ID, ChoreID: retained.ID, Enabled: true}))
-	must(reminders.RecordReminder(ctx, sch.ID, deleting.ID, "2026-09-10"))
+	soon := time.Now().Add(time.Hour)
+	_, err = reminders.ClaimReminder(ctx, sch.ID, deleting.ID, "2026-09-10",
+		push.Job{UserID: deleting.ID, HouseholdID: shared.ID, ChoreID: retained.ID, ExpiresAt: soon})
+	must(err)
+	must(events.EnqueueEvent(ctx, notification.Event{Kind: notification.EventChoreLogged, HouseholdID: shared.ID,
+		ChoreID: retained.ID, SubjectID: deleting.ID, ActorID: deleting.ID, ExpiresAt: soon}))
 	_, err = notifications.CreateNotification(ctx, notification.Notification{UserID: deleting.ID, Body: "Delete personal notification"})
 	must(err)
 	must(notifications.UpdateReminderPreferences(ctx, notification.ReminderPreference{UserID: deleting.ID, Timezone: "Asia/Tokyo"}))
@@ -115,6 +122,9 @@ func TestMemoryDeletionCleansDependentDataAndRejectsStaleWrites(t *testing.T) {
 	if n, err := notifications.ListNotifications(ctx, deleting.ID, 50, 0); err != nil || len(n) != 0 {
 		t.Fatal("personal notifications remain")
 	}
+	if len(jobs.Pending()) != 0 || len(events.Pending()) != 0 {
+		t.Fatal("queued notification work remains")
+	}
 	if subs, err := pushes.GetSubscriptions(ctx, deleting.ID); err != nil || len(subs) != 0 {
 		t.Fatal("browser subscription remains")
 	}
@@ -145,7 +155,14 @@ func TestMemoryDeletionCleansDependentDataAndRejectsStaleWrites(t *testing.T) {
 			_, err := notifications.CreateNotification(ctx, notification.Notification{UserID: deleting.ID})
 			return err
 		},
-		"push":        func() error { return pushes.SaveSubscription(ctx, deleting.ID, sub) },
+		"push": func() error { return pushes.SaveSubscription(ctx, deleting.ID, sub) },
+		"push job": func() error {
+			return jobs.EnqueuePush(ctx, push.Job{UserID: deleting.ID, HouseholdID: shared.ID, ExpiresAt: soon})
+		},
+		"notification event": func() error {
+			return events.EnqueueEvent(ctx, notification.Event{Kind: notification.EventChoreLogged, HouseholdID: shared.ID,
+				ChoreID: retained.ID, SubjectID: deleting.ID, ActorID: deleting.ID, ExpiresAt: soon})
+		},
 		"device":      func() error { return devices.RegisterDevice(ctx, device) },
 		"preferences": func() error { return prefs.Upsert(ctx, deleting.ID, userprefs.Preferences{}) },
 		"day note":    func() error { _, err := notes.Upsert(ctx, shared.ID, "2026-09-10", "stale", deleting.ID); return err },

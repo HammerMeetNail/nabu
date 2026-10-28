@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/HammerMeetNail/nabu/internal/lifecycle"
+	"github.com/HammerMeetNail/nabu/internal/push"
 	"sync"
 	"time"
 )
@@ -14,6 +15,13 @@ type MemoryStore struct {
 	mu           sync.RWMutex
 	prefs        map[string]ChoreReminderPref
 	sent         map[string]bool
+	jobs         push.JobStore
+}
+
+// WithJobs makes a claimed reminder queue its push in jobs.
+func (s *MemoryStore) WithJobs(jobs push.JobStore) *MemoryStore {
+	s.jobs = jobs
+	return s
 }
 
 func NewMemoryStore() *MemoryStore {
@@ -68,21 +76,31 @@ func (s *MemoryStore) UpdateChoreReminderPref(_ context.Context, prefs ChoreRemi
 	return nil
 }
 
-func (s *MemoryStore) HasReminder(_ context.Context, scheduleID, userID int64, scheduledDate string) (bool, error) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.sent[sentKey(scheduleID, userID, scheduledDate)], nil
-}
-
-func (s *MemoryStore) RecordReminder(_ context.Context, scheduleID, userID int64, scheduledDate string) error {
+func (s *MemoryStore) ClaimReminder(ctx context.Context, scheduleID, userID int64, scheduledDate string, job push.Job) (bool, error) {
+	key := sentKey(scheduleID, userID, scheduledDate)
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if err := s.deleted.Check(userID, 0, 0, scheduleID, 0); err != nil {
-		return err
+		s.mu.Unlock()
+		return false, err
 	}
-
-	s.sent[sentKey(scheduleID, userID, scheduledDate)] = true
-	return nil
+	if s.sent[key] {
+		s.mu.Unlock()
+		return false, nil
+	}
+	s.sent[key] = true
+	jobs := s.jobs
+	s.mu.Unlock()
+	if jobs == nil {
+		return true, nil
+	}
+	if err := jobs.EnqueuePush(ctx, job); err != nil {
+		// Leave it for the next tick, as a rolled-back transaction would.
+		s.mu.Lock()
+		delete(s.sent, key)
+		s.mu.Unlock()
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *MemoryStore) PurgeOldReminders(_ context.Context) (int64, error) {

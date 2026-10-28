@@ -16,6 +16,9 @@ type Notification struct {
 	Body      string    `json:"body"`
 	IsRead    bool      `json:"isRead"`
 	CreatedAt time.Time `json:"createdAt"`
+	// DedupeKey makes a retried fan-out keep the notification it already
+	// wrote: creating one with a key that exists returns that one.
+	DedupeKey string `json:"-"`
 }
 
 type ReminderPreference struct {
@@ -66,6 +69,13 @@ func (s *MemoryStore) CreateNotification(_ context.Context, n Notification) (Not
 	defer s.mu.Unlock()
 	if err := s.deleted.Check(n.UserID, 0, 0, 0, 0); err != nil {
 		return Notification{}, err
+	}
+	if n.DedupeKey != "" {
+		for _, existing := range s.notifs {
+			if existing.DedupeKey == n.DedupeKey {
+				return existing, nil
+			}
+		}
 	}
 
 	s.idSeq++

@@ -3,6 +3,9 @@ package reminder
 import (
 	"context"
 	"database/sql"
+	"errors"
+
+	"github.com/HammerMeetNail/nabu/internal/push"
 )
 
 type PostgresStore struct {
@@ -57,23 +60,31 @@ func (s *PostgresStore) UpdateChoreReminderPref(ctx context.Context, pref ChoreR
 	return err
 }
 
-func (s *PostgresStore) HasReminder(ctx context.Context, scheduleID, userID int64, scheduledDate string) (bool, error) {
-	var exists bool
-	err := s.db.QueryRowContext(ctx,
-		`SELECT EXISTS(SELECT 1 FROM schedule_reminders
-		 WHERE schedule_id = $1 AND user_id = $2 AND scheduled_date = $3)`,
-		scheduleID, userID, scheduledDate,
-	).Scan(&exists)
-	return exists, err
-}
-
-func (s *PostgresStore) RecordReminder(ctx context.Context, scheduleID, userID int64, scheduledDate string) error {
-	_, err := s.db.ExecContext(ctx,
+// ClaimReminder commits the reminder's record and its push job together, so a
+// reminder is queued once and never lost between the two.
+func (s *PostgresStore) ClaimReminder(ctx context.Context, scheduleID, userID int64, scheduledDate string, job push.Job) (bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return false, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	var claimed bool
+	err = tx.QueryRowContext(ctx,
 		`INSERT INTO schedule_reminders (schedule_id, user_id, scheduled_date)
 		 VALUES ($1, $2, $3)
-		 ON CONFLICT (schedule_id, user_id, scheduled_date) DO NOTHING`,
-		scheduleID, userID, scheduledDate)
-	return err
+		 ON CONFLICT (schedule_id, user_id, scheduled_date) DO NOTHING
+		 RETURNING true`,
+		scheduleID, userID, scheduledDate).Scan(&claimed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if err := push.InsertJob(ctx, tx, job); err != nil {
+		return false, err
+	}
+	return true, tx.Commit()
 }
 
 func (s *PostgresStore) PurgeOldReminders(ctx context.Context) (int64, error) {

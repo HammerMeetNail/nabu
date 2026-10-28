@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"github.com/HammerMeetNail/nabu/internal/diagnostics"
 	"github.com/HammerMeetNail/nabu/internal/lifecycle"
 	"sync"
@@ -199,20 +200,33 @@ func (s *MemoryStore) CleanupAccount(d *lifecycle.Deletion) {
 }
 
 func (s *MemoryStore) WithSubscription(ctx context.Context, userID int64, target Subscription, fn func() error) error {
+	entered := false
 	deliver := func() error {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		for _, sub := range s.data[userID] {
 			if sub == target {
+				entered = true
 				return fn()
 			}
 		}
-		return errors.New("browser registration changed")
+		return ErrRevoked
 	}
-	if s.sessions != nil {
-		return s.sessions.WithSession(ctx, userID, target.SessionHash, deliver)
+	if s.sessions == nil {
+		return deliver()
 	}
-	return deliver()
+	err := s.sessions.WithSession(ctx, userID, target.SessionHash, deliver)
+	if err != nil && !entered && ctx.Err() == nil && !errors.Is(err, ErrRevoked) {
+		// The session itself no longer authorizes delivery.
+		return fmt.Errorf("%w: %w", ErrRevoked, err)
+	}
+	return err
+}
+
+// revoked reports whether err means a registration or its session no longer
+// authorizes delivery, rather than a transient failure worth retrying.
+func revoked(err error) bool {
+	return errors.Is(err, ErrRevoked) || errors.Is(err, sql.ErrNoRows) || errors.Is(err, lifecycle.ErrDeleted)
 }
 
 func (s *PostgresStore) WithSubscription(ctx context.Context, userID int64, sub Subscription, fn func() error) error {
