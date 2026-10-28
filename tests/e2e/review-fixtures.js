@@ -5,7 +5,6 @@ export async function register(page,email=uniqueEmail()) {
   await page.goto('/register');
   await page.locator('#reg-email').fill(email);
   await page.locator('#reg-password').fill('test123456');
-  await page.locator('#reg-confirm').fill('test123456');
   await page.locator('#register-form button[type=submit]').click();
   await expect(page.locator('#hh-indicator')).toBeVisible();
   return email;

@@ -22,11 +22,19 @@ struct LoginView: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Logo
-                    Text("Nabu")
-                        .font(.largeTitle.weight(.bold))
-                        .foregroundColor(DesignColors.brand)
-                        .padding(.top, 48)
+                    // Logo, name and what Nabu is for
+                    VStack(spacing: 8) {
+                        NabuLogo(size: 64)
+                        Text("Nabu")
+                            .font(.largeTitle.weight(.bold))
+                            .foregroundColor(DesignColors.brand)
+                        Text(authTagline)
+                            .font(.subheadline)
+                            .foregroundColor(DesignColors.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 32)
+                    }
+                    .padding(.top, 32)
 
                     if let invite = state.invitePreview {
                         InviteBanner(status: invite)
@@ -35,6 +43,36 @@ struct LoginView: View {
                     // Card
                     AuthCard {
                         VStack(spacing: 16) {
+                            // Apple and Google first, the quickest way in.
+                            // Sign in with Apple — App Store guideline 4.8
+                            // requires it at least as prominent as other
+                            // third-party sign-in options, hence above Google.
+                            SignInWithAppleButton(.signIn) { request in
+                                appleAuth.prepare(request, api: auth.api)
+                            } onCompletion: { result in
+                                performAppleSignIn(result)
+                            }
+                            .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
+                            .frame(height: 44)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .accessibilityIdentifier("siwa-button")
+
+                            // Google
+                            Button(action: performGoogleSignIn) {
+                                HStack(spacing: 10) {
+                                    if googleAuth.isAuthenticating {
+                                        ProgressView()
+                                    } else {
+                                        GoogleIconSimple()
+                                        Text("Continue with Google")
+                                    }
+                                }
+                            }
+                            .buttonStyle(NabuGoogleButtonStyle())
+                            .disabled(auth.isLoading || googleAuth.isAuthenticating)
+
+                            OrDivider()
+
                             LabeledField("Email") {
                                 TextField("you@example.com", text: $email)
                                     .textContentType(.emailAddress)
@@ -45,9 +83,7 @@ struct LoginView: View {
                             }
 
                             LabeledField("Password") {
-                                SecureField("Password", text: $password)
-                                    .textContentType(.password)
-                                    .textFieldStyle(NabuTextFieldStyle())
+                                PasswordField(placeholder: "Password", text: $password)
                             }
 
                             if let error = auth.errorMessage ?? googleAuth.errorMessage ?? appleAuth.errorMessage {
@@ -75,35 +111,6 @@ struct LoginView: View {
                             }
                             .font(.subheadline)
                             .foregroundColor(DesignColors.primary)
-
-                            OrDivider()
-
-                            // Sign in with Apple — App Store guideline 4.8
-                            // requires it at least as prominent as other
-                            // third-party sign-in options, hence above Google.
-                            SignInWithAppleButton(.signIn) { request in
-                                appleAuth.prepare(request, api: auth.api)
-                            } onCompletion: { result in
-                                performAppleSignIn(result)
-                            }
-                            .signInWithAppleButtonStyle(colorScheme == .dark ? .white : .black)
-                            .frame(height: 44)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                            .accessibilityIdentifier("siwa-button")
-
-                            // Google
-                            Button(action: performGoogleSignIn) {
-                                HStack(spacing: 10) {
-                                    if googleAuth.isAuthenticating {
-                                        ProgressView()
-                                    } else {
-                                        GoogleIconSimple()
-                                        Text("Continue with Google")
-                                    }
-                                }
-                            }
-                            .buttonStyle(NabuGoogleButtonStyle())
-                            .disabled(auth.isLoading || googleAuth.isAuthenticating)
 
                             OrDivider()
 
@@ -181,7 +188,7 @@ struct InviteBanner: View {
                 Text(preview.household.name)
                     .font(.title2.weight(.bold))
                     .foregroundColor(DesignColors.textPrimary)
-                Text("Nabu is one shared log for your home: feeds, meds, walks and chores. Create an account or sign in to join.")
+                Text("Create an account or sign in to join.")
                     .font(.footnote)
                     .foregroundColor(DesignColors.textSecondary)
             }

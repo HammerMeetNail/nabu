@@ -10,7 +10,6 @@ async function setupFullAccount(page) {
   await page.waitForSelector('#register-form');
   await page.fill('#reg-email', email);
   await page.fill('#reg-password', 'test123456');
-  await page.fill('#reg-confirm', 'test123456');
   await page.click('button[type="submit"]');
   await page.waitForSelector('#hh-indicator:not([hidden])', { timeout: 10000 });
 
@@ -39,8 +38,10 @@ test.describe('Exhaustive: Auth Pages', () => {
     await page.goto('/login');
     await page.waitForSelector('#login-form');
 
-    // Title
+    // Logo, title and what Nabu is for
+    await expect(page.locator('.auth-logo')).toBeVisible();
     await expect(page.locator('.auth-title')).toContainText('Nabu');
+    await expect(page.locator('.auth-tagline')).toBeVisible();
 
     // Form fields
     await expect(page.locator('#login-email')).toBeVisible();
@@ -73,11 +74,23 @@ test.describe('Exhaustive: Auth Pages', () => {
     await page.waitForSelector('#register-form');
 
     await expect(page.locator('.auth-title')).toContainText('Create Account');
+    await expect(page.locator('.auth-tagline')).toHaveText('One shared log for your home: feeds, meds, walks and chores.');
 
-    // Form fields
+    // Form fields: one password, with its rule and Show/Hide instead of a
+    // second field to type it again.
     await expect(page.locator('#reg-email')).toBeVisible();
     await expect(page.locator('#reg-password')).toBeVisible();
-    await expect(page.locator('#reg-confirm')).toBeVisible();
+    await expect(page.locator('#reg-confirm')).toHaveCount(0);
+    await expect(page.locator('#reg-password-rules')).toHaveText('At least 8 characters.');
+    await expect(page.locator('#reg-password')).toHaveAttribute('aria-describedby', 'reg-password-rules');
+    await expect(page.locator('#reg-password')).toHaveAttribute('autocomplete', 'new-password');
+    await page.fill('#reg-password', 'test123456');
+    await page.getByRole('button', { name: 'Show password' }).click();
+    await expect(page.locator('#reg-password')).toHaveAttribute('type', 'text');
+    await expect(page.locator('#reg-password')).toHaveValue('test123456');
+    await expect(page.getByRole('button', { name: 'Hide password' })).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: 'Hide password' }).click();
+    await expect(page.locator('#reg-password')).toHaveAttribute('type', 'password');
 
     // Submit
     const createBtn = page.locator('#register-form button[type="submit"]');
@@ -89,12 +102,15 @@ test.describe('Exhaustive: Auth Pages', () => {
     await expect(loginBtn).toBeVisible();
     await expect(loginBtn).toContainText(/Sign in/);
 
-    // Test mismatched passwords error
+    // A password under 8 characters is refused before anything is sent.
+    let registerRequests = 0;
+    page.on('request', request => { if (new URL(request.url()).pathname === '/api/auth/register') registerRequests++; });
     await page.fill('#reg-email', 'x@x.com');
-    await page.fill('#reg-password', 'test123456');
-    await page.fill('#reg-confirm', 'different');
+    await page.fill('#reg-password', 'short');
     await createBtn.click();
-    await expect(page.locator('#register-error')).not.toHaveClass(/hidden/);
+    expect(await page.locator('#reg-password').evaluate(el => el.validity.tooShort)).toBe(true);
+    await expect(page.locator('#register-form')).toBeVisible();
+    expect(registerRequests).toBe(0);
   });
 
   test('magic link page — all elements', async ({ page }) => {
@@ -207,7 +223,6 @@ test.describe('Exhaustive: Authenticated Flow', () => {
     await page.waitForSelector('#register-form');
     await page.fill('#reg-email', email);
     await page.fill('#reg-password', 'test123456');
-    await page.fill('#reg-confirm', 'test123456');
     await page.click('button[type="submit"]');
     await page.waitForSelector('#hh-indicator:not([hidden])', { timeout: 10000 });
 
@@ -321,7 +336,6 @@ test.describe('Exhaustive: Settings Page States', () => {
     await page.waitForSelector('#register-form');
     await page.fill('#reg-email', email);
     await page.fill('#reg-password', 'test123456');
-    await page.fill('#reg-confirm', 'test123456');
     await page.click('button[type="submit"]');
     await page.waitForSelector('#hh-indicator:not([hidden])', { timeout: 10000 });
     await expect(page.locator('#bottom-tabs')).not.toBeHidden();

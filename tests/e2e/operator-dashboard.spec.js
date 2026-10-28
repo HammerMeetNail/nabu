@@ -54,7 +54,6 @@ async function register(page, address) {
   await page.goto("/register");
   await page.locator("#reg-email").fill(address);
   await page.locator("#reg-password").fill(password);
-  await page.locator("#reg-confirm").fill(password);
   await page.locator("#register-form button[type=submit]").click();
   await expect(page.locator("#hh-indicator")).toBeVisible();
 }

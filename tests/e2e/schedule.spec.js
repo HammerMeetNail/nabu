@@ -20,7 +20,6 @@ async function setupWithChores(page) {
   await page.waitForSelector('#register-form');
   await page.fill('#reg-email', email);
   await page.fill('#reg-password', 'test123456');
-  await page.fill('#reg-confirm', 'test123456');
   await page.click('button[type="submit"]');
   // Wait for registration to complete: the user avatar appears when logged in
   await page.waitForSelector('#hh-indicator:not([hidden])', { timeout: 10000 });

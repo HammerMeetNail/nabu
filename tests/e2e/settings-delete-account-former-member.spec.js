@@ -21,7 +21,6 @@ async function register(page) {
   await page.waitForSelector('#register-form');
   await page.fill('#reg-email', uniqueEmail());
   await page.fill('#reg-password', 'test123456');
-  await page.fill('#reg-confirm', 'test123456');
   await page.click('button[type="submit"]');
   await page.waitForSelector('#hh-indicator:not([hidden])', { timeout: 10000 });
   return getCSRF(page);

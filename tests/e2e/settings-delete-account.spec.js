@@ -14,7 +14,6 @@ async function registerUser(page, email, password = "test123456") {
   await page.waitForSelector("#register-form");
   await page.fill("#reg-email", email);
   await page.fill("#reg-password", password);
-  await page.fill("#reg-confirm", password);
   await page.click("button[type=\"submit\"]");
   await page.waitForSelector("#hh-indicator:not([hidden])", { timeout: 10000 });
   const csrf =
