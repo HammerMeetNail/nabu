@@ -109,7 +109,7 @@ export function renderHomeView(state) {
       // Wrap in a div so the X badge and card button are siblings — nesting a
       // <button> inside a <button> is invalid HTML and causes browsers to eject
       // the inner content, producing empty cards.
-      return `<div class="home-card-wrapper" draggable="true" data-home-reorder-chore-id="${chore.id}">
+      return `<div class="home-card-wrapper" data-key="chore-${chore.id}" draggable="true" data-home-reorder-chore-id="${chore.id}">
       <button type="button" class="home-card-remove" data-action="home-remove-chore" data-chore-id="${chore.id}" aria-label="Remove ${escapeHTML(chore.name)} from home">&#x2715;</button>
       <button type="button" class="home-chore-card home-chore-card--jiggle" data-home-chore-id="${chore.id}" style="--chore-color:${chore.color}">
         <span class="home-card-icon">${escapeHTML(chore.icon)}</span>
@@ -120,6 +120,7 @@ export function renderHomeView(state) {
     }
     return `<button type="button"
       class="home-chore-card"
+      data-key="chore-${chore.id}"
       data-home-chore-id="${chore.id}"
       data-action="home-tap-chore"
       style="--chore-color:${chore.color}">

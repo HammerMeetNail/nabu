@@ -204,7 +204,7 @@ export function renderHouseholdView(household, members, invites, currentUser, { 
       detailsHTML = `<div class="member-row-details">${controlsHTML}</div>`;
     }
 
-    return `<details class="member-row" data-user-id="${m.userId}">
+    return `<details class="member-row" data-key="member-${m.userId}" data-user-id="${m.userId}">
       <summary class="member-row-summary">
         <span class="avatar-circle-sm" style="background:${escapeHTML(m.avatarColor || '#19323C')}">${escapeHTML(initial)}</span>
         <span class="member-name">${escapeHTML(label)}</span>
@@ -218,7 +218,7 @@ export function renderHouseholdView(household, members, invites, currentUser, { 
   }).join("");
   const inviteList = (invites || []).map(inv => {
     const invUrl = `${window.location.origin}/join?code=${encodeURIComponent(inv.code)}`;
-    return `<li class="invite-item">
+    return `<li class="invite-item" data-key="invite-${escapeHTML(inv.code)}">
     <code class="invite-link-url">${escapeHTML(invUrl)}</code>
     <button type="button" class="btn btn-sm btn-secondary" data-action="copy-invite-link" data-code="${escapeHTML(inv.code)}">Copy</button>
     <span class="text-secondary">${inv.usedCount}/${inv.maxUses || 1} uses${inv.expiresAt ? ` · Expires ${escapeHTML(new Date(inv.expiresAt).toLocaleDateString())}` : ""}</span>

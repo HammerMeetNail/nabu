@@ -378,6 +378,7 @@ export function renderHistoryView(state) {
         const pendingAttrs = r.pending ? `disabled aria-disabled="true"` : `data-action="view-log"`;
         return `
         <button type="button" class="hist-row${r.pending ? ' hist-row--pending' : ''}" style="--chore-color:${r.color}"
+          data-key="log-${escapeHTML(String(r.logId))}"
           ${pendingAttrs}
           data-chore-id="${r.choreId}"
           data-log-id="${r.logId}"
@@ -394,9 +395,9 @@ export function renderHistoryView(state) {
       const noteHTML = dayNote
         ? `<button type="button" class="hist-day-note" data-action="edit-day-note" data-date="${g.date}">📝 ${escapeHTML(dayNote)}</button>`
         : `<button type="button" class="hist-day-note hist-day-note--empty" data-action="edit-day-note" data-date="${g.date}" aria-label="Add a note for ${escapeHTML(g.label)}">＋ note</button>`;
-      return `<div class="hist-date-header">${g.label} <span class="hist-day-count">${g.rows.length}</span>${noteHTML}</div>${rows}`;
+      return `<div class="hist-date-header" data-key="day-${g.date}">${g.label} <span class="hist-day-count">${g.rows.length}</span>${noteHTML}</div>${rows}`;
     }).join('');
-    return `<div class="hist-chunk">
+    return `<div class="hist-chunk" data-key="week-${escapeHTML(chunk.label)}">
       <div class="hist-chunk-header">${chunk.label}</div>
       ${days}
     </div>`;

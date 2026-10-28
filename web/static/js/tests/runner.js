@@ -75,6 +75,124 @@ describe("DOM Morphing", () => {
     assert.equal(root.querySelector("details").className, "member-row member-row--self");
     assert.equal(root.querySelector("details").open, true);
   });
+
+  // Each markup below morphs into each other one; the DOM must then be
+  // exactly what the markup parses to.
+  const shapes = [
+    '<div><ul><li data-key="a">A</li><li data-key="b">B</li><li data-key="c">C</li></ul></div>',
+    '<div><ul><li data-key="c">C</li><li data-key="a">A!</li></ul></div>',
+    '<div><ul><li data-key="z">Z</li><li data-key="a">A</li><li data-key="b">B</li><li data-key="c">C</li></ul></div>',
+    '<div>\n  <p class="status">Loading</p>\n  <div class="search"><input class="q"></div>\n  <ul><li data-key="b"><span>B</span></li></ul>\n</div>',
+    '<div><div class="search"><input class="q"></div><p class="empty">Nothing yet</p>text<!-- note --></div>',
+    '<div><section class="offer">Offer</section><div class="grid"><button class="tile">1</button></div></div>',
+    '<div><div class="grid"><button class="tile">1</button><button class="tile">2</button></div></div>',
+    '<div><details class="pending" open><summary>1</summary></details><div class="grid"><button class="tile">1</button></div></div>',
+    '<div><ul><li data-key="a"><b>A</b></li><li id="x">X</li><li>plain</li><li data-key="b">B</li></ul> tail </div>',
+    '<div><ul><span data-key="a">A as span</span><li>plain</li><li id="x">X</li></ul></div>',
+    '<div></div>',
+  ];
+
+  it("lands on exactly the new markup from any old one", async () => {
+    const { morphInnerHTML } = await import("../morph.js");
+    const parsed = html => { const t = document.createElement("template"); t.innerHTML = html; return t.innerHTML; };
+    for (const from of shapes) {
+      for (const to of shapes) {
+        const root = document.createElement("div");
+        root.innerHTML = from;
+        morphInnerHTML(root, to);
+        assert.equal(root.innerHTML, parsed(to), `${from}\n→ ${to}`);
+      }
+    }
+  });
+
+  it("keeps a keyed node, and its focus, as nodes are added, removed and reordered around it", async () => {
+    const { morphInnerHTML } = await import("../morph.js");
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    try {
+      const list = keys => `<div><ul>${keys.map(k => `<li data-key="${k}">${k === "b" ? '<input class="q">' : k}</li>`).join("")}</ul></div>`;
+      root.innerHTML = list(["a", "b", "c"]);
+      const b = root.querySelector('[data-key="b"]');
+      const input = b.querySelector("input");
+      input.focus();
+      input.value = "typed";
+      // ["b", "a"] moves the focused row itself ahead of the other.
+      for (const keys of [["z", "a", "b", "c"], ["b", "c"], ["c", "b", "a"], ["a", "b"], ["b", "a"], ["b"]]) {
+        morphInnerHTML(root, list(keys));
+        assert.deepEqual([...root.querySelectorAll("li")].map(li => li.dataset.key), keys);
+        assert.equal(root.querySelector('[data-key="b"]'), b, keys.join());
+        assert.equal(document.activeElement, input, keys.join());
+        assert.equal(input.value, "typed");
+      }
+    } finally { root.remove(); }
+  });
+
+  it("keeps an open <details> with its own row when a row above it goes", async () => {
+    const { morphInnerHTML } = await import("../morph.js");
+    const rows = ids => `<div>${ids.map(id => `<details class="member-row" data-key="member-${id}"><summary>${id}</summary></details>`).join("")}</div>`;
+    const root = document.createElement("div");
+    root.innerHTML = rows([1, 2, 3]);
+    root.querySelector('[data-key="member-3"]').open = true;
+    morphInnerHTML(root, rows([1, 3]));
+    assert.deepEqual([...root.querySelectorAll("details")].map(d => [d.dataset.key, d.open]),
+      [["member-1", false], ["member-3", true]]);
+  });
+
+  it("keeps the nodes after an element that was added, taken away, or differently indented", async () => {
+    const { morphInnerHTML } = await import("../morph.js");
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    try {
+      const steps = [
+        '<div><div class="grid"><button class="tile">1</button></div></div>',
+        // A notice arrives above the grid, then goes.
+        '<div><details class="pending"><summary>1 saved</summary></details><div class="grid"><button class="tile">1</button></div></div>',
+        '<div><div class="grid"><button class="tile">1</button></div></div>',
+        // An offer of the same tag as the grid, matched by its class.
+        '<div><div class="offer">Offer</div><div class="grid"><button class="tile">1</button></div></div>',
+        // The same layout, indented.
+        '<div>\n  <div class="offer">Offer</div>\n  <div class="grid">\n    <button class="tile">1</button>\n  </div>\n</div>',
+        '<div><div class="grid"><button class="tile">1 just now</button></div></div>',
+      ];
+      root.innerHTML = steps[0];
+      const tile = root.querySelector(".tile");
+      tile.focus();
+      for (const step of steps.slice(1)) {
+        morphInnerHTML(root, step);
+        assert.equal(root.querySelector(".tile"), tile, step);
+        assert.equal(document.activeElement, tile, step);
+      }
+      assert.equal(tile.textContent, "1 just now");
+    } finally { root.remove(); }
+  });
+
+  it("matches an id as a key, so a field's typed text never moves to another field", async () => {
+    const { morphInnerHTML } = await import("../morph.js");
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    try {
+      root.innerHTML = '<form><input id="first"><input id="second"></form>';
+      const first = root.querySelector("#first");
+      const second = root.querySelector("#second");
+      first.focus();
+      first.value = "for the first";
+      second.value = "for the second";
+      morphInnerHTML(root, '<form><input id="second" value="from markup"></form>');
+      assert.equal(root.querySelector("input"), second);
+      assert.equal(second.value, "from markup", "an unfocused field follows the markup");
+      assert.equal(first.isConnected, false);
+    } finally { root.remove(); }
+  });
+
+  it("replaces a keyed node whose tag changed", async () => {
+    const { morphInnerHTML } = await import("../morph.js");
+    const root = document.createElement("div");
+    root.innerHTML = '<div><div data-key="chore-1" class="home-card-wrapper"><button>1</button></div></div>';
+    morphInnerHTML(root, '<div><button data-key="chore-1" class="home-chore-card">1</button></div>');
+    const card = root.querySelector('[data-key="chore-1"]');
+    assert.equal(card.tagName, "BUTTON");
+    assert.equal(card.className, "home-chore-card");
+  });
 });
 
 describe("API", () => {

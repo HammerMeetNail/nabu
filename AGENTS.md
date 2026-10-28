@@ -110,7 +110,7 @@ Session cookie name: `nabu_session`. CSRF cookie name: `nabu_csrf`.
 
 - **`app.js`** — Entry point. Wires all event listeners on a single `#app` container via event delegation.
 - **`state.js`** — `createAppState()` returns the single mutable state object. All UI derives from this.
-- **`morph.js`** — DOM morphing: updates existing DOM to match new HTML without destroying focus or form state.
+- **`morph.js`** — DOM morphing: updates existing DOM to match new HTML without destroying focus or form state. A child with a `data-key` (or an `id`) keeps its node wherever it moves, so give every list item a stable key (`log-${id}`, `member-${userId}`). Other children match the next one of the same tag and first class, looking one node ahead for one that was added or removed; whitespace never decides a match.
 - **`api.js`** — `apiFetch()` wraps `fetch()` adding `Content-Type` and CSRF token for state-changing requests.
 - **`today.js`** — Chore grid, tap-to-log, `logChore(choreId, note, date, indicators, slotHour, completedAt)` API wrapper. `slotHour` is an integer (0–23) or `null`.
 - **`calendar.js`** — Day and week calendar views. Ad-hoc log placement: `slotHour === null` → Anytime row; `slotHour === hour` → that hour row. Both `renderDayView` and `renderWeekView` follow this rule.
