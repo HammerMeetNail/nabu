@@ -18,6 +18,9 @@ final class AppEnvironment: ObservableObject {
         baseURL = AppEnvironment.resolveBaseURL()
         apiClient = APIClient(baseURL: baseURL, identity: ClientIdentity.shared(for: baseURL))
         applyUnreachableServerHook()
+        // App Intents use this client while the app runs: its session, and in
+        // UI tests its mock server.
+        IntentSession.appClient = { [weak self] in self?.apiClient }
     }
 
     /// The server base URL from launch arguments / env, falling back to
@@ -470,20 +473,24 @@ final class ReviewUITestResponses {
         case ("POST", "/api/chores/packs"):
             if scenario == "onboarding-pack-error", attempt == 1 { return try failed("failed to add activities", 500) }
             let picks = try apiDecoder.decode(AddPacksRequest.self, from: request.httpBody ?? Data()).packs
-            var names: [(String, String)] = []
+            // As the server plans them: a baby's or pet's own activities are
+            // custom tasks; shared ones keep their template's key.
+            var names: [(name: String, icon: String, own: Bool)] = []
             for pick in picks {
                 let given = pick.names ?? []
                 switch pick.key {
-                case "baby": names += (given.isEmpty ? ["Baby"] : given).flatMap { [("Feed \($0)", "🍼"), ("Change \($0)", "👶")] }
-                case "cat": names += (given.isEmpty ? [("Feed Cats", "🐱")] : given.map { ("Feed \($0)", "🐱") }) + [("Clean Litter Box", "🧹")]
-                case "plants": names.append(("Water Plants", "🌱"))
+                case "baby":
+                    names += given.isEmpty ? [("Feed Baby", "🍼", false), ("Change Baby", "👶", false)]
+                        : given.flatMap { [("Feed \($0)", "🍼", true), ("Change \($0)", "👶", true)] }
+                case "cat": names += (given.isEmpty ? [("Feed Cats", "🐱", false)] : given.map { ("Feed \($0)", "🐱", true) }) + [("Clean Litter Box", "🧹", false)]
+                case "plants": names.append(("Water Plants", "🌱", false))
                 default: break
                 }
             }
             var added: [Chore] = []
-            for (name, icon) in names where !chores.contains(where: { $0.name == name }) {
+            for (name, icon, own) in names where !chores.contains(where: { $0.name == name }) {
                 let chore = Chore(id: 100 + chores.count, householdId: household.id, name: name, icon: icon, color: "#F59E0B",
-                    sortOrder: chores.count, category: "care", isPredefined: true, predefinedKey: name, createdBy: nil,
+                    sortOrder: chores.count, category: "care", isPredefined: !own, predefinedKey: own ? nil : name, createdBy: nil,
                     createdAt: user.createdAt, indicatorLabels: [], indicatorDefaults: [], hasVolumeML: false)
                 chores.append(chore)
                 added.append(chore)

@@ -218,7 +218,12 @@ export function renderHistoryView(state) {
 
 
   if (logs.length === 0) {
-    if (state.historyLoading || state.historyError) return `<div class="history-view">${searchBar}${filterFab}</div>`;
+    // The same layout as the views below, so morph.js keeps the search box
+    // (matched by position) and its focus when the results arrive.
+    if (state.historyLoading || state.historyError) return `<div class="history-view">
+      ${searchBar}
+      ${filterFab}
+    </div>`;
     const emptyMsg = searching
       ? '<p class="text-secondary">No activity matches your search.</p>'
       : state.historyHasMore
@@ -231,56 +236,19 @@ export function renderHistoryView(state) {
       ${filterFab}
     </div>`;
   }
-  const members = [...(state.members || []), ...(state.historicalMembers || [])];
-  const memberMap = {};
-  members.forEach(m => { memberMap[m.userId] = m.displayName || m.email; });
-  const volumeUnit = state.volumeUnit === "oz" ? "oz" : "ml";
-
-  const pad = n => String(n).padStart(2, '0');
+  const memberMap = historyMemberNames(state);
 
   // Group by day
   const rawDayGroups = [];
   let currentDate = '';
   for (const l of logs) {
-    const d = l.completedAt ? new Date(l.completedAt) : null;
-    if (!d) continue;
-    const dateKey = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    const h = d.getHours();
-    const ampm = h >= 12 ? 'PM' : 'AM';
-    const h12 = h % 12 || 12;
-    const timeStr = `${h12}:${pad(d.getMinutes())} ${ampm}`;
-    const dayLabel = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-
-    if (dateKey !== currentDate) {
-      currentDate = dateKey;
-      rawDayGroups.push({ date: dateKey, label: dayLabel, rows: [] });
+    const row = historyRow(state, l, memberMap);
+    if (!row) continue;
+    if (row.date !== currentDate) {
+      currentDate = row.date;
+      rawDayGroups.push({ date: row.date, label: row.dayLabel, rows: [] });
     }
-    const chore = (state.chores || []).find(c => c.id === l.choreId);
-    const indicatorVolumes = l.indicatorVolumes || {};
-    const volKeys = new Set(Object.keys(indicatorVolumes));
-    const indicatorIcons = (l.indicators || [])
-      .filter(label => !volKeys.has(label))
-      .map(label => escapeHTML(label.split(' ')[0]));
-    rawDayGroups[rawDayGroups.length - 1].rows.push({
-      chore: entryMetric(chore || { hasVolumeML: true }, l),
-      volumeUnit: entryVolumeUnit(l, volumeUnit),
-      icon: chore?.icon || '',
-      name: chore?.name || `Chore #${l.choreId}`,
-      color: chore?.color || '#999',
-      who: memberMap[l.userId] || 'Someone',
-      time: timeStr,
-      note: l.note || '',
-      volumeML: l.volumeML,
-      indicatorVolumes,
-      indicatorIcons,
-      rating: l.rating,
-      title: l.title || '',
-      subject: l.subject || '',
-      pending: l._pending || false,
-      logId: l.id,
-      choreId: l.choreId,
-      date: dateKey,
-    });
+    rawDayGroups[rawDayGroups.length - 1].rows.push(row);
   }
 
   // Apply chore filter. Empty/null = show everything.
@@ -362,35 +330,7 @@ export function renderHistoryView(state) {
 
   const html = chunked.map(chunk => {
     const days = chunk.days.map(g => {
-      const rows = g.rows.map(r => {
-        const indicatorVolParts = Object.entries(r.indicatorVolumes || {}).map(([label, ml]) => {
-          const icon = escapeHTML(label.split(' ')[0]);
-          return `${icon} ${escapeHTML(formatAmount(ml, r.chore, r.volumeUnit))}`;
-        });
-        const indicatorVolStr = indicatorVolParts.length > 0 ? ` · ${indicatorVolParts.join(' ')}` : '';
-        const legacyVolumeStr = !indicatorVolParts.length && r.volumeML != null ? ` · ${escapeHTML(formatAmount(r.volumeML, r.chore, r.volumeUnit))}` : '';
-        const indicatorIconsStr = r.indicatorIcons.length ? ` · ${r.indicatorIcons.join(' ')}` : '';
-        const ratingStr = r.rating != null ? ` · ${renderStarRatingDisplay(r.rating)}` : '';
-        const subjectStr = r.subject ? ` · <span class="hist-subject">${escapeHTML(r.subject)}</span>` : '';
-        const titleStr = r.title ? `<span class="hist-title">${escapeHTML(r.title)}</span>` : '';
-        const pendingBadge = r.pending ? `<span class="hist-pending">⏳ pending</span>` : '';
-        // Pending rows aren't yet on the server, so they're not tappable.
-        const pendingAttrs = r.pending ? `disabled aria-disabled="true"` : `data-action="view-log"`;
-        return `
-        <button type="button" class="hist-row${r.pending ? ' hist-row--pending' : ''}" style="--chore-color:${r.color}"
-          data-key="log-${escapeHTML(String(r.logId))}"
-          ${pendingAttrs}
-          data-chore-id="${r.choreId}"
-          data-log-id="${r.logId}"
-          data-date="${r.date}">
-          <span class="hist-icon">${escapeHTML(r.icon)}</span>
-          <div class="hist-body">
-            <span class="hist-name">${escapeHTML(r.name)}${pendingBadge}</span>
-            ${titleStr}
-            <span class="hist-meta">${r.time} · ${escapeHTML(r.who)}${subjectStr}${r.note ? ` · ${escapeHTML(r.note)}` : ''}${indicatorVolStr}${legacyVolumeStr}${indicatorIconsStr}${ratingStr}</span>
-          </div>
-        </button>`;
-      }).join('');
+      const rows = g.rows.map(renderHistoryRow).join('');
       const dayNote = (state.dayNotes || {})[g.date] || "";
       const noteHTML = dayNote
         ? `<button type="button" class="hist-day-note" data-action="edit-day-note" data-date="${g.date}">📝 ${escapeHTML(dayNote)}</button>`
@@ -418,6 +358,84 @@ export function renderHistoryView(state) {
     ${loadMore}
     ${filterFab}
   </div>`;
+}
+
+// historyMemberNames maps each current and former member's user ID to the
+// name Activity shows for them.
+export function historyMemberNames(state) {
+  const memberMap = {};
+  [...(state.members || []), ...(state.historicalMembers || [])]
+    .forEach(m => { memberMap[m.userId] = m.displayName || m.email; });
+  return memberMap;
+}
+
+// historyRow is what an Activity row shows for a log, or null for a log
+// without a time.
+export function historyRow(state, l, memberMap) {
+  const d = l.completedAt ? new Date(l.completedAt) : null;
+  if (!d) return null;
+  const pad = n => String(n).padStart(2, '0');
+  const h = d.getHours();
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  const chore = (state.chores || []).find(c => c.id === l.choreId);
+  const indicatorVolumes = l.indicatorVolumes || {};
+  const volKeys = new Set(Object.keys(indicatorVolumes));
+  const indicatorIcons = (l.indicators || [])
+    .filter(label => !volKeys.has(label))
+    .map(label => escapeHTML(label.split(' ')[0]));
+  return {
+    chore: entryMetric(chore || { hasVolumeML: true }, l),
+    volumeUnit: entryVolumeUnit(l, state.volumeUnit === "oz" ? "oz" : "ml"),
+    icon: chore?.icon || '',
+    name: chore?.name || `Chore #${l.choreId}`,
+    color: chore?.color || '#999',
+    who: memberMap[l.userId] || 'Someone',
+    time: `${h12}:${pad(d.getMinutes())} ${ampm}`,
+    note: l.note || '',
+    volumeML: l.volumeML,
+    indicatorVolumes,
+    indicatorIcons,
+    rating: l.rating,
+    title: l.title || '',
+    subject: l.subject || '',
+    pending: l._pending || false,
+    logId: l.id,
+    choreId: l.choreId,
+    date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+    dayLabel: d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
+  };
+}
+
+// renderHistoryRow renders one Activity row; tapping it opens the log.
+export function renderHistoryRow(r) {
+  const indicatorVolParts = Object.entries(r.indicatorVolumes || {}).map(([label, ml]) => {
+    const icon = escapeHTML(label.split(' ')[0]);
+    return `${icon} ${escapeHTML(formatAmount(ml, r.chore, r.volumeUnit))}`;
+  });
+  const indicatorVolStr = indicatorVolParts.length > 0 ? ` · ${indicatorVolParts.join(' ')}` : '';
+  const legacyVolumeStr = !indicatorVolParts.length && r.volumeML != null ? ` · ${escapeHTML(formatAmount(r.volumeML, r.chore, r.volumeUnit))}` : '';
+  const indicatorIconsStr = r.indicatorIcons.length ? ` · ${r.indicatorIcons.join(' ')}` : '';
+  const ratingStr = r.rating != null ? ` · ${renderStarRatingDisplay(r.rating)}` : '';
+  const subjectStr = r.subject ? ` · <span class="hist-subject">${escapeHTML(r.subject)}</span>` : '';
+  const titleStr = r.title ? `<span class="hist-title">${escapeHTML(r.title)}</span>` : '';
+  const pendingBadge = r.pending ? `<span class="hist-pending">⏳ pending</span>` : '';
+  // Pending rows aren't yet on the server, so they're not tappable.
+  const pendingAttrs = r.pending ? `disabled aria-disabled="true"` : `data-action="view-log"`;
+  return `
+        <button type="button" class="hist-row${r.pending ? ' hist-row--pending' : ''}" style="--chore-color:${escapeHTML(r.color)}"
+          data-key="log-${escapeHTML(String(r.logId))}"
+          ${pendingAttrs}
+          data-chore-id="${r.choreId}"
+          data-log-id="${escapeHTML(String(r.logId))}"
+          data-date="${r.date}">
+          <span class="hist-icon">${escapeHTML(r.icon)}</span>
+          <div class="hist-body">
+            <span class="hist-name">${escapeHTML(r.name)}${pendingBadge}</span>
+            ${titleStr}
+            <span class="hist-meta">${r.time} · ${escapeHTML(r.who)}${subjectStr}${r.note ? ` · ${escapeHTML(r.note)}` : ''}${indicatorVolStr}${legacyVolumeStr}${indicatorIconsStr}${ratingStr}</span>
+          </div>
+        </button>`;
 }
 
 function renderStarRatingDisplay(rating) {

@@ -20,6 +20,79 @@ struct OrDivider: View {
     }
 }
 
+// MARK: - Logo
+// The app icon's mark (web/static/icons/icon.svg): a check on teal. Its
+// colors are the icon's own, whatever the theme.
+
+struct NabuLogo: View {
+    var size: CGFloat = 64
+
+    var body: some View {
+        let scale = size / 512
+        ZStack {
+            RoundedRectangle(cornerRadius: 110 * scale, style: .continuous)
+                .fill(Color(red: 0x19 / 255, green: 0x32 / 255, blue: 0x3C / 255))
+            Path { path in
+                path.move(to: CGPoint(x: 108 * scale, y: 272 * scale))
+                path.addLine(to: CGPoint(x: 214 * scale, y: 378 * scale))
+                path.addLine(to: CGPoint(x: 404 * scale, y: 148 * scale))
+            }
+            .stroke(Color(red: 0xF4 / 255, green: 0xEF / 255, blue: 0xE7 / 255),
+                    style: StrokeStyle(lineWidth: 72 * scale, lineCap: .round, lineJoin: .round))
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+}
+
+/// What Nabu is for, under the sign-in screens' titles (the PWA's
+/// `.auth-tagline`).
+let authTagline = "One shared log for your home: feeds, meds, walks and chores."
+
+// MARK: - Password field
+// One password with Show/Hide, in place of typing it twice (the PWA's
+// `.password-field`).
+
+struct PasswordField: View {
+    let placeholder: String
+    @Binding var text: String
+    var contentType: UITextContentType = .password
+    @State private var visible = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            // Show and Hide only change which field is seen. Taking the
+            // secure field off screen makes iOS offer to save the password,
+            // as though the form had been sent.
+            ZStack {
+                SecureField(placeholder, text: $text)
+                    .textContentType(contentType)
+                    .opacity(visible ? 0 : 1)
+                    .allowsHitTesting(!visible)
+                    .accessibilityHidden(visible)
+                TextField(placeholder, text: $text)
+                    .autocapitalization(.none)
+                    .disableAutocorrection(true)
+                    .opacity(visible ? 1 : 0)
+                    .allowsHitTesting(visible)
+                    .accessibilityHidden(!visible)
+            }
+            .textFieldStyle(.plain)
+            Button(visible ? "Hide" : "Show") { visible.toggle() }
+                .font(.subheadline.weight(.semibold))
+                .foregroundColor(DesignColors.primary)
+                .accessibilityLabel(visible ? "Hide password" : "Show password")
+                .accessibilityIdentifier("password-visibility")
+        }
+        // NabuTextFieldStyle's box, around the field and its button together.
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(DesignColors.surface)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .overlay(RoundedRectangle(cornerRadius: 8).stroke(DesignColors.border, lineWidth: 1))
+    }
+}
+
 // MARK: - GoogleIcon
 // Matches the PWA multicolor Google SVG "G" logo
 
@@ -65,8 +138,9 @@ struct GoogleIcon: View {
 struct GoogleIconSimple: View {
     var body: some View {
         HStack(spacing: 0) {
+            // A logo, so a fixed size: Dynamic Type would clip it in its frame.
             Text("G")
-                .font(.system(.callout, design: .rounded).weight(.bold))
+                .font(.system(size: 16, weight: .bold, design: .rounded))
                 .foregroundStyle(
                     LinearGradient(
                         colors: [
@@ -81,6 +155,8 @@ struct GoogleIconSimple: View {
                 )
         }
         .frame(width: 20, height: 20)
+        // Decorative: the button's text names it ("Continue with Google").
+        .accessibilityHidden(true)
     }
 }
 

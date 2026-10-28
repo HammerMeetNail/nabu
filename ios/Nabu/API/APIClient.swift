@@ -478,6 +478,18 @@ final class ClientIdentity: @unchecked Sendable {
         return saved
     }
 
+    /// The Home saved on this device, read without adopting its identity: for
+    /// work outside the app's screens (App Intents), which must leave an
+    /// offline launch able to resume it. The current identity's when one is
+    /// ready; while the session is unconfirmed, the last confirmed one's.
+    /// Nothing once a sign-out or switch has begun, or after "no session".
+    func savedHome() -> HomeSnapshot? {
+        lock.lock(); defer { lock.unlock() }
+        guard phase == .ready || phase == .checking, let saved = readSavedHome(),
+              let owner = phase == .ready ? user : saved.user else { return nil }
+        return saved.belongs(to: owner) ? saved : nil
+    }
+
     /// Saves Home for offline launch, only for the identity that is ready and
     /// server-confirmed right now. Holding the lock across the write means a
     /// sign-out or switch can never be followed by a save that began before it.

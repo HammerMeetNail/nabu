@@ -3,10 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -27,6 +29,42 @@ func TestStartupDiagnosticsDoNotPrintConnectionOrProviderValues(t *testing.T) {
 		if strings.Contains(output.String(), "PRIVATE") || !strings.Contains(output.String(), "operation=server error_class=") || !strings.Contains(output.String(), "request_id=") {
 			t.Fatal("unsafe or missing startup diagnostic")
 		}
+	}
+}
+
+// Every line the server writes is one JSON object: log ingestion parses it.
+// A log.Printf line, which used to start with a timestamp, becomes its msg.
+func TestServerLogsAreJSONLines(t *testing.T) {
+	previous, writer, flags := slog.Default(), log.Writer(), log.Flags()
+	t.Cleanup(func() {
+		slog.SetDefault(previous)
+		log.SetOutput(writer)
+		log.SetFlags(flags)
+	})
+	var output bytes.Buffer
+	useJSONLogs(&output)
+
+	log.Printf("listening on %s", ":8080")
+	reportStartupError(log.Default(), errors.New("boom"))
+	slog.Default().Info("request", "status", 201)
+
+	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
+	if len(lines) != 3 {
+		t.Fatalf("lines = %q", lines)
+	}
+	for _, line := range lines {
+		var record map[string]any
+		if err := json.Unmarshal([]byte(line), &record); err != nil {
+			t.Fatalf("not one JSON object: %q", line)
+		}
+		if record["level"] != "INFO" || record["time"] == nil {
+			t.Fatalf("record = %v", record)
+		}
+	}
+	var first map[string]any
+	_ = json.Unmarshal([]byte(lines[0]), &first)
+	if first["msg"] != "listening on :8080" {
+		t.Fatalf("msg = %v", first["msg"])
 	}
 }
 

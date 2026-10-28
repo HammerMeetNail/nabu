@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"testing"
@@ -34,11 +35,9 @@ func TestInvitePreviewRoute(t *testing.T) {
 	}
 
 	var logs bytes.Buffer
-	previous := log.Writer()
-	log.SetOutput(&logs)
-	t.Cleanup(func() { log.SetOutput(previous) })
+	restore := captureJSONLogs(t, &logs)
 	rec := srvRequest(srv, http.MethodGet, "/api/household/join/preview?code="+code, "", "", "")
-	log.SetOutput(previous)
+	restore()
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"name":"Ann's home"`) {
 		t.Fatalf("preview: %d %s", rec.Code, rec.Body.String())
 	}
@@ -61,4 +60,20 @@ func TestInvitePreviewRoute(t *testing.T) {
 	if rec.Code != http.StatusTooManyRequests || rec.Header().Get("Retry-After") == "" {
 		t.Fatalf("join after three previews: %d (Retry-After %q), want 429", rec.Code, rec.Header().Get("Retry-After"))
 	}
+}
+
+// captureJSONLogs sends the server's log lines to w as JSON, the way
+// cmd/server writes them, until the returned function (or cleanup) restores
+// slog's default and the log package's writer and flags.
+func captureJSONLogs(t *testing.T, w io.Writer) func() {
+	t.Helper()
+	previous, writer, flags := slog.Default(), log.Writer(), log.Flags()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(w, nil)))
+	restore := func() {
+		slog.SetDefault(previous)
+		log.SetOutput(writer)
+		log.SetFlags(flags)
+	}
+	t.Cleanup(restore)
+	return restore
 }

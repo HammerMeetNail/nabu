@@ -1,8 +1,9 @@
 import { apiFetch } from "./api.js";
-import { escapeHTML, renderAccessSuspendedCard } from "./utils.js";
+import { escapeHTML, renderAccessSuspendedCard, localDateStr, shiftDateStr } from "./utils.js";
 import { sortChoresByOrder } from "./preferences.js";
 import { renderMemberSelect } from "./schedule.js";
 import { renderChoresView as renderChoresViewList } from "./chores.js";
+import { historyMemberNames, historyRow, renderHistoryRow } from "./today.js";
 
 /**
  * Fetch the most-recent log for each chore in the household.
@@ -71,11 +72,13 @@ export function renderHomeHeader(state) {
 }
 
 /**
- * Render the home grid view (iPhone home-screen style chore cards).
+ * Render the home grid view (iPhone home-screen style chore cards). Keys 1–9
+ * log the first nine tiles; keyHints shows each one's number on its tile.
  * @param {object} state  App state
+ * @param {{keyHints?: boolean}} [options]
  * @returns {string}  HTML string
  */
-export function renderHomeView(state) {
+export function renderHomeView(state, { keyHints = false } = {}) {
   const hiddenSet = new Set(state.hiddenHomeChoreIDs || []);
   const chores = sortChoresByOrder(state.chores || [], state.choreOrder || [])
     .filter(c => !hiddenSet.has(c.id));
@@ -99,7 +102,7 @@ export function renderHomeView(state) {
   </div>`;
 }
 
-  const cards = chores.map(chore => {
+  const cards = chores.map((chore, index) => {
     const latest = latestLogs[chore.id];
     const timeAgo = latest ? formatTimeAgo(latest.completedAt) : "";
     const timeHTML = timeAgo
@@ -118,12 +121,14 @@ export function renderHomeView(state) {
       </button>
     </div>`;
     }
+    const key = index < 9 ? String(index + 1) : "";
     return `<button type="button"
       class="home-chore-card"
       data-key="chore-${chore.id}"
       data-home-chore-id="${chore.id}"
-      data-action="home-tap-chore"
+      data-action="home-tap-chore"${key ? ` aria-keyshortcuts="${key}"` : ""}
       style="--chore-color:${chore.color}">
+      ${key && keyHints ? `<span class="home-card-key" aria-hidden="true">${key}</span>` : ""}
       <span class="home-card-icon">${escapeHTML(chore.icon)}</span>
       <span class="home-card-name">${escapeHTML(chore.name)}</span>
       ${timeHTML}
@@ -142,6 +147,50 @@ export function renderHomeView(state) {
       ${cards}
     </div>
   </div>`;
+}
+
+// The most rows Home's activity column shows; the Activity tab has the rest.
+const HOME_ACTIVITY_ROWS = 25;
+
+/**
+ * Render Home's activity column for the wide layout: the household's newest
+ * logs, with this device's unsent ones marked pending, under day headings.
+ * Each row opens its log, as on the Activity tab.
+ * @param {object} state  App state
+ * @returns {string}  HTML string
+ */
+export function renderHomeActivity(state) {
+  const activity = state.homeActivity || {};
+  const memberMap = historyMemberNames(state);
+  const rows = [...(state.pendingLogs || []), ...(activity.logs || [])]
+    .filter(log => log.completedAt)
+    .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt))
+    .slice(0, HOME_ACTIVITY_ROWS)
+    .map(log => historyRow(state, log, memberMap))
+    .filter(Boolean);
+  const today = localDateStr(new Date());
+  const dayNames = { [today]: "Today", [shiftDateStr(today, -1)]: "Yesterday" };
+  let body = "";
+  let day = "";
+  for (const row of rows) {
+    if (row.date !== day) {
+      day = row.date;
+      body += `<h3 class="hist-date-header">${escapeHTML(dayNames[day] || row.dayLabel)}</h3>`;
+    }
+    body += renderHistoryRow(row);
+  }
+  if (!body) {
+    body = activity.error
+      ? `<p class="home-activity-empty" role="status">${escapeHTML(activity.error)} <button type="button" class="btn btn-sm" data-action="retry-home-activity">Retry</button></p>`
+      : `<p class="home-activity-empty">${activity.loaded ? "Nothing logged in the last 7 days." : "Loading…"}</p>`;
+  }
+  return `<aside class="home-activity" aria-labelledby="home-activity-title">
+    <div class="home-activity-header">
+      <h2 id="home-activity-title">Recent activity</h2>
+      <a href="/activity" data-nav="activity">See all</a>
+    </div>
+    ${body}
+  </aside>`;
 }
 
 /**

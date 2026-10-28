@@ -11,7 +11,6 @@ async function registerHere(page, email = uniqueEmail('user')) {
   await page.waitForSelector('#register-form');
   await page.fill('#reg-email', email);
   await page.fill('#reg-password', 'test123456');
-  await page.fill('#reg-confirm', 'test123456');
   await page.click('button[type="submit"]');
   return email;
 }

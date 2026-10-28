@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,10 +19,18 @@ import (
 )
 
 func main() {
+	useJSONLogs(os.Stderr)
 	if err := run(config.Load, app.BuildServer, serve); err != nil {
 		reportStartupError(log.Default(), err)
 		os.Exit(1)
 	}
+}
+
+// useJSONLogs makes every log line one JSON object (time, level, msg and the
+// record's fields), so log ingestion parses each line. The log package's
+// output goes through the same handler: log.Printf text becomes msg.
+func useJSONLogs(w io.Writer) {
+	slog.SetDefault(slog.New(slog.NewJSONHandler(w, nil)))
 }
 
 // Connection and migration failures can carry host/user/database names and

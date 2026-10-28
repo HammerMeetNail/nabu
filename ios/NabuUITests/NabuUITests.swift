@@ -857,9 +857,22 @@ final class NabuUITests: XCTestCase {
     func testNavigateToRegister() throws {
         XCTAssertTrue(app.buttons["Create Account"].waitForExistence(timeout: 5))
         app.buttons["Create Account"].tap()
-        XCTAssertTrue(app.staticTexts["Create Account"].exists)
-        XCTAssertTrue(app.secureTextFields["Password (min 8 characters)"].exists)
-        XCTAssertTrue(app.secureTextFields["Confirm Password"].exists)
+        XCTAssertTrue(app.staticTexts["Create Account"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["One shared log for your home: feeds, meds, walks and chores."].exists)
+        XCTAssertTrue(app.secureTextFields["Password"].exists)
+        XCTAssertFalse(app.secureTextFields["Confirm Password"].exists, "one password, with Show/Hide")
+        XCTAssertTrue(app.buttons["Show password"].exists)
+    }
+
+    /// Apple and Google come before the email form on both screens.
+    func testAppleAndGoogleComeFirst() throws {
+        let apple = app.buttons["siwa-button"]
+        XCTAssertTrue(apple.waitForExistence(timeout: 5))
+        XCTAssertLessThan(apple.frame.minY, app.textFields.firstMatch.frame.minY)
+        XCTAssertLessThan(app.buttons["Continue with Google"].frame.minY, app.textFields.firstMatch.frame.minY)
+        app.buttons["Create Account"].tap()
+        XCTAssertTrue(app.staticTexts["Create Account"].waitForExistence(timeout: 5))
+        XCTAssertLessThan(app.buttons["siwa-button"].frame.minY, app.textFields.firstMatch.frame.minY)
     }
 
     // P5 exit gate: the Sign in with Apple button renders on both auth
@@ -893,7 +906,9 @@ final class NabuUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Sign In"].isEnabled)
     }
 
-    func testRegisterPasswordMismatch() throws {
+    /// The rule shows as it's met, Create Account waits for it, and Show
+    /// reveals what was typed in place of typing it twice.
+    func testRegisterPasswordRuleAndShow() throws {
         app.buttons["Create Account"].tap()
         XCTAssertTrue(app.staticTexts["Create Account"].waitForExistence(timeout: 5))
 
@@ -901,15 +916,30 @@ final class NabuUITests: XCTestCase {
         emailField.tap()
         emailField.typeText("test@test.com")
 
-        let passwordFields = app.secureTextFields
-        passwordFields.firstMatch.tap()
-        passwordFields.firstMatch.typeText("password123")
-
-        passwordFields.element(boundBy: 1).tap()
-        passwordFields.element(boundBy: 1).typeText("different")
-
-        let createButton = app.buttons["Create Account"]
+        let password = app.secureTextFields["Password"]
+        password.tap()
+        // iOS offers a strong password for a new account; decline it to type one.
+        if app.buttons["GenerateStrongPasswordButton"].waitForExistence(timeout: 3) {
+            app.buttons["xmark"].tap()
+        }
+        password.typeText("short")
+        let rule = app.descendants(matching: .any)["password-rule"]
+        XCTAssertEqual(rule.value as? String, "not met")
+        let createButton = app.buttons["register-submit-button"]
         XCTAssertFalse(createButton.isEnabled)
+
+        password.typeText("er-pass")
+        XCTAssertEqual(rule.value as? String, "met")
+        XCTAssertTrue(createButton.isEnabled)
+
+        app.buttons["Show password"].tap()
+        XCTAssertEqual(app.textFields["Password"].value as? String, "shorter-pass")
+        XCTAssertFalse(app.secureTextFields["Password"].exists)
+        // Showing it is not sending the form: iOS must not offer to save it.
+        XCTAssertFalse(app.sheets["Save Password?"].waitForExistence(timeout: 2))
+        app.buttons["Hide password"].tap()
+        XCTAssertTrue(app.secureTextFields["Password"].exists)
+        XCTAssertFalse(app.textFields["Password"].exists)
     }
 }
 
@@ -1318,8 +1348,12 @@ final class NabuHomeManageUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Feed Baby"].exists)
         XCTAssertTrue(app.staticTexts["Take Vitamins"].exists)
 
-        // All seeded chores are predefined → 5 "Default" badges.
+        // All seeded chores are predefined → 5 "Default" badges. Wait for
+        // every row's badge: in a full run, background work (iOS indexing the
+        // activities the app gives Siri) can leave the list filling in.
         let defaultBadges = app.staticTexts.matching(NSPredicate(format: "label == %@", "Default"))
+        let deadline = Date().addingTimeInterval(5)
+        while defaultBadges.count != 5, Date() < deadline { usleep(200_000) }
         XCTAssertEqual(defaultBadges.count, 5)
     }
 
@@ -2150,7 +2184,7 @@ final class NabuInviteUITests: XCTestCase {
         XCTAssertTrue(banner.label.contains("Dana O'Connor invited you to join"), banner.label)
         XCTAssertTrue(banner.label.contains("The O'Connors' home"), banner.label)
         app.buttons["Create Account"].tap()
-        XCTAssertTrue(app.secureTextFields["Confirm Password"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Create Account"].waitForExistence(timeout: 5))
         XCTAssertTrue(banner.waitForExistence(timeout: 5), "sign-up shows it too")
 
         // A dead link says so, and is dropped rather than joined after sign-up.
@@ -2176,5 +2210,65 @@ final class NabuInviteUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["invite-qr-link"].label, "http://localhost:9998/join?code=TESTHOME01")
         app.buttons["Done"].tap()
         XCTAssertTrue(show.waitForExistence(timeout: 5))
+    }
+}
+
+
+/// Runs "Log Activity" from the Shortcuts app against a real server: the
+/// household's activities are offered there, Siri's answer comes from the
+/// intent, and Home shows the log. Nabu stays in the background, because a
+/// test that kills it right after sign-up loses the session cookie iOS had
+/// not yet written to disk.
+final class NabuShortcutsEndToEndUITests: XCTestCase {
+    func testLogFromShortcuts() throws {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        let email = "e2e-intent-\(Int(Date().timeIntervalSince1970))-\(Int.random(in: 0...9999))@nabu.local"
+        app.launchArguments = ["-disableAnimations", "-resetState", "-nabuBaseURL", e2eServerURL,
+                               "-nabuAutoRegister", email, "test123456"]
+        app.launchForLocalTest()
+        let feed = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Feed Baby")).firstMatch
+        XCTAssertTrue(feed.waitForExistence(timeout: 30), "Home grid should appear with seeded chores")
+        XCTAssertTrue(feed.label.contains("never"), feed.label)
+
+        // The tiles follow the activities the app last gave Siri, which iOS
+        // applies late (about a minute after another run's household): until
+        // then a tile can name that household's activity, which this account
+        // can't log. Each try opens a fresh Shortcuts; between tries the app
+        // sends its activities again.
+        let shortcuts = XCUIApplication(bundleIdentifier: "com.apple.shortcuts")
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        var answered = false
+        for attempt in 0..<8 where !answered {
+            if attempt > 0 {
+                app.activate()
+                XCTAssertTrue(feed.waitForExistence(timeout: 10))
+            }
+            sleep(3)
+            shortcuts.terminate()
+            shortcuts.launch()
+            if shortcuts.buttons["Continue"].waitForExistence(timeout: 3) { shortcuts.buttons["Continue"].tap() }
+            let back = shortcuts.buttons["BackButton"]
+            if back.waitForExistence(timeout: 5), back.label == "Library" { back.tap() }
+            let nabu = shortcuts.buttons["Nabu"].firstMatch
+            guard nabu.waitForExistence(timeout: 10) else { continue }
+            nabu.tap()
+            // "Feed Baby" also names a Last Done tile further down; the Log
+            // shortcut's tiles come first.
+            let tile = shortcuts.staticTexts["Feed Baby"].firstMatch
+            guard tile.waitForExistence(timeout: 10) else { continue }
+            let run = shortcuts.buttons.matching(identifier: "plus.circle").allElementsBoundByIndex.first {
+                abs($0.frame.midX - tile.frame.midX) < 8 && $0.frame.maxY <= tile.frame.minY + 1
+            }
+            guard let run else { continue }
+            run.tap()
+            // The intent's answer, shown for Nabu.
+            answered = springboard.staticTexts["Logged Feed Baby."].waitForExistence(timeout: 10)
+        }
+        XCTAssertTrue(answered, "Siri's answer from the intent")
+
+        app.activate()
+        let logged = app.buttons.matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Feed Baby", "just now")).firstMatch
+        XCTAssertTrue(logged.waitForExistence(timeout: 30), "Home shows the log the shortcut made")
     }
 }

@@ -146,9 +146,28 @@ function renderOAuthButtons(googleOAuthEnabled, appleSignInEnabled) {
   return `<div class="auth-divider">or</div>` + appleButton + googleButton;
 }
 
+// The sign-in screens open with the logo and what Nabu is for.
+const AUTH_TAGLINE = "One shared log for your home: feeds, meds, walks and chores.";
+
+function renderAuthBrand(title) {
+  return `<div class="auth-brand">
+    <img class="auth-logo" src="/static/icons/icon.svg" alt="" width="56" height="56">
+    <h1 class="auth-title">${title}</h1>
+    <p class="auth-tagline">${AUTH_TAGLINE}</p>
+  </div>`;
+}
+
+// A password field with Show/Hide, which stands in for typing it twice.
+function renderPasswordField(id, { autocomplete, describedBy = "" }) {
+  return `<div class="password-field">
+      <input id="${id}" type="password" name="password" required minlength="8" maxlength="72" autocomplete="${autocomplete}"${describedBy ? ` aria-describedby="${describedBy}"` : ""}>
+      <button type="button" class="password-toggle" data-action="toggle-password" data-target="${id}" aria-pressed="false" aria-label="Show password">Show</button>
+    </div>`;
+}
+
 export function renderLoginView(googleOAuthEnabled, appleSignInEnabled) {
   return `<div class="auth-card">` +
-    `<h1 class="auth-title">Nabu</h1>` +
+    renderAuthBrand("Nabu") +
     `<form id="login-form" data-action="login">` +
     `  <div class="form-group">` +
     `    <label class="form-label" for="login-email">Email</label>` +
@@ -156,7 +175,7 @@ export function renderLoginView(googleOAuthEnabled, appleSignInEnabled) {
     `  </div>` +
     `  <div class="form-group">` +
     `    <label class="form-label" for="login-password">Password</label>` +
-    `    <input id="login-password" type="password" name="password" required minlength="8" autocomplete="current-password">` +
+    renderPasswordField("login-password", { autocomplete: "current-password" }) +
     `  </div>` +
     `  <div id="login-error" class="form-error hidden"></div>` +
     `  <button type="submit" class="btn btn-primary btn-block">Sign In</button>` +
@@ -175,7 +194,7 @@ export function renderLoginView(googleOAuthEnabled, appleSignInEnabled) {
 
 export function renderRegisterView(googleOAuthEnabled, appleSignInEnabled) {
   return `<div class="auth-card">
-    <h1 class="auth-title">Create Account</h1>
+    ${renderAuthBrand("Create Account")}
     <form id="register-form" data-action="register">
       <div class="form-group">
         <label class="form-label" for="reg-email">Email</label>
@@ -183,11 +202,8 @@ export function renderRegisterView(googleOAuthEnabled, appleSignInEnabled) {
       </div>
       <div class="form-group">
         <label class="form-label" for="reg-password">Password</label>
-        <input id="reg-password" type="password" name="password" required minlength="8">
-      </div>
-      <div class="form-group">
-        <label class="form-label" for="reg-confirm">Confirm Password</label>
-        <input id="reg-confirm" type="password" name="confirm" required minlength="8">
+        ${renderPasswordField("reg-password", { autocomplete: "new-password", describedBy: "reg-password-rules" })}
+        <p id="reg-password-rules" class="form-hint">At least 8 characters.</p>
       </div>
       <div id="register-error" class="form-error hidden"></div>
       <p id="register-status" class="text-secondary hidden" role="status"></p>

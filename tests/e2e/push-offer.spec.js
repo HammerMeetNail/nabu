@@ -71,7 +71,6 @@ async function signUpWithPlants(page, url) {
   await page.goto(`${url}/register`);
   await page.fill('#reg-email', email);
   await page.fill('#reg-password', 'test123456');
-  await page.fill('#reg-confirm', 'test123456');
   await page.click('button[type="submit"]');
   await expect(page.getByRole('heading', { name: 'Welcome to Nabu' })).toBeVisible({ timeout: 10000 });
   const csrf = (await page.context().cookies(url)).find(c => c.name === 'nabu_csrf')?.value || '';

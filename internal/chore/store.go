@@ -39,8 +39,9 @@ type Chore struct {
 	// visible to all household members; "admins" is visible only to owners and
 	// admins (private household tasks).
 	Visibility string `json:"visibility"`
-	// DefaultName is the name a pack gave this activity ("Feed Mongo"), which
-	// Restore default returns to. Empty means the template's name.
+	// DefaultName is the name a pack gave a named activity before those became
+	// custom tasks; Restore default returns such an activity to it. Packs no
+	// longer set it. Empty means the template's name.
 	DefaultName string `json:"-"`
 }
 

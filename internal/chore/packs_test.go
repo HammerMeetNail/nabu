@@ -35,31 +35,41 @@ func TestPlanPacksNamesActivitiesForEachBabyAndPet(t *testing.T) {
 	if got := names(planned); !reflect.DeepEqual(got, want) {
 		t.Fatalf("names = %q, want %q", got, want)
 	}
+	// A baby's or pet's own activity is a custom task; shared ones keep their
+	// template's key.
+	own := map[string]bool{"Feed Ada": true, "Change Ada": true, "Ada's Bath": true, "Feed Mongo": true, "Feed Roger": true}
 	byName := map[string]chore.Chore{}
 	for i, c := range planned {
 		byName[c.Name] = c
-		if !c.IsPredefined || c.SortOrder != i || c.DefaultName != c.Name || c.Visibility != chore.VisibilityHousehold || !c.FollowUpEnabled {
+		if c.SortOrder != i || c.DefaultName != "" || c.Visibility != chore.VisibilityHousehold || !c.FollowUpEnabled || len(c.Subjects) != 0 {
 			t.Fatalf("%s = %+v", c.Name, c)
 		}
+		if own[c.Name] == c.IsPredefined || (own[c.Name] && c.PredefinedKey != "") || (!own[c.Name] && c.PredefinedKey != c.Name) {
+			t.Fatalf("%s: predefined %v, key %q", c.Name, c.IsPredefined, c.PredefinedKey)
+		}
 	}
+	// Each starts with its template's fields.
 	feed := byName["Feed Ada"]
-	if feed.PredefinedKey != "Feed Baby" || feed.MetricType != chore.MetricAmount || feed.MetricUnit != "mL" || !reflect.DeepEqual(feed.IndicatorLabels, []string{"🍼 formula", "🤱 breast"}) {
+	if feed.MetricType != chore.MetricAmount || feed.MetricUnit != "mL" || !reflect.DeepEqual(feed.IndicatorLabels, []string{"🍼 formula", "🤱 breast"}) {
 		t.Fatalf("Feed Ada = %+v", feed)
 	}
-	if byName["Feed Roger"].PredefinedKey != "Feed Cats" || byName["Ada's Bath"].PredefinedKey != "Baby Bath" || byName["Feed Dog"].Icon != "🐶" {
+	if byName["Feed Roger"].Icon != "🐱" || byName["Feed Roger"].Category != byName["Feed Mongo"].Category || byName["Feed Dog"].Icon != "🐶" {
 		t.Fatalf("templates = %+v", byName)
 	}
 }
 
 func TestPlanPacksMedsFollowTheOtherPacks(t *testing.T) {
+	// Meds are named for a single baby or pet, as that one's own custom
+	// task; one activity for several asks which of them.
 	for _, tc := range []struct {
-		name  string
-		picks []chore.PackPick
-		meds  []string
+		name     string
+		picks    []chore.PackPick
+		meds     []string
+		subjects map[string][]string
 	}{
-		{"for you when no baby or pet", []chore.PackPick{{Key: "meds"}, {Key: "home"}}, []string{"Meds"}},
+		{"for you when no baby or pet", []chore.PackPick{{Key: "meds"}, {Key: "home"}}, []string{"Meds"}, nil},
 		{"named for a single baby or pet", []chore.PackPick{{Key: "meds"}, {Key: "baby", Names: []string{"Ada"}}, {Key: "cat", Names: []string{"Mongo", "Roger"}}, {Key: "dog"}},
-			[]string{"Ada's Meds", "Cat Meds", "Dog Meds"}},
+			[]string{"Ada's Meds", "Cat Meds", "Dog Meds"}, map[string][]string{"Cat Meds": {"Mongo", "Roger"}}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			planned, err := chore.PlanPacks(tc.picks)
@@ -68,11 +78,18 @@ func TestPlanPacksMedsFollowTheOtherPacks(t *testing.T) {
 			}
 			var meds []string
 			for _, c := range planned {
-				if strings.HasSuffix(c.PredefinedKey, "Meds") {
-					meds = append(meds, c.Name)
-					if c.MetricType != chore.MetricAmount || c.MetricUnit != "mg" {
-						t.Fatalf("%s = %+v", c.Name, c)
-					}
+				if !strings.HasSuffix(c.Name, "Meds") {
+					continue
+				}
+				meds = append(meds, c.Name)
+				if c.MetricType != chore.MetricAmount || c.MetricUnit != "mg" {
+					t.Fatalf("%s = %+v", c.Name, c)
+				}
+				if want := tc.subjects[c.Name]; !reflect.DeepEqual(c.Subjects, append([]string{}, want...)) {
+					t.Fatalf("%s subjects = %q, want %q", c.Name, c.Subjects, want)
+				}
+				if c.IsPredefined == strings.Contains(c.Name, "'s ") {
+					t.Fatalf("%s predefined = %v", c.Name, c.IsPredefined)
 				}
 			}
 			if !reflect.DeepEqual(meds, tc.meds) {
@@ -99,7 +116,7 @@ func TestPlanPacksCoversEveryPackWithoutSharingTemplates(t *testing.T) {
 		t.Fatalf("planned %d activities for %d packs", len(planned), len(chore.Packs))
 	}
 	for _, c := range planned {
-		if c.Name == "" || c.Icon == "" || c.PredefinedKey == "" || len([]rune(c.Name)) > 60 {
+		if c.Name == "" || c.Icon == "" || c.IsPredefined != (c.PredefinedKey != "") || len([]rune(c.Name)) > 60 {
 			t.Fatalf("activity %+v", c)
 		}
 	}
@@ -197,17 +214,21 @@ func TestAddPacksKeepsWhatTheHouseholdHas(t *testing.T) {
 			t.Fatalf("added %+v", added)
 		}
 
-		// Restore default returns a named activity to its pack name.
+		// A pet's own activity is a custom task: a rename sticks, and there is
+		// no template to restore it to.
 		mongo := list[0]
+		if mongo.Name != "Feed Mongo" || mongo.IsPredefined || mongo.PredefinedKey != "" || mongo.Icon != "🐱" {
+			t.Fatalf("Feed Mongo = %+v", mongo)
+		}
 		if err := svc.UpdateChore(ctx, mongo.ID, 1, "Dinner", "🍣", mongo.Color, mongo.Category, nil, nil, nil, nil, nil, nil); err != nil {
 			t.Fatal(err)
 		}
-		if err := svc.RestoreDefaultChore(ctx, mongo.ID, 1); err != nil {
-			t.Fatal(err)
+		if err := svc.RestoreDefaultChore(ctx, mongo.ID, 1); err == nil {
+			t.Fatal("restored a custom task to a template")
 		}
-		restored, err := svc.GetChore(ctx, mongo.ID)
-		if err != nil || restored.Name != "Feed Mongo" || restored.Icon != "🐱" || restored.PredefinedKey != "Feed Cats" {
-			t.Fatalf("restored = %+v, %v", restored, err)
+		renamed, err := svc.GetChore(ctx, mongo.ID)
+		if err != nil || renamed.Name != "Dinner" || renamed.Icon != "🍣" {
+			t.Fatalf("renamed = %+v, %v", renamed, err)
 		}
 	})
 }

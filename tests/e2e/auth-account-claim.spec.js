@@ -11,7 +11,6 @@ async function register(page, email) {
   await page.goto("/register");
   await page.locator("#reg-email").fill(email);
   await page.locator("#reg-password").fill("registrant-password");
-  await page.locator("#reg-confirm").fill("registrant-password");
   await page.locator("#register-form button[type=submit]").click();
   await expect(page.locator("#hh-indicator")).toBeVisible();
 }
@@ -88,7 +87,6 @@ test("registration retry gives a recovery message for an already committed email
     await retry.goto("/register");
     await retry.locator("#reg-email").fill(email);
     await retry.locator("#reg-password").fill("registrant-password");
-    await retry.locator("#reg-confirm").fill("registrant-password");
     await retry.locator("#register-form button[type=submit]").click();
     await expect(retry.locator("#register-status")).toContainText("sign in");
     await expect(retry.locator("#register-error")).toBeHidden();

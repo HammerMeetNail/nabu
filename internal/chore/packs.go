@@ -13,10 +13,12 @@ import (
 // the full set that POST /api/chores/seed-defaults seeds, which is what
 // households created before packs received.
 //
-// Every pack activity is a predefined template whose name is the activity's
-// predefined_key, so a change to a template's fields still reaches existing
-// households through an UPDATE migration keyed on predefined_key. A template
-// added to a pack needs no migration: households get it with the pack.
+// A shared pack activity ("Clean Litter Box") is a predefined template whose
+// name is its predefined_key, so a change to a template's fields reaches
+// existing households through an UPDATE migration keyed on predefined_key.
+// A baby's or pet's own activity ("Feed Mongo") is a custom task that starts
+// with its template's fields; no template change alters it. A template added
+// to a pack needs no migration: households get it with the pack.
 
 // PackActivity is one activity a pack seeds.
 type PackActivity struct {
@@ -163,20 +165,27 @@ func PlanPacks(picks []PackPick) ([]Chore, error) {
 		return nil, err
 	}
 	var planned []Chore
-	add := func(template, name string) {
+	// A pet's or baby's own activity ("Feed Mongo") is a custom task that
+	// starts with its template's fields; no later template change reaches it.
+	// Shared ones ("Clean Litter Box") keep their template's key. subjects
+	// are the names a shared activity asks "who?" between.
+	add := func(template, name string, own bool, subjects []string) {
 		c, ok := templateFor(template)
 		if !ok {
 			panic("chore: pack template not found: " + template)
 		}
 		c.Name = name
-		c.IsPredefined = true
-		c.PredefinedKey = template
-		c.DefaultName = name
+		c.IsPredefined = !own
+		c.PredefinedKey = ""
+		if !own {
+			c.PredefinedKey = template
+		}
 		c.SortOrder = len(planned)
 		c.FollowUpEnabled = true
 		c.Visibility = VisibilityHousehold
 		c.IndicatorLabels = append([]string{}, c.IndicatorLabels...)
 		c.IndicatorDefaults = append([]string{}, c.IndicatorDefaults...)
+		c.Subjects = append([]string{}, subjects...)
 		c.NormalizeMetric()
 		planned = append(planned, c)
 	}
@@ -194,23 +203,24 @@ func PlanPacks(picks []PackPick) ([]Chore, error) {
 				}
 				anyFor = true
 				if len(owners) == 1 {
-					add(m.template, owners[0]+"'s Meds")
+					add(m.template, owners[0]+"'s Meds", true, nil)
 				} else {
-					add(m.template, m.template)
+					// One activity for the group asks which of them.
+					add(m.template, m.template, false, owners)
 				}
 			}
 			if !anyFor {
-				add("Meds", "Meds")
+				add("Meds", "Meds", false, nil)
 			}
 			continue
 		}
 		for _, a := range pack.Activities {
 			if a.PerName == "" || len(given) == 0 {
-				add(a.Template, a.Template)
+				add(a.Template, a.Template, false, nil)
 				continue
 			}
 			for _, name := range given {
-				add(a.Template, fmt.Sprintf(a.PerName, name))
+				add(a.Template, fmt.Sprintf(a.PerName, name), true, nil)
 			}
 		}
 	}
