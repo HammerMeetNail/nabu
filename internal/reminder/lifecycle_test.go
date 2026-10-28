@@ -2,6 +2,7 @@ package reminder
 
 import (
 	"context"
+	"errors"
 	"github.com/HammerMeetNail/nabu/internal/testsync"
 	"sync"
 	"testing"
@@ -10,29 +11,45 @@ import (
 	"github.com/HammerMeetNail/nabu/internal/chore"
 	"github.com/HammerMeetNail/nabu/internal/household"
 	"github.com/HammerMeetNail/nabu/internal/notification"
+	"github.com/HammerMeetNail/nabu/internal/push"
 	"github.com/HammerMeetNail/nabu/internal/schedule"
 	"github.com/HammerMeetNail/nabu/internal/userprefs"
 )
 
-type countPush struct{ calls int }
-
-func (p *countPush) SendPushToUser(context.Context, int64, string, string) error {
-	p.calls++
-	return nil
+// queuedPushes is the reminders a tick queued for the push workers.
+type queuedPushes struct {
+	jobs  *push.MemoryJobStore
+	guard push.Guard
 }
 
-type pausedDedup struct {
+func (p *queuedPushes) count() int { return len(p.jobs.Pending()) }
+
+// delivered counts the queued reminders a push worker would send: those
+// whose recipient may still see them when its guard checks.
+func (p *queuedPushes) delivered(t *testing.T) int {
+	t.Helper()
+	sent := 0
+	for _, job := range p.jobs.Pending() {
+		err := p.guard(context.Background(), job, func() error { sent++; return nil })
+		if err != nil && !errors.Is(err, push.ErrNoAccess) {
+			t.Fatal(err)
+		}
+	}
+	return sent
+}
+
+type pausedClaim struct {
 	Store
 	entered, resume chan struct{}
 	once            sync.Once
 }
 
-func (s *pausedDedup) HasReminder(ctx context.Context, sch, uid int64, date string) (bool, error) {
+func (s *pausedClaim) ClaimReminder(ctx context.Context, sch, uid int64, date string, job push.Job) (bool, error) {
 	s.once.Do(func() { close(s.entered); testsync.Pause(ctx, s.resume) })
-	return s.Store.HasReminder(ctx, sch, uid, date)
+	return s.Store.ClaimReminder(ctx, sch, uid, date, job)
 }
 
-func reminderFixture(t *testing.T, now time.Time, zone string) (*Scheduler, *household.MemoryStore, *countPush, schedule.ChoreSchedule) {
+func reminderFixture(t *testing.T, now time.Time, zone string) (*Scheduler, *household.MemoryStore, *queuedPushes, schedule.ChoreSchedule) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -59,10 +76,11 @@ func reminderFixture(t *testing.T, now time.Time, zone string) (*Scheduler, *hou
 	if err := prefs.UpdateReminderPreferences(ctx, notification.ReminderPreference{UserID: uid, PushEnabled: true, Timezone: zone}); err != nil {
 		t.Fatal(err)
 	}
-	push := &countPush{}
-	s := NewScheduler(NewMemoryStore(), schedules, schedule.NewService(), prefs, chores, hh, userprefs.NewMemoryStore(), push)
+	jobs := push.NewMemoryJobStore()
+	queued := &queuedPushes{jobs: jobs, guard: notification.NewService(prefs).WithAuthorization(hh, chores).PushGuard()}
+	s := NewScheduler(NewMemoryStore().WithJobs(jobs), schedules, schedule.NewService(), prefs, chores, hh, userprefs.NewMemoryStore())
 	s.now = func() time.Time { return now }
-	return s, hh, push, sch
+	return s, hh, queued, sch
 }
 
 func TestRemovedSharedAssignmentNeverReminds(t *testing.T) {
@@ -71,9 +89,9 @@ func TestRemovedSharedAssignmentNeverReminds(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 			defer cancel()
 			now := time.Date(2026, 9, 6, 20, 30, 0, 0, time.UTC)
-			s, hh, push, sch := reminderFixture(t, now, "UTC")
+			s, hh, queued, sch := reminderFixture(t, now, "UTC")
 			if race {
-				barrier := &pausedDedup{Store: s.store, entered: make(chan struct{}), resume: make(chan struct{})}
+				barrier := &pausedClaim{Store: s.store, entered: make(chan struct{}), resume: make(chan struct{})}
 				s.store = barrier
 				done := make(chan error, 1)
 				go func() { done <- s.tick(ctx) }()
@@ -93,7 +111,7 @@ func TestRemovedSharedAssignmentNeverReminds(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if push.calls != 0 {
+			if queued.delivered(t) != 0 {
 				t.Fatal("former member received shared chore reminder")
 			}
 		})
@@ -120,7 +138,7 @@ func TestRecipientLocalRecurrence(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			s, _, push, sch := reminderFixture(t, instant.In(loc), tc.zone)
+			s, _, queued, sch := reminderFixture(t, instant.In(loc), tc.zone)
 			sch.FrequencyType = "weekly"
 			sch.DaysOfWeek = []int{tc.weekday}
 			if _, err := s.schedStore.Update(context.Background(), sch); err != nil {
@@ -129,8 +147,8 @@ func TestRecipientLocalRecurrence(t *testing.T) {
 			if err := s.tick(context.Background()); err != nil {
 				t.Fatal(err)
 			}
-			if push.calls != tc.want {
-				t.Fatalf("calls=%d want=%d", push.calls, tc.want)
+			if queued.count() != tc.want {
+				t.Fatalf("queued=%d want=%d", queued.count(), tc.want)
 			}
 		})
 	}

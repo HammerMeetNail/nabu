@@ -16,6 +16,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/HammerMeetNail/nabu/internal/push"
 )
 
 func testP8(t *testing.T) string {
@@ -154,6 +156,22 @@ func newTestClient(t *testing.T, store Store, fake *fakeAPNs) *Client {
 	return client
 }
 
+// deliverAll sends one message to each of the user's devices, as a
+// push.Deliverer does, and returns each outcome.
+func deliverAll(t *testing.T, client *Client, m push.Message) []push.Outcome {
+	t.Helper()
+	ctx := context.Background()
+	targets, err := client.Targets(ctx, m.UserID)
+	if err != nil {
+		t.Fatalf("Targets: %v", err)
+	}
+	var outcomes []push.Outcome
+	for _, target := range targets {
+		outcomes = append(outcomes, client.Deliver(ctx, target, m))
+	}
+	return outcomes
+}
+
 func TestClient_SendsAlertWithHeadersAndData(t *testing.T) {
 	store := NewMemoryStore()
 	ctx := context.Background()
@@ -162,11 +180,11 @@ func TestClient_SendsAlertWithHeadersAndData(t *testing.T) {
 	fake := &fakeAPNs{}
 	client := newTestClient(t, store, fake)
 
-	err := client.SendPushToUserWithData(ctx, 1, "Reminder", "Feed Baby", map[string]any{
+	outcomes := deliverAll(t, client, push.Message{UserID: 1, Title: "Reminder", Body: "Feed Baby", Data: map[string]any{
 		"choreId": 5, "type": "schedule_reminder", "category": "NABU_REMINDER",
-	})
-	if err != nil {
-		t.Fatalf("SendPushToUserWithData: %v", err)
+	}, CollapseID: "nabu-7"})
+	if len(outcomes) != 1 || outcomes[0] != push.Delivered {
+		t.Fatalf("outcomes = %v, want one Delivered", outcomes)
 	}
 
 	if len(fake.requests) != 1 {
@@ -181,6 +199,9 @@ func TestClient_SendsAlertWithHeadersAndData(t *testing.T) {
 	}
 	if req.headers.Get("apns-push-type") != "alert" {
 		t.Fatalf("apns-push-type = %q", req.headers.Get("apns-push-type"))
+	}
+	if req.headers.Get("apns-collapse-id") != "nabu-7" {
+		t.Fatalf("apns-collapse-id = %q", req.headers.Get("apns-collapse-id"))
 	}
 	if !strings.HasPrefix(req.headers.Get("Authorization"), "bearer ") {
 		t.Fatalf("Authorization = %q", req.headers.Get("Authorization"))
@@ -217,8 +238,13 @@ func TestClient_PrunesTerminallyInvalidTokens(t *testing.T) {
 	}}
 	client := newTestClient(t, store, fake)
 
-	if err := client.SendPushToUser(ctx, 1, "t", "b"); err != nil {
-		t.Fatalf("SendPushToUser: %v", err)
+	outcomes := map[push.Outcome]int{}
+	for _, outcome := range deliverAll(t, client, push.Message{UserID: 1, Title: "t", Body: "b"}) {
+		outcomes[outcome]++
+	}
+	// Two pruned, one delivered, one worth a retry.
+	if outcomes[push.GiveUp] != 2 || outcomes[push.Delivered] != 1 || outcomes[push.Retry] != 1 {
+		t.Fatalf("outcomes = %v", outcomes)
 	}
 
 	devices, _ := store.DevicesForUser(ctx, 1)
@@ -238,8 +264,8 @@ func TestClient_NoDevicesNoRequests(t *testing.T) {
 	fake := &fakeAPNs{}
 	client := newTestClient(t, NewMemoryStore(), fake)
 
-	if err := client.SendPushToUser(context.Background(), 42, "t", "b"); err != nil {
-		t.Fatalf("SendPushToUser: %v", err)
+	if outcomes := deliverAll(t, client, push.Message{UserID: 42, Title: "t", Body: "b"}); len(outcomes) != 0 {
+		t.Fatalf("outcomes = %v, want none", outcomes)
 	}
 	if len(fake.requests) != 0 {
 		t.Fatalf("requests = %d, want 0", len(fake.requests))

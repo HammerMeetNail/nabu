@@ -2,7 +2,12 @@ package reminder
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"testing"
+	"time"
+
+	"github.com/HammerMeetNail/nabu/internal/push"
 )
 
 func TestMemoryStore_ChoreReminderPrefs(t *testing.T) {
@@ -48,53 +53,69 @@ func TestMemoryStore_ChoreReminderPrefs(t *testing.T) {
 }
 
 func TestMemoryStore_ReminderDedup(t *testing.T) {
-	store := NewMemoryStore()
+	jobs := push.NewMemoryJobStore()
+	store := NewMemoryStore().WithJobs(jobs)
 	ctx := context.Background()
-
-	exists, err := store.HasReminder(ctx, 1, 100, "2025-01-01")
-	if err != nil {
-		t.Fatalf("HasReminder: %v", err)
-	}
-	if exists {
-		t.Error("expected reminder not to exist yet")
-	}
-
-	err = store.RecordReminder(ctx, 1, 100, "2025-01-01")
-	if err != nil {
-		t.Fatalf("RecordReminder: %v", err)
+	claim := func(scheduleID, userID int64, date string) bool {
+		t.Helper()
+		claimed, err := store.ClaimReminder(ctx, scheduleID, userID, date, push.Job{UserID: userID, HouseholdID: 1,
+			DedupeKey: fmt.Sprintf("%d:%d:%s", scheduleID, userID, date), ExpiresAt: time.Now().Add(time.Hour)})
+		if err != nil {
+			t.Fatalf("ClaimReminder: %v", err)
+		}
+		return claimed
 	}
 
-	exists, err = store.HasReminder(ctx, 1, 100, "2025-01-01")
-	if err != nil {
-		t.Fatalf("HasReminder after record: %v", err)
+	if !claim(1, 100, "2025-01-01") {
+		t.Error("first claim refused")
 	}
-	if !exists {
-		t.Error("expected reminder to exist after record")
+	if claim(1, 100, "2025-01-01") {
+		t.Error("second claim of the same reminder accepted")
 	}
+	if !claim(1, 100, "2025-01-02") {
+		t.Error("claim for a different date refused")
+	}
+	if !claim(2, 100, "2025-01-01") {
+		t.Error("claim for a different schedule refused")
+	}
+	if got := len(jobs.Pending()); got != 3 {
+		t.Errorf("queued %d pushes, want one per claimed reminder", got)
+	}
+}
 
-	exists, err = store.HasReminder(ctx, 1, 100, "2025-01-02")
-	if err != nil {
-		t.Fatalf("HasReminder different date: %v", err)
-	}
-	if exists {
-		t.Error("expected reminder not to exist for different date")
-	}
+// failingJobs refuses every job, as an unavailable database would.
+type failingJobs struct{ push.JobStore }
 
-	exists, err = store.HasReminder(ctx, 2, 100, "2025-01-01")
-	if err != nil {
-		t.Fatalf("HasReminder different user: %v", err)
+func (failingJobs) EnqueuePush(context.Context, push.Job) error {
+	return errors.New("database unavailable")
+}
+
+func TestMemoryStore_FailedQueueLeavesReminderUnclaimed(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemoryStore().WithJobs(failingJobs{})
+	if claimed, err := store.ClaimReminder(ctx, 1, 100, "2025-01-01", push.Job{}); err == nil || claimed {
+		t.Fatalf("claimed=%v err=%v", claimed, err)
 	}
-	if exists {
-		t.Error("expected reminder not to exist for different user")
+	store.WithJobs(push.NewMemoryJobStore())
+	if claimed, err := store.ClaimReminder(ctx, 1, 100, "2025-01-01", push.Job{ExpiresAt: time.Now().Add(time.Hour)}); err != nil || !claimed {
+		t.Fatalf("retry claimed=%v err=%v", claimed, err)
 	}
 }
 
 func TestMemoryStore_PurgeOldReminders(t *testing.T) {
 	store := NewMemoryStore()
 	ctx := context.Background()
+	claim := func(date string) bool {
+		t.Helper()
+		claimed, err := store.ClaimReminder(ctx, 1, 100, date, push.Job{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return claimed
+	}
 
-	_ = store.RecordReminder(ctx, 1, 100, "2020-01-01")
-	_ = store.RecordReminder(ctx, 1, 100, "2099-01-01")
+	claim("2020-01-01")
+	claim("2099-01-01")
 
 	n, err := store.PurgeOldReminders(ctx)
 	if err != nil {
@@ -103,14 +124,10 @@ func TestMemoryStore_PurgeOldReminders(t *testing.T) {
 	if n != 1 {
 		t.Errorf("expected 1 purged, got %d", n)
 	}
-
-	exists, _ := store.HasReminder(ctx, 1, 100, "2020-01-01")
-	if exists {
+	if !claim("2020-01-01") {
 		t.Error("old reminder should have been purged")
 	}
-
-	exists, _ = store.HasReminder(ctx, 1, 100, "2099-01-01")
-	if !exists {
+	if claim("2099-01-01") {
 		t.Error("future reminder should remain")
 	}
 }

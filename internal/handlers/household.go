@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/household"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
@@ -15,24 +14,18 @@ import (
 )
 
 type HouseholdHandler struct {
-	service        *household.Service
-	notifService   *notification.Service
-	householdStore household.Store
-	background     context.Context
-	dispatch       func(func())
+	service      *household.Service
+	notifService *notification.Service
 }
 
 func NewHouseholdHandler(service *household.Service) *HouseholdHandler {
-	return &HouseholdHandler{service: service, background: context.Background(), dispatch: func(f func()) { f() }}
+	return &HouseholdHandler{service: service}
 }
 
-func (h *HouseholdHandler) SetBackground(ctx context.Context, dispatch func(func())) {
-	h.background, h.dispatch = ctx, dispatch
-}
-
-func (h *HouseholdHandler) WithNotification(notifService *notification.Service, householdStore household.Store) {
+// WithNotification attaches the service that queues a join's notification
+// for the household's other members.
+func (h *HouseholdHandler) WithNotification(notifService *notification.Service) {
 	h.notifService = notifService
-	h.householdStore = householdStore
 }
 
 func (h *HouseholdHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -228,30 +221,14 @@ func (h *HouseholdHandler) Join(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fire-and-forget: notify other household members.
-	if h.notifService != nil && h.householdStore != nil {
-		hhID := hh.ID
-		joinerID := user.ID
+	// Notify the other household members.
+	if h.notifService != nil {
 		joinerName := user.DisplayName
 		if joinerName == "" {
 			joinerName = user.Email
 		}
-		householdName := hh.Name
-		h.dispatch(func() {
-			ctx, cancel := context.WithTimeout(h.background, 20*time.Second)
-			defer cancel()
-			members, err := h.householdStore.GetMembers(ctx, hhID)
-			if err != nil {
-				return
-			}
-			var mi []notification.MemberInfo
-			for _, m := range members {
-				if m.Suspended {
-					continue
-				}
-				mi = append(mi, notification.MemberInfo{UserID: m.UserID, DisplayName: m.DisplayName})
-			}
-			h.notifService.NotifyHouseholdJoined(ctx, mi, joinerID, joinerName, householdName, notification.Scope{HouseholdID: hhID})
+		queueNotification(w, r, func(ctx context.Context) error {
+			return h.notifService.EnqueueHouseholdJoined(ctx, hh.ID, user.ID, joinerName, hh.Name)
 		})
 	}
 

@@ -13,6 +13,7 @@ import (
 	"github.com/HammerMeetNail/nabu/internal/household"
 	chorelog "github.com/HammerMeetNail/nabu/internal/log"
 	"github.com/HammerMeetNail/nabu/internal/mail"
+	"github.com/HammerMeetNail/nabu/internal/notification"
 )
 
 func setupHouseholdTest(t *testing.T) (*HouseholdHandler, string, *auth.Service) {
@@ -288,7 +289,9 @@ func TestHouseholdJoin(t *testing.T) {
 	handler2 := NewHouseholdHandler(householdService2)
 
 	// The invite lookup is against owner's service — reuse ownerHandler
-	_, session2 := quickRegister(ownerAuth, "bob@example.com")
+	bob, session2 := quickRegister(ownerAuth, "bob@example.com")
+	events := notification.NewMemoryEventStore()
+	ownerHandler.WithNotification(notification.NewService(notification.NewMemoryStore()).WithEvents(events, nil))
 
 	joinReq := withUser(httptest.NewRequest(http.MethodPost, "/api/household/join", strings.NewReader(
 		`{"inviteCode":"`+inviteCode+`"}`,
@@ -300,6 +303,16 @@ func TestHouseholdJoin(t *testing.T) {
 	_ = handler2 // created but used only to show the pattern
 	if joinRec.Code != http.StatusOK {
 		t.Fatalf("Join: status = %d, body=%s", joinRec.Code, joinRec.Body.String())
+	}
+	// The join's notification is queued before the response.
+	pending := events.Pending()
+	if len(pending) != 1 {
+		t.Fatalf("queued %d notification events, want 1", len(pending))
+	}
+	ev := pending[0]
+	if ev.Kind != notification.EventHouseholdJoined || ev.SubjectID != bob.ID || ev.ActorID != bob.ID ||
+		ev.Title != "New Member" || ev.Body != "bob joined My Home" {
+		t.Fatalf("event = %+v", ev)
 	}
 }
 

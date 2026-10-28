@@ -9,13 +9,6 @@ import (
 	"github.com/HammerMeetNail/nabu/internal/household"
 )
 
-type recipientPush struct{ users []int64 }
-
-func (p *recipientPush) SendPushToUser(_ context.Context, uid int64, _, _ string) error {
-	p.users = append(p.users, uid)
-	return nil
-}
-
 // A suspended member keeps their membership row, so both the candidate query
 // and the delivery membership check must exclude it explicitly.
 func TestPostgresSchedulerSkipsSuspendedMembers(t *testing.T) {
@@ -26,14 +19,28 @@ func TestPostgresSchedulerSkipsSuspendedMembers(t *testing.T) {
 	if err := household.NewPostgresStore(db).SetMemberSuspended(context.Background(), 1, 2, true); err != nil {
 		t.Fatal(err)
 	}
-	push := &recipientPush{}
-	s := postgresScheduler(db, push)
+	s := postgresScheduler(db)
 	s.now = func() time.Time { return time.Date(2026, 9, 10, 12, 0, 0, 0, time.UTC) }
 	if err := s.tick(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(push.users) != 1 || push.users[0] != 1 {
-		t.Fatalf("reminder recipients = %v, want only the active owner [1]", push.users)
+	var recipients []int64
+	rows, err := db.Query(`SELECT user_id FROM push_jobs ORDER BY user_id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var uid int64
+		if err := rows.Scan(&uid); err != nil {
+			t.Fatal(err)
+		}
+		recipients = append(recipients, uid)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if len(recipients) != 1 || recipients[0] != 1 {
+		t.Fatalf("reminder recipients = %v, want only the active owner [1]", recipients)
 	}
 	var sent int
 	if err := db.QueryRow(`SELECT count(*) FROM schedule_reminders WHERE user_id=2`).Scan(&sent); err != nil {

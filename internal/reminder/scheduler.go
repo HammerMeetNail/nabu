@@ -20,21 +20,21 @@ import (
 const tickInterval = 30 * time.Second
 
 type Scheduler struct {
-	store                        Store
-	schedStore                   schedule.Store
-	schedSvc                     *schedule.Service
-	notifStore                   notification.Store
-	choreStore                   chore.Store
-	hhStore                      household.Store
-	userPrefs                    userprefs.Store
-	pushSender                   notification.PushSender
-	leader                       LeaderLock
-	now                          func() time.Time
-	cursor                       candidateCursor
-	queryCount                   func() uint64
-	observe                      func(TickReport)
-	tickTimeout                  time.Duration
-	maxCandidates, maxDeliveries int
+	store                       Store
+	schedStore                  schedule.Store
+	schedSvc                    *schedule.Service
+	notifStore                  notification.Store
+	choreStore                  chore.Store
+	hhStore                     household.Store
+	userPrefs                   userprefs.Store
+	wakePushes                  func()
+	leader                      LeaderLock
+	now                         func() time.Time
+	cursor                      candidateCursor
+	queryCount                  func() uint64
+	observe                     func(TickReport)
+	tickTimeout                 time.Duration
+	maxCandidates, maxReminders int
 }
 
 // SetLeaderLock configures an optional single-runner guard. When set, the
@@ -53,7 +53,6 @@ func NewScheduler(
 	choreStore chore.Store,
 	hhStore household.Store,
 	userPrefs userprefs.Store,
-	pushSender notification.PushSender,
 ) *Scheduler {
 	return &Scheduler{
 		store:      store,
@@ -63,9 +62,12 @@ func NewScheduler(
 		choreStore: choreStore,
 		hhStore:    hhStore,
 		userPrefs:  userPrefs,
-		pushSender: pushSender,
 	}
 }
+
+// SetPushWake tells the push workers that a reminder is queued. The store
+// queues it (Store.ClaimReminder).
+func (s *Scheduler) SetPushWake(wake func()) { s.wakePushes = wake }
 
 func (s *Scheduler) Start(ctx context.Context) {
 	log.Printf("reminder: scheduler started (interval=%v)", tickInterval)

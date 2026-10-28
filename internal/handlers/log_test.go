@@ -361,7 +361,8 @@ func TestLogCreateWithNotification_FanOut(t *testing.T) {
 	choreService := chore.NewService(choreStore)
 
 	notifStore := notification.NewMemoryStore()
-	notifService := notification.NewService(notifStore)
+	events := notification.NewMemoryEventStore()
+	notifService := notification.NewService(notifStore).WithEvents(events, nil)
 
 	handler := NewLogHandler(logService)
 	handler.WithNotification(notifService, choreStore, householdStore)
@@ -389,8 +390,16 @@ func TestLogCreateWithNotification_FanOut(t *testing.T) {
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201, body=%s", rec.Code, rec.Body.String())
 	}
-	// Give goroutine time to run
-	t.Log("fan-out goroutine launched; log created successfully")
+	// The log's notification is queued before the response: for everyone but
+	// Alice, who logged it for herself.
+	pending := events.Pending()
+	if len(pending) != 1 {
+		t.Fatalf("queued %d notification events, want 1", len(pending))
+	}
+	ev := pending[0]
+	if ev.Kind != notification.EventChoreLogged || ev.HouseholdID != 1 || ev.ChoreID != 1 || ev.SubjectID != user.ID || ev.ActorID != user.ID {
+		t.Fatalf("event = %+v", ev)
+	}
 }
 
 func TestLogCreateNoHousehold(t *testing.T) {

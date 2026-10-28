@@ -170,9 +170,11 @@ topology. A local proxy-chain test does not establish production network behavio
 Every app connection starts with `statement_timeout` 30s and `lock_timeout` 15s
 (`internal/database/open.go`). A runaway query or a stuck lock wait fails its
 own request with a server error instead of holding a pooled connection while
-others queue behind it. The lock timeout stays above the 10s a push send may
-hold its subscription and session rows, so a sign-out waiting behind a send
-still succeeds. Migrations run without these, as before: each migration's
+others queue behind it. The lock timeout stays above the 10s one push send
+may hold its recipient's membership and its device's registration and session,
+so a removal or sign-out waiting behind a send still succeeds. Each send is
+guarded on its own (plan 5.2), so no wait is longer than one send. Migrations
+run without these, as before: each migration's
 transaction lifts both, and a migration may still set its own (048, 049 and 051
 do). The migration lock wait is not bounded either, so an instance waits for
 another instance's migration however long it takes.
@@ -235,5 +237,22 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_chore_reminder_prefs_chore ON chore_
 `internal/database/schema_indexes_test.go` fails when a foreign key has no
 index leading with its columns, or when two indexes repeat each other, so a
 new foreign key needs its index in the same migration.
+
+Migration 059 adds the notification work tables (`notification_events`,
+`push_jobs`), which start empty, and a `dedupe_key` column on `notifications`
+with a unique index over the rows that have one. Building that index scans
+`notifications` while holding off writes to it. On an installation where the
+table is large, add the column and prebuild the index first, one statement at
+a time:
+
+```sql
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS dedupe_key TEXT;
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS idx_notifications_dedupe ON notifications (dedupe_key) WHERE dedupe_key IS NOT NULL;
+```
+
+The previous app runs on the new schema, as rollback needs: it ignores the new
+tables and column. It doesn't send work queued before a rollback; a later
+deploy of this app drops what expired in the meantime (15 minutes after it was
+queued) and sends the rest.
 
 Database recovery and major-version changes use the separate [recovery runbook](recovery-runbook.md). Application deployments copy recovery tools but never apply the prepared PostgreSQL definition, replace `/etc/nabu` recovery secrets, or enable WAL timers automatically. Verify a recent isolated restore and working alert/deadman receiver before adopting that configuration.

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/HammerMeetNail/nabu/internal/diagnostics"
+	"github.com/HammerMeetNail/nabu/internal/push"
 	"io"
 	"log"
 	"net/http"
@@ -16,9 +17,8 @@ const (
 	hostProduction = "https://api.push.apple.com"
 )
 
-// Client sends alert pushes to a user's registered devices. It implements
-// the same SendPushToUser / SendPushToUserWithData shape as the Web Push
-// service so the two can sit behind one fan-out sender.
+// Client sends alert pushes to a user's registered devices. It is a
+// push.Channel, delivering the same jobs as the Web Push service.
 type Client struct {
 	store  Store
 	signer *ProviderTokenSigner
@@ -52,55 +52,72 @@ func (c *Client) host(environment string) string {
 	return hostProduction
 }
 
-func (c *Client) SendPushToUser(ctx context.Context, userID int64, title, body string) error {
-	return c.SendPushToUserWithData(ctx, userID, title, body, nil)
-}
+type deviceTarget struct{ device Device }
 
-// SendPushToUserWithData delivers an alert push to every device the user has
-// registered. Extra data fields (choreId, type, …) ride alongside the aps
-// dictionary for the client's notification handling; a "category" field maps
-// to aps.category so action buttons can attach. Per-device errors are logged,
-// not returned, so one dead token doesn't block the rest; terminally invalid
-// tokens are pruned.
-func (c *Client) SendPushToUserWithData(ctx context.Context, userID int64, title, body string, data map[string]any) error {
+func (t deviceTarget) Key() string { return "apns:" + t.device.RegistrationID }
+
+// Targets lists the devices the user has registered. Without APNs settings
+// there are none.
+func (c *Client) Targets(ctx context.Context, userID int64) ([]push.Target, error) {
 	if c == nil || c.signer == nil {
-		return nil // APNs not configured
+		return nil, nil
 	}
 	devices, err := c.store.DevicesForUser(ctx, userID)
 	if err != nil {
 		log.Printf("apns: devices user=%d error_class=%s", userID, diagnostics.ErrorClass(err))
-		return err
+		return nil, err
 	}
-	if len(devices) == 0 {
-		return nil
+	targets := make([]push.Target, 0, len(devices))
+	for _, device := range devices {
+		targets = append(targets, deviceTarget{device})
 	}
+	return targets, nil
+}
 
-	fields := make(map[string]any, len(data)+1)
-	for k, v := range data {
+// Deliver sends an alert push to one device. Extra data fields (choreId,
+// type, …) ride alongside the aps dictionary for the client's notification
+// handling; a "category" field maps to aps.category so action buttons can
+// attach. A terminally invalid token is pruned.
+func (c *Client) Deliver(ctx context.Context, target push.Target, m push.Message) push.Outcome {
+	t, ok := target.(deviceTarget)
+	if !ok || c == nil || c.signer == nil {
+		return push.GiveUp
+	}
+	device := t.device
+	fields := make(map[string]any, len(m.Data)+1)
+	for k, v := range m.Data {
 		fields[k] = v
 	}
-	fields["userId"] = userID
-	payload, err := c.buildPayload(title, body, fields)
+	fields["userId"] = m.UserID
+	payload, err := c.buildPayload(m.Title, m.Body, fields)
 	if err != nil {
-		return err
+		return push.GiveUp
 	}
 
-	for _, device := range devices {
-		if err := ctx.Err(); err != nil {
-			return err
+	deliveryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	result, entered := sendRetry, false
+	err = c.store.WithDevice(deliveryCtx, device, func() error {
+		entered = true
+		result = c.sendToDevice(deliveryCtx, device, payload, m.CollapseID)
+		return nil
+	})
+	cancel()
+	if !entered {
+		if revoked(err) {
+			return push.GiveUp
 		}
-		deliveryCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		stale := false
-		err := c.store.WithDevice(deliveryCtx, device, func() error { stale = c.sendToDevice(deliveryCtx, device, payload); return nil })
-		cancel()
-		if err != nil {
-			log.Printf("apns: delivery user=%d error_class=%s", userID, diagnostics.ErrorClass(err))
-		}
-		if stale {
-			_ = c.store.DeleteDeviceIfCurrent(ctx, device)
-		}
+		log.Printf("apns: delivery user=%d error_class=%s", m.UserID, diagnostics.ErrorClass(err))
+		return push.Retry
 	}
-	return nil
+	switch result {
+	case sendDelivered:
+		return push.Delivered
+	case sendRetry:
+		return push.Retry
+	case sendStale:
+		_ = c.store.DeleteDeviceIfCurrent(ctx, device)
+	}
+	return push.GiveUp
 }
 
 func (c *Client) buildPayload(title, body string, data map[string]any) ([]byte, error) {
@@ -125,35 +142,49 @@ func (c *Client) buildPayload(title, body string, data map[string]any) ([]byte, 
 	return json.Marshal(fields)
 }
 
-func (c *Client) sendToDevice(ctx context.Context, device Device, payload []byte) bool {
+type sendResult int
+
+const (
+	sendDelivered sendResult = iota
+	sendStale
+	sendRefused
+	sendRetry
+)
+
+func (c *Client) sendToDevice(ctx context.Context, device Device, payload []byte, collapseID string) sendResult {
 	token, err := c.signer.Token()
 	if err != nil {
 		log.Printf("apns: provider token error_class=%s", diagnostics.ErrorClass(err))
-		return false
+		return sendRefused
 	}
 
 	url := c.host(device.Environment) + "/3/device/" + device.Token
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
 	if err != nil {
 		log.Printf("apns: create request error_class=%s", diagnostics.ErrorClass(err))
-		return false
+		return sendRefused
 	}
 	req.Header.Set("Authorization", "bearer "+token)
 	req.Header.Set("apns-topic", c.topic)
 	req.Header.Set("apns-push-type", "alert")
 	req.Header.Set("apns-priority", "10")
 	req.Header.Set("Content-Type", "application/json")
+	// A delivery retried after a lost response replaces the first on the
+	// device instead of showing twice.
+	if collapseID != "" {
+		req.Header.Set("apns-collapse-id", collapseID)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		log.Printf("apns: send user=%d error_class=%s", device.UserID, diagnostics.ErrorClass(err))
-		return false
+		return sendRetry
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusOK {
 		log.Printf("apns: sent user=%d status=200", device.UserID)
-		return false
+		return sendDelivered
 	}
 
 	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
@@ -165,5 +196,12 @@ func (c *Client) sendToDevice(ctx context.Context, device Device, payload []byte
 
 	// 410 Unregistered means the token is gone for good; BadDeviceToken means
 	// it was never valid for this environment. Both are terminal — prune.
-	return resp.StatusCode == http.StatusGone || apnsErr.Reason == "BadDeviceToken" || apnsErr.Reason == "Unregistered"
+	switch {
+	case resp.StatusCode == http.StatusGone || apnsErr.Reason == "BadDeviceToken" || apnsErr.Reason == "Unregistered":
+		return sendStale
+	case resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500:
+		return sendRetry
+	default:
+		return sendRefused
+	}
 }
