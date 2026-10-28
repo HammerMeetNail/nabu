@@ -3,13 +3,13 @@ package audit
 import (
 	"bytes"
 	"context"
-	"log"
+	"log/slog"
 	"testing"
 )
 
 func TestStdLoggerWritesJSONEvent(t *testing.T) {
 	var output bytes.Buffer
-	logger := NewStdLogger(log.New(&output, "", 0))
+	logger := NewStdLogger(slog.New(slog.NewJSONHandler(&output, nil)))
 	logger.Log(context.Background(), "auth.login_succeeded", map[string]string{
 		"method":  "password",
 		"user_id": "user-123",

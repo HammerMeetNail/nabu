@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -220,7 +220,7 @@ func TestCSRFMiddlewareIgnoresForwardedProtoForSecureFlag(t *testing.T) {
 
 func TestRequestLoggerEmitsStructuredLine(t *testing.T) {
 	var output bytes.Buffer
-	logger := log.New(&output, "", 0)
+	logger := slog.New(slog.NewJSONHandler(&output, nil))
 	handler := RequestLogger(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusCreated)
 	}))
@@ -335,7 +335,7 @@ func TestSessionMiddlewareSkipsStaticPaths(t *testing.T) {
 func TestRequestLoggerReportsClientCancellationAs499(t *testing.T) {
 	var output bytes.Buffer
 	ctx, cancel := context.WithCancel(context.Background())
-	handler := RequestLogger(log.New(&output, "", 0))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := RequestLogger(slog.New(slog.NewJSONHandler(&output, nil)))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		cancel() // the client disconnects mid-request
 		http.Error(w, "failed", http.StatusInternalServerError)
 	}))
@@ -347,7 +347,7 @@ func TestRequestLoggerReportsClientCancellationAs499(t *testing.T) {
 
 	// A genuine server error with a live client is still a 500.
 	output.Reset()
-	handler = RequestLogger(log.New(&output, "", 0))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler = RequestLogger(slog.New(slog.NewJSONHandler(&output, nil)))(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "failed", http.StatusInternalServerError)
 	}))
 	handler.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/stats/overview", nil))
@@ -363,7 +363,7 @@ func TestRequestLoggerHashesTrustedForwardedClient(t *testing.T) {
 	}
 	clientFor := func(forwarded string) string {
 		var output bytes.Buffer
-		handler := RequestLogger(log.New(&output, "", 0), proxies...)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+		handler := RequestLogger(slog.New(slog.NewJSONHandler(&output, nil)), proxies...)(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 		req := httptest.NewRequest(http.MethodGet, "/", nil)
 		req.RemoteAddr = "10.0.0.5:443" // the proxy
 		req.Header.Set("X-Forwarded-For", forwarded)

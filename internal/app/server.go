@@ -149,7 +149,7 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	}
 
 	authService := auth.NewService(authStore)
-	auditLog := audit.NewStdLogger(log.Default())
+	auditLog := audit.NewStdLogger(nil)
 	authService.SetAuditLogger(auditLog)
 	authService.SetMailer(newMailer(cfg), cfg.AppBaseURL)
 	authService.SetOIDCProvider(newOIDCProvider(cfg))
