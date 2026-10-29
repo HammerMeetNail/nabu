@@ -108,6 +108,8 @@
 		C500000000000000000005B1 /* NabuWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C500000000000000000005F1 /* NabuWidgets.swift */; };
 		C500000000000000000005B2 /* WidgetDataCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = C500000000000000000005F2 /* WidgetDataCache.swift */; };
 		C500000000000000000005B3 /* WidgetDataCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = C500000000000000000005F2 /* WidgetDataCache.swift */; };
+		C500000000000000000005B5 /* TimeSinceWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = C500000000000000000005F6 /* TimeSinceWidget.swift */; };
+		B300000000000000000003BC /* WidgetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000003FC /* WidgetTests.swift */; };
 		C500000000000000000005B4 /* NabuWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = C500000000000000000005F3 /* NabuWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
@@ -212,6 +214,8 @@
 		A300000000000000000003FA /* PushPrePromptSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushPrePromptSnapshotTests.swift; sourceTree = "<group>"; };
 		A300000000000000000003FB /* Nabu.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Nabu.entitlements; sourceTree = "<group>"; };
 		A400000000000000000004F1 /* StateQualitySnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StateQualitySnapshotTests.swift; sourceTree = "<group>"; };
+		C500000000000000000005F6 /* TimeSinceWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeSinceWidget.swift; sourceTree = "<group>"; };
+		A300000000000000000003FC /* WidgetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetTests.swift; sourceTree = "<group>"; };
 		C500000000000000000005F1 /* NabuWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NabuWidgets.swift; sourceTree = "<group>"; };
 		C500000000000000000005F2 /* WidgetDataCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetDataCache.swift; sourceTree = "<group>"; };
 		C500000000000000000005F3 /* NabuWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NabuWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -266,6 +270,7 @@
 			isa = PBXGroup;
 			children = (
 				C500000000000000000005F1 /* NabuWidgets.swift */,
+				C500000000000000000005F6 /* TimeSinceWidget.swift */,
 				C500000000000000000005F4 /* Info.plist */,
 				C500000000000000000005F5 /* NabuWidgets.entitlements */,
 			);
@@ -365,6 +370,7 @@
 				A300000000000000000003F8 /* PushRegistrationTests.swift */,
 				A300000000000000000003F9 /* DeepLinkTests.swift */,
 				A300000000000000000003FA /* PushPrePromptSnapshotTests.swift */,
+				A300000000000000000003FC /* WidgetTests.swift */,
 				A400000000000000000004F1 /* StateQualitySnapshotTests.swift */,
 			);
 			path = NabuTests;
@@ -698,6 +704,7 @@
 				B300000000000000000003B8 /* PushRegistrationTests.swift in Sources */,
 				B300000000000000000003B9 /* DeepLinkTests.swift in Sources */,
 				B300000000000000000003BA /* PushPrePromptSnapshotTests.swift in Sources */,
+				B300000000000000000003BC /* WidgetTests.swift in Sources */,
 				B400000000000000000004B1 /* StateQualitySnapshotTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -708,6 +715,7 @@
 			files = (
 				C500000000000000000005B1 /* NabuWidgets.swift in Sources */,
 				C500000000000000000005B2 /* WidgetDataCache.swift in Sources */,
+				C500000000000000000005B5 /* TimeSinceWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
