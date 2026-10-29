@@ -302,6 +302,9 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 		go func() { defer backgroundWG.Done(); queryMetrics.MonitorPool(ctx, db, nil) }()
 		backgroundWG.Add(1)
 		go func() { defer backgroundWG.Done(); deliveryMetrics.MonitorPoolNamed(ctx, deliveryDB, nil, "delivery") }()
+		// The operator dashboard's daily totals, kept whether or not it is enabled.
+		backgroundWG.Add(1)
+		go func() { defer backgroundWG.Done(); operator.NewDailyRollup(db).Run(ctx) }()
 	}
 	backgroundWG.Add(4 + database.PushWorkers)
 	go func() { defer backgroundWG.Done(); reminderSched.Start(ctx) }()

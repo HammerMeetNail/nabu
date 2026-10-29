@@ -14,6 +14,7 @@ Everything that must hold across instances coordinates through PostgreSQL:
 | Reminder ticks | One leader at a time (`reminder.PostgresAdvisoryLock`) |
 | Notification fan-out, push delivery, sign-in mail | Rows claimed with `FOR UPDATE SKIP LOCKED` under a lease |
 | Sweeps of ended sessions and spent tokens | A transaction-scoped advisory lock, `SKIP LOCKED` rows |
+| Daily totals for the operator dashboard | A transaction-scoped advisory lock, so one instance rolls up at a time (`operator.DailyRollup`) |
 | Migrations | Applied at startup under an advisory lock, so only one instance migrates |
 
 ## What stays per instance
