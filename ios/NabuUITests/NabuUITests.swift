@@ -1235,6 +1235,84 @@ final class NabuHomeLogFlowUITests: XCTestCase {
     }
 }
 
+// MARK: - Keyboard Shortcuts
+
+/// A hardware keyboard on an iPad or a Mac: 1–9 open the log sheet of Home's
+/// tile in that place, u undoes the log just made and ⌘F searches Activity,
+/// as 1–9, u and / do in the PWA's wide layout.
+final class NabuKeyboardShortcutsUITests: XCTestCase {
+    var app: XCUIApplication!
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+        app = XCUIApplication()
+        app.launchArguments = ["-disableAnimations", "-seedHomeForUITest", "-useMockAPI"]
+        app.launchForLocalTest()
+    }
+
+    /// Home's tiles in order: each one's label starts with its activity's name.
+    private var tiles: XCUIElementQuery {
+        app.buttons.matching(NSPredicate(format: "label ENDSWITH %@ OR label CONTAINS %@", "never done", ", done "))
+    }
+
+    private func name(of tile: XCUIElement) -> String {
+        String(tile.label.split(separator: ",").first ?? "")
+    }
+
+    func testNumberKeyOpensThatTilesLogSheet() throws {
+        XCTAssertTrue(tiles.element(boundBy: 1).waitForExistence(timeout: 5))
+        let second = name(of: tiles.element(boundBy: 1))
+
+        app.typeKey("2", modifierFlags: [])
+        let save = app.buttons["save-log-button"]
+        XCTAssertTrue(save.waitForExistence(timeout: 5), "2 opens the second tile's log sheet")
+        XCTAssertTrue(app.navigationBars.matching(NSPredicate(format: "identifier ENDSWITH %@", second)).firstMatch.exists,
+                      "the sheet is for \(second)")
+
+        // With the sheet open, a digit is the sheet's, not another tile's.
+        app.typeKey("1", modifierFlags: [])
+        XCTAssertTrue(app.navigationBars.matching(NSPredicate(format: "identifier ENDSWITH %@", second)).firstMatch.exists)
+        app.buttons["Cancel"].firstMatch.tap()
+        XCTAssertTrue(save.waitForNonExistence(timeout: 5))
+    }
+
+    func testUUndoesTheLogJustMade() throws {
+        let tile = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Water Plants")).firstMatch
+        XCTAssertTrue(tile.waitForExistence(timeout: 5))
+        XCTAssertTrue(tile.label.contains("never done"), "Precondition: \(tile.label)")
+        tile.tap()
+        let save = app.buttons["save-log-button"]
+        for _ in 0..<8 {
+            if save.exists && save.isHittable { break }
+            app.swipeUp()
+        }
+        save.tap()
+        XCTAssertTrue(app.staticTexts["Logged Water Plants"].waitForExistence(timeout: 5))
+
+        app.typeKey("u", modifierFlags: [])
+        let restored = NSPredicate(format: "label CONTAINS %@", "never done")
+        expectation(for: restored, evaluatedWith: tile)
+        waitForExpectations(timeout: 5)
+        XCTAssertFalse(app.staticTexts["Logged Water Plants"].exists)
+    }
+
+    func testCommandFSearchesActivity() throws {
+        // ⌘F is a menu command: iPad and Mac have app menus, iPhone doesn't.
+        try XCTSkipIf(UIDevice.current.userInterfaceIdiom == .phone, "Menu commands need an iPad or a Mac")
+        XCTAssertTrue(tiles.firstMatch.waitForExistence(timeout: 5))
+        let search = app.searchFields.firstMatch
+        // The app's menu is built just after launch; a press before it is lost.
+        for _ in 0..<5 where !search.exists {
+            app.typeKey("f", modifierFlags: .command)
+            _ = search.waitForExistence(timeout: 1)
+        }
+        XCTAssertTrue(search.exists, "⌘F opens Activity")
+        let focused = NSPredicate(format: "hasKeyboardFocus == true")
+        expectation(for: focused, evaluatedWith: search)
+        waitForExpectations(timeout: 5)
+    }
+}
+
 // MARK: - Quick Log Sheet Tests
 
 /// Tests the quick-log sheet (accessed via the + button in the toolbar).

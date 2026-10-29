@@ -6,6 +6,7 @@ struct ActivityView: View {
     @StateObject private var model: ActivityModel
     @State private var choreFilter: Set<Int> = []
     @State private var showingFilter = false
+    @FocusState private var searchFocused: Bool
 
     private let activityStore: ActivityStore
     private let logStore: LogStore
@@ -51,6 +52,12 @@ struct ActivityView: View {
             // the field stays hidden until the list is pulled down.
             .searchable(text: Binding(get: { model.query }, set: { model.selectQuery($0) }),
                         placement: .navigationBarDrawer(displayMode: .always), prompt: "Search notes & titles")
+            .searchFocused($searchFocused)
+            .onChange(of: state.activitySearchRequested, initial: true) { _, requested in
+                guard requested else { return }
+                state.activitySearchRequested = false
+                searchFocused = true
+            }
             .sheet(isPresented: $showingFilter) {
                 ChoreFilterSheet(chores: state.chores, selected: $choreFilter)
             }

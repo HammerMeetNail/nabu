@@ -20,6 +20,18 @@ struct NabuApp: App {
         }
         .commands {
             CommandGroup(replacing: .newItem) {}
+            // With a hardware keyboard, as / does in the PWA's wide layout:
+            // in the Mac's menu bar, and in an iPad's ⌘ overlay.
+            CommandMenu("Activity") {
+                // Checked when pressed: the menu is built at launch, before
+                // the account loads, and isn't rebuilt when it does.
+                Button("Search Activity") {
+                    guard state.user != nil, state.household != nil else { return }
+                    state.currentTab = .activity
+                    state.activitySearchRequested = true
+                }
+                .keyboardShortcut("f", modifiers: .command)
+            }
         }
     }
 }

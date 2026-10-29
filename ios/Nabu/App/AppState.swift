@@ -64,6 +64,8 @@ final class AppState: ObservableObject {
     @Published var choreOrder: [Int] = []
     @Published var hiddenHomeChoreIDs: [Int] = []
     @Published var currentTab: MainTab = .home
+    /// ⌘F asked Activity to focus its search field; Activity clears it.
+    @Published var activitySearchRequested = false
     @Published var homeView: HomeViewMode = .log
     @Published var activeSheet: ActiveSheet?
     @Published var toast: Toast?

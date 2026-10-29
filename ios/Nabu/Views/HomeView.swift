@@ -224,11 +224,40 @@ struct HomeView: View {
                 )
                 .padding()
             }
+            .background(keyboardShortcuts(for: chores))
             .refreshable {
                 await refreshHome()
             }
             .task(id: state.user?.id) { await refreshPushOffer() }
         )
+    }
+
+    /// With a hardware keyboard (iPad, Mac): 1–9 open the log sheet of Home's
+    /// tile in that place and u undoes the log the toast offers to undo, as in
+    /// the PWA's wide layout. They exist only while Home shows its tiles and
+    /// no sheet is open, so they never take a key meant for a text field. (The
+    /// system's Undo owns ⌘Z.)
+    @ViewBuilder
+    private func keyboardShortcuts(for chores: [Chore]) -> some View {
+        if state.currentTab == .home, state.homeView == .log, !state.jiggleMode,
+           selectedChore == nil, editingChore == nil, !showingQuickLog {
+            ZStack {
+                ForEach(Array(chores.prefix(9).enumerated()), id: \.element.id) { place, chore in
+                    Button("Log \(chore.name)") {
+                        editingLog = nil
+                        selectedChore = chore
+                    }
+                    .keyboardShortcut(KeyEquivalent(Character(String(place + 1))), modifiers: [])
+                }
+                if let logId = undoLogId {
+                    Button("Undo Log") { undo(logId: logId, choreId: undoChoreId) }
+                        .keyboardShortcut("u", modifiers: [])
+                }
+            }
+            .frame(width: 0, height: 0)
+            .opacity(0)
+            .accessibilityHidden(true)
+        }
     }
 
     /// Opens the log sheet for a pending quick-log target once the chore
