@@ -730,8 +730,10 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.press(forDuration: 1)
         try XCTUnwrap(app.buttons.matching(identifier: "Delete").allElementsBoundByIndex.first(where: { $0.isHittable })).tap()
-        XCTAssertTrue(app.staticTexts["Delete this schedule?"].waitForExistence(timeout: 5))
+        let confirm = app.staticTexts["Delete this schedule?"]
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
         try XCTUnwrap(app.buttons.matching(identifier: "Delete").allElementsBoundByIndex.first(where: { $0.isHittable })).tap()
+        XCTAssertTrue(confirm.waitForNonExistence(timeout: 5))
         XCTAssertTrue(toast.waitForExistence(timeout: 5))
         XCTAssertEqual(toast.label, "schedule not found")
         XCTAssertTrue(toast.isHittable, "Shown above the tabs")

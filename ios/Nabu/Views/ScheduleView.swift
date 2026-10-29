@@ -109,15 +109,15 @@ struct ScheduleView: View {
                     get: { deletingSchedule != nil },
                     set: { if !$0 { deletingSchedule = nil } }
                 ),
-                titleVisibility: .visible
-            ) {
+                titleVisibility: .visible,
+                // The action gets the schedule the dialog opened for: closing
+                // the dialog can clear `deletingSchedule` before the action runs.
+                presenting: deletingSchedule
+            ) { sch in
                 Button("Delete", role: .destructive) {
-                    if let sch = deletingSchedule {
-                        Task { await deleteSchedule(sch) }
-                    }
-                    deletingSchedule = nil
+                    Task { await deleteSchedule(sch) }
                 }
-                Button("Cancel", role: .cancel) { deletingSchedule = nil }
+                Button("Cancel", role: .cancel) {}
             }
         }
         .task {
