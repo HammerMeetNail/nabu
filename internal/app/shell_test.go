@@ -73,6 +73,25 @@ func TestAppShellPreloadsModulesAndIsMarkedForOffline(t *testing.T) {
 	}
 }
 
+// A Home Screen app added from the shell gets an opaque status bar: from iOS
+// 26 the system blurs about 40pt below a translucent one, over the top bar.
+// The status bar takes the theme color, the top bar's surface in each scheme.
+func TestAppShellAsksForAnOpaqueStatusBar(t *testing.T) {
+	srv := newTestSrv(t)
+	body := srvRequest(srv, http.MethodGet, "/today", "", "", "").Body.String()
+	if strings.Contains(body, "apple-mobile-web-app-status-bar-style") {
+		t.Error("the shell sets a status bar style; under a translucent one iOS blurs the top bar")
+	}
+	for _, want := range []string{
+		`<meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">`,
+		`<meta name="theme-color" content="#181C27" media="(prefers-color-scheme: dark)">`,
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("shell is missing %s", want)
+		}
+	}
+}
+
 func TestServiceWorkerPrecachesVersionedShellFiles(t *testing.T) {
 	sw := string(buildVersionedSW(staticAssets(t), "test-ver"))
 	for _, want := range []string{
