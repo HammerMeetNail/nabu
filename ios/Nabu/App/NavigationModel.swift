@@ -72,9 +72,9 @@ enum ActiveSheet: Identifiable {
     }
 }
 
-struct Toast: Identifiable {
+/// A failed action's message, shown for a few seconds (the PWA's error
+/// toast): above the tabs, or over a sheet, which would hide that one.
+struct Toast: Identifiable, Equatable {
     let id = UUID()
     let message: String
-    let isUndo: Bool
-    var undoAction: (() -> Void)?
 }

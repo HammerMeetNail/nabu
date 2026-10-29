@@ -94,7 +94,7 @@ struct TimerChipView: View {
                 }
             } catch {
                 guard state.revision == owner else { return }
-                errorMessage = (error as? APIError)?.errorDescription ?? "Could not confirm the save. Retry is safe."
+                errorMessage = APIError.message(for: error, fallback: "Could not confirm the save. Retry is safe.")
             }
         }
     }

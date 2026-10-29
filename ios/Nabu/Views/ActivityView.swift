@@ -386,6 +386,7 @@ struct DayNoteSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @State private var isSaving = false
+    @State private var failure: Toast?
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -418,6 +419,7 @@ struct DayNoteSheet: View {
                 }
             }
         }
+        .errorToast($failure)
         .presentationDetents([.medium])
         .onAppear {
             text = state.dayNotes[date] ?? ""
@@ -438,7 +440,10 @@ struct DayNoteSheet: View {
                 state.dayNotes[date] = trimmed
             }
             dismiss()
-        } catch {}
+        } catch {
+            guard state.revision == owner else { return }
+            failure = Toast(message: Log.actions.failureMessage("Failed to save note", error))
+        }
         isSaving = false
     }
 

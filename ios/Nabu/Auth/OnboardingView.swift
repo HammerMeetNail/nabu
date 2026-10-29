@@ -95,6 +95,7 @@ final class PackSelection: ObservableObject {
             let response: ActivityPacksResponse = try await api.get("/api/packs")
             packs = response.packs
         } catch {
+            Log.loading.failure("Load activity packs", error)
             loadFailed = true
         }
     }

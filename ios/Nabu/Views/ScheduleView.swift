@@ -256,7 +256,7 @@ struct ScheduleView: View {
             }
         } catch {
             guard state.revision == owner else { return }
-            logError = (error as? APIError)?.errorDescription ?? "Could not confirm the save. Retry from Pending saves."
+            logError = APIError.message(for: error, fallback: "Could not confirm the save. Retry from Pending saves.")
         }
     }
 
@@ -266,7 +266,9 @@ struct ScheduleView: View {
             let _: StatusResponse = try await scheduleStore.deleteSchedule(id: schedule.id)
             guard state.revision == owner else { return }
             state.schedules.removeAll { $0.id == schedule.id }
-        } catch {}
+        } catch {
+            state.reportFailure("Failed to remove schedule", error, owner: owner)
+        }
     }
 
     private func loadSchedules() async {
@@ -296,6 +298,7 @@ struct PickChoreSheet: View {
     @State private var intervalDays = 2
     @State private var hasEndDate = false
     @State private var endDate = Date().addingTimeInterval(86400 * 90)
+    @State private var failure: Toast?
 
     var body: some View {
         NavigationStack {
@@ -360,6 +363,7 @@ struct PickChoreSheet: View {
                 }
             }
         }
+        .errorToast($failure)
     }
 
     private var dayPills: some View {
@@ -413,7 +417,9 @@ struct PickChoreSheet: View {
         do {
             let _ = try await scheduleStore.createSchedule(body: body)
             dismiss()
-        } catch {}
+        } catch {
+            failure = Toast(message: Log.actions.failureMessage("Failed to schedule chore", error))
+        }
     }
 }
 
@@ -433,6 +439,7 @@ struct EditScheduleSheet: View {
     @State private var hasEndDate = false
     @State private var endDate = Date()
     @State private var isDeleting = false
+    @State private var failure: Toast?
 
     private var chore: Chore? { state.chores.first(where: { $0.id == schedule.choreId }) }
 
@@ -504,6 +511,7 @@ struct EditScheduleSheet: View {
                 }
             }
         }
+        .errorToast($failure)
         .onAppear {
             loadFromSchedule()
         }
@@ -562,7 +570,9 @@ struct EditScheduleSheet: View {
         do {
             let _ = try await scheduleStore.updateSchedule(id: schedule.id, body: body)
             dismiss()
-        } catch {}
+        } catch {
+            failure = Toast(message: Log.actions.failureMessage("Failed to update schedule", error))
+        }
     }
 
     private func delete() async {
@@ -571,6 +581,7 @@ struct EditScheduleSheet: View {
             let _ = try await scheduleStore.deleteSchedule(id: schedule.id)
             dismiss()
         } catch {
+            failure = Toast(message: Log.actions.failureMessage("Failed to remove schedule", error))
             isDeleting = false
         }
     }

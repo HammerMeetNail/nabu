@@ -91,6 +91,7 @@ final class AuthStore: ObservableObject {
             let response: UserResponse = try await api.get("/api/me")
             return api.identity.managed ? api.identity.snapshot.user : response.user
         } catch {
+            Log.api.failure("Load the session", error)
             return nil
         }
     }
@@ -134,11 +135,8 @@ final class AuthStore: ObservableObject {
             let req = LoginRequest(email: email, password: password)
             let response: UserResponse = try await api.post("/api/auth/login", body: req)
             return api.identity.managed ? api.identity.snapshot.user : response.user
-        } catch let error as APIError {
-            errorMessage = error.errorDescription ?? "Login failed"
-            return nil
         } catch {
-            errorMessage = "Login failed"
+            errorMessage = Log.actions.failureMessage("Login failed", error)
             return nil
         }
     }
@@ -156,11 +154,8 @@ final class AuthStore: ObservableObject {
                 registrationNotice = "If this email is new, check your inbox. You can also sign in or request a magic link."
             }
             return api.identity.managed ? api.identity.snapshot.user : response.user
-        } catch let error as APIError {
-            errorMessage = error.errorDescription ?? "Registration failed"
-            return nil
         } catch {
-            errorMessage = "Registration failed"
+            errorMessage = Log.actions.failureMessage("Registration failed", error)
             return nil
         }
     }
@@ -223,11 +218,8 @@ final class AuthStore: ObservableObject {
             let req = ResetPasswordRequest(token: token, password: password)
             let response: UserResponse = try await api.post("/api/auth/password/reset", body: req)
             return api.identity.managed ? api.identity.snapshot.user : response.user
-        } catch let error as APIError {
-            errorMessage = error.errorDescription ?? "Password reset failed"
-            return nil
         } catch {
-            errorMessage = "Password reset failed"
+            errorMessage = Log.actions.failureMessage("Password reset failed", error)
             return nil
         }
     }
@@ -241,11 +233,8 @@ final class AuthStore: ObservableObject {
             let req = ChangePasswordRequest(currentPassword: current, newPassword: new)
             let response: UserResponse = try await api.post("/api/auth/password", body: req)
             return api.identity.managed ? api.identity.snapshot.user : response.user
-        } catch let error as APIError {
-            errorMessage = error.errorDescription ?? "Password change failed"
-            return nil
         } catch {
-            errorMessage = "Password change failed"
+            errorMessage = Log.actions.failureMessage("Password change failed", error)
             return nil
         }
     }
@@ -263,11 +252,8 @@ extension AuthStore {
             let req = CreateHouseholdRequest(name: name, initials: initials)
             let response: HouseholdOnlyResponse = try await api.post("/api/household", body: req)
             return response.household
-        } catch let error as APIError {
-            errorMessage = error.errorDescription ?? "Failed to create household"
-            return nil
         } catch {
-            errorMessage = "Failed to create household"
+            errorMessage = Log.actions.failureMessage("Failed to create household", error)
             return nil
         }
     }
@@ -281,11 +267,8 @@ extension AuthStore {
             let req = JoinHouseholdRequest(inviteCode: code)
             let response: HouseholdOnlyResponse = try await api.post("/api/household/join", body: req)
             return response.household
-        } catch let error as APIError {
-            errorMessage = error.errorDescription ?? "Failed to join household"
-            return nil
         } catch {
-            errorMessage = "Failed to join household"
+            errorMessage = Log.actions.failureMessage("Failed to join household", error)
             return nil
         }
     }
@@ -295,6 +278,7 @@ extension AuthStore {
             let _: StatusResponse = try await api.postEmpty("/api/chores/seed-defaults")
             return true
         } catch {
+            Log.actions.failure("Add the default activities", error)
             return false
         }
     }

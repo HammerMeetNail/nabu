@@ -485,7 +485,10 @@ struct HouseholdView: View {
             guard state.revision == owner else { return }
             state.household = resp.household
             showingEdit = false
-        } catch {}
+        } catch {
+            // Saving changes the identity, which rebuilds these screens.
+            state.reportFailure("Failed to update household", error)
+        }
         isSaving = false
     }
 
@@ -497,7 +500,9 @@ struct HouseholdView: View {
             guard state.revision == owner else { return }
             state.invites.append(resp.invite)
             inviteCode = resp.invite.code
-        } catch {}
+        } catch {
+            state.reportFailure("Failed to create invite", error, owner: owner)
+        }
     }
 
     private func deleteInvite(_ invite: Invite) async {
@@ -507,7 +512,9 @@ struct HouseholdView: View {
             let _: StatusResponse = try await api.delete("/api/household/invites/\(invite.id)")
             guard state.revision == owner else { return }
             state.invites.removeAll { $0.id == invite.id }
-        } catch {}
+        } catch {
+            state.reportFailure("Failed to delete invite", error, owner: owner)
+        }
     }
 
     private func updateMemberRole(_ member: Member, role: String) async {
@@ -525,7 +532,9 @@ struct HouseholdView: View {
                                      suspended: member.suspended)
                 state.members[idx] = updated
             }
-        } catch {}
+        } catch {
+            state.reportFailure("Failed to update role", error, owner: owner)
+        }
     }
 
     private func setMemberAccess(_ member: Member, suspended: Bool) async {
@@ -536,7 +545,9 @@ struct HouseholdView: View {
             let _: StatusResponse = try await api.patch("/api/household/members/\(member.userId)/access", body: body)
             guard state.revision == owner else { return }
             await refreshHousehold()
-        } catch {}
+        } catch {
+            state.reportFailure("Failed to update access", error, owner: owner)
+        }
     }
 
     private func removeMember(_ member: Member) async {
@@ -546,32 +557,32 @@ struct HouseholdView: View {
             let _: StatusResponse = try await api.delete("/api/household/members/\(member.userId)")
             guard state.revision == owner else { return }
             await refreshHousehold()
-        } catch {}
+        } catch {
+            state.reportFailure("Failed to remove member", error, owner: owner)
+        }
     }
 
     private func leaveHousehold() async {
         let api = environment.apiClient.scoped()
         do {
             let _: StatusResponse = try await api.postEmpty("/api/household/leave")
-        } catch {}
+        } catch {
+            // Leaving changes the identity, which rebuilds these screens.
+            state.reportFailure("Could not change household. Please retry.", error)
+        }
     }
 
     private func transferOwnership(to member: Member) async {
-        var api = environment.apiClient.scoped()
         let body = TransferOwnershipRequest(newOwnerId: member.userId)
         do {
-            let _: StatusResponse = try await api.post("/api/household/transfer", body: body)
-            api = environment.apiClient.scoped()
-            let owner = state.revision
-            showingTransfer = false
-            // Reload household data
-            let data: HouseholdResponse = try await api.get("/api/household")
-            guard state.revision == owner else { return }
-            state.household = data.household
-            state.members = data.members
-            state.historicalMembers = data.historicalMembers
-            state.invites = data.invites
-        } catch {}
+            let _: StatusResponse = try await environment.apiClient.scoped().post("/api/household/transfer", body: body)
+        } catch {
+            // Transferring changes the identity, which rebuilds these screens.
+            state.reportFailure("Failed to transfer ownership", error)
+            return
+        }
+        showingTransfer = false
+        await refreshHousehold()
     }
 
     private func refreshHousehold() async {
@@ -584,7 +595,9 @@ struct HouseholdView: View {
             state.members = data.members
             state.historicalMembers = data.historicalMembers
             state.invites = data.invites
-        } catch {}
+        } catch {
+            Log.loading.failure("Load the household", error)
+        }
     }
 
     private func startExport(_ kind: ExportKind) {
@@ -645,17 +658,27 @@ struct HouseholdView: View {
     private func resendVerification() async {
         let owner = state.revision
         let api = environment.apiClient.scoped()
-        let _: StatusResponse? = try? await api.postEmpty("/api/auth/email/verification/resend")
-        guard state.revision == owner else { return }
-        verificationSent = true
+        do {
+            let _: StatusResponse = try await api.postEmpty("/api/auth/email/verification/resend")
+            guard state.revision == owner else { return }
+            verificationSent = true
+        } catch {
+            state.reportFailure("Failed to request verification email. Please try again.", error, owner: owner)
+        }
     }
 
     private func activateHousehold(_ id: Int) async {
         var api = environment.apiClient.scoped()
         do {
             let _: StatusResponse = try await api.postEmpty("/api/households/\(id)/activate")
-            api = environment.apiClient.scoped()
-            let owner = state.revision
+        } catch {
+            // Switching changes the identity, which rebuilds these screens.
+            state.reportFailure("Could not change household. Please retry.", error)
+            return
+        }
+        api = environment.apiClient.scoped()
+        let owner = state.revision
+        do {
             let data: HouseholdResponse = try await api.get("/api/household")
             guard state.revision == owner else { return }
             state.household = data.household
@@ -668,7 +691,9 @@ struct HouseholdView: View {
                 guard state.revision == owner else { return }
                 state.chores = chores.chores
             }
-        } catch {}
+        } catch {
+            Log.loading.failure("Load the household", error)
+        }
     }
 }
 
@@ -1089,10 +1114,8 @@ enum ProfileEditor {
                               role: member.role, suspended: member.suspended)
             }
             return nil
-        } catch APIError.serverError(_, let message) {
-            return message
         } catch {
-            return "Could not save your profile. Please retry."
+            return Log.actions.failureMessage("Could not save your profile. Please retry.", error)
         }
     }
 }

@@ -38,11 +38,7 @@ struct ManageChoresView: View {
                     .onMove { source, destination in
                         var ids = sortedChores.map(\.id)
                         ids.move(fromOffsets: source, toOffset: destination)
-                        state.choreOrder = ids
-                        let patch = PatchUserPreferencesRequest(choreOrder: ids)
-                        Task {
-                            let _: UserPreferencesResponse? = try? await environment.apiClient.patch("/api/preferences", body: patch)
-                        }
+                        PreferencesDataLoader(api: environment.apiClient, state: state).saveChoreOrder(ids)
                     }
                 }
                 .listStyle(.plain)
@@ -167,12 +163,7 @@ struct ManageChoresView: View {
         } else {
             hidden.insert(choreId)
         }
-        let newHidden = Array(hidden)
-        state.hiddenHomeChoreIDs = newHidden
-        let patch = PatchUserPreferencesRequest(hiddenHomeChoreIds: newHidden)
-        Task {
-            let _: UserPreferencesResponse? = try? await environment.apiClient.patch("/api/preferences", body: patch)
-        }
+        PreferencesDataLoader(api: environment.apiClient, state: state).saveHiddenHomeChores(Array(hidden))
     }
 }
 

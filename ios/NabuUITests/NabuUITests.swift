@@ -706,6 +706,38 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         app.buttons["Cancel"].tap()
     }
 
+    /// A failed change says why, as the PWA's toasts do: the server's reason
+    /// when it gave one, otherwise the action's own message. A sheet shows it
+    /// over itself, since the sheet would hide the one above the tabs.
+    func testFailedScheduleChangesSayWhy() throws {
+        let app = launch("schedule-errors")
+        app.tabBars.buttons["Schedule"].tap()
+        app.buttons["empty-schedule-create"].tap()
+        let chore = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Feed Cats")).firstMatch
+        reveal(chore, in: app)
+        chore.tap()
+        let toast = app.descendants(matching: .any)["error-toast"]
+        XCTAssertTrue(toast.waitForExistence(timeout: 5))
+        XCTAssertEqual(toast.label, "Failed to schedule chore")
+        XCTAssertTrue(toast.isHittable, "Shown over the sheet")
+        XCTAssertTrue(app.navigationBars["Add to Schedule"].exists, "The sheet stays open to retry")
+        chore.tap()
+        XCTAssertTrue(app.navigationBars["Add to Schedule"].waitForNonExistence(timeout: 5))
+
+        app.tabBars.buttons["Home"].tap()
+        app.tabBars.buttons["Schedule"].tap()
+        let row = app.staticTexts["Feed Cats"].firstMatch
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.press(forDuration: 1)
+        try XCTUnwrap(app.buttons.matching(identifier: "Delete").allElementsBoundByIndex.first(where: { $0.isHittable })).tap()
+        XCTAssertTrue(app.staticTexts["Delete this schedule?"].waitForExistence(timeout: 5))
+        try XCTUnwrap(app.buttons.matching(identifier: "Delete").allElementsBoundByIndex.first(where: { $0.isHittable })).tap()
+        XCTAssertTrue(toast.waitForExistence(timeout: 5))
+        XCTAssertEqual(toast.label, "schedule not found")
+        XCTAssertTrue(toast.isHittable, "Shown above the tabs")
+        XCTAssertTrue(row.exists, "The schedule stays")
+    }
+
     func testOwnershipDeletionFailureCanCancelAndReopenCleanly() throws {
         let app = launch("delete-account")
         app.tabBars.buttons["Settings"].tap()

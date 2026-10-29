@@ -63,6 +63,7 @@ final class PushRegistrationController: ObservableObject {
             }
             return granted
         } catch {
+            Log.actions.failure("Ask to allow notifications", error)
             apply(.authorizationDenied)
             return false
         }
@@ -93,6 +94,7 @@ final class PushRegistrationController: ObservableObject {
             defaults.set(token, forKey: PushRegistration.storedTokenKey)
             apply(.registerSucceeded)
         } catch {
+            Log.api.failure("Register this device for notifications", error)
             guard api.identity.isCurrent(owner) else { return }
             apply(.registerFailed("Registration failed. Retry when connected."))
         }
@@ -149,7 +151,12 @@ final class PushRegistrationController: ObservableObject {
             identity: ClientIdentity.shared(for: AppEnvironment.resolveBaseURL()))
         guard api.identity.isCurrent(owner) else { return }
         let body = ReminderSnoozeRequest(choreId: choreID, minutes: 30)
-        let _: StatusResponse? = try? await api.scoped(to: owner).post("/api/reminders/snooze", body: body)
+        do {
+            let _: StatusResponse = try await api.scoped(to: owner).post("/api/reminders/snooze", body: body)
+        } catch {
+            // A notification's action has no screen to say so on.
+            Log.actions.failure("Snooze a reminder", error)
+        }
     }
 
     private func apply(_ event: PushRegistrationPhase.Event) {

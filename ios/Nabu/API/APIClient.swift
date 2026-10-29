@@ -30,7 +30,7 @@ struct APIClient {
         self.csrfProvider = CSRFTokenProvider(cookieStore: cookieStore)
     }
 
-    func get<T: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> T {
+    func get<T: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws(APIError) -> T {
         var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)
         if !query.isEmpty {
             components?.queryItems = query
@@ -44,30 +44,30 @@ struct APIClient {
         return try await perform(request)
     }
 
-    func post<Request: Encodable, Response: Decodable>(_ path: String, body: Request) async throws -> Response {
+    func post<Request: Encodable, Response: Decodable>(_ path: String, body: Request) async throws(APIError) -> Response {
         try await mutate("POST", path, body)
     }
 
-    func patch<Request: Encodable, Response: Decodable>(_ path: String, body: Request) async throws -> Response {
+    func patch<Request: Encodable, Response: Decodable>(_ path: String, body: Request) async throws(APIError) -> Response {
         try await mutate("PATCH", path, body)
     }
 
-    func put<Request: Encodable, Response: Decodable>(_ path: String, body: Request) async throws -> Response {
+    func put<Request: Encodable, Response: Decodable>(_ path: String, body: Request) async throws(APIError) -> Response {
         try await mutate("PUT", path, body)
     }
 
-    func delete<Response: Decodable>(_ path: String) async throws -> Response {
+    func delete<Response: Decodable>(_ path: String) async throws(APIError) -> Response {
         try await mutateWithoutBody("DELETE", path)
     }
 
     /// DELETE with a JSON body — used by `DELETE /api/me`, whose typed
     /// confirmation body guards against accidental account destruction.
-    func delete<Request: Encodable, Response: Decodable>(_ path: String, body: Request) async throws -> Response {
+    func delete<Request: Encodable, Response: Decodable>(_ path: String, body: Request) async throws(APIError) -> Response {
         try await mutate("DELETE", path, body)
     }
 
     /// GET returning the raw response body (e.g. the CSV log export).
-    func getData(_ path: String, query: [URLQueryItem] = [], expectedContentType: String? = nil) async throws -> Data {
+    func getData(_ path: String, query: [URLQueryItem] = [], expectedContentType: String? = nil) async throws(APIError) -> Data {
         var components = URLComponents(url: baseURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)
         if !query.isEmpty {
             components?.queryItems = query
@@ -80,16 +80,17 @@ struct APIClient {
         return try await performData(request, expectedContentType: expectedContentType)
     }
 
-    func postEmpty<Response: Decodable>(_ path: String) async throws -> Response {
+    func postEmpty<Response: Decodable>(_ path: String) async throws(APIError) -> Response {
         try await mutateWithoutBody("POST", path)
     }
 
-    private func mutate<Request: Encodable, Response: Decodable>(_ method: String, _ path: String, _ body: Request) async throws -> Response {
-        let data = try apiEncoder.encode(body)
+    private func mutate<Request: Encodable, Response: Decodable>(_ method: String, _ path: String, _ body: Request) async throws(APIError) -> Response {
+        let data: Data
+        do { data = try apiEncoder.encode(body) } catch { throw .encodingError(error) }
         return try await mutateRequest(method, path: path, body: data, contentType: "application/json")
     }
 
-    private func mutateWithoutBody<Response: Decodable>(_ method: String, _ path: String) async throws -> Response {
+    private func mutateWithoutBody<Response: Decodable>(_ method: String, _ path: String) async throws(APIError) -> Response {
         try await mutateRequest(method, path: path, body: nil, contentType: nil)
     }
 
@@ -100,7 +101,7 @@ struct APIClient {
     /// body and surfaces as `serverError` — so the replay cannot duplicate a
     /// write. Signing out clears the cookie store, which is how the *next*
     /// sign-in used to answer users with "HTTP error 403".
-    private func mutateRequest<Response: Decodable>(_ method: String, path: String, body: Data?, contentType: String?) async throws -> Response {
+    private func mutateRequest<Response: Decodable>(_ method: String, path: String, body: Data?, contentType: String?) async throws(APIError) -> Response {
         let url = baseURL.appendingPathComponent(path)
         func build() -> URLRequest {
             var request = URLRequest(url: url)
@@ -115,9 +116,9 @@ struct APIClient {
             request.httpBody = body
             return request
         }
-        do {
+        do throws(APIError) {
             return try await perform(build())
-        } catch APIError.httpError(statusCode: 403) {
+        } catch .httpError(statusCode: 403) {
             await refreshCSRFToken()
             return try await perform(build())
         }
@@ -132,17 +133,17 @@ struct APIClient {
         _ = try? await send(request)
     }
 
-    private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {
+    private func perform<T: Decodable>(_ request: URLRequest) async throws(APIError) -> T {
         let data = try await performData(request)
         do {
             return try apiDecoder.decode(T.self, from: data)
         } catch {
-            throw APIError.decodingError(error)
+            throw .decodingError(error)
         }
     }
 
     /// Like `perform`, but returns the raw body instead of decoding JSON.
-    private func performData(_ request: URLRequest, expectedContentType: String? = nil) async throws -> Data {
+    private func performData(_ request: URLRequest, expectedContentType: String? = nil) async throws(APIError) -> Data {
         let owner = requestOwner ?? identity.snapshot
         guard identity.isCurrent(owner) else { throw APIError.contextChanged }
         let path = request.url?.path ?? ""
@@ -156,7 +157,7 @@ struct APIClient {
         var request = request
         var ticket: UUID?
         if transition {
-            do { ticket = try identity.beginTransition(logout: logout, expected: owner) }
+            do throws(APIError) { ticket = try identity.beginTransition(logout: logout, expected: owner) }
             catch { await identity.publish(); throw error }
             await identity.publish()
         } else if identity.managed && !sessionRead && !publicRead && !path.hasPrefix("/api/auth/") {
@@ -173,7 +174,7 @@ struct APIClient {
             request.setValue(String(user.householdId ?? 0), forHTTPHeaderField: "X-Nabu-Household-ID")
         }
         let result: (Data, HTTPURLResponse)
-        do {
+        do throws(APIError) {
             result = try await send(request)
         } catch {
             if let ticket {
@@ -205,7 +206,9 @@ struct APIClient {
                     guard identity.accept(nil, expected: owner) else { throw APIError.contextChanged }
                 }
                 else if (200...299).contains(httpResponse.statusCode) {
-                    let response = try apiDecoder.decode(UserResponse.self, from: data)
+                    let response: UserResponse
+                    do { response = try apiDecoder.decode(UserResponse.self, from: data) }
+                    catch { throw .decodingError(error) }
                     guard identity.accept(response.user, expected: owner) else { throw APIError.contextChanged }
                 }
                 await identity.publish()
@@ -232,16 +235,24 @@ struct APIClient {
         return accepted
     }
 
-    private func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+    /// A request that got no answer throws `networkError`, so callers can
+    /// queue it (`LogStore.isNetworkFailure`) whatever the transport threw.
+    private func send(_ request: URLRequest) async throws(APIError) -> (Data, HTTPURLResponse) {
         let result: (Data, URLResponse)
-        if let handler = mockAsyncHandler { result = try await handler(request) }
-        else if let handler = mockHandler, let mock = handler(request) { result = mock }
-        else { result = try await session.data(for: request) }
-        guard let response = result.1 as? HTTPURLResponse else { throw APIError.invalidResponse }
+        do {
+            if let handler = mockAsyncHandler { result = try await handler(request) }
+            else if let handler = mockHandler, let mock = handler(request) { result = mock }
+            else { result = try await session.data(for: request) }
+        } catch let error as APIError {
+            throw error
+        } catch {
+            throw .networkError(error)
+        }
+        guard let response = result.1 as? HTTPURLResponse else { throw .invalidResponse }
         return (result.0, response)
     }
 
-    private func checked(_ data: Data, _ httpResponse: HTTPURLResponse) throws -> Data {
+    private func checked(_ data: Data, _ httpResponse: HTTPURLResponse) throws(APIError) -> Data {
         if httpResponse.statusCode == 429 {
             throw APIError.rateLimited(retryAfter: httpResponse.value(forHTTPHeaderField: "Retry-After"))
         }
@@ -259,14 +270,18 @@ struct APIClient {
 
     /// Also used by the external Google browser session, whose cookie handoff
     /// must hold the same identity transition as password/Apple sign-in.
-    func confirmTransition(_ ticket: UUID) async throws -> User? {
-        do {
+    func confirmTransition(_ ticket: UUID) async throws(APIError) -> User? {
+        do throws(APIError) {
             var request = URLRequest(url: baseURL.appendingPathComponent("/api/me"))
             request.httpMethod = "GET"
             let (data, response) = try await send(request)
             let user: User?
             if response.statusCode == 401 { user = nil }
-            else { user = try apiDecoder.decode(UserResponse.self, from: checked(data, response)).user }
+            else {
+                let body = try checked(data, response)
+                do { user = try apiDecoder.decode(UserResponse.self, from: body).user }
+                catch { throw .decodingError(error) }
+            }
             try identity.finishTransition(ticket, user: user)
             await identity.publish()
             return user
@@ -296,7 +311,9 @@ struct APIClient {
                 return // Ambiguous: leave the identity for the next confirmed read.
             }
         } catch {
-            return // Transport failure: keep the last confirmed identity.
+            // Transport failure: keep the last confirmed identity.
+            Log.api.failure("Session check after a 401", error)
+            return
         }
         guard identity.accept(user, expected: owner) else { return }
         await identity.publish()
@@ -416,7 +433,7 @@ final class ClientIdentity: @unchecked Sendable {
         mayResumeSavedHome = false
         removeSavedHome()
     }
-    func beginTransition(logout: Bool = false, expected owner: Snapshot? = nil) throws -> UUID {
+    func beginTransition(logout: Bool = false, expected owner: Snapshot? = nil) throws(APIError) -> UUID {
         lock.lock(); defer { lock.unlock() }
         guard owner == nil || owner?.revision == revision,
               phase != .changing && (phase != .logoutPending || logout) else { throw APIError.contextChanged }
@@ -429,6 +446,7 @@ final class ClientIdentity: @unchecked Sendable {
                 try JSONEncoder().encode(Marker(logoutPending: true)).write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
                 logoutIsDurable = true
             } catch {
+                Log.storage.failure("Record the unfinished sign-out", error)
                 revision = UUID(); user = nil; phase = .logoutPending; logoutIsDurable = false
                 throw APIError.saveNotDurable
             }
@@ -436,12 +454,17 @@ final class ClientIdentity: @unchecked Sendable {
         revision = UUID(); user = nil; phase = .changing
         return revision
     }
-    func finishTransition(_ ticket: UUID, user next: User?, logout: Bool = false) throws {
+    func finishTransition(_ ticket: UUID, user next: User?, logout: Bool = false) throws(APIError) {
         lock.lock(); defer { lock.unlock() }
         guard revision == ticket && phase == .changing else { throw APIError.contextChanged }
         if logout, let fileURL, FileManager.default.fileExists(atPath: fileURL.path) {
             do { try FileManager.default.removeItem(at: fileURL) }
-            catch { phase = .logoutPending; throw error }
+            catch {
+                // The sign-out stays unfinished until its record is gone.
+                Log.storage.failure("Remove the finished sign-out's record", error)
+                phase = .logoutPending
+                throw APIError.saveNotDurable
+            }
         }
         revision = UUID(); user = next; phase = next == nil ? .anonymous : .ready
         logoutIsDurable = true
@@ -505,7 +528,10 @@ final class ClientIdentity: @unchecked Sendable {
             try FileManager.default.createDirectory(at: homeURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try HomeSnapshot.encoder.encode(home).write(to: homeURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             return true
-        } catch { return false }
+        } catch {
+            Log.storage.failure("Save Home for offline launch", error)
+            return false
+        }
     }
 
     // The callers below hold `lock`.
