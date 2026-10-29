@@ -1,0 +1,36 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/notification-preferences"
+  },
+  "status": 200,
+  "response": {
+    "availableTypes": [
+      {
+        "description": "When someone else in your household logs a chore.",
+        "label": "Chore Logged",
+        "type": "chore_logged"
+      },
+      {
+        "description": "When someone joins your household.",
+        "label": "Household Joined",
+        "type": "household_joined"
+      },
+      {
+        "description": "When a scheduled chore's time is approaching.",
+        "label": "Schedule Reminder",
+        "type": "schedule_reminder"
+      }
+    ],
+    "preferences": {
+      "defaultReminderLeadMinutes": 10,
+      "emailEnabled": false,
+      "enabledPushTypes": [],
+      "pushEnabled": true,
+      "quietHoursEnd": "",
+      "quietHoursStart": "",
+      "timezone": "UTC",
+      "userId": 1
+    }
+  }
+}

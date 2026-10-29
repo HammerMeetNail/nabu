@@ -1,0 +1,29 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/schedules"
+  },
+  "status": 200,
+  "response": {
+    "schedules": [
+      {
+        "assignedUserId": null,
+        "choreId": 1,
+        "createdAt": "2026-01-02T03:04:05.123456Z",
+        "daysOfWeek": [],
+        "frequencyType": "daily",
+        "householdId": 1,
+        "id": 1,
+        "intervalDays": 0,
+        "isActive": true,
+        "isFollowUp": false,
+        "specificTime": "08:00",
+        "startDate": "2026-01-02",
+        "targetCount": 0,
+        "timePeriod": "morning",
+        "timesOfDay": null,
+        "updatedAt": "2026-01-02T03:04:05.123456Z"
+      }
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "PATCH",
+    "path": "/api/chore-reminder-prefs/1",
+    "body": {
+      "enabled": true,
+      "leadMinutes": 15
+    }
+  },
+  "status": 200,
+  "response": {
+    "pref": {
+      "choreId": 1,
+      "enabled": true,
+      "leadMinutes": 15,
+      "userId": 1
+    }
+  }
+}

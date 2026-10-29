@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/household/join",
+    "body": {
+      "inviteCode": "INVITE0002"
+    }
+  },
+  "status": 200,
+  "response": {
+    "household": {
+      "createdAt": "2026-01-02T03:04:05.123456Z",
+      "id": 1,
+      "initials": "CH",
+      "inviteCode": "",
+      "name": "Contract Home"
+    }
+  }
+}

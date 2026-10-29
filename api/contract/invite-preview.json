@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/household/join/preview?code=INVITE0002"
+  },
+  "status": 200,
+  "response": {
+    "household": {
+      "initials": "CH",
+      "name": "Contract Home"
+    },
+    "inviter": {
+      "avatarColor": "#19323C",
+      "displayName": "owner"
+    }
+  }
+}

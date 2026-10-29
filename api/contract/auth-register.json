@@ -1,0 +1,24 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/auth/register",
+    "body": {
+      "email": "owner@example.com",
+      "password": "contract password"
+    }
+  },
+  "status": 201,
+  "response": {
+    "user": {
+      "avatarColor": "#19323C",
+      "createdAt": "2026-01-02T03:04:05.123456Z",
+      "displayName": "owner",
+      "email": "owner@example.com",
+      "emailVerified": false,
+      "hasPassword": true,
+      "householdId": null,
+      "id": 1,
+      "role": ""
+    }
+  }
+}

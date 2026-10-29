@@ -2,7 +2,7 @@ GO ?= go
 COMPOSE ?= podman compose
 GOLANGCI_VERSION := 2.15.0
 
-.PHONY: test test-go test-js perf-stats fmt run e2e e2e-watch e2e-debug backup restore local local-fresh down seed lint coverage hooks check-parity deploy preview preview-down preview-status preview-logs
+.PHONY: test test-go test-js api-contract perf-stats fmt run e2e e2e-watch e2e-debug backup restore local local-fresh down seed lint coverage hooks check-parity deploy preview preview-down preview-status preview-logs
 
 test: test-go test-js
 
@@ -11,6 +11,11 @@ test-go:
 
 test-js:
 	node --test web/static/js/tests/runner.js tests/ops/*.test.js
+
+# Rewrites api/contract, the server's answers the iOS app must decode, after
+# an intended API change. Commit the files: CI then runs the iOS tests.
+api-contract:
+	$(GO) test ./internal/app -run '^TestAPIContract$$' -update-contract -count=1
 
 # Opt-in workload; use an already-running local PostgreSQL server.
 perf-stats: export TEST_DATABASE_URL ?= postgres://nabu:nabu@localhost:5432/nabu?sslmode=disable

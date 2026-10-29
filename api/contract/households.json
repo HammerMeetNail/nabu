@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/households"
+  },
+  "status": 200,
+  "response": {
+    "households": [
+      {
+        "id": 1,
+        "initials": "CH",
+        "name": "Contract House",
+        "role": "owner"
+      }
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "request": {
+    "method": "PATCH",
+    "path": "/api/chores/9",
+    "body": {
+      "name": "Water the Fern"
+    }
+  },
+  "status": 200,
+  "response": {
+    "chore": {
+      "category": "plants",
+      "color": "#22C55E",
+      "createdAt": "2026-01-02T03:04:05.123456Z",
+      "createdBy": 1,
+      "followUpEnabled": false,
+      "hasRating": false,
+      "hasVolumeML": false,
+      "householdId": 1,
+      "icon": "🌿",
+      "id": 9,
+      "indicatorDefaults": [],
+      "indicatorLabels": [
+        "Misted"
+      ],
+      "isPredefined": false,
+      "lastFollowUpMinutes": 0,
+      "metricType": "none",
+      "metricUnit": "",
+      "name": "Water the Fern",
+      "predefinedKey": "",
+      "sortOrder": 0,
+      "subjects": [],
+      "visibility": "household"
+    },
+    "status": "updated"
+  }
+}

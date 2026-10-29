@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/chores",
+    "body": {
+      "name": ""
+    }
+  },
+  "status": 400,
+  "response": {
+    "error": "name must not be empty"
+  }
+}

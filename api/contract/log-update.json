@@ -1,0 +1,26 @@
+{
+  "request": {
+    "method": "PATCH",
+    "path": "/api/logs/1",
+    "body": {
+      "note": "Burped after"
+    }
+  },
+  "status": 200,
+  "response": {
+    "latest": {
+      "choreId": 1,
+      "completedAt": "2026-01-02T03:04:05Z",
+      "createdAt": "2026-01-02T03:04:05.123456Z",
+      "householdId": 1,
+      "id": 1,
+      "indicators": [],
+      "metricUnit": "mL",
+      "note": "Burped after",
+      "slotHour": 9,
+      "userId": 1,
+      "volumeML": 120
+    },
+    "status": "updated"
+  }
+}

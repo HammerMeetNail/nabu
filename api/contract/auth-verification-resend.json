@@ -1,0 +1,10 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/auth/email/verification/resend"
+  },
+  "status": 200,
+  "response": {
+    "status": "verification email queued"
+  }
+}

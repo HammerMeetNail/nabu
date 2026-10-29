@@ -1,0 +1,10 @@
+{
+  "request": {
+    "method": "DELETE",
+    "path": "/api/chores/9"
+  },
+  "status": 200,
+  "response": {
+    "status": "deleted"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/chore-reminder-prefs"
+  },
+  "status": 200,
+  "response": {
+    "prefs": [
+      {
+        "choreId": 1,
+        "enabled": true,
+        "leadMinutes": 15,
+        "userId": 1
+      }
+    ]
+  }
+}

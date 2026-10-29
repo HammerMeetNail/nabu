@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/household/transfer",
+    "body": {
+      "newOwnerId": 4
+    }
+  },
+  "status": 200,
+  "response": {
+    "status": "transferred"
+  }
+}

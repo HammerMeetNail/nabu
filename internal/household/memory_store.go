@@ -1,6 +1,7 @@
 package household
 
 import (
+	"cmp"
 	"context"
 	"maps"
 	"slices"
@@ -250,6 +251,9 @@ func (s *MemoryStore) listMembers(ctx context.Context, householdID int64) ([]Mem
 	if len(members) == 0 {
 		return nil, ErrNotFound
 	}
+	// PostgreSQL lists members in the order they joined. This store keeps no
+	// join time, so it lists them by user ID rather than in map order.
+	slices.SortFunc(members, func(a, b Member) int { return cmp.Compare(a.UserID, b.UserID) })
 	return members, nil
 }
 
@@ -534,6 +538,8 @@ func (s *MemoryStore) GetInvites(ctx context.Context, householdID int64) ([]Invi
 			}
 		}
 	}
+	// Oldest first, as PostgreSQL returns them, rather than in map order.
+	slices.SortFunc(result, func(a, b Invite) int { return cmp.Compare(a.ID, b.ID) })
 	return result, nil
 }
 

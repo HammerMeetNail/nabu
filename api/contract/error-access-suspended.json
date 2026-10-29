@@ -1,0 +1,12 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/household"
+  },
+  "status": 403,
+  "response": {
+    "error": "Your access to Contract House is temporarily disabled. Contact an administrator to re-enable access.",
+    "household": "Contract House",
+    "status": "access_suspended"
+  }
+}

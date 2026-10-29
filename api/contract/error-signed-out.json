@@ -1,0 +1,10 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/household"
+  },
+  "status": 401,
+  "response": {
+    "error": "not authenticated"
+  }
+}

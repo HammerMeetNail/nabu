@@ -79,6 +79,7 @@ The main checkout at the workspace root stays clean and is only used for referen
 | Lint Go | `make lint` |
 | Install git hooks | `make hooks` |
 | Check client parity | `make check-parity` |
+| Rewrite the API contract | `make api-contract` |
 | Deploy (tag & push) | `make deploy` |
 
 After changing files in `web/templates/` or `web/static/`, run `make local-fresh` — these assets are embedded into the Go binary via `web/assets.go` (`//go:embed`).
@@ -194,7 +195,9 @@ Every feature, bug fix, validation change, security fix, API change, or UI behav
 
 `scripts/check-parity.sh` is now a **matrix linter** by default (exit 0 if well-formed, exit 2 on an unknown status); pass `--strict` to also fail when any row is still `iOS pending`/`PWA pending` (useful as a release gate, not a per-PR gate). `make check-parity` runs it.
 
-**iOS is built and tested in CI.** The `ios` job (`.github/workflows/ci.yaml`, `macos` runner) runs `xcodebuild test` of the `NabuTests` unit/contract suite on pull requests that change `ios/**`; web releases (`v*` tags) don't run it, since the iOS Release workflow runs it before an iOS release. Keep `NabuTests` green. Use the `client-parity` skill (`/client-parity`) for parity-aware guidance during development.
+**iOS is built and tested in CI.** The `ios` job (`.github/workflows/ci.yaml`, `macos` runner) runs `xcodebuild test` of the `NabuTests` unit/contract suite on pull requests that change `ios/**` or `api/contract/**`. A web release (`v*` tag) runs it only when its API contract differs from the release in production (`scripts/api-contract-changed.sh`), and then pushes and deploys the image only after it passes; any other web release ships without it, since the iOS Release workflow runs it before an iOS release. Keep `NabuTests` green. Use the `client-parity` skill (`/client-parity`) for parity-aware guidance during development.
+
+**The API contract (`api/contract`).** One file per request the iOS app makes, holding the request and the server's answer, recorded from an in-memory server by `TestAPIContract` (`internal/app/api_contract_test.go`) with timestamps, dates and invite codes fixed. The Go test fails when an answer changes: after an intended change, run `make api-contract` and commit the files. On iOS, `APIContractTests.testEveryContractAnswerDecodes` decodes every answer as the type the app reads it into and checks that lists keep all their items. When the app starts making a new request, add a step to the Go scenario and the answer's type to `contractChecks`; the iOS test fails on a file without a check. The contract tests the app on `main`, not the builds already installed, so keep changes to an existing answer additive: add fields, and don't rename, remove or retype one an installed app reads.
 
 See `ios/AGENTS.md` for iOS-specific agent instructions.
 
@@ -220,7 +223,7 @@ Production has no test account. To check a deploy signed in, run `scripts/prod-s
 
 - **URL**: `https://nabu-app.com`
 - **Deploy trigger**: push a `v*` tag (e.g. `git tag v0.1.7 && git push origin v0.1.7`). CI builds, tests, and deploys automatically.
-- **CI**: `.github/workflows/ci.yaml` — runs secret scan, JS tests, lint, Go tests (with coverage), E2E tests, the client-parity gate (PR only), and, on pull requests that change `ios/**`, the iOS `NabuTests` lane (macOS). A web release doesn't wait for iOS; the iOS Release workflow tests the app before an iOS release.
+- **CI**: `.github/workflows/ci.yaml` — runs secret scan, JS tests, lint, Go tests (with coverage), E2E tests, the client-parity gate (PR only), and, on pull requests that change `ios/**` or `api/contract/**`, the iOS `NabuTests` lane (macOS). A web release waits for iOS only when its API contract changed since the release in production; the iOS Release workflow tests the app before an iOS release.
 - **iOS releases**: the **iOS Release** workflow (`.github/workflows/ios-release.yml`, Actions → Run workflow on `main`) tests, archives and uploads the app to App Store Connect. The web app always goes out first: the workflow stops if the server code on `main` differs from the release production runs (`scripts/ios-release-web-first.sh`, which reads the version from `/health`). See "Releasing" in `ios/README.md`.
 
 **After pushing a `v*` tag, watch the pipeline to completion and verify production** (don't wait to be asked; a cheaper subagent may be delegated to it). The full runbook — `gh run watch`, transient-vs-real failure triage, and the production verification commands (`/health`, versioned imports, `no-store`/`BYPASS` cache headers, the throwaway-account smoke test) — lives in **`docs/deploy-runbook.md`**.
