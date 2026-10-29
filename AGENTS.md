@@ -308,6 +308,7 @@ These caused hard-to-diagnose production bugs and are covered by E2E tests:
 2. **Home-tab sheet log** (`save-log` event in `app.js`): for new logs (empty `logId`), the handler must extract `completedAt`, `slotHour`, and `date` from the `#log-when` input value — not from data attributes on the button. `slotHour` is derived via `new Date(whenInput.value).getHours()`. The when input is pre-filled with the current local time (minutes included), not rounded to `:00`. For editing existing logs, the comparison-based guard is retained to protect against morph.js corruption during re-renders.
 3. **`renderWeekView` in `calendar.js`**: ad-hoc logs (those not matching a scheduled slot) must be placed in their `slotHour` row, not forced into the Anytime row — mirrors the `adHocCells` pattern in `renderDayView`.
 4. **No hard-coded `?v=N` in JS import paths** — the server rewrites them all at startup.
+5. **No translucent status bar for the Home Screen app.** `index.html` sets no `apple-mobile-web-app-status-bar-style`: from iOS 26 the system blurs about 40pt below a translucent status bar, over the top bar. The status bar takes `theme-color`, the top bar's surface in each scheme. `head-init.js` sizes the frame (`--app-h`) to the viewport, and to the screen only for an app added while the shell asked for a translucent bar (iOS keeps the style an app was added with), which it recognises by its top inset and remembers. Keep text fields at 16px or more: iOS zooms into a smaller one when it gets focus and stays zoomed.
 
 ## Security
 

@@ -1,6 +1,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { JSDOM } from "jsdom";
+import { readFileSync } from "node:fs";
 
 const dom = new JSDOM("<!doctype html><html><body></body></html>", {
   url: "http://localhost:8080",
@@ -2740,5 +2741,74 @@ describe("Action registry", () => {
     const error = document.querySelector("#profile-error");
     assert.equal(error.textContent, "Enter your name");
     assert.equal(error.classList.contains("hidden"), false);
+  });
+});
+
+// head-init.js sizes the app frame (--app-h) before first paint. It runs as a
+// classic script, so each case runs its source against a stub window.
+describe("head-init.js frame height", () => {
+  const source = readFileSync(new URL("../head-init.js", import.meta.url), "utf8");
+  function launch({ standalone, remembered = false, inset = 0, innerHeight = 812 }) {
+    const stored = new Map(remembered ? [["nabu-translucent-status-bar", "1"]] : []);
+    const props = {}, viewportListeners = {};
+    let topInset = inset;
+    const win = {
+      innerHeight,
+      screen: { width: 402, height: 874 },
+      matchMedia: (query) => ({ matches: query.includes("standalone") && standalone }),
+      visualViewport: { scale: 1, addEventListener: (type, fn) => { viewportListeners[type] = fn; } },
+      addEventListener() {},
+      localStorage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) },
+      getComputedStyle: () => ({ paddingTop: `${topInset}px` }),
+    };
+    const doc = {
+      documentElement: { style: { setProperty: (name, value) => { props[name] = value; } }, appendChild() {}, removeChild() {} },
+      createElement: () => ({ style: {} }),
+    };
+    new Function("window", "navigator", "document", "requestAnimationFrame", "setTimeout", source)(
+      win, { standalone }, doc, () => {}, () => {});
+    return {
+      appH: () => props["--app-h"],
+      remembered: () => stored.get("nabu-translucent-status-bar") === "1",
+      // An older install's geometry settles after load: the top inset appears
+      // and the viewport grows to the screen.
+      settle(nextInset, nextInnerHeight) {
+        topInset = nextInset;
+        win.innerHeight = nextInnerHeight;
+        viewportListeners.resize();
+      },
+    };
+  }
+
+  it("a Home Screen app under an opaque status bar is as tall as its viewport", () => {
+    const app = launch({ standalone: true });
+    assert.equal(app.appH(), "812px");
+    assert.equal(app.remembered(), false);
+  });
+
+  it("an app added with a translucent status bar uses the screen height from first paint once it's known", () => {
+    // At cold open its inset and viewport still read as an opaque app's.
+    const app = launch({ standalone: true, remembered: true, inset: 0, innerHeight: 812 });
+    assert.equal(app.appH(), "874px");
+  });
+
+  it("an app added with a translucent status bar is recognised by its top inset and remembered", () => {
+    const app = launch({ standalone: true, inset: 62, innerHeight: 874 });
+    assert.equal(app.appH(), "874px");
+    assert.equal(app.remembered(), true);
+  });
+
+  it("an older install's first launch grows to the screen once its geometry settles", () => {
+    const app = launch({ standalone: true, inset: 0, innerHeight: 812 });
+    assert.equal(app.appH(), "812px");
+    app.settle(62, 874);
+    assert.equal(app.appH(), "874px");
+    assert.equal(app.remembered(), true);
+  });
+
+  it("a browser tab is as tall as its viewport, whatever its insets", () => {
+    const app = launch({ standalone: false, inset: 47, innerHeight: 700 });
+    assert.equal(app.appH(), "700px");
+    assert.equal(app.remembered(), false);
   });
 });

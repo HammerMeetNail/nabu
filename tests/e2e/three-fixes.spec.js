@@ -9,8 +9,9 @@
 //      no position:sticky/fixed so there is no iOS PWA cold-open gap (fixed
 //      elements anchor to WebKit's layout viewport, whose bottom edge is
 //      stale at standalone cold open). The body height is driven by --app-h
-//      (set by head-init.js: screen height in standalone, innerHeight in
-//      browser) so the tab bar lands at the physical screen bottom.
+//      (set by head-init.js: the viewport's height, or the screen height for
+//      a Home Screen app added with a translucent status bar) so the tab bar
+//      lands at the physical screen bottom.
 
 import { test, expect } from '@playwright/test';
 

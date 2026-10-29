@@ -45,10 +45,9 @@
 html {
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
-  /* --app-h is set by head-init.js: physical screen height in standalone
-     mode (every viewport measurement — 100dvh, innerHeight — is stale at
-     iOS PWA cold open even with viewport-fit=cover), innerHeight in
-     browser mode. */
+  /* --app-h is set by head-init.js: the viewport's height, or the physical
+     screen height for a Home Screen app added with a translucent status bar,
+     whose viewport is stale at cold open. */
   height: var(--app-h, 100dvh);
 }
 
@@ -477,11 +476,11 @@ input:focus, select:focus, textarea:focus {
 }
 
 .notif-pref-select {
-  width: 80px;
+  width: 88px;
   flex-shrink: 0;
   margin-left: 12px;
   padding: 6px 22px 6px 8px;
-  font-size: 14px;
+  font-size: 16px; /* under 16px, iOS zooms in on focus */
   font-weight: 500;
   color: var(--text);
   background: var(--surface);
@@ -887,7 +886,8 @@ input:focus, select:focus, textarea:focus {
   border-radius: var(--radius-btn);
   background: var(--surface);
   color: var(--text);
-  font-size: 14px;
+  /* 16px: iOS zooms into a smaller field when it gets focus, and stays zoomed. */
+  font-size: 16px;
 }
 
 .hist-search-input:focus-visible {
@@ -1159,7 +1159,7 @@ input:focus, select:focus, textarea:focus {
 }
 
 .role-select {
-  font-size: 13px;
+  font-size: 16px; /* under 16px, iOS zooms in on focus */
   padding: 4px 8px;
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
@@ -1814,7 +1814,7 @@ details[open] .member-chevron {
 .feeding-gaps-date {
   flex: 1;
   padding: 3px 6px;
-  font-size: 11px;
+  font-size: 16px; /* under 16px, iOS zooms in on focus */
   border: 1px solid var(--border);
   border-radius: 4px;
   background: var(--bg);
@@ -2044,7 +2044,7 @@ details[open] .member-chevron {
 
 .busy-hours-filter {
   flex: 1;
-  font-size: 12px;
+  font-size: 16px; /* under 16px, iOS zooms in on focus */
   padding: 4px 8px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -3145,7 +3145,7 @@ body.sheet-open .timer-chip { visibility: hidden; }
 
 .followup-select {
   padding: 8px 4px 8px 8px;
-  font-size: 15px;
+  font-size: 16px; /* under 16px, iOS zooms in on focus */
   border: 1px solid #d1d5db;
   border-radius: 8px;
   background: #fff;
