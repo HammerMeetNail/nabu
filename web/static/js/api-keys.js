@@ -56,14 +56,14 @@ export function renderApiKeys(state, origin = "") {
       ${status === "Active" ? `<button type="button" class="btn btn-danger btn-sm" data-action="revoke-api-key" data-key-id="${escapeHTML(key.id)}" data-key-name="${escapeHTML(key.name)}"${busy ? " disabled" : ""}>Revoke</button>` : ""}
     </li>`;
   }).join("");
-  return `<div class="card mt-3" data-testid="api-keys">
+  return `<div class="card mt-3" data-key="api-keys" data-testid="api-keys">
     <h3>API Keys</h3>
     <p class="text-secondary">Let a script add, view, edit, and delete activity logs as you, with the same permissions you have in the app. Keys can't change settings or chores. Changing your password turns off every key.</p>
     ${issuedBlock}
     <form id="create-api-key-form" data-action="create-api-key" class="mt-2">
       <div class="form-group">
         <label class="form-label" for="api-key-name">Key name</label>
-        <input id="api-key-name" type="text" name="name" maxlength="60" required placeholder="e.g. Backfill script" autocomplete="off"${busy ? " disabled" : ""}>
+        <input id="api-key-name" type="text" name="name" maxlength="60" required placeholder="e.g. Backfill script" autocomplete="off" value="${escapeHTML(state.apiKeyName || "")}"${busy ? " disabled" : ""}>
       </div>
       <button type="submit" class="btn btn-secondary btn-sm"${busy ? " disabled" : ""}>Create key</button>
     </form>
@@ -83,8 +83,13 @@ export async function loadApiKeysData() {
 
 async function doCreateApiKey(form) {
   if (state.apiKeyBusy) return;
-  const name = form.querySelector("#api-key-name").value.trim();
+  const input = form.querySelector("#api-key-name");
+  const name = input.value.trim();
   if (!name) return;
+  // morph.js resets an input that isn't focused to its markup, so the name
+  // stays in the field through the renders below, and after a failure, only
+  // if the markup carries it.
+  state.apiKeyName = input.value;
   captureScope(state, "api-keys"); // supersede list reads started before this change
   const scope = captureScope(state);
   state.apiKeyBusy = true;
@@ -95,7 +100,8 @@ async function doCreateApiKey(form) {
     if (!scope.current()) return;
     state.apiKeyIssued = data.token;
     state.apiKeys = [data.key, ...(state.apiKeys || [])];
-    form.reset();
+    state.apiKeyName = "";
+    input.value = ""; // a focused field keeps its value through a render
   } catch (err) {
     if (scope.current()) state.apiKeyError = err.message || "Could not create the key. Please retry.";
   } finally {
@@ -143,4 +149,12 @@ registerActions("click", {
 
 registerActions("submit", {
   "create-api-key"(_event, form) { void doCreateApiKey(form); },
+});
+
+registerActions("change", {
+  // The name typed so far, saved as the field loses focus, so a render
+  // before the submit (a list refresh, say) can't empty it.
+  "create-api-key"(event) {
+    if (event.target?.id === "api-key-name") state.apiKeyName = event.target.value;
+  },
 });

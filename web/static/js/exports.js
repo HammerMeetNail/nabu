@@ -7,7 +7,7 @@ import { escapeHTML } from "./utils.js";
 
 export function renderExports(state, canExportHousehold) {
   const range = state.exportRange || {};
-  return `<div class="card mt-3" data-testid="export-controls">
+  return `<div class="card mt-3" data-key="exports" data-testid="export-controls">
     <h3>Export</h3>
     <p class="text-secondary">Download activity as CSV. Leave dates empty for all dates.</p>
     <div class="export-date-range">

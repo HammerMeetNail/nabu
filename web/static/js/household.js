@@ -137,7 +137,7 @@ export function renderInviteQR(link) {
 
 export function renderHouseholdView(household, members, invites, currentUser, { showInviteQR = false } = {}) {
   if (!household) {
-    return `<div class="card mt-3">
+    return `<div class="card mt-3" data-key="household-card">
       <h3>Household</h3>
       <div class="empty-state">
         <p class="mt-2">You're not part of a household yet.</p>
@@ -241,7 +241,7 @@ export function renderHouseholdView(household, members, invites, currentUser, { 
     </div>
     ${invites && invites.length ? `<h4 class="mt-3">Active Invites</h4><ul class="invite-list">${inviteList}</ul><div class="auth-divider"></div>` : ''}` : '';
 
-  return `<div class="card mt-3">
+  return `<div class="card mt-3" data-key="household-card">
     <div class="hh-card-header">
       <span class="hh-initials-badge" aria-hidden="true">${escapeHTML(household.initials || '')}</span>
       <h3>${escapeHTML(household.name)}</h3>

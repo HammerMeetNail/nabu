@@ -901,7 +901,7 @@ function renderSettingsView() {
       pushTypeRows = `<div class="notif-pref-list">${rows}</div>`;
     }
 
-    notifPrefsCard = `<div class="card mt-3">
+    notifPrefsCard = `<div class="card mt-3" data-key="notification-prefs">
       <h3>Notifications</h3>
       <p class="text-secondary">Applies to your account across all households.</p>
       <div class="notif-pref-row">
@@ -920,7 +920,7 @@ function renderSettingsView() {
 
   const volumeUnit = state.volumeUnit === "oz" ? "oz" : "ml";
   const badgeHidden = !!state.hideNotificationBadge;
-  const prefsCard = `<div class="card mt-3">
+  const prefsCard = `<div class="card mt-3" data-key="preferences">
     <h3>Preferences</h3>
     <div class="pref-row">
       <label class="pref-label">
@@ -954,7 +954,7 @@ function renderSettingsView() {
 
   const activeId = state.activeHouseholdId || hh?.id;
   const yourHouseholdsCard = state.userHouseholds && state.userHouseholds.length > 1 ? `
-    <div class="card mt-3">
+    <div class="card mt-3" data-key="your-households">
       <h3>Your Households</h3>
       <div class="profile-households">
         ${state.userHouseholds.map(h => {
@@ -975,9 +975,9 @@ function renderSettingsView() {
     const householdCard = state.accessSuspended
       ? renderAccessSuspendedCard(state)
       : renderHouseholdView(null, null, null, state.user);
-    return `<div class="settings-view">${householdCard}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${myDataLine}${deleteAccountSection}</div>${aboutLine}</div>`;
+    return `<div class="settings-view">${householdCard}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3" data-key="account"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${myDataLine}${deleteAccountSection}</div>${aboutLine}</div>`;
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user, { showInviteQR: !!state.showInviteQR })}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${myDataLine}${deleteAccountSection}</div>${aboutLine}</div>`;
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user, { showInviteQR: !!state.showInviteQR })}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3" data-key="account"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${myDataLine}${deleteAccountSection}</div>${aboutLine}</div>`;
 }
 
 function loadAllStatsData() {

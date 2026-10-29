@@ -2045,6 +2045,34 @@ describe("API keys settings card", () => {
     root.innerHTML = renderApiKeys({ apiKeys: [], apiKeyIssued: 'nabu_pat_x."y' });
     assert.equal(root.querySelector("#api-key-token").value, 'nabu_pat_x."y');
   });
+
+  it("keeps the typed key name in its markup, escaped", async () => {
+    const { renderApiKeys } = await import("../api-keys.js");
+    const root = dom.window.document.createElement("div");
+    root.innerHTML = renderApiKeys({ apiKeys: [], apiKeyName: 'Nightly "sync" <b>x</b>' });
+    assert.equal(root.querySelector("#api-key-name").value, 'Nightly "sync" <b>x</b>');
+    assert.equal(root.querySelector("b"), null);
+    root.innerHTML = renderApiKeys({ apiKeys: [] });
+    assert.equal(root.querySelector("#api-key-name").value, "");
+  });
+
+  it("keeps its form's nodes when a card appears above it", async () => {
+    const { morphInnerHTML } = await import("../morph.js");
+    const { renderApiKeys } = await import("../api-keys.js");
+    // Settings cards that render once their data loads (notification
+    // settings) land above this one.
+    const settings = (above) => `<div class="settings-view"><div class="card mt-3" data-key="exports"></div>${above}${renderApiKeys({ apiKeys: [] })}<div class="card mt-3" data-key="account"></div></div>`;
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    morphInnerHTML(root, settings(""));
+    const input = root.querySelector("#api-key-name");
+    input.focus();
+    input.value = "Nightly sync";
+    morphInnerHTML(root, settings('<div class="card mt-3"><h3>Notifications</h3></div>'));
+    assert.equal(root.querySelector("#api-key-name"), input, "the field being typed in is the same node");
+    assert.equal(input.value, "Nightly sync");
+    root.remove();
+  });
 });
 
 describe("Chore icon and member avatar sinks escape untrusted values", () => {
@@ -2678,6 +2706,11 @@ describe("Action registry", () => {
     assert.equal(runAction("change", "export-range", {}, { dataset: { field: "start" }, value: "2026-01-01" }), true);
     assert.deepEqual(core.state.exportRange, { start: "2026-01-01" });
     assert.equal(core.state.exportError, null);
+
+    assert.equal(runAction("change", "create-api-key", { target: { id: "api-key-name", value: "Nightly sync" } }, {}), true);
+    assert.equal(core.state.apiKeyName, "Nightly sync");
+    runAction("change", "create-api-key", { target: { id: "other-field", value: "x" } }, {});
+    assert.equal(core.state.apiKeyName, "Nightly sync", "only the name field is the key name");
   });
 
   it("the notification panel and profile register their actions on import", async () => {
