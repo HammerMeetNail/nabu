@@ -1,7 +1,11 @@
+import { registerActions } from "./actions.js";
 import { apiFetch as request } from "./api.js";
+import { state, rerender, refreshTopBar, owned, withCurrentContext, changeHousehold } from "./app-core.js";
 import { changeIdentity } from "./browser-context.js";
 import { escapeHTML } from "./utils.js";
 import { renderQRCode } from "./qr.js";
+import { captureScope } from "./request-scope.js";
+import { showToast } from "./toast.js";
 
 async function apiFetch(path, options = {}) { return (await request(path, options)).data; }
 async function householdTransition(path, options) {
@@ -279,3 +283,182 @@ export function generateInitials(name) {
   }
   return words.map(w => w[0]).join("").toUpperCase();
 }
+
+// ── Household data and actions ──────────────────────────────────────────────
+
+// Loads the active household, its members and invites, and the list of the
+// user's households.
+export async function loadHouseholdData() {
+  const contextScope = captureScope(state, "household");
+  try {
+    const [data, listData] = await withCurrentContext(Promise.all([
+      loadHousehold(),
+      listHouseholds(),
+    ]), contextScope);
+    if (data.suspended) {
+      state.accessSuspended = data.suspended;
+      state.household = null;
+      state.members = [];
+      state.invites = [];
+    } else if (data.household) {
+      state.accessSuspended = null;
+      state.household = data.household;
+      state.members = data.members;
+      state.historicalMembers = data.historicalMembers || [];
+      state.invites = data.invites;
+    }
+    if (Array.isArray(listData?.households)) {
+      state.userHouseholds = listData.households;
+      if (data.household) {
+        state.activeHouseholdId = data.household.id;
+      }
+    }
+  } catch {}
+}
+
+// Closes the household panel that drops down from the top bar.
+export function closeProfilePanel() {
+  const container = document.querySelector("#profile-panel-container");
+  if (container && !container.hidden) {
+    container.hidden = true;
+    container.innerHTML = "";
+  }
+}
+
+function memberName(userId) {
+  const member = (state.members || []).find(m => m.userId === userId);
+  return member ? (member.displayName || member.email) : "this member";
+}
+
+// Reloads the household after a member change the server confirmed with
+// status; otherwise shows its error.
+function afterMemberChange(change, status, failure, success) {
+  change.then(owned(async (data) => {
+    const contextScope = captureScope(state);
+    if (data.status === status) {
+      await withCurrentContext(loadHouseholdData(), contextScope);
+      rerender();
+      if (success) showToast(success, "info");
+    } else {
+      showToast(data.error || failure, "error");
+    }
+  })).catch(owned(() => showToast(failure, "error")));
+}
+
+registerActions("click", {
+  "create-invite": (e) => {
+    e.preventDefault();
+    createInvite().then(owned((data) => {
+      if (data.invite) {
+        const url = `${window.location.origin}/join?code=${data.invite.code}`;
+        state.invites = [...(state.invites || []), data.invite];
+        navigator.clipboard.writeText(url).then(
+          owned(() => showToast("Invite link copied to clipboard!", "info")),
+          owned(() => showToast("Invite link: " + url, "info"))
+        );
+        rerender();
+      }
+    }));
+  },
+  "copy-invite-link": (e, el) => {
+    e.preventDefault();
+    const url = `${window.location.origin}/join?code=${el.dataset.code}`;
+    navigator.clipboard.writeText(url).then(
+      owned(() => showToast("Invite link copied!", "info")),
+      owned(() => showToast(`Link: ${url}`, "info"))
+    );
+  },
+  "toggle-invite-qr": (e) => {
+    e.preventDefault();
+    state.showInviteQR = !state.showInviteQR;
+    rerender();
+  },
+  "delete-invite": (e, el) => {
+    e.preventDefault();
+    deleteInvite(parseInt(el.dataset.inviteId)).then(owned(async () => {
+      const contextScope = captureScope(state);
+      await withCurrentContext(loadHouseholdData(), contextScope);
+      rerender();
+    }));
+  },
+  "leave-household": (e) => {
+    e.preventDefault();
+    // eslint-disable-next-line no-alert
+    if (!confirm("Are you sure you want to leave this household? All your data will remain with the household.")) return;
+    void changeHousehold(() => leaveHousehold());
+  },
+  "toggle-edit-household": (e) => {
+    e.preventDefault();
+    document.querySelector("#edit-household-form")?.classList.toggle("hidden");
+  },
+  "activate-household": (e, el) => {
+    e.preventDefault();
+    const hhId = parseInt(el.dataset.householdId, 10);
+    if (!hhId || hhId === state.activeHouseholdId) { closeProfilePanel(); return; }
+    void changeHousehold(() => activateHousehold(hhId));
+  },
+  "remove-member": (e, el) => {
+    e.preventDefault();
+    const userId = parseInt(el.dataset.userId, 10);
+    const name = memberName(userId);
+    // eslint-disable-next-line no-alert
+    if (!confirm(`Remove ${name} from this household?`)) return;
+    afterMemberChange(removeMember(userId), "removed", "Failed to remove member", `${name} removed`);
+  },
+  "toggle-member-access": (e, el) => {
+    e.preventDefault();
+    const userId = parseInt(el.dataset.userId, 10);
+    const wasSuspended = el.dataset.suspended === "1";
+    const name = memberName(userId);
+    // eslint-disable-next-line no-alert
+    if (!wasSuspended && !confirm(`Disable ${name}'s access? They will be signed out and cannot view or change anything in this household until you re-enable them.`)) return;
+    afterMemberChange(setMemberAccess(userId, !wasSuspended), "updated", "Failed to update access",
+      wasSuspended ? `${name}'s access enabled` : `${name}'s access disabled`);
+  },
+  "transfer-ownership": (e, el) => {
+    e.preventDefault();
+    const userId = parseInt(el.dataset.userId, 10);
+    const name = memberName(userId);
+    // eslint-disable-next-line no-alert
+    if (!confirm(`Transfer ownership to ${name}?`)) return;
+    afterMemberChange(transferOwnership(userId), "transferred", "Failed to transfer ownership", `Ownership transferred to ${name}`);
+  },
+});
+
+registerActions("change", {
+  // Choosing "owner" hands the household over; the owner becomes an admin.
+  "update-member-role": (e, el) => {
+    const userId = parseInt(el.dataset.userId, 10);
+    const newRole = el.value;
+    if (newRole === "owner") {
+      const name = memberName(userId);
+      // eslint-disable-next-line no-alert
+      if (!confirm(`Transfer ownership to ${name}? You will become an admin.`)) return;
+      afterMemberChange(transferOwnership(userId), "transferred", "Failed to transfer ownership", `Ownership transferred to ${name}`);
+    } else {
+      afterMemberChange(updateMemberRole(userId, newRole), "updated", "Failed to update role");
+    }
+  },
+});
+
+registerActions("submit", {
+  "join-household": (e, form) => {
+    const code = form.querySelector("#invite-code").value;
+    void changeHousehold(() => joinHousehold(code), { route: "/" });
+  },
+  "update-household": async (e, form) => {
+    const contextScope = captureScope(state);
+    const name = form.querySelector("#edit-hh-name")?.value?.trim() || "";
+    const initials = (form.querySelector("#edit-hh-initials")?.value || "").trim();
+    if (!name) return;
+    const data = await withCurrentContext(updateHousehold(name, initials || generateInitials(name)), contextScope);
+    if (!data || data.error) {
+      showToast(data?.error || "Failed to update household", "error");
+      return;
+    }
+    await withCurrentContext(loadHouseholdData(), contextScope);
+    refreshTopBar();
+    rerender();
+    showToast("Household updated", "info");
+  },
+});

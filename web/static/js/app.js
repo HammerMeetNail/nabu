@@ -33,7 +33,7 @@ import {
   renderForgotPasswordView,
   renderResetPasswordView,
 } from "./auth.js";
-import { loadHousehold, listHouseholds, activateHousehold, createHousehold, updateHousehold, joinHousehold, loadInvitePreview, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, setMemberAccess, transferOwnership, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
+import { createHousehold, joinHousehold, loadInvitePreview, loadHouseholdData, closeProfilePanel, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
 import { loadToday, loadWeek, loadHistory, logChore, undoLog, updateLog, loadChores, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
 import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS, choreHasAnalytics, renderWidgetWizard, widgetGrain, loadChoreSummary, choreAnalyticsGrain } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
@@ -151,6 +151,7 @@ setTopBar(updateTopBar);
 setIdentityFlow({
   finish: finishIdentity,
   recover: recoverIdentity,
+  changeHousehold: runHouseholdTransition,
   joinPendingInvite: async () => {
     if (state._pendingInviteCode && !state.household) await doJoinWithCode(state._pendingInviteCode);
   },
@@ -1375,14 +1376,6 @@ function renderTimerChip() {
   sheetController?.syncBackground();
 }
 
-function closeProfilePanel() {
-  const container = document.querySelector("#profile-panel-container");
-  if (container && !container.hidden) {
-    container.hidden = true;
-    container.innerHTML = "";
-  }
-}
-
 function closeAllPanels() {
   closeNotifPanel();
   closeProfilePanel();
@@ -2067,20 +2060,6 @@ export async function init() {
         showTab("/settings");
         break;
       }
-      case "create-invite":
-        e.preventDefault();
-        createInvite().then(owned((data) => {
-          if (data.invite) {
-            const url = `${window.location.origin}/join?code=${data.invite.code}`;
-            state.invites = [...(state.invites || []), data.invite];
-            navigator.clipboard.writeText(url).then(
-              owned(() => showToast("Invite link copied to clipboard!", "info")),
-              owned(() => showToast("Invite link: " + url, "info"))
-            );
-            render(app);
-          }
-        }));
-        break;
       case "onboarding-step": {
         const draft = state.onboarding;
         if (!draft || draft.saving) break;
@@ -2113,121 +2092,6 @@ export async function init() {
         state.onboarding = null;
         render(app);
         break;
-      case "copy-invite-link": {
-        e.preventDefault();
-        const code = actionEl.dataset.code;
-        const url = `${window.location.origin}/join?code=${code}`;
-        navigator.clipboard.writeText(url).then(
-          owned(() => showToast("Invite link copied!", "info")),
-          owned(() => showToast(`Link: ${url}`, "info"))
-        );
-        break;
-      }
-      case "toggle-invite-qr":
-        e.preventDefault();
-        state.showInviteQR = !state.showInviteQR;
-        render(app);
-        break;
-      case "delete-invite":
-        e.preventDefault();
-        deleteInvite(parseInt(actionEl.dataset.inviteId)).then(owned(async () => {
-  const contextScope = captureScope(state);
-          await withCurrentContext(loadHouseholdData(), contextScope);
-          render(app);
-        }));
-        break;
-      case "leave-household":
-        e.preventDefault();
-        if (!confirm("Are you sure you want to leave this household? All your data will remain with the household.")) break;
-        void runHouseholdTransition(() => leaveHousehold());
-        break;
-      case "toggle-edit-household": {
-        e.preventDefault();
-        const editForm = app.querySelector("#edit-household-form");
-        if (editForm) editForm.classList.toggle("hidden");
-        break;
-      }
-      case "activate-household": {
-        e.preventDefault();
-        const hhId = parseInt(actionEl.dataset.householdId, 10);
-        if (!hhId || hhId === state.activeHouseholdId) { closeProfilePanel(); break; }
-        void runHouseholdTransition(() => activateHousehold(hhId));
-        break;
-      }
-      case "remove-member": {
-        e.preventDefault();
-        const userId = parseInt(actionEl.dataset.userId, 10);
-        const member = (state.members || []).find(m => m.userId === userId);
-        const name = member ? (member.displayName || member.email) : "this member";
-        // eslint-disable-next-line no-alert
-        if (!confirm(`Remove ${name} from this household?`)) break;
-        removeMember(userId).then(owned(async (data) => {
-  const contextScope = captureScope(state);
-          if (data.status === "removed") {
-            await withCurrentContext(loadHouseholdData(), contextScope);
-            render(app);
-            showToast(`${name} removed`, "info");
-          } else {
-            showToast(data.error || "Failed to remove member", "error");
-          }
-        })).catch(owned(() => showToast("Failed to remove member", "error")));
-        break;
-      }
-      case "update-member-role": {
-        e.preventDefault();
-        const userId = parseInt(actionEl.dataset.userId, 10);
-        const newRole = actionEl.value;
-        updateMemberRole(userId, newRole).then(owned(async (data) => {
-  const contextScope = captureScope(state);
-          if (data.status === "updated") {
-            await withCurrentContext(loadHouseholdData(), contextScope);
-            render(app);
-          } else {
-            showToast(data.error || "Failed to update role", "error");
-          }
-        })).catch(owned(() => showToast("Failed to update role", "error")));
-        break;
-      }
-      case "toggle-member-access": {
-        e.preventDefault();
-        const userId = parseInt(actionEl.dataset.userId, 10);
-        const wasSuspended = actionEl.dataset.suspended === "1";
-        const member = (state.members || []).find(m => m.userId === userId);
-        const name = member ? (member.displayName || member.email) : "this member";
-        if (!wasSuspended) {
-          // eslint-disable-next-line no-alert
-          if (!confirm(`Disable ${name}'s access? They will be signed out and cannot view or change anything in this household until you re-enable them.`)) break;
-        }
-        setMemberAccess(userId, !wasSuspended).then(owned(async (data) => {
-  const contextScope = captureScope(state);
-          if (data.status === "updated") {
-            await withCurrentContext(loadHouseholdData(), contextScope);
-            render(app);
-            showToast(wasSuspended ? `${name}'s access enabled` : `${name}'s access disabled`, "info");
-          } else {
-            showToast(data.error || "Failed to update access", "error");
-          }
-        })).catch(owned(() => showToast("Failed to update access", "error")));
-        break;
-      }
-      case "transfer-ownership": {
-        e.preventDefault();
-        const userId = parseInt(actionEl.dataset.userId, 10);
-        const member = (state.members || []).find(m => m.userId === userId);
-        const name = member ? (member.displayName || member.email) : "this member";
-        if (!confirm(`Transfer ownership to ${name}?`)) break;
-        transferOwnership(userId).then(owned(async (data) => {
-  const contextScope = captureScope(state);
-          if (data.status === "transferred") {
-            await withCurrentContext(loadHouseholdData(), contextScope);
-            render(app);
-            showToast(`Ownership transferred to ${name}`, "info");
-          } else {
-            showToast(data.error || "Failed to transfer ownership", "error");
-          }
-        })).catch(owned(() => showToast("Failed to transfer ownership", "error")));
-        break;
-      }
       case "log-chore": {
         e.preventDefault();
         const choreId = parseInt(actionEl.dataset.choreId, 10);
@@ -3696,36 +3560,6 @@ export async function init() {
       }));
       render(app);
     }
-    if (actionEl?.dataset?.action === "update-member-role") {
-      const userId = parseInt(actionEl.dataset.userId, 10);
-      const newRole = actionEl.value;
-      if (newRole === "owner") {
-        const member = (state.members || []).find(m => m.userId === userId);
-        const name = member ? (member.displayName || member.email) : "this member";
-        // eslint-disable-next-line no-alert
-        if (!confirm(`Transfer ownership to ${name}? You will become an admin.`)) return;
-        transferOwnership(userId).then(owned(async (data) => {
-  const contextScope = captureScope(state);
-          if (data.status === "transferred") {
-            await withCurrentContext(loadHouseholdData(), contextScope);
-            render(app);
-            showToast(`Ownership transferred to ${name}`, "info");
-          } else {
-            showToast(data.error || "Failed to transfer ownership", "error");
-          }
-        })).catch(owned(() => showToast("Failed to transfer ownership", "error")));
-      } else {
-        updateMemberRole(userId, newRole).then(owned(async (data) => {
-  const contextScope = captureScope(state);
-          if (data.status === "updated") {
-            await withCurrentContext(loadHouseholdData(), contextScope);
-            render(app);
-          } else {
-            showToast(data.error || "Failed to update role", "error");
-          }
-        })).catch(owned(() => showToast("Failed to update role", "error")));
-      }
-    }
     if (actionEl?.dataset?.action === "change-chore-reminder-lead") {
       const choreId = parseInt(actionEl.dataset.choreId, 10);
       if (!choreId) return;
@@ -3802,12 +3636,6 @@ export async function init() {
     switch (action) {
       case "change-password":
         doChangePassword(form);
-        break;
-      case "update-household":
-        doUpdateHousehold(form);
-        break;
-      case "join-household":
-        doJoinHousehold(form);
         break;
       case "onboarding-name":
         void doOnboardingName();
@@ -4462,34 +4290,6 @@ async function flushOfflineQueue(retryKey = null, {confirmed=false} = {}) {
   } catch { /* retained in the journal */ }
 }
 
-async function loadHouseholdData() {
-  const contextScope = captureScope(state, "household");
-  try {
-    const [data, listData] = await withCurrentContext(Promise.all([
-      loadHousehold(),
-      listHouseholds(),
-    ]), contextScope);
-    if (data.suspended) {
-      state.accessSuspended = data.suspended;
-      state.household = null;
-      state.members = [];
-      state.invites = [];
-    } else if (data.household) {
-      state.accessSuspended = null;
-      state.household = data.household;
-      state.members = data.members;
-      state.historicalMembers = data.historicalMembers || [];
-      state.invites = data.invites;
-    }
-    if (Array.isArray(listData?.households)) {
-      state.userHouseholds = listData.households;
-      if (data.household) {
-        state.activeHouseholdId = data.household.id;
-      }
-    }
-  } catch {}
-}
-
 async function loadChoreData() {
   const contextScope = captureScope(state, "chores");
   try {
@@ -4678,28 +4478,6 @@ async function doAddPacks() {
     draft.error = err.message || "Could not add the activities. Please retry.";
     render(app);
   }
-}
-
-async function doJoinHousehold(form) {
-  const code = form.querySelector("#invite-code").value;
-  return runHouseholdTransition(() => joinHousehold(code), {route:"/"});
-}
-
-async function doUpdateHousehold(form) {
-  const contextScope = captureScope(state);
-  const name = form.querySelector("#edit-hh-name")?.value?.trim() || "";
-  const initials = (form.querySelector("#edit-hh-initials")?.value || "").trim();
-  if (!name) return;
-  const data = await withCurrentContext(updateHousehold(name, initials || generateInitials(name)), contextScope);
-  if (!data || data.error) {
-    showToast(data?.error || "Failed to update household", "error");
-    return;
-  }
-  await withCurrentContext(loadHouseholdData(), contextScope);
-  updateTopBar();
-  const app = document.querySelector("#app");
-  if (app) render(app);
-  showToast("Household updated", "info");
 }
 
 async function doCreateChoreFromSheet(form) {
