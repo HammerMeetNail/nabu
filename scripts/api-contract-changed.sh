@@ -40,5 +40,6 @@ if git diff --quiet "$tag" HEAD -- api/contract; then
   exit 0
 fi
 echo "The API contract has changed since $tag, the version in production:" >&2
-git diff --name-status "$tag" HEAD -- api/contract | awk 'NR <= 20 { print "  " $0 }' >&2
+git diff --name-status "$tag" HEAD -- api/contract |
+  awk 'NR <= 20 { print "  " $0 } END { if (NR > 20) print "  and " NR - 20 " more" }' >&2
 changed "The release waits for them."
