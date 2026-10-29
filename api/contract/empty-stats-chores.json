@@ -1,0 +1,12 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/stats/chores?period=day"
+  },
+  "status": 200,
+  "response": {
+    "choreStats": [],
+    "end": "2026-01-02",
+    "start": "2026-01-02"
+  }
+}

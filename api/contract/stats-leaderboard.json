@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/stats/leaderboard?period=week"
+  },
+  "status": 200,
+  "response": {
+    "end": "2026-01-02",
+    "leaderboard": [
+      {
+        "count": 2,
+        "userId": 16
+      }
+    ],
+    "period": "week",
+    "start": "2026-01-02"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/logs/history"
+  },
+  "status": 200,
+  "response": {
+    "end": "2026-01-02",
+    "hasMore": false,
+    "logs": [],
+    "start": "2026-01-02"
+  }
+}

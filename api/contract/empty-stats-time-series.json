@@ -1,0 +1,103 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/stats/chores/11/time-series?period=day"
+  },
+  "status": 200,
+  "response": {
+    "timeSeries": {
+      "byMember": [],
+      "choreIcon": "🍼",
+      "choreId": 11,
+      "choreName": "Feed Baby",
+      "metricType": "amount",
+      "metricUnit": "mL",
+      "periods": [
+        {
+          "count": 0,
+          "end": "2026-01-02",
+          "start": "2026-01-02",
+          "totalML": 0
+        },
+        {
+          "count": 0,
+          "end": "2026-01-02",
+          "start": "2026-01-02",
+          "totalML": 0
+        },
+        {
+          "count": 0,
+          "end": "2026-01-02",
+          "start": "2026-01-02",
+          "totalML": 0
+        },
+        {
+          "count": 0,
+          "end": "2026-01-02",
+          "start": "2026-01-02",
+          "totalML": 0
+        },
+        {
+          "count": 0,
+          "end": "2026-01-02",
+          "start": "2026-01-02",
+          "totalML": 0
+        },
+        {
+          "count": 0,
+          "end": "2026-01-02",
+          "start": "2026-01-02",
+          "totalML": 0
+        },
+        {
+          "count": 0,
+          "end": "2026-01-02",
+          "start": "2026-01-02",
+          "totalML": 0
+        },
+        {
+          "count": 0,
+          "end": "2026-01-02",
+          "start": "2026-01-02",
+          "totalML": 0
+        },
+        {
+          "count": 0,
+          "end": "2026-01-02",
+          "start": "2026-01-02",
+          "totalML": 0
+        },
+        {
+          "count": 0,
+          "end": "2026-01-02",
+          "start": "2026-01-02",
+          "totalML": 0
+        },
+        {
+          "count": 0,
+          "end": "2026-01-02",
+          "start": "2026-01-02",
+          "totalML": 0
+        },
+        {
+          "count": 0,
+          "end": "2026-01-02",
+          "start": "2026-01-02",
+          "totalML": 0
+        },
+        {
+          "count": 0,
+          "end": "2026-01-02",
+          "start": "2026-01-02",
+          "totalML": 0
+        },
+        {
+          "count": 0,
+          "end": "2026-01-02",
+          "start": "2026-01-02",
+          "totalML": 0
+        }
+      ]
+    }
+  }
+}

@@ -9,7 +9,9 @@ and iOS; no client UI or API model changes are required.
 The server's answer to each request the iOS app makes is recorded in
 `api/contract` (`TestAPIContract`), and `APIContractTests` decodes every one
 with the app's models, so an API change the app can't read fails CI (see
-"The API contract" in `AGENTS.md`). Stats reads are not in it yet.
+"The API contract" in `AGENTS.md`). It covers the Stats reads and what a new
+account and an empty household get (`empty-*` files), where Go's empty lists
+come back as `null` unless a handler fills them.
 
 > **Re-baselined 2026-06-28** against the code on `main`. The previous matrix
 > was inaccurate in both directions: it marked ~50 rows "iOS pending" even
