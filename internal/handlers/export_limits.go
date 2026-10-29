@@ -7,6 +7,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"sync"
@@ -39,24 +40,24 @@ type HouseholdLock func(ctx context.Context, householdID int64) (release func(),
 func (g *ExportGate) ShareHouseholds(lock HouseholdLock) { g.lock = lock }
 
 // PostgresHouseholdLock holds a household's export with a session advisory
-// lock on a dedicated connection, keyed by the negated household ID so it
-// never meets the app's other advisory keys, which are all positive. The
-// lock is released when the export ends, or with its connection.
+// lock on a dedicated connection, keyed by exportLockKey. The lock is released
+// when the export ends, or with its connection.
 func PostgresHouseholdLock(db *sql.DB) HouseholdLock {
 	return func(ctx context.Context, householdID int64) (func(), bool, error) {
+		key := exportLockKey(householdID)
 		conn, err := db.Conn(ctx)
 		if err != nil {
 			return nil, false, err
 		}
 		var held bool
-		if err := conn.QueryRowContext(ctx, `SELECT pg_try_advisory_lock($1)`, -householdID).Scan(&held); err != nil || !held {
+		if err := conn.QueryRowContext(ctx, `SELECT pg_try_advisory_lock($1)`, key).Scan(&held); err != nil || !held {
 			_ = conn.Close()
 			return nil, false, err
 		}
 		return func() {
 			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 			defer cancel()
-			if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, -householdID); err != nil {
+			if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, key); err != nil {
 				// Never return a connection that may still hold the lock to the
 				// pool: discarding it ends the lock with its session.
 				_ = conn.Raw(func(any) error { return driver.ErrBadConn })
@@ -65,6 +66,13 @@ func PostgresHouseholdLock(db *sql.DB) HouseholdLock {
 		}, true, nil
 	}
 }
+
+// exportLockKey is a household export's advisory-lock key. The app's other
+// advisory keys are positive constants, or the negated household ID for the
+// household's delivery and revocation lock (household.PostgresStore.WithMember),
+// so export keys count up from the lowest key. The two ranges stay apart while
+// household IDs are below 2^62.
+func exportLockKey(householdID int64) int64 { return math.MinInt64 + householdID }
 
 func NewExportGate() *ExportGate { return &ExportGate{active: map[int64]bool{}} }
 func (g *ExportGate) Wrap(next http.HandlerFunc) http.HandlerFunc {
