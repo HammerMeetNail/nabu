@@ -74,6 +74,13 @@ struct ContentView: View {
         }
         .onChange(of: state.revision) { _, _ in
             accountDeletion.reconcile(api: environment.apiClient)
+            // Every revision starts with no data (`AppState.reset`), and it may
+            // belong to the same user: an identity change that fails returns to
+            // it. The user's onChange misses that when both changes land in
+            // one main-actor turn, as `APIClient` runs on its caller's actor.
+            if state.user != nil, state.sessionPhase == .ready, !state.showingSavedHome {
+                Task { await loadAppData() }
+            }
         }
         .task {
             if !hasCheckedSession {
