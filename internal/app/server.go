@@ -303,9 +303,10 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 		backgroundWG.Add(1)
 		go func() { defer backgroundWG.Done(); deliveryMetrics.MonitorPoolNamed(ctx, deliveryDB, nil, "delivery") }()
 	}
-	backgroundWG.Add(3 + database.PushWorkers)
+	backgroundWG.Add(4 + database.PushWorkers)
 	go func() { defer backgroundWG.Done(); reminderSched.Start(ctx) }()
 	go func() { defer backgroundWG.Done(); authService.RunMailOutbox(ctx) }()
+	go func() { defer backgroundWG.Done(); authService.RunSweeps(ctx) }()
 	go func() { defer backgroundWG.Done(); deliveryNotifications.RunEvents(ctx) }()
 	for range database.PushWorkers {
 		go func() { defer backgroundWG.Done(); pushDelivery.Run(ctx) }()

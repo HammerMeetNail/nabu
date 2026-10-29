@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/HammerMeetNail/nabu/internal/lifecycle"
 )
 
 type authQuerier interface {
@@ -245,6 +247,41 @@ func (s *PostgresStore) TouchSession(ctx context.Context, tokenHash string, last
 func (s *PostgresStore) DeleteSession(ctx context.Context, tokenHash string) error {
 	_, err := s.q.ExecContext(ctx, `DELETE FROM sessions WHERE token_hash = $1`, tokenHash)
 	return err
+}
+
+// SweepEnded deletes up to limit ended sessions, whose devices' push
+// registrations cascade with them, and up to limit spent auth tokens. Rows
+// another transaction holds, such as a session a push send is using, are
+// skipped until the next sweep, so a sweep never waits on one. One instance
+// sweeps at a time; the others delete nothing.
+func (s *PostgresStore) SweepEnded(ctx context.Context, limit int) (sessions, tokens int64, err error) {
+	err = s.InTransaction(ctx, func(store Store) error {
+		tx := store.(*PostgresStore)
+		var leader bool
+		if err := tx.q.QueryRowContext(ctx, `SELECT pg_try_advisory_xact_lock($1)`, sweepLockKey).Scan(&leader); err != nil || !leader {
+			return err
+		}
+		res, err := tx.q.ExecContext(ctx, `DELETE FROM sessions WHERE id IN (SELECT id FROM sessions
+ WHERE expires_at<=clock_timestamp() OR last_seen_at<=clock_timestamp()-`+lifecycle.SessionIdleSQL+`
+ LIMIT $1 FOR UPDATE SKIP LOCKED)`, limit)
+		if err != nil {
+			return err
+		}
+		if sessions, err = res.RowsAffected(); err != nil {
+			return err
+		}
+		res, err = tx.q.ExecContext(ctx, `DELETE FROM auth_tokens WHERE id IN (SELECT id FROM auth_tokens
+ WHERE consumed_at IS NOT NULL OR expires_at<=clock_timestamp() LIMIT $1 FOR UPDATE SKIP LOCKED)`, limit)
+		if err != nil {
+			return err
+		}
+		tokens, err = res.RowsAffected()
+		return err
+	})
+	if err != nil {
+		return 0, 0, err
+	}
+	return sessions, tokens, nil
 }
 
 func (s *PostgresStore) DeleteUserSessions(ctx context.Context, userID int64) error {
