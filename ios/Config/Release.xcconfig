@@ -1,0 +1,4 @@
+#include "Shared.xcconfig"
+
+// A release build reads no local override and no launch argument: it always
+// talks to the server in Shared.xcconfig.
