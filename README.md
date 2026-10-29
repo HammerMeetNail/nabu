@@ -120,7 +120,7 @@ Nabu is a Progressive Web App with a service worker caching strategy. Key PWA fe
 | `SMTP_PORT` | `587` | SMTP port |
 | `SMTP_USER` | (empty) | SMTP username |
 | `SMTP_PASS` | (empty) | SMTP password |
-| `SMTP_FROM` | (empty) | From address for emails |
+| `SMTP_FROM` | (empty) | From address for emails, optionally with a display name (`Nabu <noreply@nabu-app.com>`) |
 | `GOOGLE_CLIENT_ID` | (empty) | Google OAuth2 client ID |
 | `GOOGLE_CLIENT_SECRET` | (empty) | Google OAuth2 client secret |
 | `APPLE_CLIENT_IDS` | (empty) | Comma-separated audiences accepted on Sign in with Apple identity tokens (the iOS bundle ID; empty disables the native endpoint) |

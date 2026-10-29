@@ -1,6 +1,10 @@
 package config
 
 import (
+	"net/mail"
+	"net/url"
+	"os"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -178,6 +182,8 @@ func TestLoadRejectsInvalidDeploymentConfig(t *testing.T) {
 		{"DB_MAX_OPEN_CONNS", "101", "DB_MAX_OPEN_CONNS"},
 		{"DB_MAX_IDLE_CONNS", "26", "DB_MAX_IDLE_CONNS"},
 		{"DB_MAX_IDLE_CONNS", "-1", "DB_MAX_IDLE_CONNS"},
+		{"SMTP_FROM", "Nabu <noreply@", "SMTP_FROM"},
+		{"SMTP_FROM", "noreply SECRET", "SMTP_FROM"},
 	} {
 		t.Run(tc.key+"/"+tc.value, func(t *testing.T) {
 			t.Setenv("APP_ENV", "development")
@@ -224,5 +230,47 @@ func TestLoadRateLimitDefaults(t *testing.T) {
 	}
 	if cfg.RateLimitAuthMax != 30 || cfg.RateLimitGlobalMax != 600 || cfg.RateLimitJoinMax != 30 {
 		t.Fatalf("rate limits = auth %d, global %d, join %d; want 30, 600, 30", cfg.RateLimitAuthMax, cfg.RateLimitGlobalMax, cfg.RateLimitJoinMax)
+	}
+}
+
+func TestLoadAcceptsSenderWithDisplayName(t *testing.T) {
+	t.Setenv("APP_ENV", "development")
+	t.Setenv("SMTP_FROM", "Nabu <noreply@nabu-app.com>")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.SMTPFrom != "Nabu <noreply@nabu-app.com>" {
+		t.Fatalf("SMTPFrom = %q", cfg.SMTPFrom)
+	}
+}
+
+// Production mail must come from the app's own domain: Nabu once sent its
+// verification emails from another product's address.
+func TestProductionComposeSendsFromTheAppDomain(t *testing.T) {
+	compose, err := os.ReadFile("../../compose.server.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	setting := func(key string) string {
+		m := regexp.MustCompile(`(?m)^\s+- ` + key + `=(.+)$`).FindSubmatch(compose)
+		if m == nil {
+			t.Fatalf("compose.server.yaml sets no %s", key)
+		}
+		return strings.TrimSpace(string(m[1]))
+	}
+	from, err := mail.ParseAddress(setting("SMTP_FROM"))
+	if err != nil {
+		t.Fatalf("SMTP_FROM: %v", err)
+	}
+	base, err := url.Parse(setting("APP_BASE_URL"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if domain := from.Address[strings.LastIndex(from.Address, "@")+1:]; domain != base.Hostname() {
+		t.Fatalf("SMTP_FROM domain = %s, want %s (APP_BASE_URL)", domain, base.Hostname())
+	}
+	if from.Name == "" {
+		t.Fatal("SMTP_FROM has no display name, so mail shows a bare address")
 	}
 }

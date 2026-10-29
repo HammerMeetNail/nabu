@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	netmail "net/mail"
 	"net/smtp"
 	"strings"
 	"time"
@@ -15,19 +16,34 @@ type SMTPSender struct {
 	port string
 	user string
 	pass string
-	from string
+	// from is the envelope sender. fromHeader is the From line recipients
+	// see, which keeps a display name: SMTP_FROM="Nabu <noreply@nabu-app.com>"
+	// sends from noreply@nabu-app.com and shows "Nabu".
+	from       string
+	fromHeader string
 }
 
 func NewSMTPSender(host, port, user, pass, from string) *SMTPSender {
 	if port == "" {
 		port = "587"
 	}
+	if from == "" {
+		from = "no-reply@nabu.local"
+	}
+	envelope, header := from, from
+	if addr, err := netmail.ParseAddress(from); err == nil {
+		envelope, header = addr.Address, addr.Address
+		if addr.Name != "" {
+			header = addr.String()
+		}
+	}
 	return &SMTPSender{
-		host: host,
-		port: port,
-		user: user,
-		pass: pass,
-		from: from,
+		host:       host,
+		port:       port,
+		user:       user,
+		pass:       pass,
+		from:       envelope,
+		fromHeader: header,
 	}
 }
 
@@ -35,11 +51,8 @@ func (s *SMTPSender) Send(ctx context.Context, msg Message) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	from := s.from
-	if from == "" {
-		from = "no-reply@nabu.local"
-	}
 	to := []string{msg.To}
-	body := buildEmail(from, msg)
+	body := buildEmail(s.fromHeader, msg)
 	addr := net.JoinHostPort(s.host, s.port)
 
 	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", addr)
