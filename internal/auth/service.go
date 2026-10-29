@@ -15,6 +15,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/HammerMeetNail/nabu/internal/audit"
+	"github.com/HammerMeetNail/nabu/internal/lifecycle"
 	nabumail "github.com/HammerMeetNail/nabu/internal/mail"
 )
 
@@ -84,7 +85,7 @@ type Service struct {
 func NewService(store Store) *Service {
 	return &Service{
 		store:           store,
-		sessionDuration: 30 * 24 * time.Hour,
+		sessionDuration: lifecycle.SessionLifetime,
 		mailer:          nabumail.NopSender{},
 		auditLogger:     audit.NopLogger{},
 		baseURL:         "http://localhost:8080",
@@ -273,7 +274,7 @@ func (s *Service) Logout(ctx context.Context, sessionToken string) error {
 	return nil
 }
 
-const sessionIdleTimeout = 24 * time.Hour
+const sessionIdleTimeout = lifecycle.SessionIdleTimeout
 
 func (s *Service) Authenticate(ctx context.Context, sessionToken string) (User, error) {
 	if sessionToken == "" {
@@ -285,12 +286,14 @@ func (s *Service) Authenticate(ctx context.Context, sessionToken string) (User, 
 		return User{}, ErrSessionNotFound
 	}
 	now := s.now()
-	if session.ExpiresAt.Before(now) {
+	// A session ends at its expiry, and once it has gone the idle timeout
+	// without a request: the same boundaries the stores and the push guards
+	// apply.
+	if !now.Before(session.ExpiresAt) {
 		_ = s.store.DeleteSession(ctx, tokenHash)
 		return User{}, ErrSessionNotFound
 	}
-	// Enforce idle timeout: reject sessions not seen in the last 24 hours.
-	if now.Sub(session.LastSeenAt) > sessionIdleTimeout {
+	if now.Sub(session.LastSeenAt) >= sessionIdleTimeout {
 		_ = s.store.DeleteSession(ctx, tokenHash)
 		return User{}, ErrSessionNotFound
 	}

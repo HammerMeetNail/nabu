@@ -687,8 +687,8 @@ func TestAuthenticateIdleTimeout(t *testing.T) {
 		t.Fatalf("Register: %v", err)
 	}
 
-	// Advance past the idle timeout — session should be rejected.
-	svc.now = func() time.Time { return base.Add(25 * time.Hour) }
+	// A session that goes 30 days without a request has ended.
+	svc.now = func() time.Time { return base.Add(30 * 24 * time.Hour) }
 	_, err = svc.Authenticate(context.Background(), session.ID)
 	if err != ErrSessionNotFound {
 		t.Fatalf("Authenticate after idle timeout: error = %v, want ErrSessionNotFound", err)
@@ -708,13 +708,42 @@ func TestAuthenticateActiveSessionNotExpired(t *testing.T) {
 		t.Fatalf("Register: %v", err)
 	}
 
-	// Advance to just under the idle timeout — session should still be valid.
-	svc.now = func() time.Time { return base.Add(23 * time.Hour) }
+	// A day away no longer signs anyone out: the session lasts until it
+	// goes 30 days without a request.
+	svc.now = func() time.Time { return base.Add(30*24*time.Hour - time.Second) }
 	user, err := svc.Authenticate(context.Background(), session.ID)
 	if err != nil {
 		t.Fatalf("Authenticate within idle window: %v", err)
 	}
 	if user.Email != "active@example.com" {
 		t.Fatalf("email = %q", user.Email)
+	}
+}
+
+// A session in regular use still ends a year after sign-in.
+func TestSessionEndsAYearAfterSignIn(t *testing.T) {
+	svc := NewService(NewMemoryStore())
+	base := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	svc.now = func() time.Time { return base }
+	_, session, err := svc.Register(context.Background(), "yearly@example.com", "password123")
+	svc.DeliverPendingMail(context.Background())
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	for day := 20; day < 365; day += 20 {
+		at := base.Add(time.Duration(day) * 24 * time.Hour)
+		svc.now = func() time.Time { return at }
+		if _, err := svc.Authenticate(context.Background(), session.ID); err != nil {
+			t.Fatalf("day %d: %v", day, err)
+		}
+	}
+	last := base.Add(365*24*time.Hour - time.Second)
+	svc.now = func() time.Time { return last }
+	if _, err := svc.Authenticate(context.Background(), session.ID); err != nil {
+		t.Fatalf("just before a year: %v", err)
+	}
+	svc.now = func() time.Time { return base.Add(365 * 24 * time.Hour) }
+	if _, err := svc.Authenticate(context.Background(), session.ID); err != ErrSessionNotFound {
+		t.Fatalf("a year after sign-in: error = %v, want ErrSessionNotFound", err)
 	}
 }

@@ -144,7 +144,7 @@ func (s *PostgresStore) RegisterDevice(ctx context.Context, d Device) error {
  (user_id, token, environment, bundle_id, device_name, session_hash, registration_id, created_at, last_seen_at)
  SELECT $1::bigint, $2, $3, $4, $5, s.token_hash, $7, NOW(), NOW() FROM sessions s JOIN users u ON u.id=s.user_id
  WHERE s.token_hash=$6 AND s.user_id=$1 AND s.auth_version=u.auth_version
- AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-INTERVAL '24 hours'
+ AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-`+lifecycle.SessionIdleSQL+`
  ON CONFLICT (token) DO UPDATE SET user_id=EXCLUDED.user_id, environment=EXCLUDED.environment,
  bundle_id=EXCLUDED.bundle_id, device_name=EXCLUDED.device_name, session_hash=EXCLUDED.session_hash, registration_id=EXCLUDED.registration_id, last_seen_at=NOW()`,
 			d.UserID, d.Token, d.Environment, d.BundleID, d.DeviceName, d.SessionHash, diagnostics.RequestID())
@@ -176,7 +176,7 @@ func (s *PostgresStore) DevicesForUser(ctx context.Context, userID int64) ([]Dev
 		SELECT d.user_id, d.token, d.environment, d.bundle_id, d.device_name, d.session_hash, d.registration_id
  FROM mobile_device_tokens d JOIN sessions s ON s.token_hash=d.session_hash JOIN users u ON u.id=s.user_id
  WHERE d.user_id=$1 AND s.user_id=$1 AND s.auth_version=u.auth_version
- AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-INTERVAL '24 hours'
+ AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-`+lifecycle.SessionIdleSQL+`
 	`, userID)
 	if err != nil {
 		return nil, err

@@ -6,8 +6,10 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/auth"
+	"github.com/HammerMeetNail/nabu/internal/lifecycle"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
 )
 
@@ -507,7 +509,7 @@ func (h *AuthHandler) SetSessionCookie(w http.ResponseWriter, sessionID string) 
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   h.secure,
-		MaxAge:   30 * 24 * 60 * 60,
+		MaxAge:   int(lifecycle.SessionLifetime / time.Second),
 	})
 }
 
