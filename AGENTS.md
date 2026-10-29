@@ -212,7 +212,7 @@ To run **two stacks simultaneously** (project-name + port overrides), see **`doc
 
 Local seed: `test@nabu.local` / `correct horse battery`. Stack must be running (`make local`) before `make seed`.
 
-Production test account: `verify@yearofbingo.com` / `test123456` (household and seeded chores already set up).
+Production has no test account. To check a deploy signed in, run `scripts/prod-smoke.sh`: it signs up a throwaway account, uses it and deletes it, even when a step fails. Never leave an account behind in production or rely on one that's already there.
 
 ## Production
 
@@ -220,7 +220,7 @@ Production test account: `verify@yearofbingo.com` / `test123456` (household and 
 - **Deploy trigger**: push a `v*` tag (e.g. `git tag v0.1.7 && git push origin v0.1.7`). CI builds, tests, and deploys automatically.
 - **CI**: `.github/workflows/ci.yaml` — runs secret scan, JS tests, lint, Go tests (with coverage), E2E tests, the client-parity gate (PR only), and the iOS `NabuTests` lane (macOS, when `ios/**` changes) before deploying.
 
-**After pushing a `v*` tag, watch the pipeline to completion and verify production** (don't wait to be asked; a cheaper subagent may be delegated to it). The full runbook — `gh run watch`, transient-vs-real failure triage, and the production verification commands (`/health`, versioned imports, `no-store`/`BYPASS` cache headers) — lives in **`docs/deploy-runbook.md`**.
+**After pushing a `v*` tag, watch the pipeline to completion and verify production** (don't wait to be asked; a cheaper subagent may be delegated to it). The full runbook — `gh run watch`, transient-vs-real failure triage, and the production verification commands (`/health`, versioned imports, `no-store`/`BYPASS` cache headers, the throwaway-account smoke test) — lives in **`docs/deploy-runbook.md`**.
 
 ## UI acceptance and verification
 
