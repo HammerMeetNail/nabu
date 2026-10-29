@@ -129,6 +129,23 @@ test("operator dashboard and scoped key lifecycle", async ({ browser }) => {
     await expect(owner.locator("#users-body")).toContainText(email);
     await expect(owner.locator("#households-body")).toContainText("Operator test household");
     await expect(owner.locator("#overview")).toContainText("Registered users");
+    // Every account here signed up today, so no day has finished yet.
+    await expect(owner.locator("#daily-body")).toContainText("No finished days yet");
+    // The activity window carries each finished day's totals, newest first.
+    await owner.route("**/api/operator/v1/activity?*", route => route.fulfill({ json: { asOf: new Date().toISOString(), days: [
+      { date: "2026-10-26", registrations: 1, authors: 1, totals: { signups: 1, activated: 1, logs: 9, loggingHouseholds: 2,
+        sharedHouseholds7Days: 1, cohortD7: 0, returnedD7: 0, cohortD30: 1, returnedD30: 1 } },
+      { date: "2026-10-27", registrations: 3, authors: 4, totals: { signups: 3, activated: 2, logs: 40, loggingHouseholds: 5,
+        sharedHouseholds7Days: 4, cohortD7: 2, returnedD7: 1, cohortD30: 0, returnedD30: 0 } },
+      { date: "2026-10-28", registrations: 1, authors: 1, totals: null },
+    ] } }));
+    await owner.locator("#refresh").click();
+    await expect(owner.locator("#daily-body tr")).toHaveCount(2);
+    await expect(owner.locator("#daily-body tr").first().locator("td")).toHaveText(["2026-10-27", "3", "2 of 3", "40", "5", "4", "1 of 2", "—"]);
+    await expect(owner.locator("#daily-body tr").nth(1).locator("td").first()).toHaveText("2026-10-26");
+    await owner.unroute("**/api/operator/v1/activity?*");
+    await owner.locator("#refresh").click();
+    await expect(owner.locator("#daily-body")).toContainText("No finished days yet");
     await owner.emulateMedia({ colorScheme: "dark" });
     await expect(owner.locator("html")).toHaveCSS("color-scheme", "dark");
     await expect(owner.locator("section").first()).toHaveCSS("background-color", "rgb(24, 28, 39)");

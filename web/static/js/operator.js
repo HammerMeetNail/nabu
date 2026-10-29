@@ -37,7 +37,7 @@ function clearSensitive(reason) {
   householdsCursor = "";
   usersBusy = false;
   householdsBusy = false;
-  for (const selector of ["#overview", "#activity-chart", "#users-body", "#households-body", "#keys-body"]) {
+  for (const selector of ["#overview", "#activity-chart", "#daily-body", "#users-body", "#households-body", "#keys-body"]) {
     document.querySelector(selector).replaceChildren();
   }
   document.querySelector("#as-of").textContent = "";
@@ -171,7 +171,35 @@ async function loadActivity() {
       chart.append(group);
     }
     chart.setAttribute("aria-label", `${days}-day chart of daily registrations and distinct log authors`);
+    renderDailyTotals(data.days);
   } finally { signalSettled("activity"); }
+}
+
+// One row per finished UTC day in the window, newest first: what the daily
+// rollup counted. Days it hasn't counted yet (today, at least) carry no totals.
+function renderDailyTotals(days) {
+  const body = document.querySelector("#daily-body");
+  body.replaceChildren();
+  const counted = days.filter(day => day.totals).reverse();
+  if (!counted.length) {
+    const row = document.createElement("tr");
+    cell(row, "No finished days yet. A day's totals appear within an hour after it ends (UTC).").colSpan = 8;
+    body.append(row);
+    return;
+  }
+  const of = (part, whole) => whole ? `${part} of ${whole}` : "—";
+  for (const { date, totals: t } of counted) {
+    const row = document.createElement("tr");
+    cell(row, date);
+    cell(row, String(t.signups), "number");
+    cell(row, of(t.activated, t.signups), "number");
+    cell(row, String(t.logs), "number");
+    cell(row, String(t.loggingHouseholds), "number");
+    cell(row, String(t.sharedHouseholds7Days), "number");
+    cell(row, of(t.returnedD7, t.cohortD7), "number");
+    cell(row, of(t.returnedD30, t.cohortD30), "number");
+    body.append(row);
+  }
 }
 
 async function loadUsers(reset = false) {
