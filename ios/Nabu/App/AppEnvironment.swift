@@ -23,17 +23,18 @@ final class AppEnvironment: ObservableObject {
         IntentSession.appClient = { [weak self] in self?.apiClient }
     }
 
-    /// The server base URL from launch arguments / env, falling back to
+    /// The server base URL a test passes as a launch argument or in the
+    /// environment (debug builds only; see TestHooks), falling back to
     /// production. Static so contexts that exist before SwiftUI state (the
     /// notification-action handler in AppDelegate) resolve identically.
     static func resolveBaseURL() -> URL {
         let fallback = URL(string: "https://nabu-app.com")!
-        let args = ProcessInfo.processInfo.arguments
+        let args = TestHooks.arguments
         if let idx = args.firstIndex(of: "-nabuBaseURL"), idx + 1 < args.count,
            let url = URL(string: args[idx + 1]) {
             return url
         }
-        if let env = ProcessInfo.processInfo.environment["NABU_BASE_URL"],
+        if let env = TestHooks.environment["NABU_BASE_URL"],
            let url = URL(string: env) {
             return url
         }
@@ -46,7 +47,7 @@ final class AppEnvironment: ObservableObject {
     func configure(with state: AppState) {
         guard !configured else { return }
         configured = true
-        let args = ProcessInfo.processInfo.arguments
+        let args = TestHooks.arguments
 
         useMockAPI = args.contains("-useMockAPI") || TestHooks.seedHomeForUITest
 
@@ -83,7 +84,7 @@ final class AppEnvironment: ObservableObject {
             displayName: "UI Tester", avatarColor: "#2E86AB",
             emailVerified: true, role: "owner", createdAt: now
         )
-        if ProcessInfo.processInfo.arguments.contains("-passwordlessAccount") {
+        if TestHooks.arguments.contains("-passwordlessAccount") {
             state.user?.hasPassword = false
         }
         state.household = Household(
@@ -167,12 +168,12 @@ final class AppEnvironment: ObservableObject {
 
         state.currentTab = .home
 #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-reviewScenario") {
+        if TestHooks.arguments.contains("-reviewScenario") {
             state.chores.append(Chore(id: 6, householdId: 1, name: "Weigh flour", icon: "⚖️",
                 color: "#6080AA", sortOrder: 5, category: "cooking", isPredefined: false,
                 predefinedKey: nil, createdBy: 1, createdAt: now, indicatorLabels: [],
                 indicatorDefaults: [], hasVolumeML: true, metricType: "amount", metricUnit: "g"))
-            let scenario = launchArgumentValue(for: "-reviewScenario", in: ProcessInfo.processInfo.arguments) ?? ""
+            let scenario = launchArgumentValue(for: "-reviewScenario", in: TestHooks.arguments) ?? ""
             if scenario.hasPrefix("timer") {
                 state.chores.append(Chore(id: 7, householdId: 1, name: "Nap", icon: "😴", color: "#6080AA",
                     sortOrder: 6, category: "rest", isPredefined: false, predefinedKey: nil, createdBy: 1,
@@ -218,7 +219,7 @@ final class AppEnvironment: ObservableObject {
     private func configureMockAPI(state: AppState) {
 #if DEBUG
         if TestHooks.seedHomeForUITest {
-            let scenario = launchArgumentValue(for: "-reviewScenario", in: ProcessInfo.processInfo.arguments) ?? "home"
+            let scenario = launchArgumentValue(for: "-reviewScenario", in: TestHooks.arguments) ?? "home"
             let responses = ReviewUITestResponses(scenario: scenario, state: state)
             apiClient.mockAsyncHandler = { request in try await responses.respond(to: request) }
             return

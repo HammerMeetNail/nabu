@@ -65,6 +65,8 @@ xcodebuild test-without-building -project ios/Nabu.xcodeproj -scheme Nabu \
 
 ## Launch arguments for tests
 
+Only debug builds read these (`Support/TestHooks.swift`): a release build ignores every launch argument and environment override, so it always talks to production with real state.
+
 | Argument | Purpose |
 |----------|---------|
 | `-nabuBaseURL <url>` | Override backend base URL |
