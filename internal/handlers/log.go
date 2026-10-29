@@ -913,7 +913,7 @@ func (h *LogHandler) Export(w http.ResponseWriter, r *http.Request) {
 // before account deletion). Chore and household names are included only for
 // households the user still belongs to, and only for chores they can see.
 func (h *LogHandler) ExportMine(w http.ResponseWriter, r *http.Request) {
-	r, cancel := exportContext(r)
+	r, cancel := personalExportContext(r)
 	defer cancel()
 	user, ok := middleware.CurrentUser(r.Context())
 	if !ok {
@@ -922,7 +922,7 @@ func (h *LogHandler) ExportMine(w http.ResponseWriter, r *http.Request) {
 	}
 	logs, err := h.service.GetUserLogs(r.Context(), user.ID)
 	if err != nil {
-		exportError(w, err)
+		personalExportError(w, err)
 		return
 	}
 	householdNames := map[int64]string{}
@@ -930,7 +930,7 @@ func (h *LogHandler) ExportMine(w http.ResponseWriter, r *http.Request) {
 	if h.householdStore != nil {
 		memberships, err := h.householdStore.ListUserHouseholds(r.Context(), user.ID)
 		if err != nil {
-			exportError(w, err)
+			personalExportError(w, err)
 			return
 		}
 		for _, hh := range memberships {
@@ -940,12 +940,12 @@ func (h *LogHandler) ExportMine(w http.ResponseWriter, r *http.Request) {
 			}
 			visible, err := h.visibleChoreIDs(r.Context(), user.ID, hh.ID)
 			if err != nil {
-				exportError(w, err)
+				personalExportError(w, err)
 				return
 			}
 			chores, err := h.choreStore.ListChores(r.Context(), hh.ID)
 			if err != nil {
-				exportError(w, err)
+				personalExportError(w, err)
 				return
 			}
 			for _, c := range chores {
@@ -994,10 +994,10 @@ func (h *LogHandler) ExportMine(w http.ResponseWriter, r *http.Request) {
 	}
 	cw.Flush()
 	if err := cw.Error(); err != nil {
-		exportError(w, err)
+		personalExportError(w, err)
 		return
 	}
-	sendExport(w, r, buffer, "nabu-my-logs.csv")
+	sendFile(w, r, buffer, "nabu-my-logs.csv", "text/csv; charset=utf-8", personalExportError)
 }
 
 func (h *LogHandler) LatestPerChore(w http.ResponseWriter, r *http.Request) {

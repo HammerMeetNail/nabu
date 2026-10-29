@@ -208,6 +208,45 @@ describe("API", () => {
     const { data } = await apiFetch("/health");
     assert.deepEqual(data, { status: "ok" });
   });
+
+  it("a raw read leaves a JSON download unread and never shares it", async () => {
+    const previousFetch = globalThis.fetch;
+    let parsed = 0;
+    const respond = (ok, body) => ({
+      ok, status: ok ? 200 : 429,
+      json: async () => { parsed++; return body; },
+      headers: { get: (key) => key === "Content-Type" ? "application/json; charset=utf-8" : null },
+    });
+    try {
+      const { apiFetch } = await import("../api.js");
+      globalThis.fetch = async () => respond(true, { account: {} });
+      const [first, second] = await Promise.all([apiFetch("/api/me/export", { raw: true }), apiFetch("/api/me/export", { raw: true })]);
+      assert.equal(parsed, 0);
+      assert.equal(first.data, null);
+      assert.notEqual(first.response, second.response);
+
+      globalThis.fetch = async () => respond(false, { error: "an export is already running; try again shortly" });
+      await assert.rejects(apiFetch("/api/me/export", { raw: true }), /already running/);
+    } finally { globalThis.fetch = previousFetch; }
+  });
+});
+
+describe("Download my data", () => {
+  it("disables both downloads while one runs and escapes its error", async () => {
+    const { renderMyDataDownload } = await import("../exports.js");
+    const root = document.createElement("div");
+    root.innerHTML = renderMyDataDownload({ myDataBusy: true, myDataError: '<img src=x onerror="alert(1)">' },
+      { jsonId: "download-my-data", csvId: "download-my-logs" });
+    const buttons = [...root.querySelectorAll('[data-action="download-my-data"]')];
+    assert.deepEqual(buttons.map(b => [b.dataset.format, b.disabled]), [["json", true], ["csv", true]]);
+    assert.ok(root.querySelector('[data-action="cancel-my-data"]'));
+    assert.equal(root.querySelector("img"), null);
+    assert.equal(root.querySelector('[data-testid="my-data-error"]').textContent, '<img src=x onerror="alert(1)">');
+
+    root.innerHTML = renderMyDataDownload({}, { jsonId: "account-download-my-data" });
+    assert.equal(root.querySelectorAll("button").length, 1);
+    assert.equal(root.querySelector("button").disabled, false);
+  });
 });
 
 describe("Schedule request IDs", () => {

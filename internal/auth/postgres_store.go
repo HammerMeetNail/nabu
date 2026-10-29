@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/HammerMeetNail/nabu/internal/lifecycle"
 )
 
 type authQuerier interface {
@@ -245,6 +247,27 @@ func (s *PostgresStore) TouchSession(ctx context.Context, tokenHash string, last
 func (s *PostgresStore) DeleteSession(ctx context.Context, tokenHash string) error {
 	_, err := s.q.ExecContext(ctx, `DELETE FROM sessions WHERE token_hash = $1`, tokenHash)
 	return err
+}
+
+func (s *PostgresStore) ListUserSessions(ctx context.Context, userID int64, currentHash string) ([]SessionInfo, error) {
+	rows, err := s.q.QueryContext(ctx, `SELECT s.created_at, s.last_seen_at, s.expires_at, s.token_hash = $2
+ FROM sessions s JOIN users u ON u.id = s.user_id
+ WHERE s.user_id = $1 AND s.auth_version = u.auth_version
+ AND s.expires_at > clock_timestamp() AND s.last_seen_at > clock_timestamp()-`+lifecycle.SessionIdleSQL+`
+ ORDER BY s.created_at, s.id`, userID, currentHash)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	sessions := []SessionInfo{}
+	for rows.Next() {
+		var info SessionInfo
+		if err := rows.Scan(&info.CreatedAt, &info.LastSeenAt, &info.ExpiresAt, &info.Current); err != nil {
+			return nil, err
+		}
+		sessions = append(sessions, info)
+	}
+	return sessions, rows.Err()
 }
 
 func (s *PostgresStore) DeleteUserSessions(ctx context.Context, userID int64) error {

@@ -684,6 +684,11 @@ final class ReviewUITestResponses {
             }
             return try json(StatusResponse(status: "ok"))
         }
+        if path == "/api/me/export" {
+            return (Data("{\"about\":\"Everything Nabu keeps about your account.\",\"logs\":[{\"note\":\"Mine\"}]}".utf8),
+                    HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json; charset=utf-8"])!)
+        }
         if path == "/api/me/logs/export" {
             return (Data("household,date,time,chore,note\nTest Home,2026-09-10,08:00,Task,Mine\n".utf8),
                     HTTPURLResponse(url: url, statusCode: 200, httpVersion: nil,

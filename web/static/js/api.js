@@ -7,7 +7,7 @@ export function getCSRFToken() {
 }
 
 async function request(path, options, origin) {
-  const { origin:_origin, allowContextChange:_allow, ...requestOptions } = options;
+  const { origin:_origin, allowContextChange:_allow, raw:_raw, ...requestOptions } = options;
   const headers = new Headers(options.headers || {});
   headers.set("Content-Type", "application/json");
   const token = getCSRFToken();
@@ -19,7 +19,8 @@ async function request(path, options, origin) {
     window.dispatchEvent(new CustomEvent("nabu-session-invalid", {detail:{origin}}));
   }
   let data = null;
-  if (response.headers.get("Content-Type")?.includes("application/json")) {
+  // A raw read (a file download) leaves a successful body for its caller.
+  if (response.headers.get("Content-Type")?.includes("application/json") && !(options.raw && response.ok)) {
     try { data = await response.json(); } catch { if (response.ok) throw new Error("The server response was incomplete. Please retry."); }
   }
   if (!response.ok) {
@@ -39,7 +40,7 @@ export async function apiFetch(path, options = {}) {
   const method = (options.method || "GET").toUpperCase();
   // Share only simultaneous identical reads. Data never survives an identity
   // revision; explicit cancellation remains owned by its individual caller.
-  const key = method === "GET" && !options.signal ? JSON.stringify([origin?.revision,path,[...new Headers(options.headers || {}).entries()]]) : null;
+  const key = method === "GET" && !options.signal && !options.raw ? JSON.stringify([origin?.revision,path,[...new Headers(options.headers || {}).entries()]]) : null;
   let pending = key && reads.get(key);
   if (!pending) {
     pending = request(path,options,origin);

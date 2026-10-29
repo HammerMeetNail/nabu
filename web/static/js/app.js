@@ -16,7 +16,7 @@ import { createSheetController } from "./sheets.js";
 import { routeForPath, statsSectionForPath, syncTabURL, tabForPath } from "./router.js";
 import { apiMe, apiFetch } from "./api.js";
 import { loadNotificationPage, mutateNotification } from "./notification-data.js";
-import { renderExports, cancelExport } from "./exports.js";
+import { renderExports, renderMyDataDownload, cancelExport } from "./exports.js";
 import { renderApiKeys, loadApiKeysData } from "./api-keys.js";
 import { replayQueue, queuedLogs, discardQueuedLog } from "./offline-queue.js";
 import { escapeHTML, localDateStr, shiftDateStr, formatVolume, renderAccessSuspendedCard } from "./utils.js";
@@ -804,8 +804,7 @@ function renderSettingsView() {
         “Former member” and are no longer linked to you. You can also delete them.
         If you are the only owner of a household with other members, transfer
         ownership (or remove the other members) first. This cannot be undone.</p>
-      <p class="mt-2"><a href="/api/me/logs/export" download data-testid="download-my-data">Download my data</a>
-        <span class="text-secondary">(every log you recorded, as CSV)</span></p>
+      ${renderMyDataDownload(state, { jsonId: "download-my-data", csvId: "download-my-logs" })}
       <label class="form-check mt-2">
         <input type="checkbox" id="delete-account-logs"${state.deleteAccountLogs ? ' checked' : ''}>
         <span>Also delete everything I logged in shared households</span>
@@ -947,6 +946,9 @@ function renderSettingsView() {
   const canExportHousehold = !!hh && (householdRole === "owner" || householdRole === "admin");
   const exportCard = renderExports(state, canExportHousehold);
   const apiKeysCard = user ? renderApiKeys(state, window.location.origin) : "";
+  // Everything about you, without starting a deletion (GDPR access). The
+  // deletion panel offers it with the logs CSV, so it moves there while open.
+  const myDataLine = user && !state.deleteAccountOpen ? renderMyDataDownload(state, { jsonId: "account-download-my-data" }) : "";
 
   const activeId = state.activeHouseholdId || hh?.id;
   const yourHouseholdsCard = state.userHouseholds && state.userHouseholds.length > 1 ? `
@@ -971,9 +973,9 @@ function renderSettingsView() {
     const householdCard = state.accessSuspended
       ? renderAccessSuspendedCard(state)
       : renderHouseholdView(null, null, null, state.user);
-    return `<div class="settings-view">${householdCard}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div>${aboutLine}</div>`;
+    return `<div class="settings-view">${householdCard}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${myDataLine}${deleteAccountSection}</div>${aboutLine}</div>`;
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user, { showInviteQR: !!state.showInviteQR })}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${deleteAccountSection}</div>${aboutLine}</div>`;
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user, { showInviteQR: !!state.showInviteQR })}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${myDataLine}${deleteAccountSection}</div>${aboutLine}</div>`;
 }
 
 function loadAllStatsData() {

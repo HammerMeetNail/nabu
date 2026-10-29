@@ -74,12 +74,19 @@ test.describe('Delete account: shared household history', () => {
     await expect(member.locator('#delete-account-logs')).not.toBeChecked();
     await expect(member.locator('#delete-account-notes')).not.toBeChecked();
 
-    // "Download my data" returns the member's own logs as CSV.
+    // "Download my data" returns everything about the member as JSON, their
+    // logs among it; "Logs as CSV" returns just the logs.
     const [download] = await Promise.all([
       member.waitForEvent('download'),
       member.getByTestId('download-my-data').click(),
     ]);
-    const csv = fs.readFileSync(await download.path(), 'utf8');
+    const data = JSON.parse(fs.readFileSync(await download.path(), 'utf8'));
+    expect(data.logs.map(l => l.note)).toEqual([note]);
+    const [csvDownload] = await Promise.all([
+      member.waitForEvent('download'),
+      member.getByTestId('download-my-logs').click(),
+    ]);
+    const csv = fs.readFileSync(await csvDownload.path(), 'utf8');
     expect(csv).toContain(note);
 
     await confirmDelete(member);

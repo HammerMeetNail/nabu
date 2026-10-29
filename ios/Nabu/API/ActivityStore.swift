@@ -61,16 +61,25 @@ final class ActivityStore {
         try await exportCSV(path: "/api/household/data", prefix: "nabu-household-data", start: start, end: end)
     }
 
-    /// Every log the signed-in user recorded, in every household ("Download
-    /// my data" before account deletion).
+    /// Every log the signed-in user recorded, in every household.
     func exportMyLogsCSV() async throws -> URL {
-        let data = try await api.getData("/api/me/logs/export", expectedContentType: "text/csv")
+        try await downloadPersonalFile("/api/me/logs/export", contentType: "text/csv", name: "nabu-my-logs", ext: "csv")
+    }
+
+    /// Everything Nabu keeps about the signed-in user, as one JSON file
+    /// ("Download My Data": GDPR access and portability).
+    func exportMyDataJSON() async throws -> URL {
+        try await downloadPersonalFile("/api/me/export", contentType: "application/json", name: "nabu-my-data", ext: "json")
+    }
+
+    private func downloadPersonalFile(_ path: String, contentType: String, name: String, ext: String) async throws -> URL {
+        let data = try await api.getData(path, expectedContentType: contentType)
         try Task.checkCancellation()
         guard api.identity.isCurrent(owner) else { throw APIError.contextChanged }
         guard !data.isEmpty, data.count <= 16 * 1024 * 1024 else {
-            throw APIError.serverError(statusCode: 413, message: "The export is too large to download.")
+            throw APIError.serverError(statusCode: 413, message: "Your data is too large for one download. Contact support for a copy.")
         }
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("nabu-my-logs-\(UUID().uuidString).csv")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(name)-\(UUID().uuidString).\(ext)")
         try data.write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         return url
     }

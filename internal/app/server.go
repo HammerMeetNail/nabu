@@ -546,7 +546,15 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	mux.HandleFunc("/api/logs/week", method(http.MethodGet, middleware.RequireAuth(logHandler.Week)))
 	mux.HandleFunc("/api/logs/month", method(http.MethodGet, middleware.RequireAuth(logHandler.Month)))
 	mux.HandleFunc("/api/logs/history", method(http.MethodGet, middleware.RequireAuth(logHandler.History)))
-	mux.HandleFunc("/api/me/logs/export", method(http.MethodGet, middleware.RequireAuth(exportGate.Wrap(logHandler.ExportMine))))
+	// Personal exports are gated per user, so someone with no current
+	// household can still download their data.
+	mux.HandleFunc("/api/me/logs/export", method(http.MethodGet, middleware.RequireAuth(exportGate.WrapUser(logHandler.ExportMine))))
+	myDataHandler := handlers.NewMyDataHandler(handlers.MyDataSources{
+		Sessions: authStore, Households: householdStore, Chores: choreStore, Preferences: userPrefsService,
+		Notifications: notifService, Reminders: reminderStore, Logs: logService, DayNotes: dayNoteService,
+		WebPush: pushStore, Devices: apnsStore, APIKeys: apiKeyService,
+	})
+	mux.HandleFunc("/api/me/export", method(http.MethodGet, middleware.RequireAuth(exportGate.WrapUser(myDataHandler.Export))))
 	mux.HandleFunc("/api/logs/export", method(http.MethodGet, middleware.RequireAuth(exportGate.Wrap(logHandler.Export))))
 	mux.HandleFunc("/api/logs/latest-per-chore", method(http.MethodGet, middleware.RequireAuth(logHandler.LatestPerChore)))
 	mux.HandleFunc("/api/logs/recent-amounts", method(http.MethodGet, middleware.RequireAuth(logHandler.RecentAmounts)))
