@@ -4,7 +4,7 @@ import UserNotifications
 struct NotificationPreferencesView: View {
     @Environment(AppState.self) var state
     @Environment(AppEnvironment.self) var environment
-    private var push = PushRegistrationController.shared
+    private let push = PushRegistrationController.shared
     @State private var prefs: ReminderPreference?
     @State private var types: [NotificationTypeInfo] = []
     @State private var loading = true

@@ -377,7 +377,7 @@ struct PendingSavesButton: View {
     @Environment(AppState.self) var state
     @Environment(AppEnvironment.self) var environment
     let dataLoader: DataLoader
-    private var queue = OfflineLogQueue.shared
+    private let queue = OfflineLogQueue.shared
     @State private var showingPending = false
     @State private var discardKey: String?
     @State private var storageError = false
