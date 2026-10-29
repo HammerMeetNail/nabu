@@ -1,10 +1,12 @@
 import Foundation
+import Observation
 
 @MainActor
-final class AppEnvironment: ObservableObject {
-    @Published var baseURL: URL = URL(string: "https://nabu-app.com")!
-    @Published var isOffline = false
-    @Published var useMockAPI = false {
+@Observable
+final class AppEnvironment {
+    var baseURL: URL = URL(string: "https://nabu-app.com")!
+    var isOffline = false
+    var useMockAPI = false {
 
         didSet {
             configureAPIClient()
@@ -12,7 +14,7 @@ final class AppEnvironment: ObservableObject {
     }
 
     private(set) var apiClient: APIClient = APIClient(baseURL: URL(string: "https://nabu-app.com")!)
-    private var configured = false
+    @ObservationIgnored private var configured = false
 
     init() {
         baseURL = AppEnvironment.resolveBaseURL()

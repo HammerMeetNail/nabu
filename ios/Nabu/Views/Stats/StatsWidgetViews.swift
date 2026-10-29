@@ -9,7 +9,7 @@ import SwiftUI
 // MARK: - Widget card
 
 struct WidgetCard: View {
-    @ObservedObject var model: StatsModel
+    var model: StatsModel
     let widget: StatsWidget
     let chores: [Chore]
     let members: [Member]
@@ -147,7 +147,7 @@ struct WidgetCard: View {
 /// chores, presentation, value. Period is not chosen here — new widgets
 /// default to "week" and carry a day/week/month toggle on the card.
 struct WidgetWizardView: View {
-    @ObservedObject var model: StatsModel
+    var model: StatsModel
     let chores: [Chore]
     @Environment(\.dismiss) private var dismiss
 
@@ -257,7 +257,7 @@ struct WidgetWizardView: View {
 /// Section reorder/hide + widget management (PWA `renderCustomizePanel`):
 /// native list reordering instead of drag-and-drop rows.
 struct CustomizeStatsView: View {
-    @ObservedObject var model: StatsModel
+    var model: StatsModel
     let chores: [Chore]
     let widgets: [StatsWidget]
     let hidden: Set<String>

@@ -1,6 +1,7 @@
 import Foundation
 import UIKit
 import UserNotifications
+import Observation
 
 /// Orchestrates the APNs registration lifecycle around the pure
 /// `PushRegistrationPhase` state machine: system authorization, token
@@ -9,14 +10,15 @@ import UserNotifications
 /// A singleton because UIKit's remote-notification callbacks land on the app
 /// delegate, which exists before any SwiftUI state.
 @MainActor
-final class PushRegistrationController: ObservableObject {
+@Observable
+final class PushRegistrationController {
     static let shared = PushRegistrationController()
 
-    @Published private(set) var phase: PushRegistrationPhase = .idle
+    private(set) var phase: PushRegistrationPhase = .idle
 
-    private var api: APIClient?
+    @ObservationIgnored private var api: APIClient?
     private let defaults: UserDefaults
-    private var tokenRequestOwner: ClientIdentity.Snapshot?
+    @ObservationIgnored private var tokenRequestOwner: ClientIdentity.Snapshot?
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults

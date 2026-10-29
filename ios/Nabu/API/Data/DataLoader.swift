@@ -2,7 +2,7 @@ import Foundation
 import Network
 
 @MainActor
-final class DataLoader: ObservableObject {
+final class DataLoader {
     private(set) var api: APIClient
     private(set) var state: AppState
 
@@ -16,8 +16,10 @@ final class DataLoader: ObservableObject {
     private var pathMonitor: NWPathMonitor?
     private var flushing: Set<UUID> = []
 
+    private static let unconfigured = APIClient(baseURL: URL(string: "http://localhost:8080")!)
+
     init() {
-        self.api = APIClient(baseURL: URL(string: "http://localhost:8080")!)
+        self.api = Self.unconfigured
         self.state = AppState()
     }
 

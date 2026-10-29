@@ -5,8 +5,8 @@ import SwiftUI
 /// top-bar chip). Tapping stops the timer and logs the chore with
 /// `durationSeconds`.
 struct TimerChipView: View {
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
     @State private var isLogging = false
     @State private var errorMessage: String?
 

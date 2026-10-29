@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct ScheduleView: View {
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
     @State private var showingEditSheet = false
     @State private var editingSchedule: ChoreSchedule?
     @State private var showingPickChore = false

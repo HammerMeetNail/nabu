@@ -6,9 +6,9 @@ import SwiftUI
 /// behavior parity with the PWA's stats page (`stats.js`), native
 /// presentation per plan §2.1.
 struct StatsView: View {
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
-    @StateObject private var model = StatsModel()
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
+    @State private var model = StatsModel()
     @State private var customizeOpen = false
 
     private var volumeUnit: String { state.volumeUnit == "oz" ? "oz" : "ml" }
