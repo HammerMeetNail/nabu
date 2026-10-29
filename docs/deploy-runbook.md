@@ -136,17 +136,24 @@ Also spot-check request logs: the hashed `client` attribute should now vary betw
 
 The iOS app is released separately, from **Actions → iOS Release → Run workflow** on `main`, after the web app. The workflow stops unless production already runs the server code on `main` (it reads the version from `/health`), so deploy the web app first when the server changed. The steps and the App Store Connect key it needs are under "Releasing" in `ios/README.md`.
 
-## Known limitations (candidates for a future fix)
-
 ### iOS tests and web releases
 
-Web releases (`v*` tags) don't run the iOS unit tests: the web app and the
-iOS app ship separately, so an iOS failure never holds a web deploy back.
-`NabuTests` runs on every pull request that changes `ios/**`, and the iOS
-Release workflow runs it again before an iOS release (see "iOS releases"
-above). Tags used to force the iOS lane on (iOS v1 plan P1/D5), but
-`build-image` never waited for it, so it gated nothing and cost about six
-minutes of macOS runner time per release.
+A web release (`v*` tag) runs the iOS unit tests only when it changes the API
+contract (`api/contract`, the server's answers the iOS app decodes; see "The
+API contract" in `AGENTS.md`). The Detect Changes job's step "Compare the API
+contract with production's" (`scripts/api-contract-changed.sh`) reads the
+version from `/health`, diffs `api/contract` against that release's tag and
+lists the answers that changed. When they differ, or production's release
+can't be found, the `ios` job runs and `scan-and-push` waits for it: the
+image is pushed, released and deployed only after `NabuTests` passes. A
+release that leaves the contract alone skips the job and doesn't wait.
+
+If the iOS job fails on a release, nothing was pushed or deployed. A
+transient failure (a simulator that didn't boot) can be re-run with "Re-run
+failed jobs", which runs the image jobs that were waiting on it as well; for a
+real one, fix the app or the answer on `main` and tag again. `NabuTests` also
+runs on every pull request that changes `ios/**` or `api/contract/**`, and the
+iOS Release workflow runs it before an iOS release.
 
 ## Readiness failure and application rollback
 

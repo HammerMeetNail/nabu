@@ -91,6 +91,17 @@ test('runs the iOS tests when an answer is new',async t=>{
   assert.match(result.stderr,/A\s+api\/contract\/packs\.json/);
 });
 
+test('lists the first 20 changed answers and counts the rest',async t=>{
+  const {work,url}=await released(t);
+  for(let i=1;i<=25;i++) await writeFile(join(work,`api/contract/new-${i}.json`),'{"status":200,"response":{}}\n');
+  git(work,'add','api/contract');
+  git(work,'commit','-q','-m','25 new answers');
+  const result=await runCheck(work,url);
+  assert.equal(result.stdout,'changed=true\n');
+  assert.equal(result.stderr.match(/^  A\t/gm).length,20,result.stderr);
+  assert.match(result.stderr,/^  and 5 more$/m);
+});
+
 test('runs the iOS tests when production\'s release is unknown',async t=>{
   const down=await released(t,null);
   let result=await runCheck(down.work,down.url);
