@@ -32,7 +32,7 @@ ios/
 
 ## Prerequisites
 
-- macOS with Xcode (CI builds with the `macos-15` runner's default Xcode); snapshot tests run only on an iOS 26 simulator and self-skip elsewhere
+- macOS with Xcode. CI builds, tests and archives with the newest Xcode 26 on the `macos-15` runner and an iOS 26 iPhone Pro simulator (`ios/ci-toolchain.sh`), since App Store Connect requires the iOS 26 SDK; snapshot tests run only on an iOS 26 simulator and self-skip elsewhere
 - Go matching `go.mod` (for the backend)
 - Running backend for integration tests (see root `AGENTS.md` for `make local`)
 

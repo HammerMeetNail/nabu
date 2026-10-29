@@ -226,7 +226,7 @@ The repository currently contains these iOS test targets (all under `ios/`):
 | `NabuTests` (unit/contract) | `ActivityTests`, `APIContractTests`, `AuthTests`, `ChoreTests`, `DataLoaderTests`, `HomeTests`, `ModelDecodingTests`, `NotificationTests`, `RequestEncodingTests`, `ScheduleTests`, `StateTests` |
 | `NabuUITests` (UI) | `NabuUITests.swift` |
 
-Snapshot tests use swift-snapshot-testing 1.19.7 (with swift-custom-dump 1.7.3, swift-issue-reporting 2.1.2 and swift-syntax 604.0.0), pinned in `ios/Nabu.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`. Updating them is test tooling only: neither client's behavior changes.
+Snapshot tests use swift-snapshot-testing 1.19.7 (with swift-custom-dump 1.7.3, swift-issue-reporting 2.1.2 and swift-syntax 604.0.0), pinned in `ios/Nabu.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`. Updating them is test tooling only: neither client's behavior changes. The snapshots were recorded on iOS 26 and skip on other iOS majors; CI builds and tests with Xcode 26 on an iOS 26 iPhone Pro simulator (`ios/ci-toolchain.sh`), so they run there. Before, CI's default Xcode 16.4 and iOS 18 simulator skipped every one.
 
 Earlier revisions of this matrix referenced a large set of per-feature
 `*UITests.swift` / `*SnapshotTests.swift` / `*ContractTests.swift` files that
