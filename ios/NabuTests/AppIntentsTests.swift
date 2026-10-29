@@ -10,7 +10,7 @@ import XCTest
 final class AppIntentsTests: XCTestCase {
     private var directory: URL!
     private var queue: OfflineLogQueue!
-    private var originalClient: (() -> APIClient)!
+    private var originalClient: (@MainActor () -> APIClient)!
     private var originalAppClient: (() -> APIClient?)?
     private var originalQueue: (() -> OfflineLogQueue)!
     private var originalDefaults: UserDefaults!

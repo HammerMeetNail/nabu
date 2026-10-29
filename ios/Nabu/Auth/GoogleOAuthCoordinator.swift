@@ -36,7 +36,7 @@ final class GoogleOAuthCoordinator: NSObject, ObservableObject {
         let ticket: UUID
         do { ticket = try api.identity.beginTransition() }
         catch { errorMessage = "Finish the current account change first."; return nil }
-        await api.identity.publish()
+        api.identity.publish()
         let succeeded: Bool = await withCheckedContinuation { continuation in
             let session = ASWebAuthenticationSession(
                 url: loginURL,

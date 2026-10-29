@@ -716,7 +716,6 @@ struct PasswordChangeSheet: View {
     }
 
     private func save() async {
-        let api = environment.apiClient.scoped()
         validationError = nil
         guard password == confirmation else {
             validationError = "New passwords do not match"

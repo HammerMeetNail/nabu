@@ -155,7 +155,7 @@ private let contractDirectory = URL(fileURLWithPath: #filePath)
     .deletingLastPathComponent()
     .appendingPathComponent("api/contract", isDirectory: true)
 
-private typealias ContractCheck = (Data) throws -> Void
+private typealias ContractCheck = @Sendable (Data) throws -> Void
 
 private struct ContractMismatch: Error, CustomStringConvertible {
     let description: String
@@ -192,7 +192,7 @@ private func contractItems(_ data: Data, _ key: String) throws -> Int {
 /// Decodes the answer and checks that it kept all the server's items.
 /// `EmptyIfNull` reads a missing list as `[]`, so a list the server renamed
 /// would otherwise decode as an empty one.
-private func contractList<T: Decodable>(_ type: T.Type, _ key: String, _ count: @escaping (T) -> Int) -> ContractCheck {
+private func contractList<T: Decodable & SendableMetatype>(_ type: T.Type, _ key: String, _ count: @escaping @Sendable (T) -> Int) -> ContractCheck {
     { data in
         let sent = try contractItems(data, key)
         let answer = try contractAnswer(type, data)
@@ -202,7 +202,7 @@ private func contractList<T: Decodable>(_ type: T.Type, _ key: String, _ count: 
     }
 }
 
-private func contractDecodes<T: Decodable>(_ type: T.Type) -> ContractCheck {
+private func contractDecodes<T: Decodable & SendableMetatype>(_ type: T.Type) -> ContractCheck {
     { data in _ = try contractAnswer(type, data) }
 }
 

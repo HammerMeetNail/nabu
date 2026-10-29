@@ -76,7 +76,7 @@ enum IntentSession {
 
     /// A client for the app's server when iOS started the app only to run an
     /// intent. Tests replace it.
-    static var makeClient: () -> APIClient = defaultClient
+    static var makeClient: @MainActor () -> APIClient = defaultClient
 
     static func defaultClient() -> APIClient {
         let baseURL = AppEnvironment.resolveBaseURL()

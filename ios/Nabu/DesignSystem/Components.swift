@@ -336,6 +336,7 @@ struct PillTabBar<T: Hashable>: View {
 /// UI test passed -disableAnimations, so callers can write
 /// `withAnimation(Motion.snappy) { … }` and get the fade-or-nothing fallback
 /// for free.
+@MainActor
 enum Motion {
     static var reduceMotion: Bool {
         UIAccessibility.isReduceMotionEnabled || TestHooks.disableAnimations

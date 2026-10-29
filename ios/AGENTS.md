@@ -164,6 +164,10 @@ These PWA behaviors must be preserved in the native iOS app:
 10. Never update only one client when behavior is shared.
 11. Versions and the server live in `ios/Config` (see `ios/README.md`). Never set `MARKETING_VERSION`, `CURRENT_PROJECT_VERSION` or a server URL on a target, and never hard-code a server in Swift.
 
+## Swift 6
+
+The app, the widget extension and the unit tests build in the Swift 6 language mode with Approachable Concurrency (`SWIFT_APPROACHABLE_CONCURRENCY`): a nonisolated `async` function runs on its caller's actor, so a `@MainActor` store calling `APIClient` sends nothing across actors. Building needs Xcode 26 or later, which CI selects (`ios/ci-toolchain.sh`). The UI tests stay in Swift 5 mode: `XCUIElement` is main-actor isolated and XCTest's methods are not, so their 19 classes would need restructuring for no runtime gain. A shared static that a lock or immutability makes safe is `nonisolated(unsafe)`, with a comment saying why.
+
 ## Parity bookkeeping on PRs
 
 When a PR touches shared client surface — `ios/**`, `web/static/js/**`, or the shared API in `internal/handlers/**` — it must also update the parity matrix (`docs/plans/client-parity.md`) to reflect the change. The CI `parity` job enforces this (it lints the matrix and fails if client/API code changed without a matrix update); the escape hatch is a `no-parity-update: <reason>` line in the PR body.
