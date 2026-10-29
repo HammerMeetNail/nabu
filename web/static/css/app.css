@@ -19,6 +19,12 @@
   --shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
   --shadow-lg: 0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* The bottom tab bar: its icons and labels, then the home indicator's safe
+     area (8px where there's none). The labels end where that area begins,
+     as the system's tab bars do. Whatever floats above the bar (toasts,
+     sheets, panels, buttons) is placed with --tabs-h. */
+  --tabs-pad: max(var(--safe-bottom), 8px);
+  --tabs-h: calc(48px + var(--tabs-pad));
   /* Chart/stats tokens (referenced from inline SVG via var()) */
   --chart-grid: #e5e7eb;
   --chart-axis: #d1d5db;
@@ -202,8 +208,8 @@ input:focus, select:focus, textarea:focus {
   margin: 0 auto;
   width: 100%;
   max-width: 480px;
-  height: calc(64px + var(--safe-bottom) + 6px);
-  padding-bottom: calc(var(--safe-bottom) + 6px);
+  height: var(--tabs-h);
+  padding-bottom: var(--tabs-pad);
   display: flex;
   background: var(--surface);
   border-top: 1px solid var(--border);
@@ -216,7 +222,7 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 2px;
   font-size: 11px;
   color: var(--text-secondary);
@@ -591,7 +597,7 @@ input:focus, select:focus, textarea:focus {
 /* Toast Notifications */
 #toast-container {
   position: fixed;
-  bottom: calc(86px + var(--safe-bottom));
+  bottom: calc(var(--tabs-h) + 16px);
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
@@ -991,7 +997,7 @@ input:focus, select:focus, textarea:focus {
 
 .hist-filter-fab {
   position: fixed;
-  bottom: calc(70px + var(--safe-bottom, 0px) + 16px);
+  bottom: calc(var(--tabs-h) + 16px);
   right: 16px;
   z-index: 40;
 }
@@ -2711,7 +2717,7 @@ details[open] .chore-stat-chevron {
 
 .fab {
   position: fixed;
-  bottom: calc(78px + var(--safe-bottom));
+  bottom: calc(var(--tabs-h) + 8px);
   right: 20px;
   width: 56px;
   height: 56px;
@@ -3038,7 +3044,7 @@ body.sheet-open .timer-chip { visibility: hidden; }
 
 .bottom-sheet {
   position: fixed;
-  bottom: calc(70px + var(--safe-bottom));
+  bottom: var(--tabs-h);
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
@@ -4120,7 +4126,7 @@ body.sheet-open .timer-chip { visibility: hidden; }
   position: fixed;
   top: 0;
   right: 0;
-  bottom: calc(64px + var(--safe-bottom) + 6px);
+  bottom: var(--tabs-h);
   left: 0;
   background: rgba(0, 0, 0, 0.45);
   z-index: 300;
@@ -4129,7 +4135,7 @@ body.sheet-open .timer-chip { visibility: hidden; }
 
 .notif-panel {
   position: fixed;
-  bottom: calc(64px + var(--safe-bottom) + 6px);
+  bottom: var(--tabs-h);
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
@@ -4278,7 +4284,7 @@ body.sheet-open .timer-chip { visibility: hidden; }
   position: fixed;
   top: 0;
   right: 0;
-  bottom: calc(64px + var(--safe-bottom) + 6px);
+  bottom: var(--tabs-h);
   left: 0;
   background: rgba(0, 0, 0, 0.45);
   z-index: 300;
@@ -4287,7 +4293,7 @@ body.sheet-open .timer-chip { visibility: hidden; }
 
 .profile-panel {
   position: fixed;
-  bottom: calc(64px + var(--safe-bottom) + 6px);
+  bottom: var(--tabs-h);
   left: 50%;
   transform: translateX(-50%);
   width: 100%;
@@ -4548,9 +4554,8 @@ body.sheet-open .timer-chip { visibility: hidden; }
     max-width: 100%;
   }
 
-  #bottom-tabs {
-    height: calc(44px + var(--safe-bottom) + 4px);
-    padding-bottom: calc(var(--safe-bottom) + 4px);
+  :root {
+    --tabs-h: calc(40px + var(--tabs-pad));
   }
 
   .tab-item {

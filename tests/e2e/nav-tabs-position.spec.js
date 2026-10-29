@@ -116,4 +116,20 @@ test.describe('Navigation Tabs: Positioning', () => {
     expect(result).not.toBeNull();
     expect(Math.abs(result.gap)).toBeLessThan(2);
   });
+
+  test('tab labels sit on the bar\'s bottom padding, with no space below them', async ({ page }) => {
+    await setupWithChores(page);
+    const measured = await page.evaluate(() => {
+      const tabs = document.querySelector('#bottom-tabs');
+      const pad = parseFloat(getComputedStyle(tabs).paddingBottom);
+      const bottom = tabs.getBoundingClientRect().bottom;
+      const below = [...tabs.querySelectorAll('.tab-item span')].map(label => bottom - label.getBoundingClientRect().bottom);
+      return { pad, below };
+    });
+    // The padding is the home indicator's safe area on an iPhone (where the
+    // system's own tab labels end) and 8px where there is none, as here.
+    expect(measured.pad).toBe(8);
+    expect(measured.below).toHaveLength(5);
+    for (const below of measured.below) expect(Math.abs(below - measured.pad)).toBeLessThan(1);
+  });
 });
