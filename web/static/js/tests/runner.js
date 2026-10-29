@@ -2640,4 +2640,33 @@ describe("Action registry", () => {
     assert.deepEqual(core.state.exportRange, { start: "2026-01-01" });
     assert.equal(core.state.exportError, null);
   });
+
+  it("the notification panel and profile register their actions on import", async () => {
+    const core = await import("../app-core.js");
+    const { createAppState } = await import("../state.js");
+    const { runAction } = await import("../actions.js");
+    await import("../notification-panel.js");
+    await import("../profile.js");
+    core.initState(createAppState());
+    document.body.innerHTML = `
+      <div id="notif-panel-container"><p>open</p></div>
+      <div id="profile-error" class="hidden"></div>
+      <form id="profile-form"><input id="profile-name" value="  "></form>`;
+    let prevented = 0;
+    const event = { preventDefault() { prevented++; } };
+
+    assert.equal(runAction("click", "close-notifications", event, {}), true);
+    const panel = document.querySelector("#notif-panel-container");
+    assert.equal(panel.hidden, true);
+    assert.equal(panel.innerHTML, "");
+    // Signed out, a refresh asks the server for nothing.
+    assert.equal(runAction("click", "refresh-notifications", event, {}), true);
+    assert.equal(prevented, 2);
+
+    // A blank name is refused before any request.
+    assert.equal(runAction("submit", "save-profile", event, document.querySelector("#profile-form")), true);
+    const error = document.querySelector("#profile-error");
+    assert.equal(error.textContent, "Enter your name");
+    assert.equal(error.classList.contains("hidden"), false);
+  });
 });
