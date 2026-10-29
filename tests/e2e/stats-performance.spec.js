@@ -70,3 +70,25 @@ test('Stats preserves focused period controls when loading finishes and a recap 
     await expect(page.locator(selector)).toHaveClass(/period-toggle--active/);
   } finally {release.resolve();await joinLoads();}
 });
+
+// Plan §8's request budget: the Stats page's reads leave as at most three
+// requests (stats-batch.js sends them as two dashboard requests, sections and
+// charts), here for a household with the default activities and a log.
+test('opening Stats sends at most three Stats requests',async({page})=>{
+  const {chore,headers}=await fixture(page);
+  expect((await page.request.post('/api/chores/seed-defaults',{headers})).ok()).toBe(true);
+  await postLog(page,chore,{volumeML:120});
+  await page.reload();
+  await expect(page.locator('.home-grid')).toBeVisible();
+  const reads=[];
+  page.on('request',request=>{
+    const url=new URL(request.url());
+    if(url.pathname.startsWith('/api/stats')) reads.push(url.pathname+url.search);
+  });
+  await page.locator('[data-nav="stats"]').click();
+  await expect(page.locator('.stats-page')).toBeVisible();
+  await expect(page.locator('.stats-page')).not.toContainText('Loading charts');
+  await expect(page.locator('.chore-stat-card').first()).toBeVisible();
+  await page.waitForLoadState('networkidle');
+  expect(reads.length,reads.join('\n')).toBeLessThanOrEqual(3);
+});
