@@ -66,6 +66,22 @@ test.describe('Schedule Tab', () => {
     await expect(page.locator('.schedule-view h2')).toHaveText('Upcoming');
   });
 
+  test('opening the Schedule tab reads its schedules once', async ({ page }) => {
+    await setupWithSchedules(page);
+    await page.waitForSelector('.home-grid', { timeout: 10000 });
+    await page.waitForLoadState('networkidle');
+    const reads = [];
+    page.on('request', request => {
+      const path = new URL(request.url()).pathname;
+      if (request.method() === 'GET' && path.startsWith('/api/schedules')) reads.push(path);
+    });
+
+    await page.click('[data-nav="schedule"]');
+    await expect(page.locator('.schedule-view')).toContainText('Feed Cats');
+    await page.waitForLoadState('networkidle');
+    expect(reads).toEqual(['/api/schedules']);
+  });
+
   test('Schedule tab shows scheduled chores with recurrence info', async ({ page }) => {
     await setupWithSchedules(page);
 

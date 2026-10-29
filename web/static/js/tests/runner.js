@@ -2594,3 +2594,45 @@ describe("Wide layout", () => {
     assert.equal(root.querySelector('[data-action="retry-home-activity"]').textContent, "Retry");
   });
 });
+
+describe("Action registry", () => {
+  it("runs the handler registered for an action, and only that one", async () => {
+    const { registerActions, runAction } = await import("../actions.js");
+    const calls = [];
+    registerActions("click", { "registry-test-a"(event, el) { calls.push([event.type, el.id]); } });
+    assert.equal(runAction("click", "registry-test-a", { type: "click" }, { id: "button" }), true);
+    assert.deepEqual(calls, [["click", "button"]]);
+    assert.equal(runAction("submit", "registry-test-a", { type: "submit" }, {}), false);
+    assert.equal(runAction("click", "registry-test-missing", { type: "click" }, {}), false);
+  });
+
+  it("refuses a second handler for the same action", async () => {
+    const { registerActions } = await import("../actions.js");
+    registerActions("change", { "registry-test-b"() {} });
+    assert.throws(() => registerActions("change", { "registry-test-b"() {} }), /registered twice/);
+  });
+
+  it("feature modules register their actions on import", async () => {
+    const core = await import("../app-core.js");
+    const { createAppState } = await import("../state.js");
+    const { runAction } = await import("../actions.js");
+    await import("../api-keys.js");
+    await import("../exports.js");
+    core.initState(createAppState());
+    document.body.innerHTML = '<div id="app"></div>';
+    let renders = 0;
+    core.setRenderer(() => { renders++; });
+
+    core.state.apiKeyIssued = "secret-shown-once";
+    let prevented = false;
+    assert.equal(runAction("click", "dismiss-api-key", { preventDefault() { prevented = true; } }, {}), true);
+    assert.equal(core.state.apiKeyIssued, null);
+    assert.equal(prevented, true);
+    assert.equal(renders, 1);
+
+    core.state.exportError = "old error";
+    assert.equal(runAction("change", "export-range", {}, { dataset: { field: "start" }, value: "2026-01-01" }), true);
+    assert.deepEqual(core.state.exportRange, { start: "2026-01-01" });
+    assert.equal(core.state.exportError, null);
+  });
+});
