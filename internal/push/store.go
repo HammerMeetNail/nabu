@@ -140,7 +140,7 @@ func (s *PostgresStore) SaveSubscription(ctx context.Context, userID int64, sub 
 		result, err := tx.ExecContext(ctx, `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, session_hash, binding_id, registration_id)
  SELECT $1::bigint, $2, $3, $4, s.token_hash, $6, $7 FROM sessions s JOIN users u ON u.id=s.user_id
  WHERE s.token_hash=$5 AND s.user_id=$1 AND s.auth_version=u.auth_version
- AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-INTERVAL '24 hours'
+ AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-`+lifecycle.SessionIdleSQL+`
  ON CONFLICT (endpoint) DO UPDATE SET user_id=EXCLUDED.user_id, p256dh=EXCLUDED.p256dh,
  auth=EXCLUDED.auth, session_hash=EXCLUDED.session_hash, binding_id=EXCLUDED.binding_id, registration_id=EXCLUDED.registration_id`,
 			userID, sub.Endpoint, sub.P256DH, sub.Auth, sub.SessionHash, sub.BindingID, diagnostics.RequestID())
@@ -166,7 +166,7 @@ func (s *PostgresStore) GetSubscriptions(ctx context.Context, userID int64) ([]S
 		`SELECT p.endpoint, p.p256dh, p.auth, p.session_hash, p.binding_id, p.registration_id
  FROM push_subscriptions p JOIN sessions s ON s.token_hash=p.session_hash JOIN users u ON u.id=s.user_id
  WHERE p.user_id=$1 AND s.user_id=$1 AND s.auth_version=u.auth_version
- AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-INTERVAL '24 hours'`,
+ AND s.expires_at>clock_timestamp() AND s.last_seen_at>clock_timestamp()-`+lifecycle.SessionIdleSQL,
 		userID,
 	)
 	if err != nil {

@@ -8,8 +8,10 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/auth"
+	"github.com/HammerMeetNail/nabu/internal/lifecycle"
 	"github.com/HammerMeetNail/nabu/internal/mail"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
 )
@@ -105,6 +107,28 @@ func TestAuthLogin(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d, body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+}
+
+// The browser keeps the session cookie as long as the server keeps the
+// session: a year after sign-in. It used to drop the cookie after 30 days.
+func TestSessionCookieLastsAsLongAsTheSession(t *testing.T) {
+	handler, svc := setupAuthHandler(t)
+	want := int(lifecycle.SessionLifetime / time.Second)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/auth/register", strings.NewReader(`{"email":"keeps@example.com","password":"password123"}`))
+	rec := httptest.NewRecorder()
+	handler.Register(rec, req)
+	if cookie := responseCookie(rec, "nabu_session"); cookie == nil || cookie.MaxAge != want {
+		t.Fatalf("register session cookie = %+v, want Max-Age %d", cookie, want)
+	}
+	svc.DeliverPendingMail(context.Background())
+
+	req = httptest.NewRequest(http.MethodPost, "/api/auth/login", strings.NewReader(`{"email":"keeps@example.com","password":"password123"}`))
+	rec = httptest.NewRecorder()
+	handler.Login(rec, req)
+	if cookie := responseCookie(rec, "nabu_session"); cookie == nil || cookie.MaxAge != want {
+		t.Fatalf("login session cookie = %+v, want Max-Age %d", cookie, want)
 	}
 }
 

@@ -3,6 +3,17 @@ package lifecycle
 import (
 	"context"
 	"database/sql"
+	"time"
+)
+
+// A session ends when it goes SessionIdleTimeout without a request, or
+// SessionLifetime after sign-in, whichever comes first. A device's push
+// registration lasts as long as its session. SessionIdleSQL is the idle
+// limit for queries that check a session is still live.
+const (
+	SessionIdleTimeout = 30 * 24 * time.Hour
+	SessionLifetime    = 365 * 24 * time.Hour
+	SessionIdleSQL     = "INTERVAL '30 days'"
 )
 
 // SessionGuard serializes a memory-mode device write with session revocation.
@@ -31,7 +42,7 @@ func WithSQLSession(ctx context.Context, db *sql.DB, userID int64, hash string, 
 	// NOW() is the transaction start, which may precede a long lock wait.
 	// Check the wall clock only after both authorization locks are held.
 	var valid bool
-	if err := tx.QueryRowContext(ctx, `SELECT expires_at>clock_timestamp() AND last_seen_at>clock_timestamp()-INTERVAL '24 hours'
+	if err := tx.QueryRowContext(ctx, `SELECT expires_at>clock_timestamp() AND last_seen_at>clock_timestamp()-`+SessionIdleSQL+`
  FROM sessions WHERE id=$1`, id).Scan(&valid); err != nil {
 		return err
 	}

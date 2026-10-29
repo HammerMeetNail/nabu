@@ -9,6 +9,7 @@ import (
 	"github.com/HammerMeetNail/nabu/internal/apns"
 	"github.com/HammerMeetNail/nabu/internal/auth"
 	"github.com/HammerMeetNail/nabu/internal/database"
+	"github.com/HammerMeetNail/nabu/internal/lifecycle"
 	"github.com/HammerMeetNail/nabu/internal/push"
 	"github.com/HammerMeetNail/nabu/internal/testdb"
 	"github.com/HammerMeetNail/nabu/internal/testsync"
@@ -143,6 +144,38 @@ func TestDeviceSessionOwnership(t *testing.T) {
 	}
 }
 
+// A device keeps its registration and its pushes while its session goes
+// unused for days. Only a session that has gone the idle timeout without a
+// request loses them; before, a day away was enough.
+func TestDeviceSessionUnusedForDaysStillReceives(t *testing.T) {
+	for _, postgres := range []bool{false, true} {
+		name := "memory"
+		if postgres {
+			name = "postgres"
+		}
+		t.Run(name, func(t *testing.T) {
+			f := deviceStores(t, postgres)
+			ctx := context.Background()
+			u := newDeviceUser(t, f, "away@example.invalid", "away")
+			w, n := saveDevices(t, f, u.ID, "away", "browser")
+			if err := f.auth.TouchSession(ctx, "away", time.Now().Add(-2*24*time.Hour)); err != nil {
+				t.Fatal(err)
+			}
+			checkDeviceCount(t, f, u.ID, 1)
+			sent := 0
+			if err := f.web.WithSubscription(ctx, u.ID, w, func() error { sent++; return nil }); err != nil {
+				t.Fatalf("web delivery: %v", err)
+			}
+			if err := f.native.WithDevice(ctx, n, func() error { sent++; return nil }); err != nil {
+				t.Fatalf("native delivery: %v", err)
+			}
+			if sent != 2 {
+				t.Fatalf("deliveries = %d, want 2", sent)
+			}
+		})
+	}
+}
+
 func TestStaleDeviceCleanupAndUnregisterPreserveReplacement(t *testing.T) {
 	for _, postgres := range []bool{false, true} {
 		name := "memory"
@@ -170,7 +203,7 @@ func TestStaleDeviceCleanupAndUnregisterPreserveReplacement(t *testing.T) {
 				t.Fatal(err)
 			}
 			checkDeviceCount(t, f, u.ID, 1)
-			if err := f.auth.TouchSession(ctx, "new", time.Now().Add(-25*time.Hour)); err != nil {
+			if err := f.auth.TouchSession(ctx, "new", time.Now().Add(-lifecycle.SessionIdleTimeout-time.Hour)); err != nil {
 				t.Fatal(err)
 			}
 			checkDeviceCount(t, f, u.ID, 0)
@@ -293,7 +326,7 @@ func TestPostgresDeviceGuardChecksExpiryAfterLockWait(t *testing.T) {
 				// but the deadline has passed by the time we release the lock.
 				query := `UPDATE sessions SET expires_at=clock_timestamp() WHERE token_hash='expiry'`
 				if deadline == "last_seen_at" {
-					query = `UPDATE sessions SET last_seen_at=clock_timestamp()-INTERVAL '24 hours' WHERE token_hash='expiry'`
+					query = `UPDATE sessions SET last_seen_at=clock_timestamp()-` + lifecycle.SessionIdleSQL + ` WHERE token_hash='expiry'`
 				}
 				if _, err := tx.ExecContext(ctx, query); err != nil {
 					t.Fatal(err)
