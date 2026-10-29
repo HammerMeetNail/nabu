@@ -23,11 +23,11 @@ func viewerIDFromContext(ctx context.Context) int64 {
 	return 0
 }
 
-func nowIn(loc *time.Location) time.Time {
+func (s *Service) nowIn(loc *time.Location) time.Time {
 	if loc == nil {
 		loc = time.UTC
 	}
-	return time.Now().In(loc)
+	return s.now().In(loc)
 }
 
 type LeaderboardEntry struct {
@@ -73,6 +73,7 @@ type Service struct {
 	logStore    log.Store
 	choreStore  choreStore
 	memberships MembershipReader
+	now         func() time.Time
 }
 
 type MembershipReader interface {
@@ -169,7 +170,7 @@ type FeedingGap struct {
 }
 
 func NewService(logStore log.Store, choreStore choreStore) *Service {
-	return &Service{logStore: logStore, choreStore: choreStore}
+	return &Service{logStore: logStore, choreStore: choreStore, now: time.Now}
 }
 
 func (s *Service) WithMemberships(m MembershipReader) *Service {
@@ -266,14 +267,14 @@ func (s *Service) canViewChoreForContext(ctx context.Context, householdID, chore
 }
 
 func (s *Service) GetWeeklyLeaderboard(ctx context.Context, householdID int64, loc *time.Location) ([]LeaderboardEntry, error) {
-	now := nowIn(loc)
+	now := s.nowIn(loc)
 	weekStart := wkStart(now, loc)
 	weekEnd := weekStart.AddDate(0, 0, 7)
 	return s.getLeaderboard(ctx, householdID, weekStart, weekEnd, loc)
 }
 
 func (s *Service) GetDailyLeaderboard(ctx context.Context, householdID int64, loc *time.Location) ([]LeaderboardEntry, error) {
-	now := nowIn(loc)
+	now := s.nowIn(loc)
 	y, m, d := now.Date()
 	start := time.Date(y, m, d, 0, 0, 0, 0, loc)
 	end := start.AddDate(0, 0, 1)
@@ -343,18 +344,17 @@ func (s *Service) getLeaderboard(ctx context.Context, householdID int64, start, 
 }
 
 func (s *Service) GetUserStreaks(ctx context.Context, householdID, userID int64, loc *time.Location) (StreakInfo, error) {
-	now := nowIn(loc)
+	now := s.nowIn(loc)
 	start := now.AddDate(-1, 0, 0)
 	end := now.AddDate(0, 0, 1)
 	logs, err := s.fetchLogsInRange(ctx, householdID, start, end, loc)
 	if err != nil {
 		return StreakInfo{}, err
 	}
-	return computeStreaks(logs, userID, start, end, loc), nil
+	return computeStreaks(logs, userID, start, end, now, loc), nil
 }
 
-func computeStreaks(logs []log.ChoreLog, userID int64, start, end time.Time, loc *time.Location) StreakInfo {
-	now := nowIn(loc)
+func computeStreaks(logs []log.ChoreLog, userID int64, start, end, now time.Time, loc *time.Location) StreakInfo {
 	daySet := map[string]bool{}
 	for _, l := range logs {
 		if l.UserID == userID && logInRange(l, start, end, loc) {
@@ -519,7 +519,7 @@ func (s *Service) GetBusyHours(ctx context.Context, householdID int64, start, en
 }
 
 func (s *Service) GetWeeklyRecap(ctx context.Context, householdID int64, loc *time.Location) (WeeklyRecap, error) {
-	now := nowIn(loc)
+	now := s.nowIn(loc)
 	weekStart := wkStart(now, loc)
 	weekEnd := weekStart.AddDate(0, 0, 7)
 
@@ -604,7 +604,7 @@ func wkStart(t time.Time, loc *time.Location) time.Time {
 }
 
 func (s *Service) GetChoreStats(ctx context.Context, householdID int64, loc *time.Location, customStart, customEnd *time.Time) ([]ChoreStats, error) {
-	now := nowIn(loc)
+	now := s.nowIn(loc)
 	weekStart := wkStart(now, loc)
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
 
@@ -645,11 +645,16 @@ func (s *Service) GetChoreStats(ctx context.Context, householdID int64, loc *tim
 			if inRange {
 				rangeCount++
 			}
-			if !l.CompletedAt.In(loc).Before(weekStart) {
-				weekCount++
-			}
-			if !l.CompletedAt.In(loc).Before(monthStart) {
-				monthCount++
+			// Candidates reach 48 hours past fetchEnd so a canonical date can't
+			// hide a log, and the stores read that margin differently. The
+			// week and month totals end where the fetch does.
+			if l.CompletedAt.Before(fetchEnd) {
+				if !l.CompletedAt.In(loc).Before(weekStart) {
+					weekCount++
+				}
+				if !l.CompletedAt.In(loc).Before(monthStart) {
+					monthCount++
+				}
 			}
 			if !inRange {
 				continue
@@ -719,13 +724,18 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 	if _, ok := s.logStore.(aggregateReader); ok && aggregateTimeZone(loc) != "" {
 		return s.aggregateOverview(ctx, householdID, userID, loc)
 	}
-	now := nowIn(loc)
+	now := s.nowIn(loc)
 	weekStart := wkStart(now, loc)
 	weekEnd := weekStart.AddDate(0, 0, 7)
 
 	// Fetch a full year of logs once to serve both the week overview and streaks.
 	yearStart := now.AddDate(-1, 0, 0)
 	yearEnd := now.AddDate(0, 0, 1)
+	// The week counts what the fetch reaches. Candidates run 48 hours past
+	// yearEnd, where the stores read canonical dates differently.
+	if weekEnd.After(yearEnd) {
+		weekEnd = yearEnd
+	}
 	logs, err := s.fetchLogsInRange(ctx, householdID, yearStart, yearEnd, loc)
 	if err != nil {
 		return WeeklyOverview{}, err
@@ -752,7 +762,7 @@ func (s *Service) GetWeeklyOverview(ctx context.Context, householdID, userID int
 	sortLeaderboard(overview.Leaderboard)
 
 	// Streaks (for the requesting user) — computed from the same year fetch.
-	overview.Streaks = computeStreaks(logs, userID, yearStart, yearEnd, loc)
+	overview.Streaks = computeStreaks(logs, userID, yearStart, yearEnd, now, loc)
 
 	// Breakdown (week only)
 	choreCat := map[int64]string{}
@@ -810,7 +820,7 @@ func (s *Service) GetTopChores(ctx context.Context, householdID int64, userID in
 		period = "month"
 	}
 
-	now := nowIn(loc)
+	now := s.nowIn(loc)
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
 	weekStart := wkStart(now, loc)
 	monthStart := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, loc)
@@ -937,7 +947,7 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 		return nil, fmt.Errorf("chore not found")
 	}
 
-	now := nowIn(loc)
+	now := s.nowIn(loc)
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
 
 	var start time.Time
@@ -993,6 +1003,12 @@ func (s *Service) GetChoreTimeSeries(ctx context.Context, householdID, choreID i
 	}
 	if countEnd.After(readEnd) {
 		readEnd = countEnd
+	}
+	// The current week or month runs past tomorrow, into the candidates'
+	// 48-hour margin, where the stores read canonical dates differently.
+	// Nothing completed after tomorrow counts.
+	if readEnd.After(logFetchEnd) {
+		readEnd = logFetchEnd
 	}
 	logs, err := s.fetchStatsLogs(ctx, householdID, log.StatsQuery{
 		CandidateStart: logFetchStart.Add(-48 * time.Hour), CandidateEnd: logFetchEnd.Add(48 * time.Hour),
@@ -1233,7 +1249,7 @@ func (s *Service) GetChoreSummary(ctx context.Context, householdID, choreID int6
 		return nil, fmt.Errorf("chore not found")
 	}
 
-	now := nowIn(loc)
+	now := s.nowIn(loc)
 	var start, end time.Time
 	allTime := false
 	switch period {
