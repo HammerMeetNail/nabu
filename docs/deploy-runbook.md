@@ -105,7 +105,7 @@ bash scripts/prod-smoke.sh
 # Expected: an "ok" line for each step, then OK
 ```
 
-The script signs up a new account, sets up a household with the default activities, reads the main endpoints, logs an activity and deletes the log, signs out and back in, and deletes the account. The sign-up sends one verification email to the account's address; set `SMOKE_EMAIL` to choose it. If a step fails, the script still deletes the account, and if that fails too it prints the address to delete by hand. Each run uses a new address, so an account left behind never blocks the next run.
+The script signs up a new account, sets up a household with the default activities, reads the main endpoints, logs an activity and deletes the log, signs out and back in, and deletes the account. The address is in the reserved `.invalid` domain, which the server never sends mail to (`mail.SkipInvalid`), so a run sends no email and uses none of the Resend quota. `SMOKE_EMAIL` chooses another address, but one outside `.invalid` gets a real verification email. If a step fails, the script still deletes the account, and if that fails too it prints the address to delete by hand. Each run uses a new address, so an account left behind never blocks the next run.
 
 ### Verify per-IP rate limiting (after the trusted-proxy deploy, once only)
 

@@ -927,7 +927,7 @@ func method(want string, next http.HandlerFunc) http.HandlerFunc {
 
 func newMailer(cfg config.Config) mail.Sender {
 	if cfg.SMTPHost != "" {
-		return mail.NewSMTPSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom)
+		return mail.SkipInvalid(mail.NewSMTPSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom))
 	}
 	return mail.UnavailableSender{}
 }

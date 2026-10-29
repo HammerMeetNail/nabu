@@ -214,7 +214,7 @@ To run **two stacks simultaneously** (project-name + port overrides), see **`doc
 
 Local seed: `test@nabu.local` / `correct horse battery`. Stack must be running (`make local`) before `make seed`.
 
-Production has no test account. To check a deploy signed in, run `scripts/prod-smoke.sh`: it signs up a throwaway account, uses it and deletes it, even when a step fails. Never leave an account behind in production or rely on one that's already there.
+Production has no test account. To check a deploy signed in, run `scripts/prod-smoke.sh`: it signs up a throwaway account, uses it and deletes it, even when a step fails. Never leave an account behind in production or rely on one that's already there. The account's address is in the reserved `.invalid` domain, which the server never sends mail to (`mail.SkipInvalid`), so the check sends no email; signing up in production with any other address sends a verification email through Resend, whose quota is limited.
 
 ## Production
 
