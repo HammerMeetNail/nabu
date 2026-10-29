@@ -36,7 +36,31 @@ func (a aggregateChores) ListChores(ctx context.Context, id int64) ([]ChoreInfo,
 	return out, nil
 }
 
+// The comparison runs at fixed instants, never the machine's clock. These put
+// the 2026 DST fixtures ahead of now, inside the stores' 48-hour candidate
+// margin, and just behind; one is an ordinary day.
+var aggregateComparisonClocks = []string{
+	"2026-03-06T17:00:00Z", // two days before spring forward
+	"2026-03-08T07:30:00Z", // just after it
+	"2026-06-15T16:00:00Z",
+	"2026-10-29T04:30:00Z", // New York just past midnight, three days before fall back
+	"2026-10-30T15:00:00Z",
+	"2026-10-31T23:30:00Z", // the evening before
+	"2026-11-01T05:30:00Z", // the repeated hour, first time through
+	"2026-11-02T03:00:00Z", // the night after
+}
+
 func TestPostgresAggregatesMatchAuthorizedMemorySemantics(t *testing.T) {
+	for _, at := range aggregateComparisonClocks {
+		clock, err := time.Parse(time.RFC3339, at)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Run(at, func(t *testing.T) { comparePostgresAndMemoryStats(t, clock) })
+	}
+}
+
+func comparePostgresAndMemoryStats(t *testing.T, clock time.Time) {
 	db := testdb.New(t)
 	ctx := context.Background()
 	if err := database.Migrate(ctx, db); err != nil {
@@ -57,6 +81,8 @@ func TestPostgresAggregatesMatchAuthorizedMemorySemantics(t *testing.T) {
 	chores := aggregateChores{chore.NewPostgresStore(db)}
 	sqlSvc := NewService(pg, chores).WithMemberships(memberships)
 	memorySvc := NewService(mem, chores).WithMemberships(memberships)
+	sqlSvc.now = func() time.Time { return clock }
+	memorySvc.now = func() time.Time { return clock }
 	viewer := WithViewer(ctx, 1)
 	ny, err := time.LoadLocation("America/New_York")
 	if err != nil {
@@ -81,6 +107,7 @@ func TestPostgresAggregatesMatchAuthorizedMemorySemantics(t *testing.T) {
 	// Both DST boundaries, exact completion bounds, canonical dates outside the
 	// widened window, per-label volume replacement (including all nonpositive),
 	// and distinct author/viewer identities. No JSON expansion may multiply counts.
+	var dstLogs []chorelog.ChoreLog
 	for _, day := range []time.Time{time.Date(2026, 3, 8, 0, 0, 0, 0, ny), time.Date(2026, 11, 1, 0, 0, 0, 0, ny)} {
 		for i, at := range []time.Time{day.Add(-time.Second), day, day.Add(3 * time.Hour), day.AddDate(0, 0, 1).Add(-time.Second), day.AddDate(0, 0, 1)} {
 			entry := chorelog.ChoreLog{HouseholdID: 1, UserID: 2, ChoreID: 10, CompletedAt: at, VolumeML: intp(999), DurationSeconds: intp(31), IndicatorVolumes: map[string]int{"a": 60, "b": 80, "bad": -1}}
@@ -95,9 +122,10 @@ func TestPostgresAggregatesMatchAuthorizedMemorySemantics(t *testing.T) {
 				entry.LogDate = strp(day.AddDate(0, -1, 0).Format(time.DateOnly))
 			}
 			add(entry)
+			dstLogs = append(dstLogs, entry)
 		}
 	}
-	now := time.Now().In(ny)
+	now := clock.In(ny)
 	midday := time.Date(now.Year(), now.Month(), now.Day(), 12, 0, 0, 0, ny)
 	for i := range 8 {
 		user, id := int64(2), int64(10)
@@ -203,6 +231,12 @@ func TestPostgresAggregatesMatchAuthorizedMemorySemantics(t *testing.T) {
 						// New York noon can be yesterday in the queried timezone.
 						// Assert the seeded date, which is not always the final bucket.
 						fixtureDay := midday.In(loc).Format(time.DateOnly)
+						// On some clocks a DST fixture shares that day. Its
+						// counts were compared above; these totals assume none.
+						shared := false
+						for _, l := range dstLogs {
+							shared = shared || l.CompletedAt.In(loc).Format(time.DateOnly) == fixtureDay || (l.LogDate != nil && *l.LogDate == fixtureDay)
+						}
 						var bucket *TimeSeriesPeriod
 						for i := range got.Periods {
 							if got.Periods[i].Start == fixtureDay {
@@ -210,7 +244,7 @@ func TestPostgresAggregatesMatchAuthorizedMemorySemantics(t *testing.T) {
 								break
 							}
 						}
-						if bucket == nil || bucket.Count != 9 || bucket.TotalML != 680 || bucket.TotalDuration != 360 {
+						if !shared && (bucket == nil || bucket.Count != 9 || bucket.TotalML != 680 || bucket.TotalDuration != 360) {
 							t.Fatalf("fixture day %s lost canonical-date or metric semantics: %+v", fixtureDay, bucket)
 						}
 					}
