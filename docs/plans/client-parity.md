@@ -218,6 +218,8 @@ The repository currently contains these iOS test targets (all under `ios/`):
 | `NabuTests` (unit/contract) | `ActivityTests`, `APIContractTests`, `AuthTests`, `ChoreTests`, `DataLoaderTests`, `HomeTests`, `ModelDecodingTests`, `NotificationTests`, `RequestEncodingTests`, `ScheduleTests`, `StateTests` |
 | `NabuUITests` (UI) | `NabuUITests.swift` |
 
+Snapshot tests use swift-snapshot-testing 1.19.7 (with swift-custom-dump 1.7.3, swift-issue-reporting 2.1.2 and swift-syntax 604.0.0), pinned in `ios/Nabu.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved`. Updating them is test tooling only: neither client's behavior changes.
+
 Earlier revisions of this matrix referenced a large set of per-feature
 `*UITests.swift` / `*SnapshotTests.swift` / `*ContractTests.swift` files that
 were planned but never created. Add real test files before promoting a row from
