@@ -424,7 +424,9 @@ test.describe('Manage Chores: restore predefined chore to default', () => {
       r => r.url().includes('/restore-default') && r.request().method() === 'POST'
     );
     await page.click('[data-action="restore-chore-default"]');
-    await restoreDone;
+    // The iOS app shows the activity from the answer.
+    const restored = await (await restoreDone).json();
+    expect(restored.chore.name).toBe(originalName);
     await expect(page.locator('.chore-edit-sheet')).toHaveCount(0, { timeout: 5000 });
 
     // Original name should be back

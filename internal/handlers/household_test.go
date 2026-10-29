@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -183,6 +184,53 @@ func TestHouseholdUpdate(t *testing.T) {
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	// The iOS app shows the household from the answer.
+	var resp struct {
+		Household household.Household `json:"household"`
+		Status    string              `json:"status"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Status != "updated" || resp.Household.Name != "Renamed Home" || resp.Household.InviteCode == "" {
+		t.Fatalf("answer = %+v, want the renamed household with the owner's invite code", resp)
+	}
+}
+
+// An admin may rename the household, and the answer reads it as GET does
+// for them: without the invite code, which only the owner sees.
+func TestHouseholdUpdateByAdminOmitsInviteCode(t *testing.T) {
+	handler, ownerSession, memberSession, authService := setupTwoMemberHousehold(t)
+	member, err := authService.Authenticate(t.Context(), memberSession)
+	if err != nil {
+		t.Fatalf("Authenticate member: %v", err)
+	}
+	promote := withUser(httptest.NewRequest(http.MethodPatch, fmt.Sprintf("/api/household/members/%d", member.ID),
+		strings.NewReader(`{"role":"admin"}`)), authService, ownerSession)
+	promote.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.UpdateMemberRole(rec, promote)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("promote: status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+
+	req := withUser(httptest.NewRequest(http.MethodPatch, "/api/household",
+		strings.NewReader(`{"name":"Admin Renamed"}`)), authService, memberSession)
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	handler.Update(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Household household.Household `json:"household"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Household.Name != "Admin Renamed" || resp.Household.InviteCode != "" {
+		t.Fatalf("household = %+v, want the new name and no invite code", resp.Household)
 	}
 }
 

@@ -194,7 +194,13 @@ test.describe('Multi-Household', () => {
     // Update the name and initials
     await page.fill('#edit-hh-name', 'New Name');
     await page.fill('#edit-hh-initials', 'NN');
+    const saved = page.waitForResponse(
+      r => new URL(r.url()).pathname === '/api/household' && r.request().method() === 'PATCH'
+    );
     await page.click('#edit-household-form [type="submit"]');
+    // The iOS app shows the household from the answer.
+    const answer = await (await saved).json();
+    expect(answer.household).toMatchObject({ name: 'New Name', initials: 'NN' });
 
     // Wait for the header indicator to update
     await page.waitForTimeout(800);

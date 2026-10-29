@@ -436,7 +436,8 @@ func (h *ChoreHandler) RestoreDefault(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.service.RestoreDefaultChoreForUser(r.Context(), id, *user.HouseholdID, user.ID); err != nil {
+	restored, err := h.service.RestoreDefaultChoreForUser(r.Context(), id, *user.HouseholdID, user.ID)
+	if err != nil {
 		if err.Error() == "chore not found" || errors.Is(err, chore.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "chore not found")
 			return
@@ -445,7 +446,8 @@ func (h *ChoreHandler) RestoreDefault(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "restored"})
+	// The iOS app shows the activity from this answer.
+	writeJSON(w, http.StatusOK, map[string]any{"chore": restored, "status": "restored"})
 }
 
 func (h *ChoreHandler) GetDefaults(w http.ResponseWriter, r *http.Request) {
