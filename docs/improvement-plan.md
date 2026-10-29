@@ -10,8 +10,8 @@
 | Phase 0 (all of 0.1–0.9) | Merged: #155 (all of Phase 0), #157 (AGENTS.md invariant). |
 | 1.1 Smart defaults | Merged: a new dose starts from the last one (#161). |
 | 1.2 Offline-first launch | Merged: PWA (#160), iOS (#163). |
-| 1.3 PWA rendering and data layer | Merged: router (#162), modulepreload and a versioned precache (#160), Home updated from the save's answer instead of 3 refetches (#165), and keyed morphing (#177). Open: two duplicate requests removed (#183; launch makes 8 requests instead of 9, the Schedule tab 3 instead of 4) and splitting `app.js`, part 1 (#184: a shared core and an actions registry, with CSV export and API keys moved out). Not needed: the SWR data store, because a request count across a full session found 1–4 requests per tab, and those two duplicates were the only waste. |
-| 1.4 iOS architecture | Open: #185 (only a debug build reads test hooks). Not started: `@Observable` feature models, Swift 6, typed errors, a String Catalog, a configuration per environment and version numbering. |
+| 1.3 PWA rendering and data layer | Merged: router (#162), modulepreload and a versioned precache (#160), Home updated from the save's answer instead of 3 refetches (#165), keyed morphing (#177), two duplicate requests removed (#183; launch makes 8 requests instead of 9, the Schedule tab 3 instead of 4) and splitting `app.js`, part 1 (#184: a shared core and an actions registry, with CSV export and API keys moved out). Not needed: the SWR data store, because a request count across a full session found 1–4 requests per tab, and those two duplicates were the only waste. Next: `app.js` part 2 (notifications, household and settings). |
+| 1.4 iOS architecture | Merged: #185 (only a debug build reads test hooks). Not started: `@Observable` feature models, Swift 6, typed errors, a String Catalog, a configuration per environment and version numbering. |
 | 1.5 Stats API consolidation | Merged: `GET /api/stats/dashboard`, two requests per visit (#164). |
 | 2.1 Onboarding, steps 1–4 | Merged: name and color (#166), setup with packs (#168). |
 | 2.1 step 5 (QR) and 2.5 (invite page) | Merged: #170. |
@@ -21,12 +21,13 @@
 | 2.4 Sign-up polish | Merged: #175 (logo and tagline, one password with Show/Hide, Apple and Google first on iOS). |
 | 3 Desktop web | Merged: #176 (sidebar, Home's activity column, two-column Stats, keys 1–9, u and /). |
 | 3 App Intents | Merged: #180 (Log Activity, Undo Last Log, When Was It Last Done; Siri phrases; logs offline through the journal). |
-| 3 Other surfaces | Needs a decision: interactive widgets and Control Center buttons run their intent in the widget extension, so logging there means sharing the session cookie and journal through the app group; they, and notification actions that log in the background, log without the sheet. Not started: Live Activity (owner sign-off requested), Apple Watch, Mac, kitchen display, Android. |
+| 3 Other surfaces | Decided: widgets, Control Center buttons and notification actions open the activity's pre-filled sheet rather than logging in place, because most activities need more than a tap; Siri and Shortcuts keep logging directly. The Live Activity and the Apple Watch app are v1.1. Not started: Control Center buttons, lock-screen widgets, Mac, kitchen display, Android. |
 | 5.1 Observability | Merged: #179 (one JSON object per log line). Not started: tracing, a metrics endpoint, error reporting. |
 | 5.2 Durable background work | Merged: #181 (notification events and push jobs in PostgreSQL, claimed by every instance with SKIP LOCKED, retried with back-off and expiring after 15 minutes; a reminder recorded and queued in one transaction). Push sends stay inside a guard, as #131 requires, now one device at a time. |
-| 5.3 Sweeps | Needs a decision: sessions idle out after 24 hours and push registrations go with them, so sweeping idle sessions could stop reminders to someone who hasn't opened the app in a day. |
+| 5.3 Multi-instance readiness | Merged: #188 (a session lasts until it goes 30 days unused or a year after sign-in; a day away used to sign people out and stop their reminders). Open: #192 (an hourly sweep deletes ended sessions and spent sign-in tokens), #193 (two instances share the sign-in and join limits and one export per household; `docs/two-instances.md` lists what a second instance needs). Per the owner, it's built but production stays on one instance until scaling needs more. |
 | 5.4 Database | Merged: #172 (every foreign key indexed, duplicate indexes dropped, former members read in one query), #178 (every statement and lock wait bounded; migrations exempt). |
-| Fixes found along the way | Merged: #167 (iOS 27 UI tests, flaky specs), #169 (iOS edit sheet stayed open after Save), #173 (Settings member row snapped shut on re-render), #175 (showing a password on iOS made it offer to save the password), #176 (Activity's search lost focus after the first pause in typing; Home lost focus after each save), #177 (an opened member row closed when a member above it left), #181 (removing a member could fail while a slow push held the household lock past the 15-second lock timeout), #182 (`make deploy` stopped before tagging: git died of SIGPIPE under pipefail). |
+| Operations | Merged: #186 (production checks use a throwaway account; the docs no longer name a fixed test account), #187 (email comes from `Nabu <noreply@nabu-app.com>` instead of yearofbingo.com). Open: #189 (Go 1.27.3 and current modules), #191 (current Actions, CI tools, Playwright, jsdom and the iOS snapshot library); these replace Dependabot's PRs. Closed: #141 (quiet hours), per the owner. |
+| Fixes found along the way | Merged: #167 (iOS 27 UI tests, flaky specs), #169 (iOS edit sheet stayed open after Save), #173 (Settings member row snapped shut on re-render), #175 (showing a password on iOS made it offer to save the password), #176 (Activity's search lost focus after the first pause in typing; Home lost focus after each save), #177 (an opened member row closed when a member above it left), #181 (removing a member could fail while a slow push held the household lock past the 15-second lock timeout), #182 (`make deploy` stopped before tagging: git died of SIGPIPE under pipefail). Open: #190 (run from a linked worktree, a pre-push test could rewrite the pushed repository's config). |
 
 ---
 
@@ -427,15 +428,15 @@ All third-party calls go through a server-side proxy with caching, per-household
 
 ## 9. Decisions needed from the owner
 
-1. **Account deletion semantics:** keep shared-household logs under an unlinkable "Former member" tombstone with opt-in deletion of the user's entries and notes (recommended, Phase 0.3), or delete them all (current behavior, but the copy must then say so).
+1. **Account deletion semantics:** decided. Shared-household logs move to an unlinkable "Former member" tombstone, with opt-in deletion of the user's entries and notes (Phase 0.3, #155).
 2. **Default packs:** decided. The owner confirmed the pack list, and "Personal" (books, movies, workouts) stays.
-3. **Monetization:** the free-core / Plus split and price points (§5, Phase 6).
-4. **Apple Watch** in v1.0 or v1.1 (recommended: v1.1, right after App Store launch).
-5. **Hosting:** managed Postgres plus 2 replicas before paid launch, or stay single-node longer.
-6. **PR #141 quiet hours:** rebase and fix, or close.
-7. **Analytics:** approve first-party aggregate analytics consistent with the "no tracking" promise.
-8. **Brand:** keep the name "Nabu" (check trademark and App Store name availability) and commission an icon/logo.
-9. **Privacy counsel:** engage a privacy lawyer for the data map, DPIA, consent text and deletion design (Phase 4), and decide whether an EU representative is needed (Art. 27) if Nabu has no EU establishment.
+3. **Monetization:** decided as planned: tracking is free, and Nabu Plus is about $4.99/month or $39/year per household (§5, Phase 6). The entitlement table and StoreKit and Stripe purchases come once there are Plus features to sell.
+4. **Apple Watch:** v1.1, right after App Store launch. The timer's Live Activity is v1.1 too.
+5. **Hosting:** build support for two app instances, but keep running one server until scaling needs more.
+6. **PR #141 quiet hours:** closed. The branch stays on GitHub.
+7. **Analytics:** approved, as first-party aggregate counts kept small. They're stored as daily totals, not a row per event, so the database doesn't grow with usage.
+8. **Brand:** open. Keep the name "Nabu" (check trademark and App Store name availability) and commission an icon and logo. Nabu's email now comes from its own domain (#187).
+9. **Privacy counsel:** open. Engage a privacy lawyer for the data map, DPIA, consent text and deletion design (Phase 4), and decide whether an EU representative is needed (Art. 27) if Nabu has no EU establishment.
 
 ---
 
