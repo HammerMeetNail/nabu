@@ -5,15 +5,17 @@
 # reads the main endpoints, logs an activity and deletes the log, signs out
 # and back in, then deletes the account. If a step fails, the account is
 # still deleted. Every run signs up a new address, so a run whose cleanup
-# failed never blocks the next one. The sign-up sends that address one
-# verification email.
+# failed never blocks the next one. The address is in the reserved .invalid
+# domain, which the server never sends mail to (mail.SkipInvalid), so a run
+# sends no email and spends none of the mail provider's quota.
 #
 #   scripts/prod-smoke.sh [base-url]      default https://nabu-app.com
-#   SMOKE_EMAIL=me+x@example.org ...      choose the address
+#   SMOKE_EMAIL=me+x@example.org ...      choose the address (one outside
+#                                         .invalid gets a verification email)
 set -euo pipefail
 
 BASE="${1:-https://nabu-app.com}"
-EMAIL="${SMOKE_EMAIL:-verify+smoke-$(date -u +%Y%m%d%H%M%S)@yearofbingo.com}"
+EMAIL="${SMOKE_EMAIL:-smoke-$(date -u +%Y%m%d%H%M%S)@nabu-smoke.invalid}"
 PASSWORD="$(python3 -I -c 'import secrets; print(secrets.token_hex(16))')"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/nabu-smoke.XXXXXX")"
 JAR="$WORK/cookies"

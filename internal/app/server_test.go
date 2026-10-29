@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/HammerMeetNail/nabu/internal/auth"
 	"github.com/HammerMeetNail/nabu/internal/chore"
 	"github.com/HammerMeetNail/nabu/internal/config"
+	"github.com/HammerMeetNail/nabu/internal/mail"
 	"github.com/HammerMeetNail/nabu/internal/middleware"
 )
 
@@ -377,6 +379,25 @@ func TestNewMailer_WithSMTPHost(t *testing.T) {
 	sender := newMailer(cfg)
 	if sender == nil {
 		t.Fatal("expected non-nil sender")
+	}
+}
+
+// The SMTP sender never connects for an address in .invalid: the production
+// smoke test signs up with one, and must send no email.
+func TestNewMailer_SkipsInvalidAddresses(t *testing.T) {
+	// Nothing listens on this port, so any send that dials fails.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, port, _ := net.SplitHostPort(ln.Addr().String())
+	_ = ln.Close()
+	sender := newMailer(config.Config{SMTPHost: "127.0.0.1", SMTPPort: port})
+	if err := sender.Send(context.Background(), mail.Message{To: "smoke-1@nabu-smoke.invalid", Subject: "Verify"}); err != nil {
+		t.Fatalf("mail to an .invalid address tried to send: %v", err)
+	}
+	if err := sender.Send(context.Background(), mail.Message{To: "someone@example.com", Subject: "Verify"}); err == nil {
+		t.Fatal("mail to a deliverable address didn't try to send")
 	}
 }
 
