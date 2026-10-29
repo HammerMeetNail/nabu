@@ -3,8 +3,11 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"sync"
@@ -26,10 +29,61 @@ const exportDuration = 20 * time.Second
 
 // ExportGate is shared by every export route in one server. There is no waiting
 // queue: a household or user cannot occupy both slots and all allocations are
-// concurrency-bound.
+// concurrency-bound. The two slots bound this instance's memory; with a shared
+// lock, one export per household or user also holds across every instance.
 type ExportGate struct {
 	mu     sync.Mutex
 	active map[int64]bool
+	lock   ExportLock
+}
+
+// ExportLock holds an export's gate key (a household's ID, or a user's negated
+// ID) across every instance until release is called. held is false while
+// another instance's export holds it.
+type ExportLock func(ctx context.Context, key int64) (release func(), held bool, err error)
+
+// ShareAcrossInstances makes one export per household or user hold across
+// instances.
+func (g *ExportGate) ShareAcrossInstances(lock ExportLock) { g.lock = lock }
+
+// PostgresExportLock holds an export with a session advisory lock on a
+// dedicated connection, keyed by exportLockKey. The lock is released when the
+// export ends, or with its connection.
+func PostgresExportLock(db *sql.DB) ExportLock {
+	return func(ctx context.Context, gateKey int64) (func(), bool, error) {
+		key := exportLockKey(gateKey)
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			return nil, false, err
+		}
+		var held bool
+		if err := conn.QueryRowContext(ctx, `SELECT pg_try_advisory_lock($1)`, key).Scan(&held); err != nil || !held {
+			_ = conn.Close()
+			return nil, false, err
+		}
+		return func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, key); err != nil {
+				// Never return a connection that may still hold the lock to the
+				// pool: discarding it ends the lock with its session.
+				_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+			}
+			_ = conn.Close()
+		}, true, nil
+	}
+}
+
+// exportLockKey is an export's advisory-lock key, from its gate key. The app's
+// other advisory keys are positive constants, or the negated household ID for
+// the household's delivery and revocation lock (household.PostgresStore.WithMember),
+// so export keys count up from the lowest key: households' from math.MinInt64
+// and users' from 2^61 above it. The ranges stay apart while IDs are below 2^61.
+func exportLockKey(gateKey int64) int64 {
+	if gateKey < 0 {
+		return math.MinInt64 + 1<<61 - gateKey
+	}
+	return math.MinInt64 + gateKey
 }
 
 func NewExportGate() *ExportGate { return &ExportGate{active: map[int64]bool{}} }
@@ -60,7 +114,8 @@ func (g *ExportGate) WrapUser(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// run serves next in one of the two slots, if the key holds neither.
+// run serves next in one of the two slots, if the key holds neither and, with
+// a shared lock, no other instance is exporting for it.
 func (g *ExportGate) run(w http.ResponseWriter, r *http.Request, id int64, next http.HandlerFunc) {
 	g.mu.Lock()
 	busy := len(g.active) >= 2 || g.active[id]
@@ -74,6 +129,19 @@ func (g *ExportGate) run(w http.ResponseWriter, r *http.Request, id int64, next 
 		return
 	}
 	defer func() { g.mu.Lock(); delete(g.active, id); g.mu.Unlock() }()
+	if g.lock != nil {
+		release, held, err := g.lock(r.Context(), id)
+		if err != nil {
+			writeServerError(w, "export failed", err)
+			return
+		}
+		if !held {
+			w.Header().Set("Retry-After", "20")
+			writeError(w, http.StatusTooManyRequests, "an export is already running; try again shortly")
+			return
+		}
+		defer release()
+	}
 	next(w, r)
 }
 

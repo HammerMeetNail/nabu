@@ -7,3 +7,5 @@ test-results/
 .env
 .playwright-mcp/
 worktrees/
+# A developer's own iOS debug settings (see ios/Config/Debug.xcconfig).
+ios/Config/Local.xcconfig

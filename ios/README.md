@@ -13,6 +13,7 @@ Native SwiftUI client for Nabu, targeting iPhone. Uses the existing Go backend J
 
 ```text
 ios/
+  Config/          # Build settings every target shares: versions and the server (see below)
   Nabu.xcodeproj/
   Nabu/
     App/           # App entry point, AppState, AppEnvironment (incl. the -useMockAPI transport), navigation
@@ -62,6 +63,18 @@ xcodebuild test-without-building -project ios/Nabu.xcodeproj -scheme Nabu \
 xcodebuild test-without-building -project ios/Nabu.xcodeproj -scheme Nabu \
   -destination "platform=iOS Simulator,id=$NABU_SIMULATOR_ID" -only-testing:NabuUITests
 ```
+
+## Versions and the server
+
+`ios/Config/Shared.xcconfig` holds the settings every target shares. The project's Debug and Release configurations are based on `Debug.xcconfig` and `Release.xcconfig`, which include it.
+
+- **`MARKETING_VERSION`** is the App Store version (`1.0.0`). Raise it for each release.
+- **`CURRENT_PROJECT_VERSION`** is the build number, which must grow with every upload. An archive passes its own: `xcodebuild archive ... CURRENT_PROJECT_VERSION=42`.
+- **`NABU_BASE_URL`** is the server. The app reads it from `NabuBaseURL` in its Info.plist and falls back to production if that's missing or malformed. Both configurations use production.
+
+Don't set any of these on a target. Every target inherits them, which keeps the widget extension's version equal to the app's, as App Store Connect requires (`BuildConfigurationTests` checks it).
+
+To point a debug build at another server, such as the phone preview, put `NABU_BASE_URL = https:/$()/your-host.example` in `ios/Config/Local.xcconfig`. Git ignores that file and release builds never read it. In an xcconfig, `//` starts a comment, hence the `$()`. A Staging configuration is a `Staging.xcconfig` with its own `NABU_BASE_URL`, once a staging server exists.
 
 ## Launch arguments for tests
 

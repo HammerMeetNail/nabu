@@ -24,11 +24,11 @@ final class AppEnvironment: ObservableObject {
     }
 
     /// The server base URL a test passes as a launch argument or in the
-    /// environment (debug builds only; see TestHooks), falling back to
-    /// production. Static so contexts that exist before SwiftUI state (the
-    /// notification-action handler in AppDelegate) resolve identically.
+    /// environment (debug builds only; see TestHooks), falling back to the
+    /// build's own server (`NABU_BASE_URL` in ios/Config). Static so contexts
+    /// that exist before SwiftUI state (the notification-action handler in
+    /// AppDelegate) resolve identically.
     static func resolveBaseURL() -> URL {
-        let fallback = URL(string: "https://nabu-app.com")!
         let args = TestHooks.arguments
         if let idx = args.firstIndex(of: "-nabuBaseURL"), idx + 1 < args.count,
            let url = URL(string: args[idx + 1]) {
@@ -38,7 +38,19 @@ final class AppEnvironment: ObservableObject {
            let url = URL(string: env) {
             return url
         }
-        return fallback
+        return configuredBaseURL(Bundle.main.object(forInfoDictionaryKey: "NabuBaseURL") as? String)
+    }
+
+    nonisolated static let productionBaseURL = URL(string: "https://nabu-app.com")!
+
+    /// The server a build was configured with (Info.plist's `NabuBaseURL`),
+    /// or production when that is missing or not an http(s) URL with a host.
+    nonisolated static func configuredBaseURL(_ value: String?) -> URL {
+        guard let value, let url = URL(string: value),
+              url.scheme == "https" || url.scheme == "http", url.host?.isEmpty == false else {
+            return productionBaseURL
+        }
+        return url
     }
 
     /// Runs once. Both the scene's `onAppear` and ContentView's launch task

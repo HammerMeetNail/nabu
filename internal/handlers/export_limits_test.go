@@ -214,6 +214,21 @@ func TestExportGateKeysPersonalExportsByUser(t *testing.T) {
 	}
 }
 
+// Export lock keys stay below every other advisory key the app takes (its
+// positive constants, and household delivery locks at the negated household
+// ID), and households' and users' export keys never meet.
+func TestExportLockKeysStayApart(t *testing.T) {
+	const maxID = 1<<61 - 1
+	households := [2]int64{exportLockKey(1), exportLockKey(maxID)}
+	users := [2]int64{exportLockKey(-1), exportLockKey(-maxID)}
+	if households[0] >= households[1] || households[1] >= users[0] || users[0] >= users[1] {
+		t.Fatalf("household export keys %v and user export keys %v overlap", households, users)
+	}
+	if users[1] >= -maxID {
+		t.Fatalf("user export keys reach household delivery keys: %d", users[1])
+	}
+}
+
 func TestExportWriteDeadlineBoundsUnreadSocketThroughMiddleware(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

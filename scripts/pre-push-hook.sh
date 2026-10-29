@@ -152,6 +152,13 @@ if [ "${1:-}" = "--self-test" ]; then
   exit 0
 fi
 
+# Git exports GIT_DIR to hooks, as an absolute path in a linked worktree. A
+# test that makes a scratch repository would inherit it and run its git
+# commands against this repository instead: one once made it bare and gave it
+# a test identity. The parity gate below still finds the repository from the
+# working tree, where git runs hooks.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_COMMON_DIR GIT_NAMESPACE GIT_PREFIX
+
 # ── 1-4. Fast checks ────────────────────────────────────────────────────────
 
 if [ "${SKIP_FAST:-}" = "1" ]; then

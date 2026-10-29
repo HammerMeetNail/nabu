@@ -97,7 +97,7 @@ up() {
   podman run -d --pod "$NAME" --name "$NAME-postgres" \
     -e POSTGRES_DB=nabu -e POSTGRES_USER=nabu -e POSTGRES_PASSWORD=nabu \
     -v "$VOLUME:/var/lib/postgresql/data" docker.io/library/postgres:17-alpine >/dev/null
-  podman run -d --pod "$NAME" --name "$NAME-mailpit" docker.io/axllent/mailpit:v1.27 >/dev/null
+  podman run -d --pod "$NAME" --name "$NAME-mailpit" docker.io/axllent/mailpit:v1.32.0 >/dev/null
 
   # Check TCP: during first-run initdb, PostgreSQL listens on its socket only.
   local i

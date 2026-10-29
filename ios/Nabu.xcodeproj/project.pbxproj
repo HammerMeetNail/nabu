@@ -89,6 +89,7 @@
 		B100000000000000000001B8 /* OfflineLogQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000001A8 /* OfflineLogQueueTests.swift */; };
 		B100000000000000000001B9 /* RecentVolumesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000001A9 /* RecentVolumesTests.swift */; };
 		B100000000000000000001BA /* SubjectPrefillTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000001AA /* SubjectPrefillTests.swift */; };
+		B10000000000000000000A11 /* BuildConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10000000000000000000A10 /* BuildConfigurationTests.swift */; };
 		B100000000000000000002BA /* AmountPrefillTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000002AA /* AmountPrefillTests.swift */; };
 		B100000000000000000004B2 /* OfflineLaunchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A100000000000000000004A2 /* OfflineLaunchTests.swift */; };
 		B300000000000000000003B1 /* PushRegistration.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000003F1 /* PushRegistration.swift */; };
@@ -194,6 +195,7 @@
 		A100000000000000000001A8 /* OfflineLogQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineLogQueueTests.swift; sourceTree = "<group>"; };
 		A100000000000000000001A9 /* RecentVolumesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecentVolumesTests.swift; sourceTree = "<group>"; };
 		A100000000000000000001AA /* SubjectPrefillTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubjectPrefillTests.swift; sourceTree = "<group>"; };
+		A10000000000000000000A10 /* BuildConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildConfigurationTests.swift; sourceTree = "<group>"; };
 		A100000000000000000002AA /* AmountPrefillTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmountPrefillTests.swift; sourceTree = "<group>"; };
 		A100000000000000000004A2 /* OfflineLaunchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OfflineLaunchTests.swift; sourceTree = "<group>"; };
 		D700000000000000000007A1 /* AppIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIntents.swift; sourceTree = "<group>"; };
@@ -215,6 +217,9 @@
 		C500000000000000000005F3 /* NabuWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = NabuWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		C500000000000000000005F4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		C500000000000000000005F5 /* NabuWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = NabuWidgets.entitlements; sourceTree = "<group>"; };
+		C50000000000000000000A01 /* Shared.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Shared.xcconfig; sourceTree = "<group>"; };
+		C50000000000000000000A02 /* Debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Debug.xcconfig; sourceTree = "<group>"; };
+		C50000000000000000000A03 /* Release.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Release.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -247,6 +252,7 @@
 		0A85897F1A32FE9B91C081CD = {
 			isa = PBXGroup;
 			children = (
+				C50000000000000000000A04 /* Config */,
 				35A5107EEEBED346405F6EE8 /* Nabu */,
 				C500000000000000000005E1 /* NabuWidgets */,
 				6AC0C623754F98C0A6294050 /* NabuTests */,
@@ -347,6 +353,7 @@
 				A100000000000000000001A8 /* OfflineLogQueueTests.swift */,
 				A100000000000000000001A9 /* RecentVolumesTests.swift */,
 				A100000000000000000001AA /* SubjectPrefillTests.swift */,
+				A10000000000000000000A10 /* BuildConfigurationTests.swift */,
 				A100000000000000000002AA /* AmountPrefillTests.swift */,
 				A100000000000000000004A2 /* OfflineLaunchTests.swift */,
 				D700000000000000000007A2 /* AppIntentsTests.swift */,
@@ -472,6 +479,16 @@
 				C500000000000000000005F2 /* WidgetDataCache.swift */,
 			);
 			path = Support;
+			sourceTree = "<group>";
+		};
+		C50000000000000000000A04 /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				C50000000000000000000A01 /* Shared.xcconfig */,
+				C50000000000000000000A02 /* Debug.xcconfig */,
+				C50000000000000000000A03 /* Release.xcconfig */,
+			);
+			path = Config;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -669,6 +686,7 @@
 				B100000000000000000001B8 /* OfflineLogQueueTests.swift in Sources */,
 				B100000000000000000001B9 /* RecentVolumesTests.swift in Sources */,
 				B100000000000000000001BA /* SubjectPrefillTests.swift in Sources */,
+				B10000000000000000000A11 /* BuildConfigurationTests.swift in Sources */,
 				B100000000000000000002BA /* AmountPrefillTests.swift in Sources */,
 				B100000000000000000004B2 /* OfflineLaunchTests.swift in Sources */,
 				D700000000000000000007B2 /* AppIntentsTests.swift in Sources */,
@@ -781,10 +799,8 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nabu.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -798,10 +814,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nabu.app.uitests;
 				/* SnapshotTesting imports Swift Testing; UI cases still use XCTest. */
 				TESTING_FRAMEWORK_MODULE_ALIAS_FLAGS = "";
@@ -818,10 +832,8 @@
 			buildSettings = {
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nabu.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
@@ -835,10 +847,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nabu.app.uitests;
 				/* SnapshotTesting imports Swift Testing; UI cases still use XCTest. */
 				TESTING_FRAMEWORK_MODULE_ALIAS_FLAGS = "";
@@ -852,6 +862,7 @@
 		};
 		720053A8D23AE1812A418094 /* Debug */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = C50000000000000000000A02 /* Debug.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -883,6 +894,7 @@
 		};
 		935AC6FFCB996012ECD3A455 /* Release */ = {
 			isa = XCBuildConfiguration;
+			baseConfigurationReference = C50000000000000000000A03 /* Release.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
@@ -912,7 +924,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Nabu/Resources/Nabu.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 7Z4B7GYLWN;
 				GENERATE_INFOPLIST_FILE = YES;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -925,7 +936,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nabu.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -940,7 +950,6 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Nabu/Resources/Nabu.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 7Z4B7GYLWN;
 				GENERATE_INFOPLIST_FILE = YES;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
@@ -953,7 +962,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nabu.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -969,7 +977,6 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = NabuWidgets/NabuWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 7Z4B7GYLWN;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NabuWidgets/Info.plist;
@@ -980,7 +987,6 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nabu.app.widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
@@ -995,7 +1001,6 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = NabuWidgets/NabuWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 7Z4B7GYLWN;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NabuWidgets/Info.plist;
@@ -1006,7 +1011,6 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.nabu.app.widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;

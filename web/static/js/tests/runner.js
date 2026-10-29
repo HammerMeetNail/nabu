@@ -1004,6 +1004,11 @@ describe("Log sheet: recent-value chips (Phase 5.3)", () => {
 });
 
 describe("Log sheet: prefill from latest log (type + volume)", () => {
+  // jsdom 30's selector engine never matches an attribute value holding a
+  // character outside the Basic Multilingual Plane, such as these emoji, so
+  // find the field by comparing the attribute itself. Browsers match either way.
+  const volumeField = (html, label) => [...JSDOM.fragment(html).querySelectorAll("input[data-indicator]")]
+    .find(input => input.getAttribute("data-indicator") === label);
   const feedChore = {
     id: 1, icon: "🍼", name: "Feed Baby", color: "#000", hasVolumeML: true,
     indicatorLabels: ["🍼 formula", "🤱 breast"],
@@ -1020,7 +1025,7 @@ describe("Log sheet: prefill from latest log (type + volume)", () => {
     // Breast chip on with its volume; formula off.
     assert.match(html, /data-label="🤱 breast"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-label="🤱 breast"/);
     assert.match(html, /data-label="🍼 formula"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🍼 formula"/);
-    const field = JSDOM.fragment(html).querySelector('input[data-indicator="🤱 breast"]');
+    const field = volumeField(html, "🤱 breast");
     assert.equal(field.value, '95', "breast volume preselected");
   });
 
@@ -1032,7 +1037,7 @@ describe("Log sheet: prefill from latest log (type + volume)", () => {
       // Polluted cache: a stale breast volume the user never selected.
       cachedIndicatorVolumes: { "🍼 formula": 150, "🤱 breast": 150 },
     });
-    const field = JSDOM.fragment(html).querySelector('input[data-indicator="🤱 breast"]');
+    const field = volumeField(html, "🤱 breast");
     assert.equal(field.value, '', "breast stale volume must not be preselected");
     // Breast chip must be off.
     assert.match(html, /data-label="🤱 breast"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🤱 breast"/);
@@ -1047,7 +1052,7 @@ describe("Log sheet: prefill from latest log (type + volume)", () => {
     });
     assert.match(html, /data-label="🍼 formula"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-label="🍼 formula"/);
     assert.match(html, /data-label="🤱 breast"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🤱 breast"/);
-    const field = JSDOM.fragment(html).querySelector('input[data-indicator="🍼 formula"]');
+    const field = volumeField(html, "🍼 formula");
     assert.equal(field.value, '', "no volume when nothing cached");
   });
 
@@ -1084,9 +1089,9 @@ describe("Log sheet: prefill from latest log (type + volume)", () => {
     });
     assert.match(html, /data-label="🍼 formula"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🍼 formula"/);
     assert.match(html, /data-label="🤱 breast"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🤱 breast"/);
-    const formula = JSDOM.fragment(html).querySelector('input[data-indicator="🍼 formula"]');
+    const formula = volumeField(html, "🍼 formula");
     assert.equal(formula.value, '', "stale formula volume must not be preselected");
-    const breast = JSDOM.fragment(html).querySelector('input[data-indicator="🤱 breast"]');
+    const breast = volumeField(html, "🤱 breast");
     assert.equal(breast.value, '', "stale breast volume must not be preselected");
   });
 });
@@ -2673,5 +2678,34 @@ describe("Action registry", () => {
     assert.equal(runAction("change", "export-range", {}, { dataset: { field: "start" }, value: "2026-01-01" }), true);
     assert.deepEqual(core.state.exportRange, { start: "2026-01-01" });
     assert.equal(core.state.exportError, null);
+  });
+
+  it("the notification panel and profile register their actions on import", async () => {
+    const core = await import("../app-core.js");
+    const { createAppState } = await import("../state.js");
+    const { runAction } = await import("../actions.js");
+    await import("../notification-panel.js");
+    await import("../profile.js");
+    core.initState(createAppState());
+    document.body.innerHTML = `
+      <div id="notif-panel-container"><p>open</p></div>
+      <div id="profile-error" class="hidden"></div>
+      <form id="profile-form"><input id="profile-name" value="  "></form>`;
+    let prevented = 0;
+    const event = { preventDefault() { prevented++; } };
+
+    assert.equal(runAction("click", "close-notifications", event, {}), true);
+    const panel = document.querySelector("#notif-panel-container");
+    assert.equal(panel.hidden, true);
+    assert.equal(panel.innerHTML, "");
+    // Signed out, a refresh asks the server for nothing.
+    assert.equal(runAction("click", "refresh-notifications", event, {}), true);
+    assert.equal(prevented, 2);
+
+    // A blank name is refused before any request.
+    assert.equal(runAction("submit", "save-profile", event, document.querySelector("#profile-form")), true);
+    const error = document.querySelector("#profile-error");
+    assert.equal(error.textContent, "Enter your name");
+    assert.equal(error.classList.contains("hidden"), false);
   });
 });

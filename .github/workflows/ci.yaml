@@ -33,7 +33,7 @@ jobs:
       # gate per docs/plans/ios-v1/p1-foundations.md (D5).
       ios: ${{ startsWith(github.ref, 'refs/tags/v') || steps.filter.outputs.ios }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
         id: filter
         with:
@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: dorny/paths-filter@v4
@@ -115,10 +115,10 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name != 'push' || startsWith(github.ref, 'refs/tags/v')
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@v3
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -128,14 +128,14 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.code == 'true'
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
       - uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.13.2
+          version: v2.15.0
       - name: Verify release compiler alignment
         run: bash scripts/check-toolchain.sh
       - name: Scan source with the release compiler
@@ -163,8 +163,8 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
@@ -185,8 +185,8 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.tests == 'true'
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - name: Install pnpm
@@ -202,7 +202,7 @@ jobs:
     needs: [changes]
     if: needs.changes.outputs.ios == 'true'
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Show toolchain
         run: |
           xcodebuild -version
@@ -245,17 +245,17 @@ jobs:
     if: needs.changes.outputs.code == 'true' || needs.changes.outputs.tests == 'true'
     services:
       mailpit:
-        image: axllent/mailpit:v1.27
+        image: axllent/mailpit:v1.32.0
         ports:
           - 1025:1025
           - 8025:8025
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - name: Install pnpm
@@ -263,7 +263,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
@@ -294,17 +294,17 @@ jobs:
           --health-timeout 5s
           --health-retries 5
       mailpit:
-        image: axllent/mailpit:v1.27
+        image: axllent/mailpit:v1.32.0
         ports:
           - 1025:1025
           - 8025:8025
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - name: Install pnpm
@@ -312,7 +312,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
@@ -363,7 +363,7 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
 
       - name: Get version
@@ -409,7 +409,7 @@ jobs:
           # Trivy defaults to amd64 even on the arm64 runner.
           TRIVY_PLATFORM: linux/${{ matrix.arch }}
         with:
-          version: v0.74.0
+          version: v0.76.1
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}
           format: "table"
           exit-code: "1"
@@ -499,7 +499,7 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          version: v0.74.0
+          version: v0.76.1
           image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.digest.outputs.digest }}
           format: "table"
           exit-code: "1"
@@ -508,7 +508,10 @@ jobs:
           severity: "CRITICAL,HIGH"
 
       - name: Install Cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4
+        with:
+          # Cosign v3 stores signatures differently; adopt it on its own.
+          cosign-release: v2.6.5
 
       - name: Sign image with Cosign (keyless)
         env:
@@ -524,7 +527,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Get version
         id: version
         run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
@@ -557,7 +560,7 @@ jobs:
         needs.scan-and-push.result == 'success'
       )
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
