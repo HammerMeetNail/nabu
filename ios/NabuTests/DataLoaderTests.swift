@@ -333,8 +333,10 @@ final class NativeRequestOwnershipTests: XCTestCase {
         XCTAssertEqual(preview.household.name, "Home")
         do { let _: HouseholdResponse = try await api.get("/api/household"); XCTFail("household data needs a session") }
         catch APIError.contextChanged { }
+        catch { XCTFail("Unexpected error: \(error)") }
         do { let _: StatusResponse = try await api.postEmpty("/api/household/join/preview"); XCTFail("only reads are public") }
         catch APIError.contextChanged { }
+        catch { XCTFail("Unexpected error: \(error)") }
         XCTAssertEqual(capture.requests, ["GET /api/household/join/preview no claim"])
     }
 
