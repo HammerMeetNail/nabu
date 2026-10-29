@@ -162,6 +162,7 @@ These PWA behaviors must be preserved in the native iOS app:
 8. Use `Int` for Go `int64` IDs unless a test proves overflow risk.
 9. Use `Date` for RFC3339 timestamps and `LocalDate` for `YYYY-MM-DD` values.
 10. Never update only one client when behavior is shared.
+11. Versions and the server live in `ios/Config` (see `ios/README.md`). Never set `MARKETING_VERSION`, `CURRENT_PROJECT_VERSION` or a server URL on a target, and never hard-code a server in Swift.
 
 ## Parity bookkeeping on PRs
 
