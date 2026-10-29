@@ -83,11 +83,11 @@ The main checkout at the workspace root stays clean and is only used for referen
 
 After changing files in `web/templates/` or `web/static/`, run `make local-fresh` — these assets are embedded into the Go binary via `web/assets.go` (`//go:embed`).
 
-CI and `make lint` use golangci-lint v2.13.2. The local pre-push checklist also runs `go vet ./...`; `make lint` bootstraps its pinned binary into `.cache/` on first run.
+CI and `make lint` use golangci-lint v2.15.0. The local pre-push checklist also runs `go vet ./...`; `make lint` bootstraps its pinned binary into `.cache/` on first run.
 
 ## Prerequisites
 
-- **Go 1.26.10** (local validation, CI and release images match `go.mod`; `scripts/check-toolchain.sh` verifies alignment).
+- **Go 1.27.3** (local validation, CI and release images match `go.mod`; `scripts/check-toolchain.sh` verifies alignment).
 - **JS tests require `pnpm install` first** for `jsdom` (dev dependency). Tests use Node's built-in test runner (`node --test`), not Jest or Mocha.
 - **E2E tests require `pnpm exec playwright install chromium`** to download the browser binary.
 - **Podman Compose** for local stack (`make local`). Docker Compose may work but is untested.
