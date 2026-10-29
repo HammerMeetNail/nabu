@@ -965,6 +965,11 @@ describe("Log sheet: recent-value chips (Phase 5.3)", () => {
 });
 
 describe("Log sheet: prefill from latest log (type + volume)", () => {
+  // jsdom 30's selector engine never matches an attribute value holding a
+  // character outside the Basic Multilingual Plane, such as these emoji, so
+  // find the field by comparing the attribute itself. Browsers match either way.
+  const volumeField = (html, label) => [...JSDOM.fragment(html).querySelectorAll("input[data-indicator]")]
+    .find(input => input.getAttribute("data-indicator") === label);
   const feedChore = {
     id: 1, icon: "🍼", name: "Feed Baby", color: "#000", hasVolumeML: true,
     indicatorLabels: ["🍼 formula", "🤱 breast"],
@@ -981,7 +986,7 @@ describe("Log sheet: prefill from latest log (type + volume)", () => {
     // Breast chip on with its volume; formula off.
     assert.match(html, /data-label="🤱 breast"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-label="🤱 breast"/);
     assert.match(html, /data-label="🍼 formula"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🍼 formula"/);
-    const field = JSDOM.fragment(html).querySelector('input[data-indicator="🤱 breast"]');
+    const field = volumeField(html, "🤱 breast");
     assert.equal(field.value, '95', "breast volume preselected");
   });
 
@@ -993,7 +998,7 @@ describe("Log sheet: prefill from latest log (type + volume)", () => {
       // Polluted cache: a stale breast volume the user never selected.
       cachedIndicatorVolumes: { "🍼 formula": 150, "🤱 breast": 150 },
     });
-    const field = JSDOM.fragment(html).querySelector('input[data-indicator="🤱 breast"]');
+    const field = volumeField(html, "🤱 breast");
     assert.equal(field.value, '', "breast stale volume must not be preselected");
     // Breast chip must be off.
     assert.match(html, /data-label="🤱 breast"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🤱 breast"/);
@@ -1008,7 +1013,7 @@ describe("Log sheet: prefill from latest log (type + volume)", () => {
     });
     assert.match(html, /data-label="🍼 formula"[^>]*aria-pressed="true"|aria-pressed="true"[^>]*data-label="🍼 formula"/);
     assert.match(html, /data-label="🤱 breast"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🤱 breast"/);
-    const field = JSDOM.fragment(html).querySelector('input[data-indicator="🍼 formula"]');
+    const field = volumeField(html, "🍼 formula");
     assert.equal(field.value, '', "no volume when nothing cached");
   });
 
@@ -1045,9 +1050,9 @@ describe("Log sheet: prefill from latest log (type + volume)", () => {
     });
     assert.match(html, /data-label="🍼 formula"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🍼 formula"/);
     assert.match(html, /data-label="🤱 breast"[^>]*aria-pressed="false"|aria-pressed="false"[^>]*data-label="🤱 breast"/);
-    const formula = JSDOM.fragment(html).querySelector('input[data-indicator="🍼 formula"]');
+    const formula = volumeField(html, "🍼 formula");
     assert.equal(formula.value, '', "stale formula volume must not be preselected");
-    const breast = JSDOM.fragment(html).querySelector('input[data-indicator="🤱 breast"]');
+    const breast = volumeField(html, "🤱 breast");
     assert.equal(breast.value, '', "stale breast volume must not be preselected");
   });
 });
