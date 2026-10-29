@@ -122,4 +122,38 @@ test.describe("Settings API keys", () => {
     await openSettings(page);
     await expect(page.locator("[data-testid=\"api-key-row\"]")).toContainText("Revoked");
   });
+
+  test("a failed create keeps the typed name for a retry", async ({ page }) => {
+    await setupWithChores(page);
+    await openSettings(page);
+    let failed = false;
+    await page.route("**/api/api-keys", async (route) => {
+      if (route.request().method() === "POST" && !failed) {
+        failed = true;
+        await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "server error" }) });
+        return;
+      }
+      await route.continue();
+    });
+    await page.fill("#api-key-name", "Nightly sync");
+    await page.click("#create-api-key-form button[type=\"submit\"]");
+    await expect(page.locator("[data-testid=\"api-key-error\"]")).toBeVisible();
+    await expect(page.locator("#api-key-name")).toHaveValue("Nightly sync");
+
+    await page.click("#create-api-key-form button[type=\"submit\"]");
+    await expect(page.locator("#api-key-token")).toHaveValue(/^nabu_pat_/);
+    await expect(page.locator("#api-key-name")).toHaveValue("");
+    await expect(page.locator("[data-testid=\"api-key-row\"]")).toContainText("Nightly sync");
+  });
+
+  test("a name typed before another render stays in the field", async ({ page }) => {
+    await setupWithChores(page);
+    await openSettings(page);
+    await createKey(page, "First");
+    await page.fill("#api-key-name", "Second");
+    // Focus leaves the field, then dismissing the token re-renders the card.
+    await page.click("[data-action=\"dismiss-api-key\"]");
+    await expect(page.locator("[data-testid=\"api-key-issued\"]")).toHaveCount(0);
+    await expect(page.locator("#api-key-name")).toHaveValue("Second");
+  });
 });
