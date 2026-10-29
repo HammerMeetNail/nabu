@@ -138,17 +138,15 @@ The iOS app is released separately, from **Actions → iOS Release → Run workf
 
 ## Known limitations (candidates for a future fix)
 
-### iOS tests on release tags
+### iOS tests and web releases
 
-**Fixed (2026-07-02, iOS v1 plan P1/D5):** the `changes` job in
-`.github/workflows/ci.yaml` now forces the iOS lane on for `v*` tag pushes,
-the same way `code` is forced, so iOS unit tests are a release gate. The
-trade-off (accepted): iOS tests run on **every** release tag, including
-server/web-only releases, costing ~1–2 min of macOS-runner time per deploy.
-
-If a tag-time iOS failure looks unrelated to the release (e.g. a
-simulator/runner infra flake), re-run the failed job; a genuine failure means
-the tagged commit shipped an iOS regression — fix, re-tag, push.
+Web releases (`v*` tags) don't run the iOS unit tests: the web app and the
+iOS app ship separately, so an iOS failure never holds a web deploy back.
+`NabuTests` runs on every pull request that changes `ios/**`, and the iOS
+Release workflow runs it again before an iOS release (see "iOS releases"
+above). Tags used to force the iOS lane on (iOS v1 plan P1/D5), but
+`build-image` never waited for it, so it gated nothing and cost about six
+minutes of macOS runner time per release.
 
 ## Readiness failure and application rollback
 

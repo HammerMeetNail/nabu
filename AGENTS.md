@@ -194,7 +194,7 @@ Every feature, bug fix, validation change, security fix, API change, or UI behav
 
 `scripts/check-parity.sh` is now a **matrix linter** by default (exit 0 if well-formed, exit 2 on an unknown status); pass `--strict` to also fail when any row is still `iOS pending`/`PWA pending` (useful as a release gate, not a per-PR gate). `make check-parity` runs it.
 
-**iOS is built and tested in CI.** The `ios` job (`.github/workflows/ci.yaml`, `macos` runner) runs `xcodebuild test` of the `NabuTests` unit/contract suite whenever `ios/**` changes, so a backend model/API change that breaks the iOS request models fails at PR time. Keep `NabuTests` green. Use the `client-parity` skill (`/client-parity`) for parity-aware guidance during development.
+**iOS is built and tested in CI.** The `ios` job (`.github/workflows/ci.yaml`, `macos` runner) runs `xcodebuild test` of the `NabuTests` unit/contract suite on pull requests that change `ios/**`; web releases (`v*` tags) don't run it, since the iOS Release workflow runs it before an iOS release. Keep `NabuTests` green. Use the `client-parity` skill (`/client-parity`) for parity-aware guidance during development.
 
 See `ios/AGENTS.md` for iOS-specific agent instructions.
 
@@ -220,7 +220,7 @@ Production has no test account. To check a deploy signed in, run `scripts/prod-s
 
 - **URL**: `https://nabu-app.com`
 - **Deploy trigger**: push a `v*` tag (e.g. `git tag v0.1.7 && git push origin v0.1.7`). CI builds, tests, and deploys automatically.
-- **CI**: `.github/workflows/ci.yaml` — runs secret scan, JS tests, lint, Go tests (with coverage), E2E tests, the client-parity gate (PR only), and the iOS `NabuTests` lane (macOS, when `ios/**` changes) before deploying.
+- **CI**: `.github/workflows/ci.yaml` — runs secret scan, JS tests, lint, Go tests (with coverage), E2E tests, the client-parity gate (PR only), and, on pull requests that change `ios/**`, the iOS `NabuTests` lane (macOS). A web release doesn't wait for iOS; the iOS Release workflow tests the app before an iOS release.
 - **iOS releases**: the **iOS Release** workflow (`.github/workflows/ios-release.yml`, Actions → Run workflow on `main`) tests, archives and uploads the app to App Store Connect. The web app always goes out first: the workflow stops if the server code on `main` differs from the release production runs (`scripts/ios-release-web-first.sh`, which reads the version from `/health`). See "Releasing" in `ios/README.md`.
 
 **After pushing a `v*` tag, watch the pipeline to completion and verify production** (don't wait to be asked; a cheaper subagent may be delegated to it). The full runbook — `gh run watch`, transient-vs-real failure triage, and the production verification commands (`/health`, versioned imports, `no-store`/`BYPASS` cache headers, the throwaway-account smoke test) — lives in **`docs/deploy-runbook.md`**.
