@@ -6,7 +6,7 @@
 
 Push a `v*` tag on `main` (e.g. `git tag v0.1.7 && git push origin v0.1.7`). CI builds, tests, scans/signs the image, deploys via SSH + Cloudflare Tunnel, and creates a GitHub release. The deploy job verifies the tagged commit is reachable from `origin/main` before proceeding — **never tag on a branch.**
 
-Production URL: `https://nabu-app.com`. Production test account: `verify@yearofbingo.com` / `test123456`.
+Production URL: `https://nabu-app.com`. Production has no test account: the signed-in check in §3 signs up a throwaway account and deletes it.
 
 When the operator dashboard is enabled, set the GitHub Actions secret
 `OPERATOR_OWNER_USER_ID` to the positive database user ID of the intended,
@@ -97,6 +97,15 @@ curl -sI https://nabu-app.com/ | grep -i cache
 # Expected: cache-control: no-store
 #           cf-cache-status: DYNAMIC
 ```
+
+Then check the signed-in paths with a throwaway account:
+
+```bash
+bash scripts/prod-smoke.sh
+# Expected: an "ok" line for each step, then OK
+```
+
+The script signs up a new account, sets up a household with the default activities, reads the main endpoints, logs an activity and deletes the log, signs out and back in, and deletes the account. The sign-up sends one verification email to the account's address; set `SMOKE_EMAIL` to choose it. If a step fails, the script still deletes the account, and if that fails too it prints the address to delete by hand. Each run uses a new address, so an account left behind never blocks the next run.
 
 ### Verify per-IP rate limiting (after the trusted-proxy deploy, once only)
 

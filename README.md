@@ -192,7 +192,7 @@ The service worker file (`/service-worker.js`) is also version-injected at start
 - **Production URL**: `https://nabu-app.com`
 - **Container image**: `quay.io/nabu/nabu` (multi-arch: amd64 + arm64)
 - **Deploy**: push a `v*` tag — CI builds, runs all tests, scans for vulnerabilities, signs the image, and deploys automatically
-- **Test account**: `verify@yearofbingo.com` / `test123456`
+- **Smoke test**: `scripts/prod-smoke.sh` checks a deploy signed in, with a throwaway account that it deletes afterwards. Production has no test account.
 
 ### CI Pipeline
 
