@@ -1,0 +1,17 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/day-notes"
+  },
+  "status": 200,
+  "response": {
+    "notes": [
+      {
+        "date": "2026-01-02",
+        "note": "Quiet day",
+        "updatedAt": "2026-01-02T03:04:05.123456Z",
+        "updatedBy": 1
+      }
+    ]
+  }
+}

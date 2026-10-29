@@ -1,0 +1,33 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/chores/4/restore-default"
+  },
+  "status": 200,
+  "response": {
+    "chore": {
+      "category": "cleaning",
+      "color": "#6B7280",
+      "createdAt": "2026-01-02T03:04:05.123456Z",
+      "createdBy": null,
+      "followUpEnabled": true,
+      "hasRating": false,
+      "hasVolumeML": false,
+      "householdId": 1,
+      "icon": "🗑️",
+      "id": 4,
+      "indicatorDefaults": [],
+      "indicatorLabels": [],
+      "isPredefined": true,
+      "lastFollowUpMinutes": 0,
+      "metricType": "none",
+      "metricUnit": "",
+      "name": "Take Out Trash",
+      "predefinedKey": "Take Out Trash",
+      "sortOrder": 3,
+      "subjects": [],
+      "visibility": "household"
+    },
+    "status": "restored"
+  }
+}

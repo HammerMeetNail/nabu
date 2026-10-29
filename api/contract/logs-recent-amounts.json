@@ -1,0 +1,12 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/logs/recent-amounts?choreId=1&unit=mL"
+  },
+  "status": 200,
+  "response": {
+    "amounts": [
+      120
+    ]
+  }
+}

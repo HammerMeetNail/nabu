@@ -1,0 +1,46 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/logs",
+    "body": {
+      "choreId": 1,
+      "completedAt": "2026-01-02T03:04:05Z",
+      "date": "2026-01-02",
+      "hour": 9,
+      "idempotencyKey": "00000000-0000-4000-8000-000000000001",
+      "indicators": [],
+      "metricUnit": "mL",
+      "note": "",
+      "volumeML": 120
+    }
+  },
+  "status": 201,
+  "response": {
+    "latest": {
+      "choreId": 1,
+      "completedAt": "2026-01-02T03:04:05Z",
+      "createdAt": "2026-01-02T03:04:05.123456Z",
+      "householdId": 1,
+      "id": 1,
+      "indicators": [],
+      "metricUnit": "mL",
+      "note": "",
+      "slotHour": 9,
+      "userId": 1,
+      "volumeML": 120
+    },
+    "log": {
+      "choreId": 1,
+      "completedAt": "2026-01-02T03:04:05Z",
+      "createdAt": "2026-01-02T03:04:05.123456Z",
+      "householdId": 1,
+      "id": 1,
+      "indicators": [],
+      "metricUnit": "mL",
+      "note": "",
+      "slotHour": 9,
+      "userId": 1,
+      "volumeML": 120
+    }
+  }
+}

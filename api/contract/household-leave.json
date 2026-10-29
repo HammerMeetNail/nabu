@@ -1,0 +1,10 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/household/leave"
+  },
+  "status": 200,
+  "response": {
+    "status": "left"
+  }
+}

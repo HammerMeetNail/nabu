@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/mobile/apns/register",
+    "body": {
+      "bundleId": "com.nabu.app",
+      "deviceName": "iOS",
+      "environment": "production",
+      "token": "abababababababababababababababababababababababababababababababab"
+    }
+  },
+  "status": 200,
+  "response": {
+    "status": "registered"
+  }
+}

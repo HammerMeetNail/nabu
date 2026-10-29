@@ -1,0 +1,27 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/logs/history"
+  },
+  "status": 200,
+  "response": {
+    "end": "2026-01-02",
+    "hasMore": false,
+    "logs": [
+      {
+        "choreId": 1,
+        "completedAt": "2026-01-02T03:04:05Z",
+        "createdAt": "2026-01-02T03:04:05.123456Z",
+        "householdId": 1,
+        "id": 1,
+        "indicators": [],
+        "metricUnit": "mL",
+        "note": "Burped after",
+        "slotHour": 9,
+        "userId": 1,
+        "volumeML": 120
+      }
+    ],
+    "start": "2026-01-02"
+  }
+}

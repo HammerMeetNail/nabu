@@ -26,13 +26,20 @@ jobs:
     outputs:
       code: ${{ startsWith(github.ref, 'refs/tags/v') || steps.filter.outputs.code }}
       tests: ${{ steps.filter.outputs.tests }}
-      # The iOS lane runs on pull requests that change ios/**. A web release
-      # (a v* tag) doesn't run it: the web app and the iOS app ship
-      # separately, and the iOS Release workflow (ios-release.yml) runs
-      # NabuTests before an iOS release.
-      ios: ${{ !startsWith(github.ref, 'refs/tags/v') && steps.filter.outputs.ios == 'true' }}
+      # The iOS lane runs on pull requests that change ios/** or the API
+      # contract (api/contract, the server's answers the iOS app decodes). A
+      # web release (a v* tag) runs it only when its contract differs from the
+      # release in production, and then pushes and deploys the image only
+      # after it passes. Otherwise the web app and the iOS app ship
+      # separately: the iOS Release workflow (ios-release.yml) runs NabuTests
+      # before an iOS release.
+      ios: ${{ (startsWith(github.ref, 'refs/tags/v') && steps.contract.outputs.changed == 'true') || (!startsWith(github.ref, 'refs/tags/v') && steps.filter.outputs.ios == 'true') }}
     steps:
       - uses: actions/checkout@v7
+      - name: Compare the API contract with production's
+        id: contract
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: scripts/api-contract-changed.sh >> "$GITHUB_OUTPUT"
       - uses: dorny/paths-filter@v4
         id: filter
         with:
@@ -51,8 +58,10 @@ jobs:
               - 'scripts/**'
             tests:
               - '**/*_test.go'
+              - 'api/contract/**'
             ios:
               - 'ios/**'
+              - 'api/contract/**'
 
   parity:
     name: Client Parity
@@ -435,8 +444,13 @@ jobs:
   scan-and-push:
     name: Scan, Sign & Push Multi-Arch Manifest
     runs-on: ubuntu-latest
-    needs: [build-image]
+    # A release whose API contract changed waits for the iOS tests; the iOS
+    # job is skipped for any other, and the image goes out without it.
+    needs: [build-image, ios]
     if: >
+      !cancelled() &&
+      needs.build-image.result == 'success' &&
+      (needs.ios.result == 'success' || needs.ios.result == 'skipped') &&
       github.event_name == 'push' &&
       startsWith(github.ref, 'refs/tags/v') &&
       github.actor != 'dependabot[bot]'

@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "PATCH",
+    "path": "/api/household/members/4",
+    "body": {
+      "role": "admin"
+    }
+  },
+  "status": 200,
+  "response": {
+    "status": "updated"
+  }
+}

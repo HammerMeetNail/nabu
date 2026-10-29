@@ -1,0 +1,59 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/household"
+  },
+  "status": 200,
+  "response": {
+    "historicalMembers": [],
+    "household": {
+      "createdAt": "2026-01-02T03:04:05.123456Z",
+      "id": 1,
+      "initials": "CH",
+      "inviteCode": "INVITE0001",
+      "name": "Contract Home"
+    },
+    "invites": [
+      {
+        "code": "INVITE0002",
+        "createdAt": "2026-01-02T03:04:05.123456Z",
+        "createdBy": 1,
+        "expiresAt": "2026-01-02T03:04:05.123456Z",
+        "householdId": 1,
+        "id": 2,
+        "maxUses": 1,
+        "usedCount": 1
+      },
+      {
+        "code": "INVITE0003",
+        "createdAt": "2026-01-02T03:04:05.123456Z",
+        "createdBy": 1,
+        "expiresAt": "2026-01-02T03:04:05.123456Z",
+        "householdId": 1,
+        "id": 3,
+        "maxUses": 1,
+        "usedCount": 0
+      }
+    ],
+    "members": [
+      {
+        "avatarColor": "#19323C",
+        "displayName": "owner",
+        "email": "owner@example.com",
+        "emailVerified": false,
+        "role": "owner",
+        "suspended": false,
+        "userId": 1
+      },
+      {
+        "avatarColor": "#19323C",
+        "displayName": "member",
+        "email": "member@example.com",
+        "emailVerified": false,
+        "role": "member",
+        "suspended": false,
+        "userId": 4
+      }
+    ]
+  }
+}

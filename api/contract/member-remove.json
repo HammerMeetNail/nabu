@@ -1,0 +1,10 @@
+{
+  "request": {
+    "method": "DELETE",
+    "path": "/api/household/members/7"
+  },
+  "status": 200,
+  "response": {
+    "status": "removed"
+  }
+}

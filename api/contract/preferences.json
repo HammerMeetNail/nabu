@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/preferences"
+  },
+  "status": 200,
+  "response": {
+    "preferences": {
+      "choreOrder": [],
+      "hiddenHomeChoreIds": [],
+      "hideNotificationBadge": false,
+      "statsSectionHidden": [],
+      "statsSectionOrder": [],
+      "statsWidgets": [],
+      "timezone": "",
+      "volumeUnit": "ml"
+    }
+  }
+}

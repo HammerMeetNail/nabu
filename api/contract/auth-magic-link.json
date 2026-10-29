@@ -1,0 +1,13 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/auth/magic-link/request",
+    "body": {
+      "email": "owner@example.com"
+    }
+  },
+  "status": 200,
+  "response": {
+    "status": "if an account exists, a magic link has been sent"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/notifications"
+  },
+  "status": 200,
+  "response": {
+    "notifications": [
+      {
+        "body": "member joined Contract Home",
+        "createdAt": "2026-01-02T03:04:05.123456Z",
+        "id": 1,
+        "isRead": false,
+        "title": "New Member",
+        "type": "household_joined",
+        "userId": 1
+      }
+    ],
+    "unreadCount": 1
+  }
+}

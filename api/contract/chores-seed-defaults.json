@@ -1,0 +1,10 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/chores/seed-defaults"
+  },
+  "status": 200,
+  "response": {
+    "status": "seeded"
+  }
+}

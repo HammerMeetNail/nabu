@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "PUT",
+    "path": "/api/day-notes/2026-01-02",
+    "body": {
+      "note": "Quiet day"
+    }
+  },
+  "status": 200,
+  "response": {
+    "note": {
+      "date": "2026-01-02",
+      "note": "Quiet day",
+      "updatedAt": "2026-01-02T03:04:05.123456Z",
+      "updatedBy": 1
+    }
+  }
+}

@@ -1,0 +1,63 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/packs"
+  },
+  "status": 200,
+  "response": {
+    "packs": [
+      {
+        "icon": "👶",
+        "key": "baby",
+        "nameLabel": "Baby's name",
+        "summary": "Feeds, changes and baths",
+        "title": "Baby",
+        "version": 1
+      },
+      {
+        "icon": "🐱",
+        "key": "cat",
+        "nameLabel": "Cat's name",
+        "summary": "Feeding and the litter box",
+        "title": "Cats",
+        "version": 1
+      },
+      {
+        "icon": "🐶",
+        "key": "dog",
+        "nameLabel": "Dog's name",
+        "summary": "Walks and feeding",
+        "title": "Dogs",
+        "version": 1
+      },
+      {
+        "icon": "🌱",
+        "key": "plants",
+        "summary": "Watering",
+        "title": "Plants",
+        "version": 1
+      },
+      {
+        "icon": "🏠",
+        "key": "home",
+        "summary": "Trash, dishes, vacuuming, laundry and beds",
+        "title": "Home chores",
+        "version": 1
+      },
+      {
+        "icon": "💊",
+        "key": "meds",
+        "summary": "Doses with amounts, for each baby and pet you add, or for you",
+        "title": "Medications",
+        "version": 1
+      },
+      {
+        "icon": "📖",
+        "key": "personal",
+        "summary": "Reading, movies and workouts",
+        "title": "Personal",
+        "version": 1
+      }
+    ]
+  }
+}

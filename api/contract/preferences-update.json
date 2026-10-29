@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "PATCH",
+    "path": "/api/preferences",
+    "body": {
+      "volumeUnit": "oz"
+    }
+  },
+  "status": 200,
+  "response": {
+    "preferences": {
+      "choreOrder": [],
+      "hiddenHomeChoreIds": [],
+      "hideNotificationBadge": false,
+      "statsSectionHidden": [],
+      "statsSectionOrder": [],
+      "statsWidgets": [],
+      "timezone": "",
+      "volumeUnit": "oz"
+    }
+  }
+}

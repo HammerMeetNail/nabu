@@ -6,6 +6,11 @@ Shared server rate limits default to 30 auth, 600 total API, and 30 household-jo
 requests per minute per IP per replica. These allowances apply equally to PWA
 and iOS; no client UI or API model changes are required.
 
+The server's answer to each request the iOS app makes is recorded in
+`api/contract` (`TestAPIContract`), and `APIContractTests` decodes every one
+with the app's models, so an API change the app can't read fails CI (see
+"The API contract" in `AGENTS.md`). Stats reads are not in it yet.
+
 > **Re-baselined 2026-06-28** against the code on `main`. The previous matrix
 > was inaccurate in both directions: it marked ~50 rows "iOS pending" even
 > though the corresponding SwiftUI views and API calls already shipped, and its

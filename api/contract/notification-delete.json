@@ -1,0 +1,10 @@
+{
+  "request": {
+    "method": "DELETE",
+    "path": "/api/notifications/1"
+  },
+  "status": 200,
+  "response": {
+    "status": "deleted"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/api/household/invites"
+  },
+  "status": 201,
+  "response": {
+    "invite": {
+      "code": "INVITE0003",
+      "createdAt": "2026-01-02T03:04:05.123456Z",
+      "createdBy": 1,
+      "expiresAt": "2026-01-02T03:04:05.123456Z",
+      "householdId": 1,
+      "id": 3,
+      "maxUses": 1,
+      "usedCount": 0
+    }
+  }
+}
