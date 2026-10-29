@@ -132,6 +132,9 @@ type Day struct {
 	Date          string `json:"date"`
 	Registrations int64  `json:"registrations"`
 	Authors       int64  `json:"authors"`
+	// What the daily rollup stored for the day; null until the day has
+	// finished and been counted.
+	Totals *DailyTotal `json:"totals"`
 }
 
 type Activity struct {
@@ -159,8 +162,12 @@ func (s *Service) Activity(ctx context.Context, access Access, days int) (Activi
 	 FROM chore_logs l JOIN users u ON u.id = l.idempotency_actor_id
 	 WHERE l.created_at >= $1 AND l.created_at < $3 GROUP BY 1
 	)
-	SELECT to_char(d.date, 'YYYY-MM-DD'), COALESCE(r.n,0), COALESCE(a.n,0)
+	SELECT to_char(d.date, 'YYYY-MM-DD'), COALESCE(r.n,0), COALESCE(a.n,0), t.day IS NOT NULL,
+	 COALESCE(t.signups,0), COALESCE(t.activated,0), COALESCE(t.logs,0), COALESCE(t.logging_households,0),
+	 COALESCE(t.shared_households_7d,0), COALESCE(t.cohort_d7,0), COALESCE(t.returned_d7,0),
+	 COALESCE(t.cohort_d30,0), COALESCE(t.returned_d30,0)
 	FROM dates d LEFT JOIN registrations r ON r.date = d.date LEFT JOIN authors a ON a.date = d.date
+	LEFT JOIN daily_totals t ON t.day = d.date
 	ORDER BY d.date`, start, now.UTC().Truncate(24*time.Hour), now.UTC().Truncate(24*time.Hour).AddDate(0, 0, 1))
 	if err != nil {
 		return Activity{}, err
@@ -168,8 +175,14 @@ func (s *Service) Activity(ctx context.Context, access Access, days int) (Activi
 	defer rows.Close()
 	for rows.Next() {
 		var day Day
-		if err := rows.Scan(&day.Date, &day.Registrations, &day.Authors); err != nil {
+		var counted bool
+		var t DailyTotal
+		if err := rows.Scan(&day.Date, &day.Registrations, &day.Authors, &counted, &t.Signups, &t.Activated, &t.Logs,
+			&t.LoggingHouseholds, &t.SharedHouseholds7Days, &t.CohortD7, &t.ReturnedD7, &t.CohortD30, &t.ReturnedD30); err != nil {
 			return Activity{}, err
+		}
+		if counted {
+			day.Totals = &t
 		}
 		result.Days = append(result.Days, day)
 	}
