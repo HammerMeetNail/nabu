@@ -102,6 +102,8 @@ self.addEventListener("push", event => {
     if (!data || !await permitsNotification(data)) return;
     const options = {
       body:data.body || "Tap to open", icon:"/static/icons/icon-192.png", tag:"nabu",
+      // Android's status bar shows this monochrome glyph, not the icon.
+      badge:"/static/icons/notification-badge-96.png",
       data:{ userId:data.userId, householdId:data.householdId, bindingId:data.bindingId,
         choreId:data.choreId || null, type:data.type || null },
     };
