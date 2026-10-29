@@ -90,7 +90,7 @@ func (s *Service) aggregateTopChores(ctx context.Context, householdID, userID in
 	if n <= 0 {
 		n = 5
 	}
-	now := nowIn(loc)
+	now := s.nowIn(loc)
 	var start, end time.Time
 	switch period {
 	case "day":
@@ -167,10 +167,13 @@ func (s *Service) aggregateSummary(ctx context.Context, householdID int64, ch Ch
 }
 
 func (s *Service) aggregateOverview(ctx context.Context, householdID, userID int64, loc *time.Location) (WeeklyOverview, error) {
-	now := nowIn(loc)
+	now := s.nowIn(loc)
 	yearStart, yearEnd := now.AddDate(-1, 0, 0), now.AddDate(0, 0, 1)
 	weekStart := wkStart(now, loc)
 	weekEnd := weekStart.AddDate(0, 0, 7)
+	if weekEnd.After(yearEnd) {
+		weekEnd = yearEnd // as GetWeeklyOverview does
+	}
 	q := aggregateWindow(yearStart, yearEnd, false, log.GroupWeekSplit)
 	q.Start, q.End = &weekStart, &weekEnd
 	q.TimeZone = aggregateTimeZone(loc)

@@ -1,0 +1,7 @@
+#include "Shared.xcconfig"
+
+// A debug build can point at another server without touching tracked files:
+// put a line such as NABU_BASE_URL = https:/$()/your-preview.example in
+// Config/Local.xcconfig, which git ignores. A test's -nabuBaseURL launch
+// argument still wins (see TestHooks).
+#include? "Local.xcconfig"

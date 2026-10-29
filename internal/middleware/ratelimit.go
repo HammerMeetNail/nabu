@@ -2,7 +2,9 @@ package middleware
 
 import (
 	"container/heap"
+	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/netip"
 	"strings"
@@ -26,6 +28,16 @@ type RateLimiter struct {
 	stopCleanup  chan struct{}
 	cleanupDone  chan struct{}
 	stopOnce     sync.Once
+	shared       SharedCounter
+	scope        string
+	warnedAt     time.Time
+}
+
+// SharedCounter counts each client's requests in one window across every
+// instance, so a limit holds however many instances share the traffic.
+type SharedCounter interface {
+	Hit(ctx context.Context, scope, client string, window time.Duration) (count int, windowEnd time.Time, err error)
+	Expire(ctx context.Context) error
 }
 
 type rateEntry struct {
@@ -79,6 +91,16 @@ func (l *RateLimiter) SetTrustedProxies(cidrs string) error {
 	return nil
 }
 
+// Share counts this limiter's requests through counter, under scope, instead
+// of in this process. Clients are keyed by the same truncated hash of their
+// IP that request logs carry. If the counter fails, the limiter counts in
+// this process until it recovers.
+func (l *RateLimiter) Share(counter SharedCounter, scope string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.shared, l.scope = counter, scope
+}
+
 func (l *RateLimiter) Stop() {
 	l.stopOnce.Do(func() { close(l.stopCleanup) })
 	<-l.cleanupDone
@@ -102,7 +124,15 @@ func (l *RateLimiter) cleanup() {
 		case <-ticker.C:
 			l.mu.Lock()
 			l.expire(l.now())
+			shared := l.shared
 			l.mu.Unlock()
+			if shared != nil {
+				ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+				if err := shared.Expire(ctx); err != nil {
+					slog.Warn("could not delete ended rate-limit windows", "scope", l.scope, "error", err)
+				}
+				cancel()
+			}
 		case <-l.stopCleanup:
 			return
 		}
@@ -116,7 +146,7 @@ func (l *RateLimiter) Middleware(prefix string) func(http.Handler) http.Handler 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			matches := prefix == "" || r.URL.Path == strings.TrimSuffix(prefix, "/") || strings.HasPrefix(r.URL.Path, strings.TrimSuffix(prefix, "/")+"/")
 			if matches {
-				remaining, end := l.allowWithInfo(l.clientIP(r), r.URL.Path)
+				remaining, end := l.take(r.Context(), l.clientIP(r))
 				if remaining < 0 {
 					l.mu.Lock()
 					now := l.now()
@@ -134,6 +164,31 @@ func (l *RateLimiter) Middleware(prefix string) func(http.Handler) http.Handler 
 		})
 	}
 }
+
+// take counts one request from ip and returns how many more the window
+// allows (negative once over the limit) and when the window ends.
+func (l *RateLimiter) take(ctx context.Context, ip string) (int, time.Time) {
+	l.mu.Lock()
+	shared, scope := l.shared, l.scope
+	l.mu.Unlock()
+	if shared != nil {
+		count, end, err := shared.Hit(ctx, scope, hashClientIP(ip), l.window)
+		if err == nil {
+			return l.limit - count, end
+		}
+		l.mu.Lock()
+		warn := l.now().Sub(l.warnedAt) >= time.Minute
+		if warn {
+			l.warnedAt = l.now()
+		}
+		l.mu.Unlock()
+		if warn && ctx.Err() == nil {
+			slog.Warn("shared rate limit unavailable; counting in this process", "scope", scope, "error", err)
+		}
+	}
+	return l.allowWithInfo(ip, "")
+}
+
 func (l *RateLimiter) allow(ip, path string) bool {
 	remaining, _ := l.allowWithInfo(ip, path)
 	return remaining >= 0

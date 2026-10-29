@@ -84,7 +84,7 @@ test('Home is usable while notifications are pending and loads calendar data on 
   } });
   expect(scheduled.ok()).toBe(true);
   const { schedule } = await scheduled.json();
-  const joinNotifications = await observeModuleCalls(page, 'app', 'loadNotifData', { exported: false });
+  const joinNotifications = await observeModuleCalls(page, 'notification-panel', 'loadNotifData');
   const notifications = deferred();
   let notificationsEntered = false;
   const calendarRequests = [];
@@ -146,7 +146,7 @@ test('Stats loads the Today count after cold Home startup and on a direct launch
 
 test('a late startup notification response cannot restore data after sign-out', async ({ page }) => {
   await fixture(page);
-  const joinNotifications = await observeModuleCalls(page, 'app', 'loadNotifData', { exported: false });
+  const joinNotifications = await observeModuleCalls(page, 'notification-panel', 'loadNotifData');
   const notifications = deferred();
   let notificationsEntered = false;
   await page.route('**/api/notifications', async route => {

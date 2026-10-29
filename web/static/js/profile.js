@@ -1,4 +1,46 @@
 import { escapeHTML } from "./utils.js";
+import { state, rerender, withCurrentContext } from "./app-core.js";
+import { registerActions } from "./actions.js";
+import { apiFetch } from "./api.js";
+import { setError, hideError } from "./form-errors.js";
+import { captureScope } from "./request-scope.js";
+import { showToast } from "./toast.js";
+
+// Saves the name and color the household sees, for Settings and onboarding.
+// Returns false when the answer arrives for an identity that is no longer
+// current.
+export async function saveProfile(displayName, avatarColor) {
+  const contextScope = captureScope(state);
+  const { data } = await withCurrentContext(apiFetch("/api/me", { method: "PATCH",
+    body: JSON.stringify(avatarColor ? { displayName, avatarColor } : { displayName }) }), contextScope);
+  if (!contextScope.current() || data?.user?.id !== state.user?.id) return false;
+  const { displayName: name, avatarColor: color } = data.user;
+  state.user = { ...state.user, displayName: name, avatarColor: color };
+  state.members = (state.members || []).map(m => m.userId === state.user.id ? { ...m, displayName: name, avatarColor: color } : m);
+  return true;
+}
+
+// Settings → Account: the name and color the household sees.
+async function doSaveProfile(form) {
+  if (form.dataset.busy) return;
+  hideError("#profile-error");
+  const displayName = form.querySelector("#profile-name").value.trim();
+  if (!displayName) { setError("#profile-error", "Enter your name"); return; }
+  const avatarColor = form.querySelector('input[name="avatarColor"]:checked')?.value;
+  const contextScope = captureScope(state);
+  form.dataset.busy = "true";
+  try {
+    if (!await saveProfile(displayName, avatarColor)) return;
+    rerender();
+    showToast("Profile saved", "success");
+  } catch (err) {
+    if (contextScope.current() && form.isConnected) setError("#profile-error", err.message || "Could not save your profile. Please retry.");
+  } finally { delete form.dataset.busy; }
+}
+
+registerActions("submit", {
+  "save-profile": (_e, form) => { void doSaveProfile(form); },
+});
 
 export function renderProfileSheet(user, household, userHouseholds = [], activeHouseholdId = null) {
   const email = user?.email || "";

@@ -278,6 +278,33 @@ func (s *MemoryStore) DeleteSession(_ context.Context, tokenHash string) error {
 	return nil
 }
 
+// SweepEnded deletes up to limit ended sessions and up to limit spent auth
+// tokens.
+func (s *MemoryStore) SweepEnded(_ context.Context, limit int) (sessions, tokens int64, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	for hash, session := range s.sessionsByHash {
+		if sessions == int64(limit) {
+			break
+		}
+		if !now.Before(session.ExpiresAt) || now.Sub(session.LastSeenAt) >= sessionIdleTimeout {
+			delete(s.sessionsByHash, hash)
+			sessions++
+		}
+	}
+	for hash, token := range s.tokensByHash {
+		if tokens == int64(limit) {
+			break
+		}
+		if token.ConsumedAt != nil || !now.Before(token.ExpiresAt) {
+			delete(s.tokensByHash, hash)
+			tokens++
+		}
+	}
+	return sessions, tokens, nil
+}
+
 func (s *MemoryStore) DeleteUserSessions(_ context.Context, userID int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

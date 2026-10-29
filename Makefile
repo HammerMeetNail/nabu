@@ -1,6 +1,6 @@
 GO ?= go
 COMPOSE ?= podman compose
-GOLANGCI_VERSION := 2.13.2
+GOLANGCI_VERSION := 2.15.0
 
 .PHONY: test test-go test-js perf-stats fmt run e2e e2e-watch e2e-debug backup restore local local-fresh down seed lint coverage hooks check-parity deploy preview preview-down preview-status preview-logs
 

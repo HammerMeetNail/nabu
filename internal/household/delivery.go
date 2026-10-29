@@ -49,7 +49,8 @@ func (s *PostgresStore) WithMember(ctx context.Context, userID, householdID int6
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	// Negative keys are reserved for household delivery/revocation locks.
+	// The negated household ID is the household's delivery/revocation lock.
+	// Export locks count up from the lowest key instead (handlers.exportLockKey).
 	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock_shared($1)`, -householdID); err != nil {
 		return err
 	}

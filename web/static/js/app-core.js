@@ -17,6 +17,12 @@ export function rerender() {
   if (root) renderer(root);
 }
 
+let topBar = () => {};
+// app.js registers its top-bar render.
+export function setTopBar(update) { topBar = update; }
+// Re-renders the top bar: the household, the profile and the notification badge.
+export function refreshTopBar() { topBar(); }
+
 // Capture ownership when a continuation is attached, before its request settles.
 export function owned(callback) { return captureScope(state).guard(callback); }
 
