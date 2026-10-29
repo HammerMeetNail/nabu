@@ -1,0 +1,3 @@
+# A fake APNs device token in a test fixture, replaced by a generated one in
+# the next commit (PR #198).
+a13054905d89cd61866579c4c844d161bce9c378:internal/app/my_data_test.go:generic-api-key:98

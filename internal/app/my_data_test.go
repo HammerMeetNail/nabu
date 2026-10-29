@@ -95,8 +95,8 @@ func TestMyDataExportHoldsTheUsersDataAndNoCredentials(t *testing.T) {
 	const endpoint = "https://web.push.apple.com/QGhbW-SECRET-CAPABILITY-PATH"
 	mustOK(t, srvRequest(srv, http.MethodPost, "/api/push/subscribe", `{"bindingId":"binding-0123456789abcdef0123456789abcdef",
  "subscription":{"endpoint":"`+endpoint+`","keys":{"p256dh":"P256DH-SECRET","auth":"AUTH-SECRET"}}}`, "tok", ann), "push subscribe")
-	const deviceToken = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
-	mustOK(t, srvRequest(srv, http.MethodPost, "/api/mobile/apns/register", `{"token":"`+deviceToken+`","environment":"sandbox",
+	apnsDevice := strings.Repeat("ab", 32) // a fake 64-hex device token
+	mustOK(t, srvRequest(srv, http.MethodPost, "/api/mobile/apns/register", `{"token":"`+apnsDevice+`","environment":"sandbox",
  "bundleId":"com.nabu.app","deviceName":"Ann's iPhone"}`, "tok", ann), "apns register")
 	keyRec := srvRequest(srv, http.MethodPost, "/api/api-keys", `{"name":"Shortcuts"}`, "tok", ann)
 	mustOK(t, keyRec, "api key")
@@ -112,7 +112,7 @@ func TestMyDataExportHoldsTheUsersDataAndNoCredentials(t *testing.T) {
 		t.Fatalf("export: %d %v", rec.Code, rec.Header())
 	}
 	body := rec.Body.String()
-	for _, secret := range []string{ann, other, issued.Token, "SECRET-CAPABILITY-PATH", "P256DH-SECRET", "AUTH-SECRET", deviceToken, "binding-0123"} {
+	for _, secret := range []string{ann, other, issued.Token, "SECRET-CAPABILITY-PATH", "P256DH-SECRET", "AUTH-SECRET", apnsDevice, "binding-0123"} {
 		if secret == "" || strings.Contains(body, secret) {
 			t.Fatalf("the export holds a credential %q:\n%s", secret, body)
 		}
