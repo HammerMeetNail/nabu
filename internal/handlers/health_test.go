@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	"github.com/HammerMeetNail/nabu/internal/testdb"
+	"github.com/HammerMeetNail/nabu/internal/version"
 )
 
 func TestHealth(t *testing.T) {
@@ -25,6 +27,14 @@ func TestHealth(t *testing.T) {
 	}
 	if contentType := rec.Header().Get("Content-Type"); contentType != "application/json; charset=utf-8" {
 		t.Fatalf("Content-Type = %q, want application/json; charset=utf-8", contentType)
+	}
+	// The iOS release workflow reads the running version from here.
+	var body HealthResponse
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Status != "ok" || body.Version != version.Version || body.Version == "" {
+		t.Fatalf("health = %+v, want status ok and version %q", body, version.Version)
 	}
 }
 

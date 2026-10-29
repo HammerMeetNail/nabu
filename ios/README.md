@@ -76,6 +76,24 @@ Don't set any of these on a target. Every target inherits them, which keeps the 
 
 To point a debug build at another server, such as the phone preview, put `NABU_BASE_URL = https:/$()/your-host.example` in `ios/Config/Local.xcconfig`. Git ignores that file and release builds never read it. In an xcconfig, `//` starts a comment, hence the `$()`. A Staging configuration is a `Staging.xcconfig` with its own `NABU_BASE_URL`, once a staging server exists.
 
+## Releasing
+
+The web app and the iOS app ship separately, and the web app always goes out first. The **iOS Release** workflow (`.github/workflows/ios-release.yml`) is the release button: in GitHub, open **Actions → iOS Release → Run workflow** and run it on `main`.
+
+1. **Raise the version** for a new App Store version: `MARKETING_VERSION` in `ios/Config/Shared.xcconfig`, through a PR. A TestFlight build of the same version needs no change.
+2. **Run the workflow.** It runs three jobs:
+   - **Web app is live** (`scripts/ios-release-web-first.sh`): reads the version production runs from `/health` and compares the server code (`cmd/`, `internal/`, `migrations/`, `go.mod`, `go.sum`, not tests) at that release's tag with `main`. If the server changed, it stops and asks for a web deploy first (tag `main`). Changes to the PWA, the app, docs or tests don't hold the app back.
+   - **iOS Unit Tests**: `NabuTests`, as in CI.
+   - **Archive and upload**: archives the Release configuration with the build number set to the number of commits on `main`, which grows with every release, and uploads it to App Store Connect. The build appears in TestFlight once Apple has processed it; submit it for review from App Store Connect.
+3. **The run's summary** gives the version, the build number and the commit.
+
+**Uploading needs an App Store Connect API key.** Create one in App Store Connect under Users and Access → Integrations → App Store Connect API, with the App Manager role. Then save three repository secrets:
+- `ASC_KEY_ID`: the key ID
+- `ASC_ISSUER_ID`: the issuer ID
+- `ASC_KEY_P8`: the contents of the downloaded `.p8` file
+
+Signing is automatic: Xcode uses the key to fetch or create the distribution certificate and profiles for the project's team (`ios/ExportOptions.plist`). Without the secrets, the workflow still checks, tests and builds an unsigned archive, and its summary says the upload was skipped.
+
 ## Launch arguments for tests
 
 Only debug builds read these (`Support/TestHooks.swift`): a release build ignores every launch argument and environment override, so it always talks to production with real state.

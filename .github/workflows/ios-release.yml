@@ -1,0 +1,152 @@
+name: iOS Release
+
+# The "Release iOS" button: Actions → iOS Release → Run workflow, on main.
+# The web app always goes out first, so this checks that production already
+# runs the server code this build needs, runs the iOS tests, then archives
+# the app and uploads it to App Store Connect, where it appears in TestFlight.
+#
+# Uploading needs an App Store Connect API key saved as three repository
+# secrets: ASC_KEY_ID, ASC_ISSUER_ID and ASC_KEY_P8 (the .p8 file's contents).
+# Without them the workflow still checks, tests and archives (unsigned), and
+# says the upload was skipped. See "Releasing" in ios/README.md.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-release
+  cancel-in-progress: false
+
+jobs:
+  web-first:
+    name: Web app is live
+    runs-on: ubuntu-latest
+    steps:
+      - name: Release from main only
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "::error::Run the iOS release on main."
+          exit 1
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Production runs this commit's server code
+        run: bash scripts/ios-release-web-first.sh
+
+  test:
+    name: iOS Unit Tests
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Pick an iPhone simulator
+        id: sim
+        run: |
+          UDID=$(xcrun simctl list devices available -j \
+            | jq -r '.devices | to_entries[] | .value[] | select(.name|test("iPhone")) | .udid' \
+            | head -1)
+          if [ -z "$UDID" ]; then
+            echo "No iPhone simulator available" >&2
+            exit 1
+          fi
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+      - name: Run NabuTests (unit/contract)
+        working-directory: ios
+        run: |
+          DEST="platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}"
+          # The app target first, as in ci.yaml: a parallel build-for-testing
+          # can compile NabuTests before the Nabu module exists.
+          xcodebuild build -project Nabu.xcodeproj -scheme Nabu -destination "$DEST"
+          xcodebuild build-for-testing -project Nabu.xcodeproj -scheme Nabu -destination "$DEST"
+          xcodebuild test-without-building -project Nabu.xcodeproj -scheme Nabu -destination "$DEST" \
+            -only-testing:NabuTests
+
+  release:
+    name: Archive and upload
+    runs-on: macos-15
+    needs: [web-first, test]
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Build number
+        id: build
+        # Every upload needs a higher build number than the last. The number
+        # of commits behind this one grows with every release.
+        run: echo "number=$(git rev-list --count HEAD)" >> "$GITHUB_OUTPUT"
+      - name: App Store Connect key
+        id: key
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: |
+          if [ -z "$ASC_KEY_ID" ] || [ -z "$ASC_ISSUER_ID" ] || [ -z "$ASC_KEY_P8" ]; then
+            echo "::warning::No App Store Connect key (ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8): archiving unsigned, and not uploading."
+            echo "upload=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          key="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s\n' "$ASC_KEY_P8" > "$key"
+          chmod 600 "$key"
+          echo "path=$key" >> "$GITHUB_OUTPUT"
+          echo "upload=true" >> "$GITHUB_OUTPUT"
+      - name: Archive
+        if: steps.key.outputs.upload == 'true'
+        working-directory: ios
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          KEY_PATH: ${{ steps.key.outputs.path }}
+          BUILD: ${{ steps.build.outputs.number }}
+        run: |
+          # Automatic signing with the API key: Xcode fetches or creates the
+          # distribution certificate and profiles for the project's team.
+          xcodebuild archive -project Nabu.xcodeproj -scheme Nabu -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Nabu.xcarchive" \
+            -allowProvisioningUpdates -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
+            CURRENT_PROJECT_VERSION="$BUILD"
+      - name: Upload to App Store Connect
+        if: steps.key.outputs.upload == 'true'
+        working-directory: ios
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          KEY_PATH: ${{ steps.key.outputs.path }}
+        run: |
+          # ExportOptions.plist exports for App Store Connect with destination
+          # upload, so the export is the upload.
+          xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/Nabu.xcarchive" \
+            -exportOptionsPlist ExportOptions.plist -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates -authenticationKeyPath "$KEY_PATH" \
+            -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+      - name: Archive unsigned
+        if: steps.key.outputs.upload != 'true'
+        working-directory: ios
+        env:
+          BUILD: ${{ steps.build.outputs.number }}
+        run: |
+          xcodebuild archive -project Nabu.xcodeproj -scheme Nabu -configuration Release \
+            -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/Nabu.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CURRENT_PROJECT_VERSION="$BUILD"
+      - name: Summary
+        if: always()
+        env:
+          BUILD: ${{ steps.build.outputs.number }}
+          UPLOAD: ${{ steps.key.outputs.upload }}
+        run: |
+          rm -f "$RUNNER_TEMP"/AuthKey_*.p8
+          version=$(sed -n 's/^MARKETING_VERSION = //p' ios/Config/Shared.xcconfig)
+          {
+            echo "### iOS release ${version} (${BUILD})"
+            echo "Commit ${GITHUB_SHA}."
+            if [ "$UPLOAD" = "true" ] && [ "${{ job.status }}" = "success" ]; then
+              echo "Uploaded to App Store Connect. It appears in TestFlight once Apple has processed it."
+            elif [ "$UPLOAD" = "true" ]; then
+              echo "The archive or upload failed; see the steps above."
+            else
+              echo "Archived unsigned and not uploaded: add the App Store Connect key secrets to upload."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

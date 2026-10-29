@@ -132,6 +132,10 @@ Also spot-check request logs: the hashed `client` attribute should now vary betw
 - If `cf-cache-status` is `HIT` or `MISS` (not `BYPASS` for JS / `DYNAMIC` for HTML), the `no-store` header is not reaching Cloudflare — investigate `internal/app/server.go` and the CI build logs.
 - If imports still show the old version number, the binary was not rebuilt with the new tag — check that `internal/version/version.go` is populated at build time via `-ldflags`.
 
+## iOS releases
+
+The iOS app is released separately, from **Actions → iOS Release → Run workflow** on `main`, after the web app. The workflow stops unless production already runs the server code on `main` (it reads the version from `/health`), so deploy the web app first when the server changed. The steps and the App Store Connect key it needs are under "Releasing" in `ios/README.md`.
+
 ## Known limitations (candidates for a future fix)
 
 ### iOS tests on release tags
