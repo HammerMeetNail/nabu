@@ -26,12 +26,11 @@ jobs:
     outputs:
       code: ${{ startsWith(github.ref, 'refs/tags/v') || steps.filter.outputs.code }}
       tests: ${{ steps.filter.outputs.tests }}
-      # On a tag push (a deploy), dorny/paths-filter has no meaningful base ref
-      # to diff against, so the iOS lane is forced on — the same way `code` is
-      # forced above. This runs iOS tests on EVERY release tag (~1-2 min of
-      # macOS-runner time even when no iOS files changed), making them a release
-      # gate per docs/plans/ios-v1/p1-foundations.md (D5).
-      ios: ${{ startsWith(github.ref, 'refs/tags/v') || steps.filter.outputs.ios }}
+      # The iOS lane runs on pull requests that change ios/**. A web release
+      # (a v* tag) doesn't run it: the web app and the iOS app ship
+      # separately, and the iOS Release workflow (ios-release.yml) runs
+      # NabuTests before an iOS release.
+      ios: ${{ !startsWith(github.ref, 'refs/tags/v') && steps.filter.outputs.ios == 'true' }}
     steps:
       - uses: actions/checkout@v7
       - uses: dorny/paths-filter@v4
