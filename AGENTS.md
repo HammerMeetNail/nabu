@@ -221,6 +221,7 @@ Production has no test account. To check a deploy signed in, run `scripts/prod-s
 - **URL**: `https://nabu-app.com`
 - **Deploy trigger**: push a `v*` tag (e.g. `git tag v0.1.7 && git push origin v0.1.7`). CI builds, tests, and deploys automatically.
 - **CI**: `.github/workflows/ci.yaml` — runs secret scan, JS tests, lint, Go tests (with coverage), E2E tests, the client-parity gate (PR only), and the iOS `NabuTests` lane (macOS, when `ios/**` changes) before deploying.
+- **iOS releases**: the **iOS Release** workflow (`.github/workflows/ios-release.yml`, Actions → Run workflow on `main`) tests, archives and uploads the app to App Store Connect. The web app always goes out first: the workflow stops if the server code on `main` differs from the release production runs (`scripts/ios-release-web-first.sh`, which reads the version from `/health`). See "Releasing" in `ios/README.md`.
 
 **After pushing a `v*` tag, watch the pipeline to completion and verify production** (don't wait to be asked; a cheaper subagent may be delegated to it). The full runbook — `gh run watch`, transient-vs-real failure triage, and the production verification commands (`/health`, versioned imports, `no-store`/`BYPASS` cache headers, the throwaway-account smoke test) — lives in **`docs/deploy-runbook.md`**.
 

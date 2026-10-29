@@ -4,17 +4,23 @@ import (
 	"context"
 	"net/http"
 	"time"
+
+	"github.com/HammerMeetNail/nabu/internal/version"
 )
 
 const ReadinessTimeout = time.Second
 
 type HealthResponse struct {
 	Status string `json:"status"`
+	// Version is the release running here, which the static asset URLs
+	// already show. The iOS release workflow reads it to check that the web
+	// app an iOS build needs is live.
+	Version string `json:"version,omitempty"`
 }
 
 func Health(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusOK, HealthResponse{Status: "ok"})
+	writeJSON(w, http.StatusOK, HealthResponse{Status: "ok", Version: version.Version})
 }
 
 func Ready(w http.ResponseWriter, _ *http.Request) {
