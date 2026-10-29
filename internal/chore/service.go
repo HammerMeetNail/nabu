@@ -282,32 +282,35 @@ func (s *Service) ReorderChores(ctx context.Context, householdID int64, choreIDs
 }
 
 func (s *Service) RestoreDefaultChore(ctx context.Context, choreID int64, householdID int64) error {
-	return s.RestoreDefaultChoreForUser(ctx, choreID, householdID, 0)
+	_, err := s.RestoreDefaultChoreForUser(ctx, choreID, householdID, 0)
+	return err
 }
 
-func (s *Service) RestoreDefaultChoreForUser(ctx context.Context, choreID int64, householdID int64, userID int64) error {
+// RestoreDefaultChoreForUser puts a predefined activity back to its template
+// and returns it as restored.
+func (s *Service) RestoreDefaultChoreForUser(ctx context.Context, choreID int64, householdID int64, userID int64) (Chore, error) {
 	existing, err := s.store.GetChore(ctx, choreID)
 	if err != nil {
-		return err
+		return Chore{}, err
 	}
 	if existing.HouseholdID != householdID {
-		return fmt.Errorf("chore not found")
+		return Chore{}, fmt.Errorf("chore not found")
 	}
 	if userID != 0 {
 		ok, err := s.CanView(ctx, userID, householdID, existing)
 		if err != nil {
-			return err
+			return Chore{}, err
 		}
 		if !ok {
-			return fmt.Errorf("chore not found")
+			return Chore{}, fmt.Errorf("chore not found")
 		}
 	}
 	if !existing.IsPredefined || existing.PredefinedKey == "" {
-		return fmt.Errorf("chore is not a predefined chore")
+		return Chore{}, fmt.Errorf("chore is not a predefined chore")
 	}
 	pc, ok := templateFor(existing.PredefinedKey)
 	if !ok {
-		return fmt.Errorf("original predefined chore definition not found")
+		return Chore{}, fmt.Errorf("original predefined chore definition not found")
 	}
 	vis := existing.Visibility
 	existing.Name = pc.Name
@@ -333,13 +336,13 @@ func (s *Service) RestoreDefaultChoreForUser(ctx context.Context, choreID int64,
 		existing.IndicatorDefaults = []string{}
 	}
 	if err := s.store.UpdateChore(ctx, existing); err != nil {
-		return err
+		return Chore{}, err
 	}
 	s.logAudit(ctx, "chore.default_restored", map[string]string{
 		"household_id": idStr(householdID),
 		"chore_id":     idStr(choreID),
 	})
-	return nil
+	return existing, nil
 }
 
 func (s *Service) GetSystemDefaults() []Chore {

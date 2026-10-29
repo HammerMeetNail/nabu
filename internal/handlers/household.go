@@ -122,7 +122,14 @@ func (h *HouseholdHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+	// The iOS app shows the household from this answer, as GET reads it.
+	// The change is saved either way, so a failed read is not an error.
+	hh, _, err := h.service.GetHousehold(r.Context(), user.ID)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]string{"status": "updated"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"household": hh, "status": "updated"})
 }
 
 func (h *HouseholdHandler) CreateInvite(w http.ResponseWriter, r *http.Request) {

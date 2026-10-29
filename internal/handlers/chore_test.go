@@ -255,15 +255,35 @@ func TestChoreRestoreDefault(t *testing.T) {
 	seedReq := withUser(httptest.NewRequest(http.MethodPost, "/api/chores/seed-defaults", nil), authService, sessionID)
 	handler.SeedDefaults(httptest.NewRecorder(), seedReq)
 
+	rename := withUser(httptest.NewRequest(http.MethodPatch, "/api/chores/1", strings.NewReader(`{"name":"Renamed"}`)), authService, sessionID)
+	rename.Header.Set("Content-Type", "application/json")
+	rename.SetPathValue("id", "1")
+	rec := httptest.NewRecorder()
+	handler.Update(rec, rename)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("rename: status = %d, body=%s", rec.Code, rec.Body.String())
+	}
+
 	req := withUser(httptest.NewRequest(http.MethodPost, "/api/chores/1/restore-default", nil), authService, sessionID)
 	req.SetPathValue("id", "1")
-	rec := httptest.NewRecorder()
+	rec = httptest.NewRecorder()
 
 	handler.RestoreDefault(rec, req)
 
 	// Chore 1 is predefined so restore should work
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200, body=%s", rec.Code, rec.Body.String())
+	}
+	// The iOS app shows the activity from the answer.
+	var resp struct {
+		Chore  chore.Chore `json:"chore"`
+		Status string      `json:"status"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Status != "restored" || resp.Chore.ID != 1 || resp.Chore.Name == "" || resp.Chore.Name == "Renamed" {
+		t.Fatalf("answer = %+v, want chore 1 back under its default name", resp)
 	}
 }
 
