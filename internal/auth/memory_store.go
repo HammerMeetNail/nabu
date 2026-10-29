@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"maps"
+	"sort"
 	"sync"
 	"time"
 )
@@ -276,6 +277,27 @@ func (s *MemoryStore) DeleteSession(_ context.Context, tokenHash string) error {
 	defer s.mu.Unlock()
 	delete(s.sessionsByHash, tokenHash)
 	return nil
+}
+
+func (s *MemoryStore) ListUserSessions(_ context.Context, userID int64, currentHash string) ([]SessionInfo, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	user, ok := s.usersByID[userID]
+	sessions := []SessionInfo{}
+	if !ok {
+		return sessions, nil
+	}
+	now := time.Now()
+	for hash, session := range s.sessionsByHash {
+		if session.UserID != userID || session.AuthVersion != user.AuthVersion ||
+			!now.Before(session.ExpiresAt) || now.Sub(session.LastSeenAt) >= sessionIdleTimeout {
+			continue
+		}
+		sessions = append(sessions, SessionInfo{CreatedAt: session.CreatedAt, LastSeenAt: session.LastSeenAt,
+			ExpiresAt: session.ExpiresAt, Current: hash == currentHash})
+	}
+	sort.Slice(sessions, func(i, j int) bool { return sessions[i].CreatedAt.Before(sessions[j].CreatedAt) })
+	return sessions, nil
 }
 
 // SweepEnded deletes up to limit ended sessions and up to limit spent auth

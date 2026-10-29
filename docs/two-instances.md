@@ -10,7 +10,7 @@ Everything that must hold across instances coordinates through PostgreSQL:
 |---|---|
 | Sessions, accounts, all household data | PostgreSQL |
 | Sign-in (`/api/auth`) and join (`/api/household/join`) rate limits | `rate_limits`, counted per hashed client IP (`middleware.PostgresCounter`) |
-| One export per household at a time | A session advisory lock per household (`handlers.PostgresHouseholdLock`) |
+| One export per household, and per person, at a time | A session advisory lock per household or person (`handlers.PostgresExportLock`) |
 | Reminder ticks | One leader at a time (`reminder.PostgresAdvisoryLock`) |
 | Notification fan-out, push delivery, sign-in mail | Rows claimed with `FOR UPDATE SKIP LOCKED` under a lease |
 | Sweeps of ended sessions and spent tokens | A transaction-scoped advisory lock, `SKIP LOCKED` rows |

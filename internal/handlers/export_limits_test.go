@@ -162,6 +162,73 @@ func TestExportGateBoundsConcurrencyWithoutWaiting(t *testing.T) {
 	}
 }
 
+// A personal export holds its user's slot, apart from a household with the
+// same numeric ID, and counts toward the server's two.
+func TestExportGateKeysPersonalExportsByUser(t *testing.T) {
+	gate := NewExportGate()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	entered := make(chan struct{}, 2)
+	resume := make(chan struct{})
+	hold := func(w http.ResponseWriter, r *http.Request) {
+		entered <- struct{}{}
+		testsync.Pause(r.Context(), resume)
+		w.WriteHeader(200)
+	}
+	personal, household := gate.WrapUser(hold), gate.Wrap(hold)
+	request := func(user auth.User) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/export", nil)
+		return r.WithContext(middleware.WithUser(ctx, user))
+	}
+	seven := int64(7)
+	done := make(chan int, 2)
+	// User 7 is in no household; household 7 is someone else's.
+	go func() { w := httptest.NewRecorder(); personal(w, request(auth.User{ID: 7})); done <- w.Code }()
+	testsync.Receive(t, ctx, entered)
+	w := httptest.NewRecorder()
+	personal(w, request(auth.User{ID: 7}))
+	if w.Code != 429 || w.Header().Get("Retry-After") == "" {
+		t.Fatal("one user occupied multiple export slots")
+	}
+	go func() {
+		w := httptest.NewRecorder()
+		household(w, request(auth.User{ID: 8, HouseholdID: &seven}))
+		done <- w.Code
+	}()
+	testsync.Receive(t, ctx, entered)
+	w = httptest.NewRecorder()
+	personal(w, request(auth.User{ID: 9}))
+	if w.Code != 429 {
+		t.Fatal("a personal export bypassed the server's two slots")
+	}
+	close(resume)
+	for range 2 {
+		if testsync.Receive(t, ctx, done) != 200 {
+			t.Fatal("accepted export failed")
+		}
+	}
+	w = httptest.NewRecorder()
+	personal(w, httptest.NewRequest(http.MethodGet, "/export", nil))
+	if w.Code != 401 {
+		t.Fatalf("personal export without a user = %d", w.Code)
+	}
+}
+
+// Export lock keys stay below every other advisory key the app takes (its
+// positive constants, and household delivery locks at the negated household
+// ID), and households' and users' export keys never meet.
+func TestExportLockKeysStayApart(t *testing.T) {
+	const maxID = 1<<61 - 1
+	households := [2]int64{exportLockKey(1), exportLockKey(maxID)}
+	users := [2]int64{exportLockKey(-1), exportLockKey(-maxID)}
+	if households[0] >= households[1] || households[1] >= users[0] || users[0] >= users[1] {
+		t.Fatalf("household export keys %v and user export keys %v overlap", households, users)
+	}
+	if users[1] >= -maxID {
+		t.Fatalf("user export keys reach household delivery keys: %d", users[1])
+	}
+}
+
 func TestExportWriteDeadlineBoundsUnreadSocketThroughMiddleware(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

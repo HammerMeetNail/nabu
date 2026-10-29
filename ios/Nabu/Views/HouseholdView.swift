@@ -18,6 +18,7 @@ struct HouseholdView: View {
     @State private var exportEnd = TestHooks.reviewDate ?? Date()
     @State private var exportError: String?
     @State private var exportTask: Task<Void, Never>?
+    @State private var exportKind: ExportKind?
     @State private var exportJob = UUID()
     @State private var exportTempURL: URL?
     @EnvironmentObject private var accountDeletion: AccountDeletionModel
@@ -64,6 +65,25 @@ struct HouseholdView: View {
                         }
                         Button(user.hasPassword == false ? "Set Password" : "Change Password") {
                             showingPassword = true
+                        }
+                        Button {
+                            startExport(.myData)
+                        } label: {
+                            HStack {
+                                Label("Download My Data", systemImage: "arrow.down.doc")
+                                if isExporting && exportKind == .myData {
+                                    Spacer()
+                                    ProgressView()
+                                }
+                            }
+                        }
+                        .disabled(isExporting)
+                        .accessibilityIdentifier("account-download-my-data")
+                        if exportKind == .myData {
+                            if let exportError {
+                                Text(exportError).foregroundColor(.red).accessibilityIdentifier("my-data-error")
+                            }
+                            if isExporting { Button("Cancel") { cancelExport() } }
                         }
                         Button("Delete Account…", role: .destructive) {
                             accountDeletion.open(api: environment.apiClient)
@@ -281,10 +301,12 @@ struct HouseholdView: View {
                         DatePicker("Through", selection: $exportEnd, displayedComponents: .date)
                             .disabled(isExporting).accessibilityIdentifier("export-end-date")
                     }
-                    if let exportError {
-                        Text(exportError).foregroundColor(.red).accessibilityIdentifier("export-error")
+                    if exportKind != .myData {
+                        if let exportError {
+                            Text(exportError).foregroundColor(.red).accessibilityIdentifier("export-error")
+                        }
+                        if isExporting { Button("Cancel export") { cancelExport() } }
                     }
-                    if isExporting { Button("Cancel export") { cancelExport() } }
                 } header: {
                     Text("Export dates")
                 } footer: {
@@ -294,7 +316,7 @@ struct HouseholdView: View {
                 if canExportHousehold {
                     Section {
                         Button {
-                            startExport(household: true)
+                            startExport(.household)
                         } label: {
                             HStack {
                                 Label("Export household data as CSV", systemImage: "square.and.arrow.up")
@@ -315,7 +337,7 @@ struct HouseholdView: View {
                 // Data export (same all-history window as the PWA's link)
                 Section {
                     Button {
-                        startExport(household: false)
+                        startExport(.logs)
                     } label: {
                         HStack {
                             Label("Export logs as CSV", systemImage: "square.and.arrow.up")
@@ -372,7 +394,7 @@ struct HouseholdView: View {
         }
         .onDisappear { cancelExport() }
         .sheet(item: $exportFile, onDismiss: clearExportFile) { file in
-            ShareSheet(items: [file.url])
+            ShareSheet(items: [file.url]) { exportFile = nil }
         }
         .sheet(isPresented: $showingInviteQR) {
             if let household = state.household, let link = inviteLink(for: household) {
@@ -565,12 +587,13 @@ struct HouseholdView: View {
         } catch {}
     }
 
-    private func startExport(household: Bool) {
+    private func startExport(_ kind: ExportKind) {
         guard !isExporting else { return }
         let owner = state.revision
         let store = ActivityStore(api: environment.apiClient.scoped())
         let job = UUID()
         exportJob = job
+        exportKind = kind
         exportError = nil
         isExporting = true
         let formatter = DateFormatter()
@@ -586,8 +609,11 @@ struct HouseholdView: View {
             }
             do {
                 let url: URL
-                if household { url = try await store.exportHouseholdCSV(start: start, end: end) }
-                else { url = try await store.exportLogsCSV(start: start, end: end) }
+                switch kind {
+                case .household: url = try await store.exportHouseholdCSV(start: start, end: end)
+                case .logs: url = try await store.exportLogsCSV(start: start, end: end)
+                case .myData: url = try await store.exportMyDataJSON()
+                }
                 guard state.revision == owner, exportJob == job, !Task.isCancelled else {
                     try? FileManager.default.removeItem(at: url)
                     return
@@ -746,19 +772,29 @@ struct InviteQRSheet: View {
     }
 }
 
+/// What a Settings export downloads: the household's CSV, the logs CSV for
+/// the chosen dates, or everything about the signed-in user as JSON.
+enum ExportKind {
+    case household, logs, myData
+}
+
 /// Wraps the downloaded export so it can drive `.sheet(item:)`.
 struct ExportFile: Identifiable {
     let url: URL
     var id: String { url.absoluteString }
 }
 
-/// Native share sheet for the exported CSV file.
+/// Native share sheet for an exported file.
 struct ShareSheet: UIViewControllerRepresentable {
     let items: [Any]
+    /// Runs when the person closes the sheet or finishes sharing. The SwiftUI
+    /// sheet hosting it stays up until its item is cleared.
+    let onFinish: () -> Void
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
         let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
         controller.view.accessibilityIdentifier = "export-share-sheet"
+        controller.completionWithItemsHandler = { _, _, _, _ in onFinish() }
         return controller
     }
 
@@ -800,17 +836,22 @@ struct DeleteAccountSheet: View {
 
                 Section {
                     Button {
-                        Task { await downloadMyData() }
+                        Task { await downloadMyData(json: true) }
                     } label: {
                         if isExportingMyData { ProgressView() } else { Text("Download My Data") }
                     }
                     .disabled(isExportingMyData)
                     .accessibilityIdentifier("download-my-data")
+                    Button("Logs as CSV") {
+                        Task { await downloadMyData(json: false) }
+                    }
+                    .disabled(isExportingMyData)
+                    .accessibilityIdentifier("download-my-logs")
                 } footer: {
                     if let myDataError {
                         Text(myDataError).foregroundColor(.red)
                     } else {
-                        Text("Every log you recorded, as a CSV file.")
+                        Text("Everything Nabu keeps about you, as a JSON file, or just the logs you recorded, as CSV.")
                     }
                 }
 
@@ -848,7 +889,7 @@ struct DeleteAccountSheet: View {
             .navigationTitle("Delete Account")
             .navigationBarTitleDisplayMode(.inline)
             .sheet(item: $myDataFile, onDismiss: clearMyDataFile) { file in
-                ShareSheet(items: [file.url])
+                ShareSheet(items: [file.url]) { myDataFile = nil }
             }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -861,13 +902,14 @@ struct DeleteAccountSheet: View {
         }
     }
 
-    private func downloadMyData() async {
+    private func downloadMyData(json: Bool) async {
         guard !isExportingMyData else { return }
         isExportingMyData = true
         myDataError = nil
         defer { isExportingMyData = false }
         do {
-            let url = try await ActivityStore(api: environment.apiClient.scoped()).exportMyLogsCSV()
+            let store = ActivityStore(api: environment.apiClient.scoped())
+            let url = try await json ? store.exportMyDataJSON() : store.exportMyLogsCSV()
             clearMyDataFile()
             myDataFile = ExportFile(url: url)
         } catch {

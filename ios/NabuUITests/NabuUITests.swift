@@ -52,6 +52,18 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         return app
     }
 
+    /// Waits for an export's share sheet and closes it. The sheet's content is
+    /// remote and loads after it appears; in the simulator a tap on its Close
+    /// button can go unanswered, so the sheet is then swiped down.
+    private func closeShareSheet(_ app: XCUIApplication, _ what: String) {
+        let share = app.otherElements["ActivityListView"]
+        XCTAssertTrue(share.waitForExistence(timeout: 5), what)
+        let close = app.buttons["Close"]
+        if close.waitForExistence(timeout: 5) { close.tap() }
+        if !share.waitForNonExistence(timeout: 3) { share.swipeDown(velocity: .fast) }
+        XCTAssertTrue(share.waitForNonExistence(timeout: 5), what)
+    }
+
     /// Scrolls until the whole control is on screen. A control cut off by the
     /// screen edge still reports hittable, but its center, where a tap lands,
     /// can be off screen.
@@ -440,10 +452,10 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         let startDate = app.descendants(matching: .any)["export-start-date"]
         let endDate = app.descendants(matching: .any)["export-end-date"]
         XCTAssertTrue(startDate.waitForExistence(timeout: 5))
-        XCTAssertTrue(endDate.exists)
         XCTAssertTrue(startDate.isEnabled)
-        XCTAssertTrue(endDate.isEnabled)
+        // A form leaves rows below the screen out of the tree until scrolled to.
         reveal(endDate, in: app)
+        XCTAssertTrue(endDate.isEnabled)
         centerForCapture(endDate, in: app)
         try captureReviewScreen(app, named: "export-date-range")
         let export = app.buttons["Export logs as CSV"]
@@ -466,10 +478,7 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         XCTAssertTrue(allDates.isEnabled)
         reveal(export, in: app)
         export.tap()
-        let share = app.otherElements["ActivityListView"]
-        XCTAssertTrue(share.waitForExistence(timeout: 5))
-        app.buttons["Close"].tap()
-        XCTAssertTrue(share.waitForNonExistence(timeout: 5))
+        closeShareSheet(app, "logs export")
     }
 
     func testActivityErrorRetryAndSearchSurviveTabRoundtrip() {
@@ -729,6 +738,10 @@ final class NabuReviewRecoveryUITests: XCTestCase {
     func testDeletionExplainsFormerMemberAndSendsOptIns() {
         let app = launch("delete-account-options")
         app.tabBars.buttons["Settings"].tap()
+        // Settings offers everything about you without starting a deletion.
+        let mine = app.buttons["account-download-my-data"]
+        reveal(mine, in: app); mine.tap()
+        closeShareSheet(app, "account-download-my-data")
         let open = app.buttons["Delete Account…"]
         reveal(open, in: app); open.tap()
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Former member")).firstMatch.waitForExistence(timeout: 5))
@@ -737,11 +750,11 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         XCTAssertEqual(logs.value as? String, "0")
         XCTAssertEqual(notes.value as? String, "0")
 
-        let download = app.buttons["download-my-data"]
-        download.tap()
-        XCTAssertTrue(app.otherElements["export-share-sheet"].waitForExistence(timeout: 5)
-            || app.otherElements["ActivityListView"].waitForExistence(timeout: 5))
-        if app.buttons["Close"].exists { app.buttons["Close"].tap() } else { app.swipeDown() }
+        for id in ["download-my-data", "download-my-logs"] {
+            let download = app.buttons[id]
+            reveal(download, in: app); download.tap()
+            closeShareSheet(app, id)
+        }
 
         reveal(logs, in: app)
         (logs.switches.firstMatch.exists ? logs.switches.firstMatch : logs).tap()

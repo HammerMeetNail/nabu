@@ -189,6 +189,33 @@ final class ActivityTests: XCTestCase {
         XCTAssertEqual(requestedPath, "/api/household/data")
         XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "record_type,id\nhousehold,1\n")
     }
+
+    @MainActor
+    func testMyDataDownloadsJSONFromTheAccountEndpoint() async throws {
+        var requestedPath: String?
+        var api = APIClient(baseURL: URL(string: "http://localhost:8080")!)
+        api.mockHandler = { request in
+            requestedPath = request.url?.path
+            return (Data("{\"about\":\"yours\"}".utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                headerFields: ["Content-Type": "application/json; charset=utf-8"])!)
+        }
+        let url = try await ActivityStore(api: api).exportMyDataJSON()
+        defer { try? FileManager.default.removeItem(at: url) }
+        XCTAssertEqual(requestedPath, "/api/me/export")
+        XCTAssertEqual(url.pathExtension, "json")
+        XCTAssertEqual(try String(contentsOf: url, encoding: .utf8), "{\"about\":\"yours\"}")
+    }
+
+    @MainActor
+    func testMyDataRefusesAnythingButJSON() async {
+        var api = APIClient(baseURL: URL(string: "http://localhost:8080")!)
+        api.mockHandler = { request in
+            (Data("<html></html>".utf8), HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                headerFields: ["Content-Type": "text/html"])!)
+        }
+        do { _ = try await ActivityStore(api: api).exportMyDataJSON(); XCTFail("an HTML page became a data file") }
+        catch { /* The deletion sheet and Settings show this error. */ }
+    }
 }
 
 private extension String {

@@ -30,7 +30,7 @@ a { color: #236886; }
 
 const privacyBody = `
 <h1>Privacy Policy</h1>
-<p><em>Last updated: 2026-10-26</em></p>
+<p><em>Last updated: 2026-10-29</em></p>
 <p>Nabu is a household activity tracker. This policy describes what data the
 service stores and how it is used.</p>
 
@@ -55,10 +55,20 @@ push token used only to deliver your reminders.</li>
 change takes effect and let you know first.</li>
 </ul>
 
+<h2>Getting a copy of your data</h2>
+<p>You can download your data at any time from Settings → Account →
+Download My Data (in the app or on the web). It is one JSON file with your
+account, households, preferences, notification and reminder settings, the
+logs you recorded in every household, the day notes you last edited, your
+notifications, where you are signed in, your devices and the names of your
+API keys. Sign-in tokens, push endpoints and device tokens are left out,
+because they work as credentials. The logs you recorded are also available
+as a CSV file.</p>
+
 <h2>Data retention and deletion</h2>
 <p>You can delete your account at any time from Settings → Account →
 Delete Account (in the app or on the web). Before deleting, you can download
-every log you recorded as a CSV file. Deletion is immediate and permanent.</p>
+your data as described above. Deletion is immediate and permanent.</p>
 <p><strong>What is deleted:</strong> your account, email address, display
 name and avatar, sessions, push and device tokens, preferences, reminder
 settings, notifications, sign-in and email tokens, and invites you created.

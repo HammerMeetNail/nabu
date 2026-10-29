@@ -20,6 +20,16 @@ type User struct {
 	CreatedAt     time.Time `json:"createdAt"`
 }
 
+// SessionInfo is what a user may see of one of their sign-ins: no token,
+// hash or session ID.
+type SessionInfo struct {
+	CreatedAt  time.Time `json:"createdAt"`
+	LastSeenAt time.Time `json:"lastSeenAt"`
+	ExpiresAt  time.Time `json:"expiresAt"`
+	// Current marks the sign-in the request came with.
+	Current bool `json:"current"`
+}
+
 type Session struct {
 	ID              string    `json:"id"`
 	UserID          int64     `json:"userId"`
@@ -63,6 +73,9 @@ type Store interface {
 	TouchSession(ctx context.Context, tokenHash string, lastSeenAt time.Time) error
 	DeleteSession(ctx context.Context, tokenHash string) error
 	DeleteUserSessions(ctx context.Context, userID int64) error
+	// ListUserSessions lists the user's live sign-ins, oldest first, marking
+	// the one whose token hash is currentHash.
+	ListUserSessions(ctx context.Context, userID int64, currentHash string) ([]SessionInfo, error)
 	CreateAuthToken(ctx context.Context, userID *int64, email, tokenHash, kind string, expiresAt time.Time) (AuthToken, error)
 	GetAuthToken(ctx context.Context, tokenHash, kind string) (AuthToken, error)
 	ConsumeAuthToken(ctx context.Context, tokenHash, kind string) (AuthToken, error)

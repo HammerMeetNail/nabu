@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -22,8 +23,8 @@ func TestExportGateHoldsOneExportPerHouseholdAcrossInstances(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	first, second := NewExportGate(), NewExportGate()
-	first.ShareHouseholds(PostgresHouseholdLock(db))
-	second.ShareHouseholds(PostgresHouseholdLock(db))
+	first.ShareAcrossInstances(PostgresExportLock(db))
+	second.ShareAcrossInstances(PostgresExportLock(db))
 	entered := make(chan struct{}, 1)
 	resume := make(chan struct{})
 	slow := first.Wrap(func(w http.ResponseWriter, r *http.Request) {
@@ -89,7 +90,7 @@ func TestHouseholdExportLockLeavesDeliveryAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	gate := NewExportGate()
-	gate.ShareHouseholds(PostgresHouseholdLock(db))
+	gate.ShareAcrossInstances(PostgresExportLock(db))
 	request := httptest.NewRequest(http.MethodGet, "/export", nil)
 	request = request.WithContext(middleware.WithUser(ctx, auth.User{ID: owner.ID, HouseholdID: &hh.ID}))
 
@@ -133,5 +134,59 @@ func TestHouseholdExportLockLeavesDeliveryAlone(t *testing.T) {
 	close(resume)
 	if code := testsync.Receive(t, ctx, done); code != 200 {
 		t.Fatalf("export = %d", code)
+	}
+}
+
+// A person's export holds across instances too, under a key of its own: it
+// never meets the export or the delivery lock of the household with the same ID.
+func TestExportGateHoldsOnePersonalExportAcrossInstances(t *testing.T) {
+	db := testdb.New(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := database.Migrate(ctx, db); err != nil {
+		t.Fatal(err)
+	}
+	first, second := NewExportGate(), NewExportGate()
+	first.ShareAcrossInstances(PostgresExportLock(db))
+	second.ShareAcrossInstances(PostgresExportLock(db))
+	entered := make(chan struct{}, 1)
+	resume := make(chan struct{})
+	slow := first.WrapUser(func(w http.ResponseWriter, r *http.Request) {
+		entered <- struct{}{}
+		testsync.Pause(r.Context(), resume)
+		w.WriteHeader(200)
+	})
+	quick := func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(204) }
+	request := func(userID, householdID int64) *http.Request {
+		r := httptest.NewRequest(http.MethodGet, "/export", nil)
+		return r.WithContext(middleware.WithUser(ctx, auth.User{ID: userID, HouseholdID: &householdID}))
+	}
+	done := make(chan int, 1)
+	go func() { w := httptest.NewRecorder(); slow(w, request(7, 9)); done <- w.Code }()
+	testsync.Receive(t, ctx, entered)
+
+	w := httptest.NewRecorder()
+	second.WrapUser(quick)(w, request(7, 9))
+	if w.Code != 429 || w.Header().Get("Retry-After") == "" {
+		t.Fatalf("the second instance started a person's second export: %d", w.Code)
+	}
+	w = httptest.NewRecorder()
+	second.Wrap(quick)(w, request(8, 7))
+	if w.Code != 204 {
+		t.Fatalf("household 7's export while user 7 exports = %d", w.Code)
+	}
+	sendCtx, sendCancel := context.WithTimeout(ctx, 3*time.Second)
+	defer sendCancel()
+	if err := household.NewPostgresStore(db).WithMember(sendCtx, 8, 7, func(string) error { return nil }); !errors.Is(err, household.ErrNotMember) {
+		t.Fatalf("household 7's delivery lock while user 7 exports: %v", err)
+	}
+	close(resume)
+	if code := testsync.Receive(t, ctx, done); code != 200 {
+		t.Fatalf("first export = %d", code)
+	}
+	w = httptest.NewRecorder()
+	second.WrapUser(quick)(w, request(7, 9))
+	if w.Code != 204 {
+		t.Fatalf("the person's next export = %d; its lock outlived the first", w.Code)
 	}
 }

@@ -123,6 +123,8 @@ func TestAPIKeyIsLimitedToLogRoutes(t *testing.T) {
 		{http.MethodPatch, "/api/household", `{"name":"x"}`},
 		{http.MethodGet, "/api/household/invites", ""},
 		{http.MethodGet, "/api/logs/export", ""},
+		{http.MethodGet, "/api/me/export", ""},
+		{http.MethodGet, "/api/me/logs/export", ""},
 		{http.MethodDelete, "/api/me", `{"confirm":"DELETE"}`},
 		{http.MethodPost, "/api/auth/password", `{"newPassword":"something-new"}`},
 		{http.MethodGet, "/api/stats/overview", ""},
