@@ -100,7 +100,7 @@ test('notification bulk actions have matching large targets and clear all histor
 });
 
 test('a pending clear stays open and cannot close a reopened notification drawer', async ({page}) => {
-  const joinMutation = await observeModuleCalls(page, 'app', 'updateNotification', {exported: false});
+  const joinMutation = await observeModuleCalls(page, 'notification-panel', 'updateNotification');
   const entered = deferred(), release = deferred();
   await page.route('**/api/notifications', async route => {
     if (route.request().method() === 'DELETE') {

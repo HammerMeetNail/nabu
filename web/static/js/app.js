@@ -1,5 +1,5 @@
 import { createAppState, resetAuthedState } from "./state.js";
-import { state, initState, setRenderer, owned, withCurrentContext } from "./app-core.js";
+import { state, initState, setRenderer, setTopBar, owned, withCurrentContext } from "./app-core.js";
 import { runAction } from "./actions.js";
 import { showToast } from "./toast.js";
 import { bootstrapIdentity, checkIdentity, changeIdentity, contextSnapshot, contextIsCurrent, resultIsCurrent, sameOrigin, storedIdentity, onExternalIdentityChange, clearBrowserIdentity } from "./browser-context.js";
@@ -15,7 +15,7 @@ import { morphInnerHTML } from "./morph.js";
 import { createSheetController } from "./sheets.js";
 import { routeForPath, statsSectionForPath, syncTabURL, tabForPath } from "./router.js";
 import { apiMe, apiFetch } from "./api.js";
-import { loadNotificationPage, mutateNotification } from "./notification-data.js";
+import { loadNotifData, closeNotifPanel } from "./notification-panel.js";
 import { renderExports, cancelExport } from "./exports.js";
 import { renderApiKeys, loadApiKeysData } from "./api-keys.js";
 import { replayQueue, queuedLogs, discardQueuedLog } from "./offline-queue.js";
@@ -47,9 +47,10 @@ import { loadTimer, startTimer, stopTimer, clearFinishedTimer, elapsedSeconds, f
 import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeActivity, renderHomeManageView, renderConfirmRemoveFromHomeSheet, refreshHomeCardTimes } from "./home.js";
 import { wideLayout, onWideLayoutChange, placeHomeTab, keyboardShortcut } from "./desktop.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
-import { renderNotificationPanel, maybeSubscribePush, pushOfferState, setPushOfferState, shouldOfferPush, renderPushOffer, clearAppBadge, loadNotificationPreferences, saveNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
+import { maybeSubscribePush, pushOfferState, setPushOfferState, shouldOfferPush, renderPushOffer, loadNotificationPreferences, saveNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
 import { renderScheduleTab } from "./schedule-tab.js";
-import { renderProfileSheet, renderProfileForm } from "./profile.js";
+import { renderProfileSheet, renderProfileForm, saveProfile } from "./profile.js";
+import { setError, hideError } from "./form-errors.js";
 import { createOnboarding, duplicateName, householdNameFor, onboardingPicks, renderOnboarding, renderPacksSheet, MAX_PACK_NAMES } from "./onboarding.js";
 
 /**
@@ -150,6 +151,7 @@ function maybeCheckSWUpdate() {
 }
 
 setRenderer(render);
+setTopBar(updateTopBar);
 export function render(root) {
   maybeCheckSWUpdate();
   sheetController?.beforeRender();
@@ -1151,30 +1153,6 @@ async function loadDayNotesData() {
   }
 }
 
-let notificationPanelIntent = 0;
-
-function renderNotifPanel() {
-  const container = document.querySelector("#notif-panel-container");
-  if (container && !container.hidden) container.innerHTML = renderNotificationPanel(state.notifications, state);
-}
-async function loadNotifData(options) {
-  if (!state.user) return;
-  const pending = loadNotificationPage(state, options);
-  renderNotifPanel();
-  await pending;
-  updateTopBar();
-  renderNotifPanel();
-}
-async function updateNotification(action, id) {
-  const panelIntent = notificationPanelIntent;
-  const pending = mutateNotification(state, action, id);
-  renderNotifPanel();
-  const updated = await pending;
-  updateTopBar();
-  if (updated && action === "clear" && panelIntent === notificationPanelIntent) closeNotifPanel();
-  renderNotifPanel();
-}
-
 async function loadNotificationPrefs() {
   const contextScope = captureScope(state);
   if (!state.user) return;
@@ -1392,15 +1370,6 @@ function renderTimerChip() {
   sheetController?.syncBackground();
 }
 
-function closeNotifPanel() {
-  notificationPanelIntent++;
-  const container = document.querySelector("#notif-panel-container");
-  if (container && !container.hidden) {
-    container.hidden = true;
-    container.innerHTML = "";
-  }
-}
-
 function closeProfilePanel() {
   const container = document.querySelector("#profile-panel-container");
   if (container && !container.hidden) {
@@ -1418,19 +1387,6 @@ function closeAllPanels() {
 function anyPanelOpen() {
   return ["#notif-panel-container", "#profile-panel-container"]
     .some(id => document.querySelector(id)?.hidden === false);
-}
-
-function setError(containerId, message) {
-  const el = document.querySelector(containerId);
-  if (!el) return;
-  el.textContent = message;
-  el.classList.remove("hidden");
-}
-
-function hideError(containerId) {
-  const el = document.querySelector(containerId);
-  if (!el) return;
-  el.classList.add("hidden");
 }
 
 function adoptUser(user, route = "/") {
@@ -1678,35 +1634,6 @@ async function doResetPassword(form) {
 }
 // PATCH /api/me, then the signed-in user and their member row. False when a
 // newer identity owns the screen.
-async function saveProfile(displayName, avatarColor) {
-  const contextScope = captureScope(state);
-  const { data } = await withCurrentContext(apiFetch("/api/me", { method: "PATCH",
-    body: JSON.stringify(avatarColor ? { displayName, avatarColor } : { displayName }) }), contextScope);
-  if (!contextScope.current() || data?.user?.id !== state.user?.id) return false;
-  const { displayName: name, avatarColor: color } = data.user;
-  state.user = { ...state.user, displayName: name, avatarColor: color };
-  state.members = (state.members || []).map(m => m.userId === state.user.id ? { ...m, displayName: name, avatarColor: color } : m);
-  return true;
-}
-
-// Settings → Account: the name and color the household sees.
-async function doSaveProfile(form) {
-  if (form.dataset.busy) return;
-  hideError("#profile-error");
-  const displayName = form.querySelector("#profile-name").value.trim();
-  if (!displayName) { setError("#profile-error", "Enter your name"); return; }
-  const avatarColor = form.querySelector('input[name="avatarColor"]:checked')?.value;
-  const contextScope = captureScope(state);
-  form.dataset.busy = "true";
-  try {
-    if (!await saveProfile(displayName, avatarColor)) return;
-    render(document.querySelector("#app"));
-    showToast("Profile saved", "success");
-  } catch (err) {
-    if (contextScope.current() && form.isConnected) setError("#profile-error", err.message || "Could not save your profile. Please retry.");
-  } finally { delete form.dataset.busy; }
-}
-
 async function doChangePassword(form) {
   if (form.dataset.busy) return;
   hideError("#change-password-error");
@@ -2226,29 +2153,6 @@ export async function init() {
         void doDeleteAccount();
         break;
 
-      case "open-notifications": {
-        e.preventDefault();
-        notificationPanelIntent++;
-        clearAppBadge();
-        const container = document.querySelector("#notif-panel-container");
-        if (container) { container.hidden = false; renderNotifPanel(); }
-        void loadNotifData();
-        break;
-      }
-      case "close-notifications":
-        e.preventDefault(); closeNotifPanel(); break;
-      case "refresh-notifications":
-        e.preventDefault(); void loadNotifData(); break;
-      case "more-notifications":
-        e.preventDefault(); void loadNotifData({append:true}); break;
-      case "mark-all-read":
-        e.preventDefault(); void updateNotification("all"); break;
-      case "clear-all-notifications":
-        e.preventDefault(); void updateNotification("clear"); break;
-      case "dismiss-notification":
-        e.preventDefault(); void updateNotification("delete", Number(actionEl.dataset.notifId)); break;
-      case "mark-notif-read":
-        e.preventDefault(); void updateNotification("read", Number(actionEl.dataset.notifId)); break;
       case "open-profile": {
         e.preventDefault();
         closeNotifPanel();
@@ -4019,9 +3923,6 @@ export async function init() {
         break;
       case "change-password":
         doChangePassword(form);
-        break;
-      case "save-profile":
-        void doSaveProfile(form);
         break;
       case "update-household":
         doUpdateHousehold(form);
