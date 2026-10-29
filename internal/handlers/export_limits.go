@@ -3,6 +3,8 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"database/sql"
+	"database/sql/driver"
 	"errors"
 	"log"
 	"net/http"
@@ -21,9 +23,47 @@ const exportDuration = 20 * time.Second
 
 // ExportGate is shared by both routes in one server. There is no waiting queue:
 // a household cannot occupy both slots and all allocations are concurrency-bound.
+// The two slots bound this instance's memory; with a household lock, one
+// export per household also holds across every instance.
 type ExportGate struct {
 	mu     sync.Mutex
 	active map[int64]bool
+	lock   HouseholdLock
+}
+
+// HouseholdLock holds a household's export across every instance until
+// release is called. held is false while another instance's export holds it.
+type HouseholdLock func(ctx context.Context, householdID int64) (release func(), held bool, err error)
+
+// ShareHouseholds makes one export per household hold across instances.
+func (g *ExportGate) ShareHouseholds(lock HouseholdLock) { g.lock = lock }
+
+// PostgresHouseholdLock holds a household's export with a session advisory
+// lock on a dedicated connection, keyed by the negated household ID so it
+// never meets the app's other advisory keys, which are all positive. The
+// lock is released when the export ends, or with its connection.
+func PostgresHouseholdLock(db *sql.DB) HouseholdLock {
+	return func(ctx context.Context, householdID int64) (func(), bool, error) {
+		conn, err := db.Conn(ctx)
+		if err != nil {
+			return nil, false, err
+		}
+		var held bool
+		if err := conn.QueryRowContext(ctx, `SELECT pg_try_advisory_lock($1)`, -householdID).Scan(&held); err != nil || !held {
+			_ = conn.Close()
+			return nil, false, err
+		}
+		return func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_unlock($1)`, -householdID); err != nil {
+				// Never return a connection that may still hold the lock to the
+				// pool: discarding it ends the lock with its session.
+				_ = conn.Raw(func(any) error { return driver.ErrBadConn })
+			}
+			_ = conn.Close()
+		}, true, nil
+	}
 }
 
 func NewExportGate() *ExportGate { return &ExportGate{active: map[int64]bool{}} }
@@ -47,6 +87,19 @@ func (g *ExportGate) Wrap(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		defer func() { g.mu.Lock(); delete(g.active, id); g.mu.Unlock() }()
+		if g.lock != nil {
+			release, held, err := g.lock(r.Context(), id)
+			if err != nil {
+				writeServerError(w, "export failed", err)
+				return
+			}
+			if !held {
+				w.Header().Set("Retry-After", "20")
+				writeError(w, http.StatusTooManyRequests, "an export is already running; try again shortly")
+				return
+			}
+			defer release()
+		}
 		next(w, r)
 	}
 }

@@ -350,6 +350,14 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 	// working while stopping brute-force sweeps.
 	joinLimiter := middleware.NewRateLimiter(cfg.RateLimitJoinMax, time.Minute)
 	joinLimiter.SetMaxClients(cfg.RateLimitMaxClients)
+	// Sign-in and join limits guard against guessing, so with a database
+	// every instance counts each client in one window. The global backstop
+	// and the operator limit stay per instance: they only bound load.
+	if db != nil {
+		counter := middleware.NewPostgresCounter(db)
+		rateLimiter.Share(counter, "auth")
+		joinLimiter.Share(counter, "join")
+	}
 	if err := joinLimiter.SetTrustedProxies(cfg.TrustedProxyCIDRs); err != nil {
 		panic("invalid trusted proxy configuration")
 	}
@@ -448,6 +456,9 @@ func newServerWithDB(cfg config.Config, db *sql.DB, queryMetrics *database.Query
 		}
 	})
 	exportGate := handlers.NewExportGate()
+	if db != nil {
+		exportGate.ShareHouseholds(handlers.PostgresHouseholdLock(db))
+	}
 	mux.HandleFunc("/api/household/data", method(http.MethodGet, middleware.RequireAuth(exportGate.Wrap(exportHandler.Data))))
 	mux.HandleFunc("/api/household/invites", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
