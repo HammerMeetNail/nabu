@@ -1,4 +1,8 @@
+import { registerActions } from "./actions.js";
 import { apiFetch } from "./api.js";
+import { state, rerender, withCurrentContext } from "./app-core.js";
+import { captureScope } from "./request-scope.js";
+import { showToast } from "./toast.js";
 import { escapeHTML } from "./utils.js";
 
 export async function loadApiKeys() {
@@ -68,3 +72,75 @@ export function renderApiKeys(state, origin = "") {
     <p class="text-secondary mt-2">Send the key as <code>Authorization: Bearer &lt;key&gt;</code>, for example <code>curl -H "Authorization: Bearer &lt;key&gt;" ${escapeHTML(origin)}/api/chores</code>.</p>
   </div>`;
 }
+
+export async function loadApiKeysData() {
+  const scope = captureScope(state, "api-keys");
+  if (!state.user) return;
+  try {
+    state.apiKeys = await withCurrentContext(loadApiKeys(), scope);
+  } catch {}
+}
+
+async function doCreateApiKey(form) {
+  if (state.apiKeyBusy) return;
+  const name = form.querySelector("#api-key-name").value.trim();
+  if (!name) return;
+  captureScope(state, "api-keys"); // supersede list reads started before this change
+  const scope = captureScope(state);
+  state.apiKeyBusy = true;
+  state.apiKeyError = null;
+  rerender();
+  try {
+    const data = await createApiKey(name);
+    if (!scope.current()) return;
+    state.apiKeyIssued = data.token;
+    state.apiKeys = [data.key, ...(state.apiKeys || [])];
+    form.reset();
+  } catch (err) {
+    if (scope.current()) state.apiKeyError = err.message || "Could not create the key. Please retry.";
+  } finally {
+    if (scope.current()) { state.apiKeyBusy = false; rerender(); }
+  }
+}
+
+async function doRevokeApiKey(id, name) {
+  if (state.apiKeyBusy || !window.confirm(`Revoke "${name}"? Scripts using it will stop working right away.`)) return;
+  captureScope(state, "api-keys"); // supersede list reads started before this change
+  const scope = captureScope(state);
+  state.apiKeyBusy = true;
+  state.apiKeyError = null;
+  rerender();
+  try {
+    await revokeApiKey(id);
+    if (!scope.current()) return;
+    state.apiKeys = await loadApiKeys();
+  } catch (err) {
+    if (scope.current()) state.apiKeyError = err.message || "Could not revoke the key. Please retry.";
+  } finally {
+    if (scope.current()) { state.apiKeyBusy = false; rerender(); }
+  }
+}
+
+registerActions("click", {
+  "revoke-api-key"(event, el) {
+    event.preventDefault();
+    void doRevokeApiKey(el.dataset.keyId, el.dataset.keyName || "this key");
+  },
+  "copy-api-key"(event) {
+    event.preventDefault();
+    const token = state.apiKeyIssued;
+    if (!token) return;
+    navigator.clipboard?.writeText(token).then(
+      () => showToast("API key copied", "success"),
+      () => showToast("Copy failed. Select the key and copy it manually.", "error"));
+  },
+  "dismiss-api-key"(event) {
+    event.preventDefault();
+    state.apiKeyIssued = null;
+    rerender();
+  },
+});
+
+registerActions("submit", {
+  "create-api-key"(_event, form) { void doCreateApiKey(form); },
+});

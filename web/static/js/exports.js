@@ -1,5 +1,8 @@
+import { registerActions } from "./actions.js";
 import { apiFetch } from "./api.js";
+import { state, rerender } from "./app-core.js";
 import { assertContext } from "./browser-context.js";
+import { captureScope } from "./request-scope.js";
 import { escapeHTML } from "./utils.js";
 
 export function renderExports(state, canExportHousehold) {
@@ -54,3 +57,52 @@ export async function downloadCSV(kind, range, origin, signal) {
     signal.removeEventListener("abort", abort);
   }
 }
+
+let activeExport = null;
+
+// Stops the export in progress. Its rows belong to the identity that started
+// it, so a change of identity stops it.
+export function cancelExport() {
+  activeExport?.controller.abort();
+  activeExport = null;
+}
+
+registerActions("click", {
+  "export-csv"(_event, el) {
+    if (state.exportBusy) return;
+    const scope = captureScope(state, "export");
+    const ticket = {scope, controller:new AbortController()};
+    activeExport = ticket;
+    state.exportBusy = true;
+    state.exportError = null;
+    state.exportStatus = null;
+    const range = {...(state.exportRange || {})};
+    rerender();
+    downloadCSV(el.dataset.kind, range, scope.origin, ticket.controller.signal)
+      .then(() => { if (scope.current()) state.exportStatus = "Export ready."; })
+      .catch(err => {
+        if (scope.current() && !ticket.controller.signal.aborted) state.exportError = err.name === "TimeoutError"
+          ? "Export took too long. Choose a smaller date range and retry." : err.message;
+      })
+      .finally(() => {
+        if (activeExport === ticket) activeExport = null;
+        if (scope.current()) { state.exportBusy = false; rerender(); }
+      });
+  },
+  "cancel-export"() {
+    cancelExport();
+    captureScope(state, "export");
+    state.exportBusy = false;
+    state.exportError = null;
+    state.exportStatus = "Export canceled.";
+    rerender();
+  },
+});
+
+registerActions("change", {
+  "export-range"(_event, el) {
+    state.exportRange = {...(state.exportRange || {}), [el.dataset.field]:el.value};
+    state.exportError = null;
+    state.exportStatus = null;
+  },
+});
