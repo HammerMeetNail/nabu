@@ -10,8 +10,8 @@
 | Phase 0 (all of 0.1–0.9) | Merged: #155 (all of Phase 0), #157 (AGENTS.md invariant). |
 | 1.1 Smart defaults | Merged: a new dose starts from the last one (#161). |
 | 1.2 Offline-first launch | Merged: PWA (#160), iOS (#163). |
-| 1.3 PWA rendering and data layer | Merged: router (#162), modulepreload and a versioned precache (#160), Home updated from the save's answer instead of 3 refetches (#165), and keyed morphing (#177). Not started: the SWR data store and splitting `app.js`. |
-| 1.4 iOS architecture | Not started. |
+| 1.3 PWA rendering and data layer | Merged: router (#162), modulepreload and a versioned precache (#160), Home updated from the save's answer instead of 3 refetches (#165), and keyed morphing (#177). Open: two duplicate requests removed (#183; launch makes 8 requests instead of 9, the Schedule tab 3 instead of 4) and splitting `app.js`, part 1 (#184: a shared core and an actions registry, with CSV export and API keys moved out). Not needed: the SWR data store, because a request count across a full session found 1–4 requests per tab, and those two duplicates were the only waste. |
+| 1.4 iOS architecture | Open: #185 (only a debug build reads test hooks). Not started: `@Observable` feature models, Swift 6, typed errors, a String Catalog, a configuration per environment and version numbering. |
 | 1.5 Stats API consolidation | Merged: `GET /api/stats/dashboard`, two requests per visit (#164). |
 | 2.1 Onboarding, steps 1–4 | Merged: name and color (#166), setup with packs (#168). |
 | 2.1 step 5 (QR) and 2.5 (invite page) | Merged: #170. |
