@@ -23,6 +23,18 @@ export function setTopBar(update) { topBar = update; }
 // Re-renders the top bar: the household, the profile and the notification badge.
 export function refreshTopBar() { topBar(); }
 
+let identityFlow = {};
+// app.js registers how an answer that changes who is signed in becomes the
+// app's identity: finish, recover and joinPendingInvite below.
+export function setIdentityFlow(flow) { identityFlow = flow; }
+// Adopts a confirmed identity, loads its data and renders. False when a newer
+// identity owns the screen.
+export function finishIdentity(result, route, afterAdopt) { return identityFlow.finish(result, route, afterAdopt); }
+// After an identity change fails, shows whichever identity the browser now holds.
+export function recoverIdentity(error, route, afterAdopt) { return identityFlow.recover(error, route, afterAdopt); }
+// Accepts an invite opened before signing in, if the user has no household.
+export function joinPendingInvite() { return identityFlow.joinPendingInvite(); }
+
 // Capture ownership when a continuation is attached, before its request settles.
 export function owned(callback) { return captureScope(state).guard(callback); }
 

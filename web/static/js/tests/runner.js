@@ -2742,6 +2742,71 @@ describe("Action registry", () => {
     assert.equal(error.textContent, "Enter your name");
     assert.equal(error.classList.contains("hidden"), false);
   });
+
+  it("the sign-in screens register their actions on import", async () => {
+    const core = await import("../app-core.js");
+    const { createAppState } = await import("../state.js");
+    const { registerActions, runAction } = await import("../actions.js");
+    const { operatorLoginDestination } = await import("../auth.js");
+    core.initState(createAppState());
+    let renders = 0;
+    core.setRenderer(() => { renders++; });
+    document.body.innerHTML = `<div id="app"></div>
+      <input id="login-password" type="password">
+      <button data-action="toggle-password" data-target="login-password" aria-pressed="false" aria-label="Show password">Show</button>`;
+    let prevented = 0;
+    const event = { preventDefault() { prevented++; } };
+
+    assert.equal(runAction("click", "show-register", event, { dataset: { action: "show-register" } }), true);
+    assert.equal(core.state.currentRoute, "/register");
+    assert.equal(runAction("click", "show-forgot-password", event, { dataset: { action: "show-forgot-password" } }), true);
+    assert.equal(core.state.currentRoute, "/forgot-password");
+    assert.equal(renders, 2);
+
+    // Show/Hide changes only the field, so the other fields keep what was typed.
+    const toggle = document.querySelector('[data-action="toggle-password"]');
+    assert.equal(runAction("click", "toggle-password", event, toggle), true);
+    assert.equal(document.querySelector("#login-password").type, "text");
+    assert.equal(toggle.textContent, "Hide");
+    assert.equal(toggle.getAttribute("aria-pressed"), "true");
+    assert.equal(toggle.getAttribute("aria-label"), "Hide password");
+    runAction("click", "toggle-password", event, toggle);
+    assert.equal(document.querySelector("#login-password").type, "password");
+    assert.equal(renders, 2);
+    assert.equal(prevented, 4);
+
+    for (const name of ["login", "register", "magic-link-request", "password-forgot", "password-reset"]) {
+      assert.throws(() => registerActions("submit", { [name]() {} }), /registered twice/, `${name} is registered`);
+    }
+    for (const name of ["google-signin", "apple-signin"]) {
+      assert.throws(() => registerActions("click", { [name]() {} }), /registered twice/, `${name} is registered`);
+    }
+
+    const savedWindow = globalThis.window;
+    try {
+      globalThis.window = { location: new URL("http://localhost:8080/login?next=/operator") };
+      assert.equal(operatorLoginDestination(), "/operator");
+      globalThis.window = { location: new URL("http://localhost:8080/login?next=https://evil.example") };
+      assert.equal(operatorLoginDestination(), null);
+      globalThis.window = { location: new URL("http://localhost:8080/register?next=/operator") };
+      assert.equal(operatorLoginDestination(), null);
+    } finally { globalThis.window = savedWindow; }
+  });
+
+  it("feature modules reach the identity flow app.js registers", async () => {
+    const core = await import("../app-core.js");
+    const calls = [];
+    core.setIdentityFlow({
+      finish: async (result, route, afterAdopt) => { calls.push(["finish", result, route, afterAdopt]); return true; },
+      recover: async (error, route) => { calls.push(["recover", error, route]); },
+      joinPendingInvite: async () => { calls.push(["join"]); },
+    });
+    const afterAdopt = () => {};
+    assert.equal(await core.finishIdentity("result", "/settings", afterAdopt), true);
+    await core.recoverIdentity("error");
+    await core.joinPendingInvite();
+    assert.deepEqual(calls, [["finish", "result", "/settings", afterAdopt], ["recover", "error", undefined], ["join"]]);
+  });
 });
 
 // head-init.js sizes the app frame (--app-h) before first paint. It runs as a

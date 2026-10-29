@@ -1,5 +1,5 @@
 import { createAppState, resetAuthedState } from "./state.js";
-import { state, initState, setRenderer, setTopBar, owned, withCurrentContext } from "./app-core.js";
+import { state, initState, setRenderer, setTopBar, setIdentityFlow, owned, withCurrentContext } from "./app-core.js";
 import { runAction } from "./actions.js";
 import { showToast } from "./toast.js";
 import { bootstrapIdentity, checkIdentity, changeIdentity, contextSnapshot, contextIsCurrent, resultIsCurrent, sameOrigin, storedIdentity, onExternalIdentityChange, clearBrowserIdentity } from "./browser-context.js";
@@ -22,13 +22,9 @@ import { replayQueue, queuedLogs, discardQueuedLog } from "./offline-queue.js";
 import { escapeHTML, localDateStr, shiftDateStr, formatVolume, renderAccessSuspendedCard } from "./utils.js";
 import {
   loadSession,
-  handleLogin,
-  handleRegister,
   handleLogout,
-  handleMagicLinkRequest,
-  handleForgotPassword,
-  handleResetPassword,
   handleChangePassword,
+  operatorLoginDestination,
   renderLoginView,
   renderRegisterView,
   renderMagicLinkRequestView,
@@ -152,6 +148,13 @@ function maybeCheckSWUpdate() {
 
 setRenderer(render);
 setTopBar(updateTopBar);
+setIdentityFlow({
+  finish: finishIdentity,
+  recover: recoverIdentity,
+  joinPendingInvite: async () => {
+    if (state._pendingInviteCode && !state.household) await doJoinWithCode(state._pendingInviteCode);
+  },
+});
 export function render(root) {
   maybeCheckSWUpdate();
   sheetController?.beforeRender();
@@ -1499,10 +1502,6 @@ async function recoverIdentity(error, route = "/", afterAdopt = () => {}) {
   if (error.confirmed) await reloadAfterAuth();
   if (scope.current()) render(document.querySelector("#app"));
 }
-function operatorLoginDestination() {
-  if (window.location.pathname !== "/login") return null;
-  return new URL(window.location.href).searchParams.get("next") === "/operator" ? "/operator" : null;
-}
 async function doLogout() {
   if (state.logoutBusy) return;
   const ticket = ++identityUIRevision, app = document.querySelector("#app");
@@ -1523,26 +1522,6 @@ async function doLogout() {
     } else showToast(err.message || "Could not finish signing out. Please retry.", "error");
   }
   if (ticket === identityUIRevision) { state.logoutBusy = false; render(app); }
-}
-async function doLogin(form) {
-  if (form.dataset.busy) return;
-  hideError("#login-error");
-  form.dataset.busy = "true";
-  try {
-    const result = await handleLogin(form.querySelector("#login-email").value, form.querySelector("#login-password").value);
-    if (!resultIsCurrent(result)) return;
-    if (result.ok && result.user) {
-      const destination = operatorLoginDestination();
-      if (destination) { window.location.assign(destination); return; }
-      // Signing in from a tab link (e.g. a shared Stats link) opens that tab.
-      const path = window.location.pathname;
-      if (!await finishIdentity(result, tabForPath(path) ? routeForPath(path) : "/")) return;
-      if (state._pendingInviteCode && !state.household) await doJoinWithCode(state._pendingInviteCode);
-    } else if (form.isConnected) setError("#login-error",result.data?.error || "Invalid email or password");
-  } catch (err) {
-    await recoverIdentity(err);
-    if (form.isConnected) setError("#login-error",err.message || "Could not sign in. Please retry.");
-  } finally { delete form.dataset.busy; }
 }
 
 async function reloadAfterAuth() {
@@ -1582,58 +1561,6 @@ async function reloadAfterAuth() {
 }
 
 
-async function doRegister(form) {
-  if (form.dataset.busy) return;
-  hideError("#register-error"); hideError("#register-status");
-  const email = form.querySelector("#reg-email").value, password = form.querySelector("#reg-password").value;
-  form.dataset.busy = "true";
-  try {
-    const result = await handleRegister(email,password);
-    if (!resultIsCurrent(result)) return;
-    if (result.ok && result.data?.user && result.user) {
-      if (!await finishIdentity(result)) return;
-      if (state._pendingInviteCode && !state.household) await doJoinWithCode(state._pendingInviteCode);
-    } else if (form.isConnected) {
-      if (result.ok) setError("#register-status","If this email is new, check your inbox. You can also sign in or request a magic link.");
-      else setError("#register-error",result.data?.error || "Registration failed");
-    }
-  } catch (err) {
-    await recoverIdentity(err);
-    if (form.isConnected) setError("#register-error","We couldn't confirm registration. Try again, or sign in if your account was created.");
-  } finally { delete form.dataset.busy; }
-}
-async function doMagicLinkRequest(form) {
-  const contextScope = captureScope(state);
-  const scope = captureScope(state);
-  try {
-    await withCurrentContext(handleMagicLinkRequest(form.querySelector("#magic-email").value), contextScope);
-    if (scope.current() && form.isConnected) setError("#magic-link-status","Check your email for the magic link!");
-  } catch {
-    if (!contextScope.current()) return; if (scope.current()) showToast("Could not request a link. Please retry.","error"); }
-}
-async function doForgotPassword(form) {
-  const contextScope = captureScope(state);
-  const scope = captureScope(state);
-  try {
-    await withCurrentContext(handleForgotPassword(form.querySelector("#forgot-email").value), contextScope);
-    if (scope.current()) showToast("If an account exists, a reset link has been sent.","info");
-  } catch {
-    if (!contextScope.current()) return; if (scope.current()) showToast("Could not request a link. Please retry.","error"); }
-}
-async function doResetPassword(form) {
-  if (form.dataset.busy) return;
-  hideError("#reset-error");
-  const password = form.querySelector("#reset-password").value;
-  if (password !== form.querySelector("#reset-confirm").value) { setError("#reset-error","Passwords do not match"); return; }
-  form.dataset.busy = "true";
-  try {
-    const result = await handleResetPassword(form.querySelector("input[name='token']").value,password);
-    if (!resultIsCurrent(result)) return;
-    if (result.ok && result.user) await finishIdentity(result);
-    else if (form.isConnected) setError("#reset-error",result.data?.error || "Password reset failed");
-  } catch (err) { await recoverIdentity(err); if (form.isConnected) setError("#reset-error",err.message || "Password reset failed"); }
-  finally { delete form.dataset.busy; }
-}
 // PATCH /api/me, then the signed-in user and their member row. False when a
 // newer identity owns the screen.
 async function doChangePassword(form) {
@@ -2053,41 +1980,6 @@ export async function init() {
 
     const actionScope = captureScope(state);
     switch (action) {
-      case "google-signin":
-      case "apple-signin": {
-        const oauthPath = action === "apple-signin"
-          ? "/api/auth/apple/web/login"
-          : "/api/auth/google/login";
-        window.location.href = oauthPath + (operatorLoginDestination() ? "?redirect=%2Foperator" : "");
-        break;
-      }
-      case "toggle-password": {
-        // Straight on the DOM: a re-render would clear the fields not in focus.
-        e.preventDefault();
-        const input = document.getElementById(actionEl.dataset.target);
-        if (!input) break;
-        const show = input.type === "password";
-        input.type = show ? "text" : "password";
-        actionEl.textContent = show ? "Hide" : "Show";
-        actionEl.setAttribute("aria-pressed", String(show));
-        actionEl.setAttribute("aria-label", show ? "Hide password" : "Show password");
-        break;
-      }
-      case "show-login":
-      case "show-register":
-      case "show-magic-link":
-      case "show-forgot-password": {
-        e.preventDefault();
-        const routes = {
-          "show-login": "/",
-          "show-register": "/register",
-          "show-magic-link": "/magic-link",
-          "show-forgot-password": "/forgot-password",
-        };
-        state.currentRoute = routes[action];
-        render(app);
-        break;
-      }
       case "discard-log-draft": {
         e.preventDefault();
         const draft = state.activeSheetData;
@@ -3908,21 +3800,6 @@ export async function init() {
     if (runAction("submit", action, e, form)) return;
 
     switch (action) {
-      case "login":
-        doLogin(form);
-        break;
-      case "register":
-        doRegister(form);
-        break;
-      case "magic-link-request":
-        doMagicLinkRequest(form);
-        break;
-      case "password-forgot":
-        doForgotPassword(form);
-        break;
-      case "password-reset":
-        doResetPassword(form);
-        break;
       case "change-password":
         doChangePassword(form);
         break;

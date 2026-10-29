@@ -1,6 +1,12 @@
 import { getCSRFToken } from "./api.js";
 import { escapeHTML } from "./utils.js";
-import { changeIdentity, logoutIdentity, originHeaders } from "./browser-context.js";
+import { changeIdentity, logoutIdentity, originHeaders, resultIsCurrent } from "./browser-context.js";
+import { registerActions } from "./actions.js";
+import { state, rerender, withCurrentContext, finishIdentity, recoverIdentity, joinPendingInvite } from "./app-core.js";
+import { setError, hideError } from "./form-errors.js";
+import { captureScope } from "./request-scope.js";
+import { routeForPath, tabForPath } from "./router.js";
+import { showToast } from "./toast.js";
 
 export async function loadSession() {
   const res = await fetch("/api/me");
@@ -118,6 +124,131 @@ export async function handleChangePassword(currentPassword, newPassword) {
   return { ok: res.ok, data: await res.json() };
  });
 }
+
+// Signing in at /login?next=/operator returns to the operator dashboard.
+export function operatorLoginDestination() {
+  if (window.location.pathname !== "/login") return null;
+  return new URL(window.location.href).searchParams.get("next") === "/operator" ? "/operator" : null;
+}
+
+async function doLogin(form) {
+  if (form.dataset.busy) return;
+  hideError("#login-error");
+  form.dataset.busy = "true";
+  try {
+    const result = await handleLogin(form.querySelector("#login-email").value, form.querySelector("#login-password").value);
+    if (!resultIsCurrent(result)) return;
+    if (result.ok && result.user) {
+      const destination = operatorLoginDestination();
+      if (destination) { window.location.assign(destination); return; }
+      // Signing in from a tab link (e.g. a shared Stats link) opens that tab.
+      const path = window.location.pathname;
+      if (!await finishIdentity(result, tabForPath(path) ? routeForPath(path) : "/")) return;
+      await joinPendingInvite();
+    } else if (form.isConnected) setError("#login-error",result.data?.error || "Invalid email or password");
+  } catch (err) {
+    await recoverIdentity(err);
+    if (form.isConnected) setError("#login-error",err.message || "Could not sign in. Please retry.");
+  } finally { delete form.dataset.busy; }
+}
+
+async function doRegister(form) {
+  if (form.dataset.busy) return;
+  hideError("#register-error"); hideError("#register-status");
+  const email = form.querySelector("#reg-email").value, password = form.querySelector("#reg-password").value;
+  form.dataset.busy = "true";
+  try {
+    const result = await handleRegister(email,password);
+    if (!resultIsCurrent(result)) return;
+    if (result.ok && result.data?.user && result.user) {
+      if (!await finishIdentity(result)) return;
+      await joinPendingInvite();
+    } else if (form.isConnected) {
+      if (result.ok) setError("#register-status","If this email is new, check your inbox. You can also sign in or request a magic link.");
+      else setError("#register-error",result.data?.error || "Registration failed");
+    }
+  } catch (err) {
+    await recoverIdentity(err);
+    if (form.isConnected) setError("#register-error","We couldn't confirm registration. Try again, or sign in if your account was created.");
+  } finally { delete form.dataset.busy; }
+}
+async function doMagicLinkRequest(form) {
+  const contextScope = captureScope(state);
+  const scope = captureScope(state);
+  try {
+    await withCurrentContext(handleMagicLinkRequest(form.querySelector("#magic-email").value), contextScope);
+    if (scope.current() && form.isConnected) setError("#magic-link-status","Check your email for the magic link!");
+  } catch {
+    if (!contextScope.current()) return; if (scope.current()) showToast("Could not request a link. Please retry.","error"); }
+}
+async function doForgotPassword(form) {
+  const contextScope = captureScope(state);
+  const scope = captureScope(state);
+  try {
+    await withCurrentContext(handleForgotPassword(form.querySelector("#forgot-email").value), contextScope);
+    if (scope.current()) showToast("If an account exists, a reset link has been sent.","info");
+  } catch {
+    if (!contextScope.current()) return; if (scope.current()) showToast("Could not request a link. Please retry.","error"); }
+}
+async function doResetPassword(form) {
+  if (form.dataset.busy) return;
+  hideError("#reset-error");
+  const password = form.querySelector("#reset-password").value;
+  if (password !== form.querySelector("#reset-confirm").value) { setError("#reset-error","Passwords do not match"); return; }
+  form.dataset.busy = "true";
+  try {
+    const result = await handleResetPassword(form.querySelector("input[name='token']").value,password);
+    if (!resultIsCurrent(result)) return;
+    if (result.ok && result.user) await finishIdentity(result);
+    else if (form.isConnected) setError("#reset-error",result.data?.error || "Password reset failed");
+  } catch (err) { await recoverIdentity(err); if (form.isConnected) setError("#reset-error",err.message || "Password reset failed"); }
+  finally { delete form.dataset.busy; }
+}
+
+registerActions("submit", {
+  "login": (_e, form) => { void doLogin(form); },
+  "register": (_e, form) => { void doRegister(form); },
+  "magic-link-request": (_e, form) => { void doMagicLinkRequest(form); },
+  "password-forgot": (_e, form) => { void doForgotPassword(form); },
+  "password-reset": (_e, form) => { void doResetPassword(form); },
+});
+
+function signInWith(path) {
+  window.location.href = path + (operatorLoginDestination() ? "?redirect=%2Foperator" : "");
+}
+
+// The sign-in screens, by the action that opens each.
+const AUTH_ROUTES = {
+  "show-login": "/",
+  "show-register": "/register",
+  "show-magic-link": "/magic-link",
+  "show-forgot-password": "/forgot-password",
+};
+function showAuthScreen(event, el) {
+  event.preventDefault();
+  state.currentRoute = AUTH_ROUTES[el.dataset.action];
+  rerender();
+}
+
+registerActions("click", {
+  "google-signin"() { signInWith("/api/auth/google/login"); },
+  "apple-signin"() { signInWith("/api/auth/apple/web/login"); },
+  "toggle-password"(event, el) {
+    // Straight on the DOM: a re-render would clear the fields not in focus.
+    event.preventDefault();
+    const input = document.getElementById(el.dataset.target);
+    if (!input) return;
+    const show = input.type === "password";
+    input.type = show ? "text" : "password";
+    el.textContent = show ? "Hide" : "Show";
+    el.setAttribute("aria-pressed", String(show));
+    el.setAttribute("aria-label", show ? "Hide password" : "Show password");
+  },
+  "show-login": showAuthScreen,
+  "show-register": showAuthScreen,
+  "show-magic-link": showAuthScreen,
+  "show-forgot-password": showAuthScreen,
+});
 
 // renderOAuthButtons renders the third-party sign-in block shared by the
 // login and register views. Apple sits above Google, matching the iOS app's
