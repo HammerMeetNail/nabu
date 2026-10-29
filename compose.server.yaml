@@ -26,7 +26,7 @@ services:
       - SMTP_PORT=587
       - SMTP_USER=resend
       - SMTP_PASS=${SMTP_PASS}
-      - SMTP_FROM=noreply@yearofbingo.com
+      - SMTP_FROM=Nabu <noreply@nabu-app.com>
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
       - VAPID_PUBLIC_KEY=${VAPID_PUBLIC_KEY}

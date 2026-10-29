@@ -3,7 +3,7 @@
 #
 # Env:
 #   RESEND_API_KEY (required)
-#   EMAIL_FROM_ADDRESS (required, e.g. "Nabu <noreply@yearofbingo.com>" or "noreply@yearofbingo.com")
+#   EMAIL_FROM_ADDRESS (required, e.g. "Nabu <noreply@nabu-app.com>" or "noreply@nabu-app.com")
 #   BACKUP_NOTIFY_EMAILS (required, comma-separated recipients)
 #   BACKUP_NOTIFY_SUCCESS (optional, default: 1) - send success emails for backup.sh
 #   BACKUP_NOTIFY_VERIFY_SUCCESS (optional, default: 0) - send success emails for verify-backup.sh

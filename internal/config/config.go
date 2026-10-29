@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/mail"
 	"net/url"
 	"os"
 	"strconv"
@@ -153,6 +154,11 @@ func (c Config) Validate() error {
 	}
 	if c.IsProduction() && (u.Scheme != "https" || !c.ServerSecure) {
 		return invalidConfig("production requires an HTTPS APP_BASE_URL and SERVER_SECURE=true")
+	}
+	if c.SMTPFrom != "" {
+		if _, err := mail.ParseAddress(c.SMTPFrom); err != nil {
+			return invalidConfig("SMTP_FROM must be an email address, optionally with a name: noreply@example.com or Name <noreply@example.com>")
+		}
 	}
 	prefixes, err := clientip.ParseTrustedProxies(c.TrustedProxyCIDRs)
 	if err != nil {
