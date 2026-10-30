@@ -1478,6 +1478,43 @@ final class NabuDynamicTypeUITests: XCTestCase {
         everydayPath(textSize: "UICTContentSizeCategoryAccessibilityL")
     }
 
+    /// The Stats Baby card at the largest text size: its dates go one under
+    /// the other, as Busy Hours' do, and its pickers under their titles. Side
+    /// by side the dates were wider than the screen, which pushed every card
+    /// past both edges (PWA `the Baby card fits at 200% zoom`).
+    func testStatsBabyCardFitsAtAccessibilityXXXL() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-disableAnimations", "-resetState", "-seedHomeForUITest", "-useMockAPI",
+                               "-reviewScenario", "baby-card", "-nabuBaseURL", "http://localhost:9998",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launchForLocalTest()
+        XCTAssertTrue(app.tabBars.buttons["Stats"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Stats"].tap()
+        let feedBaby = app.staticTexts["Feed Baby"]
+        XCTAssertTrue(feedBaby.waitForExistence(timeout: 8), "the Baby card shows")
+
+        let screen = app.windows.firstMatch.frame
+        var seen = 0
+        for _ in 0..<12 {
+            let shown = app.datePickers.allElementsBoundByIndex + app.segmentedControls.allElementsBoundByIndex
+                + [feedBaby, app.staticTexts["🕐 Cluster Feeding"]]
+            for element in shown where element.exists && element.frame.height > 0 {
+                let frame = element.frame
+                guard frame.maxY > screen.minY, frame.minY < screen.maxY else { continue }
+                seen += 1
+                XCTAssertGreaterThanOrEqual(frame.minX, screen.minX - 1, "\(element.debugDescription.prefix(80)) starts off screen")
+                XCTAssertLessThanOrEqual(frame.maxX, screen.maxX + 1, "\(element.debugDescription.prefix(80)) runs off screen")
+            }
+            app.swipeUp(velocity: .slow)
+        }
+        XCTAssertGreaterThan(seen, 4, "the card's pickers and dates were checked")
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "stats-baby-card-ax-xxxl"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+
     func testAccessibilityXXXLText() {
         everydayPath(textSize: "UICTContentSizeCategoryAccessibilityXXXL")
     }

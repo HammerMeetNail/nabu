@@ -225,15 +225,22 @@ struct BabyColumn: View {
     let choreId: Int
     let members: [Member]
     let volumeUnit: String
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var period: String { model.babyPeriod(choreId) } // daily | weekly | monthly
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 4) {
-                Text(ts.choreIcon).font(.body)
-                Text(ts.choreName).font(.subheadline).fontWeight(.semibold).lineLimit(1)
-                Spacer(minLength: 4)
+            // At accessibility sizes the picker goes under the title, which
+            // may wrap, rather than squeeze it (PWA `.baby-col-header`).
+            let stacks = dynamicTypeSize.isAccessibilitySize
+            let header = stacks ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 4))
+            header {
+                HStack(spacing: 4) {
+                    Text(ts.choreIcon).font(.body)
+                    Text(ts.choreName).font(.subheadline).fontWeight(.semibold).lineLimit(stacks ? nil : 1)
+                }
+                if !stacks { Spacer(minLength: 4) }
                 Picker("Time period", selection: Binding(
                     get: { period },
                     set: { p in Task { await model.setBabyPeriod(p, choreId: choreId) } }
@@ -362,27 +369,34 @@ struct FeedingGapsColumn: View {
     let choreId: Int
     let volumeUnit: String
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     private var explainerVisible: Bool { model.feedingGapsExplainers.contains(choreId) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("🕐 Cluster Feeding").font(.subheadline).fontWeight(.semibold)
-                Button {
-                    withAnimation {
-                        if explainerVisible {
-                            model.feedingGapsExplainers.remove(choreId)
-                        } else {
-                            model.feedingGapsExplainers.insert(choreId)
+            let stacks = dynamicTypeSize.isAccessibilitySize
+            let header = stacks ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout())
+            // At accessibility sizes the range picker goes under the title.
+            header {
+                HStack {
+                    Text("🕐 Cluster Feeding").font(.subheadline).fontWeight(.semibold)
+                    Button {
+                        withAnimation {
+                            if explainerVisible {
+                                model.feedingGapsExplainers.remove(choreId)
+                            } else {
+                                model.feedingGapsExplainers.insert(choreId)
+                            }
                         }
+                    } label: {
+                        Image(systemName: "info.circle")
+                            .font(.caption)
+                            .foregroundStyle(DesignColors.textSecondary)
                     }
-                } label: {
-                    Image(systemName: "info.circle")
-                        .font(.caption)
-                        .foregroundStyle(DesignColors.textSecondary)
+                    .accessibilityLabel("How to read this chart")
                 }
-                .accessibilityLabel("How to read this chart")
-                Spacer()
+                if !stacks { Spacer() }
                 Picker("Range", selection: Binding(
                     get: {
                         [1, 7, 14].first { model.isFeedingGapsQuickActive(days: $0, choreId: choreId) } ?? 0
@@ -402,23 +416,19 @@ struct FeedingGapsColumn: View {
                 .fixedSize()
             }
 
-            HStack(spacing: 8) {
-                StatsDatePicker(dateString: Binding(
-                    get: { model.feedingGapsRange(choreId).start },
-                    set: {
-                        model.setFeedingGapsDate($0, start: true, choreId: choreId)
-                        Task { await model.loadFeedingGaps(choreId: choreId) }
-                    }
-                ))
-                Text("–").font(.caption).foregroundStyle(DesignColors.textSecondary)
-                StatsDatePicker(dateString: Binding(
-                    get: { model.feedingGapsRange(choreId).end },
-                    set: {
-                        model.setFeedingGapsDate($0, start: false, choreId: choreId)
-                        Task { await model.loadFeedingGaps(choreId: choreId) }
-                    }
-                ))
-            }
+            StatsDateRange(start: Binding(
+                get: { model.feedingGapsRange(choreId).start },
+                set: {
+                    model.setFeedingGapsDate($0, start: true, choreId: choreId)
+                    Task { await model.loadFeedingGaps(choreId: choreId) }
+                }
+            ), end: Binding(
+                get: { model.feedingGapsRange(choreId).end },
+                set: {
+                    model.setFeedingGapsDate($0, start: false, choreId: choreId)
+                    Task { await model.loadFeedingGaps(choreId: choreId) }
+                }
+            ))
 
             if explainerVisible {
                 FeedingGapsExplainer()
@@ -463,6 +473,30 @@ struct FeedingGapsExplainer: View {
 }
 
 /// Compact yyyy-MM-dd string-backed date picker used by stats filters.
+/// A start and an end date, side by side, or one under the other at
+/// accessibility sizes: side by side they are wider than the screen there,
+/// which pushed every Stats card past its edges (PWA `.feeding-gaps-dates`).
+struct StatsDateRange: View {
+    @Binding var start: String
+    @Binding var end: String
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 8) {
+                StatsDatePicker(dateString: $start)
+                StatsDatePicker(dateString: $end)
+            }
+        } else {
+            HStack(spacing: 8) {
+                StatsDatePicker(dateString: $start)
+                Text("–").font(.caption).foregroundStyle(DesignColors.textSecondary)
+                StatsDatePicker(dateString: $end)
+            }
+        }
+    }
+}
+
 struct StatsDatePicker: View {
     @Binding var dateString: String
 

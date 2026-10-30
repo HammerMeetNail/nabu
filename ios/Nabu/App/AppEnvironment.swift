@@ -205,6 +205,12 @@ final class AppEnvironment {
                 state.latestLogs = [:]
                 state.todayLogs = []
             }
+            if scenario == "baby-card" {
+                // Stats with Feed Baby's card and Busy Hours, whose dates sit
+                // side by side (NabuDynamicTypeUITests).
+                state.statsSectionHidden = StatsSections.all.filter { !["baby", "busy-hours"].contains($0) }
+                    + state.chores.map { StatsSections.choreSectionKey($0.id) }
+            }
             if scenario == "recent-error" { state.recentAmounts[6] = [75]; state.recentAmountUnits[6] = "g" }
             if scenario == "rating" {
                 // Rated in stars, like the default Read Book.
