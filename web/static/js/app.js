@@ -16,14 +16,13 @@ import { createSheetController } from "./sheets.js";
 import { routeForPath, statsSectionForPath, syncTabURL, tabForPath } from "./router.js";
 import { apiMe, apiFetch } from "./api.js";
 import { loadNotifData, closeNotifPanel } from "./notification-panel.js";
-import { renderExports, renderMyDataDownload, cancelExport } from "./exports.js";
-import { renderApiKeys, loadApiKeysData } from "./api-keys.js";
+import { cancelExport } from "./exports.js";
+import { loadApiKeysData } from "./api-keys.js";
 import { replayQueue, queuedLogs, discardQueuedLog } from "./offline-queue.js";
 import { escapeHTML, localDateStr, shiftDateStr, formatVolume, renderAccessSuspendedCard } from "./utils.js";
 import {
   loadSession,
   handleLogout,
-  handleChangePassword,
   operatorLoginDestination,
   renderLoginView,
   renderRegisterView,
@@ -33,20 +32,20 @@ import {
   renderForgotPasswordView,
   renderResetPasswordView,
 } from "./auth.js";
-import { loadHousehold, listHouseholds, activateHousehold, createHousehold, updateHousehold, joinHousehold, loadInvitePreview, createInvite, deleteInvite, leaveHousehold, removeMember, updateMemberRole, setMemberAccess, transferOwnership, renderHouseholdView, renderJoinView, generateInitials } from "./household.js";
+import { createHousehold, joinHousehold, loadInvitePreview, loadHouseholdData, closeProfilePanel, renderJoinView, generateInitials } from "./household.js";
 import { loadToday, loadWeek, loadHistory, logChore, undoLog, updateLog, loadChores, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
 import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS, choreHasAnalytics, renderWidgetWizard, widgetGrain, loadChoreSummary, choreAnalyticsGrain } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet, renderRecentAmounts } from "./schedule.js";
-import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone, saveVolumeUnit, saveStatsWidgets, saveHideNotificationBadge } from "./preferences.js";
+import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone, saveStatsWidgets } from "./preferences.js";
 import { loadTimer, startTimer, stopTimer, clearFinishedTimer, elapsedSeconds, formatElapsed } from "./timer.js";
 import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeActivity, renderHomeManageView, renderConfirmRemoveFromHomeSheet, refreshHomeCardTimes } from "./home.js";
 import { wideLayout, onWideLayoutChange, placeHomeTab, keyboardShortcut } from "./desktop.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
-import { maybeSubscribePush, pushOfferState, setPushOfferState, shouldOfferPush, renderPushOffer, loadNotificationPreferences, saveNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
+import { maybeSubscribePush, pushOfferState, setPushOfferState, shouldOfferPush, renderPushOffer, loadNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
 import { renderScheduleTab } from "./schedule-tab.js";
-import { renderProfileSheet, renderProfileForm, saveProfile } from "./profile.js";
-import { setError, hideError } from "./form-errors.js";
+import { renderProfileSheet, saveProfile } from "./profile.js";
+import { renderSettingsView } from "./settings.js";
 import { createOnboarding, duplicateName, householdNameFor, onboardingPicks, renderOnboarding, renderPacksSheet, MAX_PACK_NAMES } from "./onboarding.js";
 
 /**
@@ -151,6 +150,7 @@ setTopBar(updateTopBar);
 setIdentityFlow({
   finish: finishIdentity,
   recover: recoverIdentity,
+  changeHousehold: runHouseholdTransition,
   joinPendingInvite: async () => {
     if (state._pendingInviteCode && !state.household) await doJoinWithCode(state._pendingInviteCode);
   },
@@ -778,211 +778,6 @@ function renderScheduleView() {
   return `<div class="sheet-overlay-wrapper">${mainView}${fab}</div>`;
 }
 
-function renderSettingsView() {
-  const hh = state.household;
-  const user = state.user;
-
-  const verificationSection = user && !user.emailVerified ? `
-    <div class="card mt-3" style="border-left: 4px solid #F4A261;">
-      <h3>Email Verification</h3>
-      <p class="text-secondary">Your email <strong>${escapeHTML(user.email)}</strong> is not verified. A verification email is queued for delivery; you can request another below.</p>
-      <button type="button" class="btn btn-sm btn-secondary mt-2" data-action="resend-verification">Resend verification email</button>
-    </div>
-  ` : "";
-
-  // The build version lives here (Settings → About), not in the header.
-  const appVersion = (typeof document !== "undefined" && document.body?.dataset.appVersion) || "";
-  const aboutLine = appVersion ? `<p class="app-version" data-testid="app-version">Nabu v${escapeHTML(appVersion)}</p>` : "";
-
-  // In-app account deletion (App Store guideline 5.1.1(v) requires it on the
-  // native client; the PWA gets the same flow for parity). The server demands
-  // the typed confirmation {"confirm":"DELETE"}; a sole owner of a
-  // multi-member household gets a 409 telling them to transfer first.
-  const deleteAccountSection = state.deleteAccountOpen ? `
-    <div class="mt-3" data-testid="delete-account-confirm">
-      <p class="text-secondary">Deleting your account permanently removes your
-        account, email, name, sessions, devices, preferences, reminders and
-        notifications. Households where you are the only member are deleted with
-        all their logs.</p>
-      <p class="text-secondary">In households you share, the logs you recorded
-        stay so the others keep their history. They are shown as
-        “Former member” and are no longer linked to you. You can also delete them.
-        If you are the only owner of a household with other members, transfer
-        ownership (or remove the other members) first. This cannot be undone.</p>
-      ${renderMyDataDownload(state, { jsonId: "download-my-data", csvId: "download-my-logs" })}
-      <label class="form-check mt-2">
-        <input type="checkbox" id="delete-account-logs"${state.deleteAccountLogs ? ' checked' : ''}>
-        <span>Also delete everything I logged in shared households</span>
-      </label>
-      <label class="form-check mt-1">
-        <input type="checkbox" id="delete-account-notes"${state.deleteAccountNotes ? ' checked' : ''}>
-        <span>Also delete the notes I wrote on logs that stay</span>
-      </label>
-      <div class="form-group mt-2">
-        <label class="form-label" for="delete-account-input">Type DELETE to confirm</label>
-        <input id="delete-account-input" type="text" autocomplete="off" autocapitalize="characters" placeholder="DELETE">
-      </div>
-      <div id="delete-account-error" class="form-error${state.deleteAccountError ? '' : ' hidden'}" role="alert">${escapeHTML(state.deleteAccountError || '')}</div>
-      <button type="button" class="btn btn-danger btn-sm mt-2" data-action="confirm-delete-account"${state.deleteAccountBusy ? ' disabled' : ''}>${state.deleteAccountBusy ? 'Deleting…' : 'Permanently delete my account'}</button>
-      <button type="button" class="btn btn-ghost btn-sm mt-2" data-action="cancel-delete-account">Cancel</button>
-    </div>
-  ` : `
-    <button type="button" class="btn btn-danger btn-sm mt-3" data-action="open-delete-account">Delete account…</button>
-  `;
-
-  const passwordSection = `
-    <div class="card mt-3">
-      <h3>${user?.hasPassword === false ? "Set Password" : "Change Password"}</h3>
-      <form id="change-password-form" data-action="change-password">
-        ${user?.hasPassword === false ? "" : `<div class="form-group">
-          <label class="form-label" for="current-password">Current Password</label>
-          <input id="current-password" type="password" name="currentPassword" required autocomplete="current-password">
-        </div>`}
-        <div class="form-group">
-          <label class="form-label" for="new-password">New Password</label>
-          <input id="new-password" type="password" name="newPassword" required minlength="8" autocomplete="new-password">
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="confirm-password">Confirm New Password</label>
-          <input id="confirm-password" type="password" name="confirmPassword" required minlength="8" autocomplete="new-password">
-        </div>
-        <div id="change-password-error" class="form-error hidden"></div>
-        <button type="submit" class="btn btn-primary btn-sm mt-2">Update Password</button>
-      </form>
-    </div>
-  `;
-
-  const notifTypes = state.availableNotificationTypes || [];
-  const notifPrefsLoaded = !!state.notificationPrefs;
-
-  let notifPrefsCard = "";
-  if (notifPrefsLoaded && notifTypes.length > 0) {
-    const prefs = state.notificationPrefs;
-    const pushEnabled = prefs?.pushEnabled !== false;
-    const checked = pushEnabled ? " checked" : "";
-
-    const permBtn = typeof Notification !== 'undefined' && Notification.permission === 'default'
-      ? `<p class="mt-2"><button type="button" class="btn btn-sm btn-primary" data-action="enable-notifications">Enable Notifications</button></p>`
-      : '';
-
-    const defaultLead = prefs?.defaultReminderLeadMinutes ?? 10;
-    const leadTimes = [5, 10, 15, 30, 60];
-
-    // Per-type push toggles — only visible when push is enabled.
-    // Schedule Reminder has a nested lead time selector.
-    let pushTypeRows = "";
-    if (pushEnabled) {
-      const rows = notifTypes.map(t => {
-        const allEnabled = (prefs?.enabledPushTypes || []).length === 0;
-        const isEnabled = allEnabled || (prefs?.enabledPushTypes || []).includes(t.type);
-        const typeChecked = isEnabled ? " checked" : "";
-
-        let nested = "";
-        if (t.type === "schedule_reminder" && isEnabled) {
-          nested = `<div class="notif-pref-row notif-pref-row--nested">
-            <label class="notif-pref-label">
-              <span class="notif-pref-title">Reminder lead time</span>
-              <span class="notif-pref-desc">Minutes before a scheduled chore's time</span>
-            </label>
-            <select data-action="change-default-reminder-lead" class="notif-pref-select">
-              ${leadTimes.map(m => `<option value="${m}"${m === defaultLead ? ' selected' : ''}>${m} min</option>`).join("")}
-            </select>
-          </div>`;
-        }
-
-        return `<div class="notif-pref-row">
-          <label class="notif-pref-label">
-            <span class="notif-pref-title">${escapeHTML(t.label)}</span>
-            <span class="notif-pref-desc">${escapeHTML(t.description)}</span>
-          </label>
-          <label class="notif-pref-toggle">
-            <input type="checkbox" data-action="toggle-notif-pref" data-notif-type="${escapeHTML(t.type)}"${typeChecked}>
-            <span class="toggle-slider"></span>
-          </label>
-        </div>${nested}`;
-      }).join("");
-      pushTypeRows = `<div class="notif-pref-list">${rows}</div>`;
-    }
-
-    notifPrefsCard = `<div class="card mt-3" data-key="notification-prefs">
-      <h3>Notifications</h3>
-      <p class="text-secondary">Applies to your account across all households.</p>
-      <div class="notif-pref-row">
-        <label class="notif-pref-label">
-          <span class="notif-pref-title">Push Notifications</span>
-        </label>
-        <label class="notif-pref-toggle">
-          <input type="checkbox" data-action="toggle-push-enabled"${checked}>
-          <span class="toggle-slider"></span>
-        </label>
-      </div>
-      ${permBtn}
-      ${pushTypeRows}
-    </div>`;
-  }
-
-  const volumeUnit = state.volumeUnit === "oz" ? "oz" : "ml";
-  const badgeHidden = !!state.hideNotificationBadge;
-  const prefsCard = `<div class="card mt-3" data-key="preferences">
-    <h3>Preferences</h3>
-    <div class="pref-row">
-      <label class="pref-label">
-        <span class="pref-title">Feed volume unit</span>
-        <span class="pref-desc">How bottle volumes are shown and entered</span>
-      </label>
-      <div class="segmented" role="group" aria-label="Feed volume unit">
-        <button type="button" class="segmented-btn${volumeUnit === "ml" ? " segmented-btn--active" : ""}" data-action="set-volume-unit" data-unit="ml" aria-pressed="${volumeUnit === "ml"}">mL</button>
-        <button type="button" class="segmented-btn${volumeUnit === "oz" ? " segmented-btn--active" : ""}" data-action="set-volume-unit" data-unit="oz" aria-pressed="${volumeUnit === "oz"}">oz</button>
-      </div>
-    </div>
-    <div class="pref-row">
-      <label class="pref-label">
-        <span class="pref-title">Hide notification badge</span>
-        <span class="pref-desc">Notifications still collect; the unread count on the bell stays hidden</span>
-      </label>
-      <label class="notif-pref-toggle">
-        <input type="checkbox" data-action="toggle-hide-notification-badge"${badgeHidden ? " checked" : ""} aria-label="Hide notification badge">
-        <span class="toggle-slider"></span>
-      </label>
-    </div>
-  </div>`;
-
-  const householdRole = state.members?.find(m => m.userId === user?.id)?.role || user?.role;
-  const canExportHousehold = !!hh && (householdRole === "owner" || householdRole === "admin");
-  const exportCard = renderExports(state, canExportHousehold);
-  const apiKeysCard = user ? renderApiKeys(state, window.location.origin) : "";
-  // Everything about you, without starting a deletion (GDPR access). The
-  // deletion panel offers it with the logs CSV, so it moves there while open.
-  const myDataLine = user && !state.deleteAccountOpen ? renderMyDataDownload(state, { jsonId: "account-download-my-data" }) : "";
-
-  const activeId = state.activeHouseholdId || hh?.id;
-  const yourHouseholdsCard = state.userHouseholds && state.userHouseholds.length > 1 ? `
-    <div class="card mt-3" data-key="your-households">
-      <h3>Your Households</h3>
-      <div class="profile-households">
-        ${state.userHouseholds.map(h => {
-          const isActive = h.id === activeId;
-          const ini = h.initials || h.name.charAt(0).toUpperCase();
-          return `<button type="button" class="profile-household-item${isActive ? ' profile-household-item--active' : ''}"
-            data-action="activate-household" data-household-id="${escapeHTML(h.id)}">
-            <span class="hh-initials-badge-sm" aria-hidden="true">${escapeHTML(ini)}</span>
-            <span class="profile-household-name">${escapeHTML(h.name)}</span>
-            <span class="profile-household-role text-secondary">${escapeHTML(h.role)}</span>
-            ${isActive ? '<span class="profile-household-check" aria-label="Active">&#10003;</span>' : ''}
-          </button>`;
-        }).join('')}
-      </div>
-    </div>` : "";
-
-  if (!hh) {
-    const householdCard = state.accessSuspended
-      ? renderAccessSuspendedCard(state)
-      : renderHouseholdView(null, null, null, state.user);
-    return `<div class="settings-view">${householdCard}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3" data-key="account"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${myDataLine}${deleteAccountSection}</div>${aboutLine}</div>`;
-  }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user, { showInviteQR: !!state.showInviteQR })}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3" data-key="account"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${myDataLine}${deleteAccountSection}</div>${aboutLine}</div>`;
-}
-
 function loadAllStatsData() {
   const scope = captureScope(state, 'stats-page-render');
   let frame = null;
@@ -1375,14 +1170,6 @@ function renderTimerChip() {
   sheetController?.syncBackground();
 }
 
-function closeProfilePanel() {
-  const container = document.querySelector("#profile-panel-container");
-  if (container && !container.hidden) {
-    container.hidden = true;
-    container.innerHTML = "";
-  }
-}
-
 function closeAllPanels() {
   closeNotifPanel();
   closeProfilePanel();
@@ -1560,38 +1347,6 @@ async function reloadAfterAuth() {
   }
 }
 
-
-// PATCH /api/me, then the signed-in user and their member row. False when a
-// newer identity owns the screen.
-async function doChangePassword(form) {
-  if (form.dataset.busy) return;
-  hideError("#change-password-error");
-  const password = form.querySelector("#new-password").value;
-  if (password !== form.querySelector("#confirm-password").value) { setError("#change-password-error","New passwords do not match"); return; }
-  if (password.length < 8) { setError("#change-password-error","Password must be at least 8 characters"); return; }
-  form.dataset.busy = "true";
-  try {
-    const result = await handleChangePassword(form.querySelector("#current-password")?.value || "",password);
-    if (!resultIsCurrent(result)) return;
-    if (result.ok && result.user) {
-      if (await finishIdentity(result,"/settings")) showToast("Password updated","success");
-    } else {
-      maybeSubscribePush().catch(() => {});
-      if (form.isConnected) setError("#change-password-error",result.data?.error || "Password change failed");
-    }
-  } catch (err) { await recoverIdentity(err,"/settings"); if (form.isConnected) setError("#change-password-error",err.message || "Password change failed"); }
-  finally { delete form.dataset.busy; }
-}
-async function doResendVerification() {
-  const contextScope = captureScope(state);
-  const scope = captureScope(state);
-  try {
-    const {response} = await withCurrentContext(apiFetch("/api/auth/email/verification/resend",{method:"POST"}), contextScope);
-    if (!response.ok) throw new Error("Verification request failed");
-    if (scope.current()) showToast("Verification email queued","info");
-  } catch {
-    if (!contextScope.current()) return; if (scope.current()) showToast("Failed to request verification email. Please try again.","error"); }
-}
 async function verifyEmail(token) {
   const ticket = ++identityUIRevision;
   try {
@@ -2021,10 +1776,6 @@ export async function init() {
         e.preventDefault();
         void doLogout();
         break;
-      case "resend-verification":
-        e.preventDefault();
-        doResendVerification();
-        break;
       case "open-delete-account":
         e.preventDefault();
         deleteAccountIntent++;
@@ -2067,20 +1818,6 @@ export async function init() {
         showTab("/settings");
         break;
       }
-      case "create-invite":
-        e.preventDefault();
-        createInvite().then(owned((data) => {
-          if (data.invite) {
-            const url = `${window.location.origin}/join?code=${data.invite.code}`;
-            state.invites = [...(state.invites || []), data.invite];
-            navigator.clipboard.writeText(url).then(
-              owned(() => showToast("Invite link copied to clipboard!", "info")),
-              owned(() => showToast("Invite link: " + url, "info"))
-            );
-            render(app);
-          }
-        }));
-        break;
       case "onboarding-step": {
         const draft = state.onboarding;
         if (!draft || draft.saving) break;
@@ -2113,121 +1850,6 @@ export async function init() {
         state.onboarding = null;
         render(app);
         break;
-      case "copy-invite-link": {
-        e.preventDefault();
-        const code = actionEl.dataset.code;
-        const url = `${window.location.origin}/join?code=${code}`;
-        navigator.clipboard.writeText(url).then(
-          owned(() => showToast("Invite link copied!", "info")),
-          owned(() => showToast(`Link: ${url}`, "info"))
-        );
-        break;
-      }
-      case "toggle-invite-qr":
-        e.preventDefault();
-        state.showInviteQR = !state.showInviteQR;
-        render(app);
-        break;
-      case "delete-invite":
-        e.preventDefault();
-        deleteInvite(parseInt(actionEl.dataset.inviteId)).then(owned(async () => {
-  const contextScope = captureScope(state);
-          await withCurrentContext(loadHouseholdData(), contextScope);
-          render(app);
-        }));
-        break;
-      case "leave-household":
-        e.preventDefault();
-        if (!confirm("Are you sure you want to leave this household? All your data will remain with the household.")) break;
-        void runHouseholdTransition(() => leaveHousehold());
-        break;
-      case "toggle-edit-household": {
-        e.preventDefault();
-        const editForm = app.querySelector("#edit-household-form");
-        if (editForm) editForm.classList.toggle("hidden");
-        break;
-      }
-      case "activate-household": {
-        e.preventDefault();
-        const hhId = parseInt(actionEl.dataset.householdId, 10);
-        if (!hhId || hhId === state.activeHouseholdId) { closeProfilePanel(); break; }
-        void runHouseholdTransition(() => activateHousehold(hhId));
-        break;
-      }
-      case "remove-member": {
-        e.preventDefault();
-        const userId = parseInt(actionEl.dataset.userId, 10);
-        const member = (state.members || []).find(m => m.userId === userId);
-        const name = member ? (member.displayName || member.email) : "this member";
-        // eslint-disable-next-line no-alert
-        if (!confirm(`Remove ${name} from this household?`)) break;
-        removeMember(userId).then(owned(async (data) => {
-  const contextScope = captureScope(state);
-          if (data.status === "removed") {
-            await withCurrentContext(loadHouseholdData(), contextScope);
-            render(app);
-            showToast(`${name} removed`, "info");
-          } else {
-            showToast(data.error || "Failed to remove member", "error");
-          }
-        })).catch(owned(() => showToast("Failed to remove member", "error")));
-        break;
-      }
-      case "update-member-role": {
-        e.preventDefault();
-        const userId = parseInt(actionEl.dataset.userId, 10);
-        const newRole = actionEl.value;
-        updateMemberRole(userId, newRole).then(owned(async (data) => {
-  const contextScope = captureScope(state);
-          if (data.status === "updated") {
-            await withCurrentContext(loadHouseholdData(), contextScope);
-            render(app);
-          } else {
-            showToast(data.error || "Failed to update role", "error");
-          }
-        })).catch(owned(() => showToast("Failed to update role", "error")));
-        break;
-      }
-      case "toggle-member-access": {
-        e.preventDefault();
-        const userId = parseInt(actionEl.dataset.userId, 10);
-        const wasSuspended = actionEl.dataset.suspended === "1";
-        const member = (state.members || []).find(m => m.userId === userId);
-        const name = member ? (member.displayName || member.email) : "this member";
-        if (!wasSuspended) {
-          // eslint-disable-next-line no-alert
-          if (!confirm(`Disable ${name}'s access? They will be signed out and cannot view or change anything in this household until you re-enable them.`)) break;
-        }
-        setMemberAccess(userId, !wasSuspended).then(owned(async (data) => {
-  const contextScope = captureScope(state);
-          if (data.status === "updated") {
-            await withCurrentContext(loadHouseholdData(), contextScope);
-            render(app);
-            showToast(wasSuspended ? `${name}'s access enabled` : `${name}'s access disabled`, "info");
-          } else {
-            showToast(data.error || "Failed to update access", "error");
-          }
-        })).catch(owned(() => showToast("Failed to update access", "error")));
-        break;
-      }
-      case "transfer-ownership": {
-        e.preventDefault();
-        const userId = parseInt(actionEl.dataset.userId, 10);
-        const member = (state.members || []).find(m => m.userId === userId);
-        const name = member ? (member.displayName || member.email) : "this member";
-        if (!confirm(`Transfer ownership to ${name}?`)) break;
-        transferOwnership(userId).then(owned(async (data) => {
-  const contextScope = captureScope(state);
-          if (data.status === "transferred") {
-            await withCurrentContext(loadHouseholdData(), contextScope);
-            render(app);
-            showToast(`Ownership transferred to ${name}`, "info");
-          } else {
-            showToast(data.error || "Failed to transfer ownership", "error");
-          }
-        })).catch(owned(() => showToast("Failed to transfer ownership", "error")));
-        break;
-      }
       case "log-chore": {
         e.preventDefault();
         const choreId = parseInt(actionEl.dataset.choreId, 10);
@@ -3201,22 +2823,6 @@ export async function init() {
         break;
       }
 
-      case "toggle-push-enabled": {
-        e.preventDefault();
-        const isChecked = actionEl.checked;
-        const enabledTypes = state.notificationPrefs?.enabledPushTypes || [];
-        const pushEnabled = isChecked;
-        saveNotificationPreferences({ pushEnabled, enabledPushTypes: isChecked ? enabledTypes : [] })
-          .then(owned(data => {
-            state.notificationPrefs = data.preferences;
-            render(app);
-          }))
-          .catch(owned(() => {
-            actionEl.checked = !isChecked;
-          }));
-        break;
-      }
-
       case "push-offer-enable":
         e.preventDefault();
         setPushOfferState(state.user?.id, "done");
@@ -3232,49 +2838,6 @@ export async function init() {
         setPushOfferState(state.user?.id, "done");
         render(app);
         break;
-
-      case "enable-notifications": {
-        e.preventDefault();
-        if (typeof Notification === 'undefined') break;
-        Notification.requestPermission().then(owned(result => {
-          if (result === 'granted') {
-            maybeSubscribePush().catch(() => {});
-          }
-        })).catch(() => {});
-        break;
-      }
-
-      case "toggle-notif-pref": {
-        e.preventDefault();
-        const notifType = actionEl.dataset.notifType;
-        const isChecked = actionEl.checked;
-        let enabledTypes = [...(state.notificationPrefs?.enabledPushTypes || [])];
-        const prevPushEnabled = state.notificationPrefs?.pushEnabled;
-        const allTypes = (state.availableNotificationTypes || []).map(t => t.type);
-
-        // If no explicit preferences have been set yet (pushEnabled defaults
-        // to true and enabledTypes is empty), start from all types.
-        if (enabledTypes.length === 0 && prevPushEnabled !== false) {
-          enabledTypes = [...allTypes];
-        }
-
-        if (isChecked) {
-          if (!enabledTypes.includes(notifType)) enabledTypes.push(notifType);
-        } else {
-          enabledTypes = enabledTypes.filter(t => t !== notifType);
-        }
-
-        const pushEnabled = enabledTypes.length > 0;
-        saveNotificationPreferences({ enabledPushTypes: enabledTypes, pushEnabled })
-          .then(owned(data => {
-            state.notificationPrefs = data.preferences;
-            render(app);
-          }))
-          .catch(owned(() => {
-            actionEl.checked = !isChecked;
-          }));
-          break;
-      }
 
       case "chore-analytics-period": {
         e.preventDefault();
@@ -3340,34 +2903,6 @@ export async function init() {
         const visible = tip.classList.contains("scatter-tooltip--visible");
         document.querySelectorAll(".scatter-tooltip--visible").forEach(el => el.classList.remove("scatter-tooltip--visible"));
         if (!visible) tip.classList.add("scatter-tooltip--visible");
-        break;
-      }
-
-      case "set-volume-unit": {
-        e.preventDefault();
-        const unit = actionEl.dataset.unit === "oz" ? "oz" : "ml";
-        if (unit === state.volumeUnit) break;
-        // saveVolumeUnit updates state optimistically (and rolls back on
-        // failure); render now for snappy feedback and again on completion.
-        saveVolumeUnit(state, unit).then(owned(() => render(app)));
-        render(app);
-        break;
-      }
-
-      case "toggle-hide-notification-badge": {
-        // No preventDefault: the checkbox keeps its native toggled state so
-        // the UI reflects the tap instantly. saveHideNotificationBadge
-        // applies the value optimistically and rolls back if the PATCH
-        // fails; the completion render redraws the toggle from persisted
-        // state either way.
-        const hide = actionEl.checked;
-        if (hide === state.hideNotificationBadge) break;
-        const saved = saveHideNotificationBadge(state, hide);
-        updateTopBar();
-        saved.then(owned(() => {
-          updateTopBar();
-          render(app);
-        }));
         break;
       }
 
@@ -3696,36 +3231,6 @@ export async function init() {
       }));
       render(app);
     }
-    if (actionEl?.dataset?.action === "update-member-role") {
-      const userId = parseInt(actionEl.dataset.userId, 10);
-      const newRole = actionEl.value;
-      if (newRole === "owner") {
-        const member = (state.members || []).find(m => m.userId === userId);
-        const name = member ? (member.displayName || member.email) : "this member";
-        // eslint-disable-next-line no-alert
-        if (!confirm(`Transfer ownership to ${name}? You will become an admin.`)) return;
-        transferOwnership(userId).then(owned(async (data) => {
-  const contextScope = captureScope(state);
-          if (data.status === "transferred") {
-            await withCurrentContext(loadHouseholdData(), contextScope);
-            render(app);
-            showToast(`Ownership transferred to ${name}`, "info");
-          } else {
-            showToast(data.error || "Failed to transfer ownership", "error");
-          }
-        })).catch(owned(() => showToast("Failed to transfer ownership", "error")));
-      } else {
-        updateMemberRole(userId, newRole).then(owned(async (data) => {
-  const contextScope = captureScope(state);
-          if (data.status === "updated") {
-            await withCurrentContext(loadHouseholdData(), contextScope);
-            render(app);
-          } else {
-            showToast(data.error || "Failed to update role", "error");
-          }
-        })).catch(owned(() => showToast("Failed to update role", "error")));
-      }
-    }
     if (actionEl?.dataset?.action === "change-chore-reminder-lead") {
       const choreId = parseInt(actionEl.dataset.choreId, 10);
       if (!choreId) return;
@@ -3741,16 +3246,6 @@ export async function init() {
           } else {
             state.choreReminderPrefs = [...(state.choreReminderPrefs || []), updated];
           }
-          render(app);
-        }))
-        .catch(() => {});
-    }
-    if (actionEl?.dataset?.action === "change-default-reminder-lead") {
-      const leadMinutes = parseInt(actionEl.value, 10);
-      if (isNaN(leadMinutes)) return;
-      saveNotificationPreferences({ defaultReminderLeadMinutes: leadMinutes })
-        .then(owned(data => {
-          state.notificationPrefs = data.preferences;
           render(app);
         }))
         .catch(() => {});
@@ -3800,15 +3295,6 @@ export async function init() {
     if (runAction("submit", action, e, form)) return;
 
     switch (action) {
-      case "change-password":
-        doChangePassword(form);
-        break;
-      case "update-household":
-        doUpdateHousehold(form);
-        break;
-      case "join-household":
-        doJoinHousehold(form);
-        break;
       case "onboarding-name":
         void doOnboardingName();
         break;
@@ -4462,34 +3948,6 @@ async function flushOfflineQueue(retryKey = null, {confirmed=false} = {}) {
   } catch { /* retained in the journal */ }
 }
 
-async function loadHouseholdData() {
-  const contextScope = captureScope(state, "household");
-  try {
-    const [data, listData] = await withCurrentContext(Promise.all([
-      loadHousehold(),
-      listHouseholds(),
-    ]), contextScope);
-    if (data.suspended) {
-      state.accessSuspended = data.suspended;
-      state.household = null;
-      state.members = [];
-      state.invites = [];
-    } else if (data.household) {
-      state.accessSuspended = null;
-      state.household = data.household;
-      state.members = data.members;
-      state.historicalMembers = data.historicalMembers || [];
-      state.invites = data.invites;
-    }
-    if (Array.isArray(listData?.households)) {
-      state.userHouseholds = listData.households;
-      if (data.household) {
-        state.activeHouseholdId = data.household.id;
-      }
-    }
-  } catch {}
-}
-
 async function loadChoreData() {
   const contextScope = captureScope(state, "chores");
   try {
@@ -4678,28 +4136,6 @@ async function doAddPacks() {
     draft.error = err.message || "Could not add the activities. Please retry.";
     render(app);
   }
-}
-
-async function doJoinHousehold(form) {
-  const code = form.querySelector("#invite-code").value;
-  return runHouseholdTransition(() => joinHousehold(code), {route:"/"});
-}
-
-async function doUpdateHousehold(form) {
-  const contextScope = captureScope(state);
-  const name = form.querySelector("#edit-hh-name")?.value?.trim() || "";
-  const initials = (form.querySelector("#edit-hh-initials")?.value || "").trim();
-  if (!name) return;
-  const data = await withCurrentContext(updateHousehold(name, initials || generateInitials(name)), contextScope);
-  if (!data || data.error) {
-    showToast(data?.error || "Failed to update household", "error");
-    return;
-  }
-  await withCurrentContext(loadHouseholdData(), contextScope);
-  updateTopBar();
-  const app = document.querySelector("#app");
-  if (app) render(app);
-  showToast("Household updated", "info");
 }
 
 async function doCreateChoreFromSheet(form) {
