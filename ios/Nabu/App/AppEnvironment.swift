@@ -206,6 +206,13 @@ final class AppEnvironment {
                 state.todayLogs = []
             }
             if scenario == "recent-error" { state.recentAmounts[6] = [75]; state.recentAmountUnits[6] = "g" }
+            if scenario == "rating" {
+                // Rated in stars, like the default Read Book.
+                state.chores.append(Chore(id: 9, householdId: 1, name: "Read Book", icon: "📖", color: "#8B5CF6",
+                    sortOrder: 8, category: "personal", isPredefined: true, predefinedKey: "Read Book", createdBy: nil,
+                    createdAt: now, indicatorLabels: [], indicatorDefaults: [], hasVolumeML: false, hasRating: true,
+                    metricType: "rating"))
+            }
             if scenario.hasPrefix("onboarding"), let user = state.user {
                 // A new account: no household yet, named after its email.
                 state.user = User(id: user.id, householdId: nil, email: "dana.oconnor@nabu.local", displayName: "dana.oconnor",
