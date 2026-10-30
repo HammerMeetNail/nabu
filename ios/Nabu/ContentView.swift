@@ -203,6 +203,7 @@ struct ContentView: View {
                 }
             } catch {
                 // Invalid/expired link: stay where we are, like the PWA.
+                Log.actions.failure("Sign in with an email link", error)
             }
         case .joinHousehold(let code):
             if state.user == nil {
@@ -240,6 +241,7 @@ struct ContentView: View {
             state.pendingInviteCode = nil
         } catch {
             // Unreachable or rate-limited: the screens stay as they were.
+            Log.loading.failure("Invite preview", error)
         }
     }
 
@@ -318,9 +320,16 @@ struct MainTabView: View {
                         OfflineBanner(savedHome: state.showingSavedHome)
                             .transition(.move(edge: .top).combined(with: .opacity))
                     }
+                    if let toast = state.toast {
+                        ErrorToast(toast: toast) {
+                            if state.toast?.id == toast.id { state.toast = nil }
+                        }
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
                 }
                 .padding(.top, 4)
                 .animation(Motion.slide ?? Motion.fade, value: state.isOffline || state.showingSavedHome)
+                .animation(Motion.slide ?? Motion.fade, value: state.toast)
             }
     }
 

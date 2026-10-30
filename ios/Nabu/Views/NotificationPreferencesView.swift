@@ -103,6 +103,11 @@ struct NotificationPreferencesView: View {
                     }
                 }
                 .navigationTitle("Notifications")
+            } else {
+                InlineErrorView(message: "Notification settings couldn't be loaded. Try again.") {
+                    await loadPrefs()
+                }
+                .navigationTitle("Notifications")
             }
         }
         .task {
@@ -143,11 +148,10 @@ struct NotificationPreferencesView: View {
                 lastKnownEnabledTypes = data.preferences.enabledPushTypes
             }
         } catch {
-            prefs = ReminderPreference(
-                userId: 0, pushEnabled: true, emailEnabled: false,
-                quietHoursStart: "", quietHoursEnd: "", timezone: "UTC",
-                enabledPushTypes: [], defaultReminderLeadMinutes: 10
-            )
+            // Show no settings that didn't load, as the PWA leaves out its
+            // card: saving made-up ones would overwrite the real ones.
+            Log.loading.failure("Load notification preferences", error)
+            prefs = nil
             types = []
         }
         loading = false
@@ -160,7 +164,10 @@ struct NotificationPreferencesView: View {
                 "/api/notification-preferences", body: update)
             prefs = data.preferences
             state.notificationPrefs = data.preferences
-        } catch {}
+        } catch {
+            // The switch shows the saved setting again, as the PWA's does.
+            Log.actions.failure("Save notification preferences", error)
+        }
         saving = false
     }
 

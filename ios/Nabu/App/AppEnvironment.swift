@@ -718,7 +718,12 @@ final class ReviewUITestResponses {
                         headerFields: ["Content-Type": "text/csv"])!)
         }
         if path == "/api/schedules" {
-            if request.httpMethod == "POST", scenario == "schedule" {
+            if request.httpMethod == "POST", scenario == "schedule-errors", attempt == 1 {
+                // An answer with no reason: the sheet says the action's own message.
+                return (Data("Bad Gateway".utf8), HTTPURLResponse(url: url, statusCode: 502,
+                    httpVersion: nil, headerFields: ["Content-Type": "text/plain"])!)
+            }
+            if request.httpMethod == "POST", scenario == "schedule" || scenario == "schedule-errors" {
                 var body = try JSONSerialization.jsonObject(with: request.httpBody ?? Data()) as! [String: Any]
                 let timestamp = ISO8601DateFormatter().string(from: Date())
                 body.merge(["id": 1, "householdId": 1, "intervalDays": 0, "targetCount": 1,
@@ -730,6 +735,9 @@ final class ReviewUITestResponses {
                 return try json(ScheduleResponse(schedule: schedule))
             }
             return try json(SchedulesResponse(schedules: schedules))
+        }
+        if path == "/api/schedules/1", request.httpMethod == "DELETE", scenario == "schedule-errors" {
+            return try failed("schedule not found", status: 404)
         }
         if path == "/api/schedules/1", request.httpMethod == "PATCH", scenario == "schedule", let existing = schedules.first {
             var body = try JSONSerialization.jsonObject(with: apiEncoder.encode(existing)) as! [String: Any]

@@ -24,8 +24,8 @@ final class PreferencesDataLoader {
             state.statsSectionHidden = data.preferences.statsSectionHidden
             state.statsWidgets = data.preferences.statsWidgets
         } catch {
-            guard state.owns(owner) else { return }
-            // Silent failure
+            // The last good preferences stay, as in the PWA.
+            Log.loading.failure("Load preferences", error)
         }
     }
 
@@ -44,7 +44,7 @@ final class PreferencesDataLoader {
             state.statsSectionOrder = data.preferences.statsSectionOrder
             return true
         } catch {
-            guard state.owns(owner) else { return false }
+            Log.actions.failure("Save the Stats order", error)
             return false
         }
     }
@@ -63,7 +63,7 @@ final class PreferencesDataLoader {
             state.statsSectionHidden = data.preferences.statsSectionHidden
             return true
         } catch {
-            guard state.owns(owner) else { return false }
+            Log.actions.failure("Save hidden Stats sections", error)
             return false
         }
     }
@@ -83,7 +83,7 @@ final class PreferencesDataLoader {
             state.statsWidgets = data.preferences.statsWidgets
             return true
         } catch {
-            guard state.owns(owner) else { return false }
+            Log.actions.failure("Save Stats widgets", error)
             return false
         }
     }
@@ -102,6 +102,7 @@ final class PreferencesDataLoader {
             guard state.owns(owner) else { return }
             state.volumeUnit = data.preferences.volumeUnit == "oz" ? "oz" : "ml"
         } catch {
+            Log.actions.failure("Save the volume unit", error)
             guard state.owns(owner) else { return }
             state.volumeUnit = previous
         }
@@ -121,8 +122,56 @@ final class PreferencesDataLoader {
             guard state.owns(owner) else { return }
             state.hideNotificationBadge = data.preferences.hideNotificationBadge
         } catch {
+            Log.actions.failure("Save the notification badge setting", error)
             guard state.owns(owner) else { return }
             state.hideNotificationBadge = previous
+        }
+    }
+
+    /// Puts Home in `order` now, then saves it; rolls back if the save fails
+    /// (PWA `saveChoreOrder`). The change is applied before this returns, so
+    /// a List's move lands on data that has already moved.
+    @discardableResult
+    func saveChoreOrder(_ order: [Int]) -> Task<Void, Never> {
+        let api = self.api.scoped(), state = self.state
+        let owner = state.beginOperation("saveChoreOrder")
+        _ = state.beginOperation("loadPreferences")
+        let previous = state.choreOrder
+        state.choreOrder = order
+        return Task {
+            do {
+                let patch = PatchUserPreferencesRequest(choreOrder: order)
+                let data: UserPreferencesResponse = try await api.patch("/api/preferences", body: patch)
+                guard state.owns(owner) else { return }
+                state.choreOrder = data.preferences.choreOrder
+            } catch {
+                Log.actions.failure("Save the activity order", error)
+                guard state.owns(owner) else { return }
+                state.choreOrder = previous
+            }
+        }
+    }
+
+    /// Hides `ids` from Home now, then saves it; rolls back if the save fails
+    /// (PWA `saveHiddenHomeChores`).
+    @discardableResult
+    func saveHiddenHomeChores(_ ids: [Int]) -> Task<Void, Never> {
+        let api = self.api.scoped(), state = self.state
+        let owner = state.beginOperation("saveHiddenHomeChores")
+        _ = state.beginOperation("loadPreferences")
+        let previous = state.hiddenHomeChoreIDs
+        state.hiddenHomeChoreIDs = ids
+        return Task {
+            do {
+                let patch = PatchUserPreferencesRequest(hiddenHomeChoreIds: ids)
+                let data: UserPreferencesResponse = try await api.patch("/api/preferences", body: patch)
+                guard state.owns(owner) else { return }
+                state.hiddenHomeChoreIDs = data.preferences.hiddenHomeChoreIds
+            } catch {
+                Log.actions.failure("Save the hidden activities", error)
+                guard state.owns(owner) else { return }
+                state.hiddenHomeChoreIDs = previous
+            }
         }
     }
 
@@ -141,8 +190,7 @@ final class PreferencesDataLoader {
                 guard state.owns(owner) else { return }
             }
         } catch {
-            guard state.owns(owner) else { return }
-            // Silent failure
+            Log.api.failure("Sync the time zone", error)
         }
     }
 }

@@ -168,6 +168,15 @@ These PWA behaviors must be preserved in the native iOS app:
 
 The app, the widget extension and the unit tests build in the Swift 6 language mode with Approachable Concurrency (`SWIFT_APPROACHABLE_CONCURRENCY`): a nonisolated `async` function runs on its caller's actor, so a `@MainActor` store calling `APIClient` sends nothing across actors. Building needs Xcode 26 or later, which CI selects (`ios/ci-toolchain.sh`). The UI tests stay in Swift 5 mode: `XCUIElement` is main-actor isolated and XCTest's methods are not, so their 19 classes would need restructuring for no runtime gain. A shared static that a lock or immutability makes safe is `nonisolated(unsafe)`, with a comment saying why.
 
+## Errors
+
+No failure ends in an empty `catch`. `APIClient`'s requests are `throws(APIError)`: a request that got no answer is `networkError` (which `LogStore.isNetworkFailure` queues), and an answer the app can't read is `decodingError`.
+
+- **A failed action tells the person**, in the PWA's words: the server's message when it sent one, otherwise the action's own ("Failed to remove member"), as `APIError.message(for:fallback:)` decides. `AppState.reportFailure` shows it above the tabs (`ErrorToast`). A sheet would hide that toast, so a sheet shows its own over itself with `.errorToast($failure)`. Pass `reportFailure` the revision the action started with, so another identity never sees it, except for a request that changes the identity (`APIClient.changesIdentity`, which includes renaming the household): its screens are rebuilt for the identity after it, so its failure belongs there.
+- **A failure the screen already shows**, such as a switch or a preference that goes back, and **a background read**, which keeps the last good data, only log.
+- **Catch the rest.** A `do` block around `APIClient` calls throws `APIError`. If it catches only some cases (`catch APIError.contextChanged { }`), end it with a plain `catch` as well. Rethrowing what's left as `any Error` crashed Xcode 26.3's Swift 6.2 compiler in a unit test that Xcode 27 builds.
+- **Logging** goes through `Log` (`os.Logger`, one per area) and `failure(_:_:)`: what failed and the error's kind are public, and the error's text is private, since a server message or a decoding error can carry what someone typed. Never log a token, a cookie, an invite code or a URL with its query.
+
 ## Strings
 
 The app's user-facing text lives in a String Catalog, `Nabu/Resources/Localizable.xcstrings` (English only, until localization after launch). The compiler extracts the literals in `Text`, `Label`, `Button` and the like (`SWIFT_EMIT_LOC_STRINGS`), and building in Xcode adds new ones to the catalog; a command-line build does not, so after adding UI text from the command line, build once in Xcode or add the key to the catalog. Text built as a plain `String` (an error message, a toast) is only extracted through `String(localized:)`.

@@ -15,6 +15,18 @@ final class AppState: ObservableObject {
     func owns(_ owner: Owner) -> Bool {
         revision == owner.revision && operations[owner.key] == owner.request
     }
+    /// Reports a failed action as the PWA's error toast does: the server's
+    /// message when it sent one, otherwise `fallback`, above the tabs
+    /// (`ErrorToast`). Always logged. With an `owner`, shown only while that
+    /// identity is current, as its screens are gone otherwise. Without one,
+    /// for a request that changes the identity (`APIClient.changesIdentity`):
+    /// its failure belongs to whichever identity the app confirmed after it,
+    /// on screens rebuilt for that identity.
+    func reportFailure(_ fallback: String, _ error: any Error, owner: UUID? = nil) {
+        let message = Log.actions.failureMessage(fallback, error)
+        guard owner == nil || revision == owner else { return }
+        toast = Toast(message: message)
+    }
     func adopt(_ session: ClientIdentity.Snapshot) {
         if revision != session.revision {
             reset()
@@ -66,6 +78,7 @@ final class AppState: ObservableObject {
     @Published var currentTab: MainTab = .home
     @Published var homeView: HomeViewMode = .log
     @Published var activeSheet: ActiveSheet?
+    /// A failed action's message (`reportFailure`).
     @Published var toast: Toast?
     @Published var jiggleMode = false
     @Published var historyChoreFilter: [Int]?

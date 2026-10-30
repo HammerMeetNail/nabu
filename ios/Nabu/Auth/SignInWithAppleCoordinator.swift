@@ -48,11 +48,8 @@ final class SignInWithAppleCoordinator: ObservableObject {
                 let body = AppleNativeAuthRequest(identityToken: identityToken, nonce: nonce)
                 let response: UserResponse = try await api.post("/api/auth/apple/native", body: body)
                 return response.user
-            } catch let error as APIError {
-                errorMessage = error.errorDescription ?? "Sign in with Apple failed"
-                return nil
             } catch {
-                errorMessage = "Sign in with Apple failed"
+                errorMessage = Log.actions.failureMessage("Sign in with Apple failed", error)
                 return nil
             }
         }
