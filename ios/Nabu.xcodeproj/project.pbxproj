@@ -67,6 +67,7 @@
 		BE60DC38E0D1B1374195D259 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6E00098A771631EEECAE5E4 /* AppState.swift */; };
 		BFED7A58A75220FE2AEB7981 /* APIError.swift in Sources */ = {isa = PBXBuildFile; fileRef = B8B9B569EAB4F81FA0B8A086 /* APIError.swift */; };
 		C5187ED70EC0A751BDFACD50 /* ChoreStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5AC6C0A4901CAA9D3720902 /* ChoreStore.swift */; };
+		B300000000000000000003BD /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = A300000000000000000003FD /* Localizable.xcstrings */; };
 		C61DF5DD0542CF293EB61BE4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 62813ED6206E72BDC1F480C9 /* Assets.xcassets */; };
 		CF7725D402FEDBBD83A0AFF8 /* ScheduleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04E82D0A2850166FAE3F9F87 /* ScheduleTests.swift */; };
 		D7453732D5E13694EDB91D5A /* NabuUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5875BDB9E0390BF04EFDEAF4 /* NabuUITests.swift */; };
@@ -210,6 +211,7 @@
 		A300000000000000000003F8 /* PushRegistrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistrationTests.swift; sourceTree = "<group>"; };
 		A300000000000000000003F9 /* DeepLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkTests.swift; sourceTree = "<group>"; };
 		A300000000000000000003FA /* PushPrePromptSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushPrePromptSnapshotTests.swift; sourceTree = "<group>"; };
+		A300000000000000000003FD /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		A300000000000000000003FB /* Nabu.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Nabu.entitlements; sourceTree = "<group>"; };
 		A400000000000000000004F1 /* StateQualitySnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StateQualitySnapshotTests.swift; sourceTree = "<group>"; };
 		C500000000000000000005F1 /* NabuWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NabuWidgets.swift; sourceTree = "<group>"; };
@@ -457,6 +459,7 @@
 			isa = PBXGroup;
 			children = (
 				62813ED6206E72BDC1F480C9 /* Assets.xcassets */,
+				A300000000000000000003FD /* Localizable.xcstrings */,
 				A300000000000000000003FB /* Nabu.entitlements */,
 			);
 			path = Resources;
@@ -652,6 +655,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				C61DF5DD0542CF293EB61BE4 /* Assets.xcassets in Resources */,
+				B300000000000000000003BD /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

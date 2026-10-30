@@ -1,0 +1,41 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/stats/overview"
+  },
+  "status": 200,
+  "response": {
+    "overview": {
+      "breakdown": [
+        {
+          "category": "feeding",
+          "count": 2
+        }
+      ],
+      "leaderboard": [
+        {
+          "count": 2,
+          "userId": 16
+        }
+      ],
+      "recap": {
+        "byCategory": [
+          {
+            "category": "feeding",
+            "count": 2
+          }
+        ],
+        "mostActiveDay": "Monday",
+        "topPerformer": {
+          "count": 2,
+          "userId": 16
+        },
+        "totalChores": 2
+      },
+      "streaks": {
+        "current": 1,
+        "longest": 1
+      }
+    }
+  }
+}
