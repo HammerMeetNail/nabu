@@ -111,6 +111,9 @@ final class LogStore {
             state.recentAmounts[choreId] = response.amounts
             state.recentAmountUnits[choreId] = unit
             return response.amounts
-        } catch { return nil }
+        } catch {
+            Log.loading.failure("Load recent amounts", error)
+            return nil
+        }
     }
 }

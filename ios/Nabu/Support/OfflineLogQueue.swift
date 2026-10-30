@@ -1,9 +1,11 @@
 import Foundation
+import Observation
 
 /// An immutable journal. A request is durable before its first POST and is
 /// removed only after confirmed success or explicit discard by its owner.
 @MainActor
-final class OfflineLogQueue: ObservableObject {
+@Observable
+final class OfflineLogQueue {
     static let shared = OfflineLogQueue()
 
     struct Item: Codable, Equatable {
@@ -13,9 +15,9 @@ final class OfflineLogQueue: ObservableObject {
         var failure: String?
         var needsRetry: Bool?
     }
-    @Published private(set) var items: [Item] = []
-    @Published private(set) var inFlight: Set<String> = []
-    @Published private(set) var storageUnavailable = false
+    private(set) var items: [Item] = []
+    private(set) var inFlight: Set<String> = []
+    private(set) var storageUnavailable = false
     private let fileURL: URL
     private let defaultOrigin: LogOrigin?
 
@@ -40,6 +42,7 @@ final class OfflineLogQueue: ObservableObject {
         } catch {
             // Keep the original file and any last-good memory data. A locked
             // or corrupt journal must never be overwritten by a new save.
+            Log.storage.failure("Read the offline queue", error)
             storageUnavailable = true
         }
     }
@@ -91,7 +94,7 @@ final class OfflineLogQueue: ObservableObject {
         } catch {
             if let index = items.firstIndex(where: { $0.origin == origin && $0.body.idempotencyKey == key }) {
                 var next = items
-                next[index].failure = (error as? APIError)?.errorDescription ?? "Could not confirm this save."
+                next[index].failure = APIError.message(for: error, fallback: "Could not confirm this save.")
                 next[index].needsRetry = !LogStore.isNetworkFailure(error)
                 _ = persist(next)
             }
@@ -127,7 +130,10 @@ final class OfflineLogQueue: ObservableObject {
             try JSONEncoder().encode(next).write(to: fileURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             items = next
             return true
-        } catch { return false }
+        } catch {
+            Log.storage.failure("Save the offline queue", error)
+            return false
+        }
     }
 }
 

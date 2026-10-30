@@ -1,14 +1,16 @@
 import AuthenticationServices
 import Foundation
 import Security
+import Observation
 
 /// Bridges the native Sign in with Apple flow to the backend: generates the
 /// per-request nonce, then exchanges the identity token for a session via
 /// `POST /api/auth/apple/native`. The server verifies Apple echoed the nonce
 /// into the token, which is what stops a harvested token being replayed.
 @MainActor
-final class SignInWithAppleCoordinator: ObservableObject {
-    @Published var errorMessage: String?
+@Observable
+final class SignInWithAppleCoordinator {
+    var errorMessage: String?
     private(set) var currentNonce: String?
     private var requestOwner: ClientIdentity.Snapshot?
 
@@ -48,11 +50,8 @@ final class SignInWithAppleCoordinator: ObservableObject {
                 let body = AppleNativeAuthRequest(identityToken: identityToken, nonce: nonce)
                 let response: UserResponse = try await api.post("/api/auth/apple/native", body: body)
                 return response.user
-            } catch let error as APIError {
-                errorMessage = error.errorDescription ?? "Sign in with Apple failed"
-                return nil
             } catch {
-                errorMessage = "Sign in with Apple failed"
+                errorMessage = Log.actions.failureMessage("Sign in with Apple failed", error)
                 return nil
             }
         }

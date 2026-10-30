@@ -1,4 +1,3 @@
-import Combine
 import SwiftUI
 
 /// Shown instead of onboarding when an administrator has disabled this
@@ -38,14 +37,15 @@ struct AccessSuspendedView: View {
 /// The activity pack picker's state, shared by setup and Manage → Add
 /// activities (PWA `onboarding.js`).
 @MainActor
-final class PackSelection: ObservableObject {
+@Observable
+final class PackSelection {
     static let maxNames = 6
 
-    @Published var packs: [ActivityPack]?
-    @Published var loadFailed = false
+    var packs: [ActivityPack]?
+    var loadFailed = false
     /// The chosen packs, each with its name fields.
-    @Published var names: [String: [String]] = [:]
-    @Published var error: String?
+    var names: [String: [String]] = [:]
+    var error: String?
 
     func isOn(_ key: String) -> Bool { names[key] != nil }
 
@@ -95,6 +95,7 @@ final class PackSelection: ObservableObject {
             let response: ActivityPacksResponse = try await api.get("/api/packs")
             packs = response.packs
         } catch {
+            Log.loading.failure("Load activity packs", error)
             loadFailed = true
         }
     }
@@ -116,7 +117,7 @@ final class PackSelection: ObservableObject {
 
 /// The pack picker for setup and Manage → Add activities.
 struct PackPicker: View {
-    @ObservedObject var selection: PackSelection
+    var selection: PackSelection
     let api: APIClient
 
     var body: some View {
@@ -201,29 +202,24 @@ struct PackPicker: View {
 /// replaces this screen for a moment and then loads the new household; the
 /// setup must outlive both, and keep the main tabs back until it's done.
 @MainActor
-final class HouseholdSetup: ObservableObject {
+@Observable
+final class HouseholdSetup {
     enum Step { case name, household, packs, invite, join }
 
-    @Published var step: Step = .name
-    @Published var name = ""
-    @Published var color: String?
-    @Published private(set) var householdName = ""
-    @Published private(set) var initials = ""
-    @Published var error: String?
-    @Published var saving = false
+    var step: Step = .name
+    var name = ""
+    var color: String?
+    private(set) var householdName = ""
+    private(set) var initials = ""
+    var error: String?
+    var saving = false
     /// The household this setup created, whose invite link it shows.
-    @Published private(set) var created: Household?
+    private(set) var created: Household?
     /// From creating the household until the user leaves the invite step.
-    @Published private(set) var isActive = false
+    private(set) var isActive = false
     let packs = PackSelection()
-    private var initialsEdited = false
+    @ObservationIgnored private var initialsEdited = false
     private var startedFor: Int?
-    private var packChanges: AnyCancellable?
-
-    init() {
-        // The view reads the picker's state too (its error, whether it loaded).
-        packChanges = packs.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
-    }
 
     /// Whether setup keeps the main tabs back for this account: from creating
     /// the household until the user leaves the invite step.
@@ -339,10 +335,10 @@ final class HouseholdSetup: ObservableObject {
 }
 
 struct OnboardingView: View {
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
-    @ObservedObject var auth: AuthStore
-    @ObservedObject var setup: HouseholdSetup
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
+    var auth: AuthStore
+    @Bindable var setup: HouseholdSetup
     /// Reloads the household's data before the main tabs show.
     var reload: () async -> Void = {}
     @State private var copied = false
@@ -530,8 +526,8 @@ struct OnboardingView: View {
 }
 
 struct JoinHouseholdView: View {
-    @EnvironmentObject var state: AppState
-    @ObservedObject var auth: AuthStore
+    @Environment(AppState.self) var state
+    var auth: AuthStore
     @State private var code = ""
 
     var body: some View {

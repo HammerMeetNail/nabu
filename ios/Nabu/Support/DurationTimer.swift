@@ -83,7 +83,10 @@ enum DurationTimer {
             } else if let defaults { defaults.removeObject(forKey: key(owner)) }
             else if FileManager.default.fileExists(atPath: file(owner).path) { try FileManager.default.removeItem(at: file(owner)) }
             return true
-        } catch { return false }
+        } catch {
+            Log.storage.failure("Save the timer", error)
+            return false
+        }
     }
 
     private static func key(_ origin: LogOrigin?) -> String {

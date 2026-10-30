@@ -604,6 +604,7 @@ final class InviteTests: XCTestCase {
         XCTAssertNil(unnamed.inviter)
     }
 
+    @MainActor
     func testQRCodeReadsBackAsTheLinkWithAQuietZone() throws {
         let link = "https://nabu-app.com/join?code=7KQ2M9XWPA"
         let image = try XCTUnwrap(QRCodeView.image(for: link))

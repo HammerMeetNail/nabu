@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct HomeView: View {
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
     @State private var showingQuickLog = false
     @State private var selectedChore: Chore?   // non-nil drives the log sheet
     @State private var editingChore: Chore?    // non-nil drives the chore editor
@@ -176,7 +176,7 @@ struct HomeView: View {
 
     private var headerTabs: some View {
         PillTabBar(
-            selection: $state.homeView,
+            selection: Bindable(state).homeView,
             tabs: Array(HomeViewMode.allCases),
             labelFor: { $0.title }
         )
@@ -276,12 +276,7 @@ struct HomeView: View {
     private func hideFromHome(_ chore: Chore) {
         var hidden = Set(state.hiddenHomeChoreIDs)
         hidden.insert(chore.id)
-        let newHidden = Array(hidden)
-        state.hiddenHomeChoreIDs = newHidden
-        let patch = PatchUserPreferencesRequest(hiddenHomeChoreIds: newHidden)
-        Task {
-            let _: UserPreferencesResponse? = try? await environment.apiClient.patch("/api/preferences", body: patch)
-        }
+        PreferencesDataLoader(api: environment.apiClient, state: state).saveHiddenHomeChores(Array(hidden))
     }
 
     /// Pull-to-refresh: refetch the tiles' data (today's logs + latest-per-chore).

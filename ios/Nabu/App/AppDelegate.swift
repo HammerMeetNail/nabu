@@ -166,7 +166,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
         guard let owner = await PushRegistrationController.shared.confirmedOwner(notification.request.content.userInfo),
-              await PushRegistrationController.shared.isCurrent(owner) else { return [] }
+              PushRegistrationController.shared.isCurrent(owner) else { return [] }
         return [.banner, .list, .sound]
     }
 
@@ -189,7 +189,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
             // Deep-links to the pre-filled log sheet — parity with the PWA's
             // `/?quicklog=chore:<id>`.
             guard let choreId else { return }
-            await routeNotificationQuickLog(choreID: choreId, owner: owner)
+            routeNotificationQuickLog(choreID: choreId, owner: owner)
         default:
             // A plain body tap just opens/focuses the app.
             break

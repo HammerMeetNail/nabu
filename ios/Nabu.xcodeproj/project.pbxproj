@@ -31,6 +31,7 @@
 		446F08EC10600094C1BB9EAD /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 606C5501AF24F1BA74D4F968 /* ContentView.swift */; };
 		44C43E962D082C797E8AA07D /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 503722677D3152A3454B91FF /* AuthStore.swift */; };
 		44E8CBFEEF9645C181DFBE1B /* TestHooks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BA815567454CC42301A7CF2 /* TestHooks.swift */; };
+		E100000000000000000001B1 /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000001F1 /* Log.swift */; };
 		47CFB6E9DDAD437CC519734F /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8A56EC19E09D88AA99BFC6A /* StatsView.swift */; };
 		4AD1F406FC2015E5E4E75A14 /* RegisterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 284D882588919C92877456B5 /* RegisterView.swift */; };
 		561EC4912267CE43DE21AF81 /* ScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E8F3699DE10AAEC9B1D4309 /* ScheduleView.swift */; };
@@ -104,6 +105,7 @@
 		B300000000000000000003B7 /* APNsContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000003F7 /* APNsContractTests.swift */; };
 		B300000000000000000003B8 /* PushRegistrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000003F8 /* PushRegistrationTests.swift */; };
 		B300000000000000000003B9 /* DeepLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000003F9 /* DeepLinkTests.swift */; };
+		E100000000000000000002B1 /* ErrorReportingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000002F1 /* ErrorReportingTests.swift */; };
 		B300000000000000000003BA /* PushPrePromptSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000003FA /* PushPrePromptSnapshotTests.swift */; };
 		B400000000000000000004B1 /* StateQualitySnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A400000000000000000004F1 /* StateQualitySnapshotTests.swift */; };
 		C500000000000000000005B1 /* NabuWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C500000000000000000005F1 /* NabuWidgets.swift */; };
@@ -133,6 +135,7 @@
 		4885491FB43D9B825A95DA77 /* DataLoaderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DataLoaderTests.swift; sourceTree = "<group>"; };
 		48A7D031C9F72FA74DE4C1AF /* LogDataLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogDataLoader.swift; sourceTree = "<group>"; };
 		4BA815567454CC42301A7CF2 /* TestHooks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHooks.swift; sourceTree = "<group>"; };
+		E100000000000000000001F1 /* Log.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Log.swift; sourceTree = "<group>"; };
 		4CC042FD2FD2699642D0DE0A /* LogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogStore.swift; sourceTree = "<group>"; };
 		4E7E20F4F01013A3A3CF87C5 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		4E8F3699DE10AAEC9B1D4309 /* ScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleView.swift; sourceTree = "<group>"; };
@@ -210,6 +213,7 @@
 		A300000000000000000003F7 /* APNsContractTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APNsContractTests.swift; sourceTree = "<group>"; };
 		A300000000000000000003F8 /* PushRegistrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistrationTests.swift; sourceTree = "<group>"; };
 		A300000000000000000003F9 /* DeepLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkTests.swift; sourceTree = "<group>"; };
+		E100000000000000000002F1 /* ErrorReportingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorReportingTests.swift; sourceTree = "<group>"; };
 		A300000000000000000003FA /* PushPrePromptSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushPrePromptSnapshotTests.swift; sourceTree = "<group>"; };
 		A300000000000000000003FD /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		A300000000000000000003FB /* Nabu.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Nabu.entitlements; sourceTree = "<group>"; };
@@ -366,6 +370,7 @@
 				A300000000000000000003F7 /* APNsContractTests.swift */,
 				A300000000000000000003F8 /* PushRegistrationTests.swift */,
 				A300000000000000000003F9 /* DeepLinkTests.swift */,
+				E100000000000000000002F1 /* ErrorReportingTests.swift */,
 				A300000000000000000003FA /* PushPrePromptSnapshotTests.swift */,
 				A400000000000000000004F1 /* StateQualitySnapshotTests.swift */,
 			);
@@ -470,6 +475,7 @@
 			children = (
 				DCC215E9F6F2846F244889F0 /* DateFormatting.swift */,
 				4BA815567454CC42301A7CF2 /* TestHooks.swift */,
+				E100000000000000000001F1 /* Log.swift */,
 				A100000000000000000001A1 /* VolumeUnits.swift */,
 				A100000000000000000001A2 /* DurationTimer.swift */,
 				A100000000000000000001A3 /* RecentVolumes.swift */,
@@ -701,6 +707,7 @@
 				B300000000000000000003B7 /* APNsContractTests.swift in Sources */,
 				B300000000000000000003B8 /* PushRegistrationTests.swift in Sources */,
 				B300000000000000000003B9 /* DeepLinkTests.swift in Sources */,
+				E100000000000000000002B1 /* ErrorReportingTests.swift in Sources */,
 				B300000000000000000003BA /* PushPrePromptSnapshotTests.swift in Sources */,
 				B400000000000000000004B1 /* StateQualitySnapshotTests.swift in Sources */,
 			);
@@ -783,6 +790,7 @@
 				AA1234567890ABCDEF123456 /* Components.swift in Sources */,
 				6E47D94757693F9700B7C198 /* DateFormatting.swift in Sources */,
 				44E8CBFEEF9645C181DFBE1B /* TestHooks.swift in Sources */,
+				E100000000000000000001B1 /* Log.swift in Sources */,
 				B100000000000000000001B1 /* VolumeUnits.swift in Sources */,
 				B100000000000000000001B2 /* DurationTimer.swift in Sources */,
 				B100000000000000000001B3 /* RecentVolumes.swift in Sources */,
@@ -808,7 +816,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.nabu.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Nabu.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Nabu";
 			};
@@ -841,7 +850,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.nabu.app.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = NO;
-				SWIFT_VERSION = 5.0;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Nabu.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Nabu";
 			};
@@ -892,7 +902,8 @@
 				SDKROOT = iphoneos;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 5.0;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
@@ -917,7 +928,8 @@
 				MTL_ENABLE_DEBUG_INFO = NO;
 				SDKROOT = iphoneos;
 				SWIFT_COMPILATION_MODE = wholemodule;
-				SWIFT_VERSION = 5.0;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_VERSION = 6.0;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -943,7 +955,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.nabu.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -969,7 +982,8 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.nabu.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
@@ -995,7 +1009,8 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -1019,7 +1034,8 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_VERSION = 5.0;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;

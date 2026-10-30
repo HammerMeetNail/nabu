@@ -3,9 +3,10 @@ import SwiftUI
 import WebKit
 
 @MainActor
-final class GoogleOAuthCoordinator: NSObject, ObservableObject {
-    @Published var isAuthenticating = false
-    @Published var errorMessage: String?
+@Observable
+final class GoogleOAuthCoordinator: NSObject {
+    var isAuthenticating = false
+    var errorMessage: String?
 
     let baseURL: URL
 
@@ -36,7 +37,7 @@ final class GoogleOAuthCoordinator: NSObject, ObservableObject {
         let ticket: UUID
         do { ticket = try api.identity.beginTransition() }
         catch { errorMessage = "Finish the current account change first."; return nil }
-        await api.identity.publish()
+        api.identity.publish()
         let succeeded: Bool = await withCheckedContinuation { continuation in
             let session = ASWebAuthenticationSession(
                 url: loginURL,

@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct ActivityView: View {
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
-    @StateObject private var model: ActivityModel
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
+    @State private var model: ActivityModel
     @State private var choreFilter: Set<Int> = []
     @State private var showingFilter = false
     @FocusState private var searchFocused: Bool
@@ -14,7 +14,7 @@ struct ActivityView: View {
     init(activityStore: ActivityStore, logStore: LogStore) {
         self.activityStore = activityStore
         self.logStore = logStore
-        _model = StateObject(wrappedValue: ActivityModel(store: activityStore))
+        _model = State(initialValue: ActivityModel(store: activityStore))
     }
 
     private var isSearching: Bool {
@@ -78,9 +78,9 @@ struct ActivityView: View {
 struct HistoryListView: View {
     let activityStore: ActivityStore
     let logStore: LogStore
-    @ObservedObject var model: ActivityModel
+    var model: ActivityModel
     @Binding var choreFilter: Set<Int>
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) var state
 
     @State private var selectedLog: ChoreLog?
     @State private var editingNoteDate: DayNoteTarget?
@@ -389,10 +389,11 @@ struct HistoryListView: View {
 struct DayNoteSheet: View {
     let date: String
     let activityStore: ActivityStore
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) var state
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @State private var isSaving = false
+    @State private var failure: Toast?
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -425,6 +426,7 @@ struct DayNoteSheet: View {
                 }
             }
         }
+        .errorToast($failure)
         .presentationDetents([.medium])
         .onAppear {
             text = state.dayNotes[date] ?? ""
@@ -445,7 +447,10 @@ struct DayNoteSheet: View {
                 state.dayNotes[date] = trimmed
             }
             dismiss()
-        } catch {}
+        } catch {
+            guard state.revision == owner else { return }
+            failure = Toast(message: Log.actions.failureMessage("Failed to save note", error))
+        }
         isSaving = false
     }
 
