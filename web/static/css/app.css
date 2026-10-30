@@ -2062,6 +2062,19 @@ details[open] .member-chevron {
   }
 }
 
+/* Even trimmed, Chromium's date field needs 148 px on Linux at 16 px. Where
+   focusing a field doesn't zoom the page (anywhere but iOS, which keeps
+   16 px: WebKit's date fits), a date's text is 14 px from 240 px, which
+   makes it 131 px. */
+@media (max-width: 240px) {
+  @supports not (-webkit-touch-callout: none) {
+    .feeding-gaps-date,
+    .busy-hours-date-filters .busy-hours-filter {
+      font-size: 14px;
+    }
+  }
+}
+
 /* Heatmap */
 .heatmap-wrap {
   position: relative;
