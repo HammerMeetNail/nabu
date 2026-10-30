@@ -533,7 +533,13 @@ jobs:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: [scan-and-push]
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Without a status function GitHub adds success(), which a skipped job
+    # anywhere upstream fails: the iOS job, skipped when the API contract
+    # didn't change, would stop the release.
+    if: >
+      !cancelled() &&
+      needs.scan-and-push.result == 'success' &&
+      startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
     steps:
@@ -559,12 +565,17 @@ jobs:
     name: Deploy to Production
     runs-on: ubuntu-latest
     needs: [scan-and-push]
+    # A release deploys once its image is pushed, though the iOS job was
+    # skipped upstream (see release). A manual run keeps success(): nothing
+    # upstream may have failed.
     if: >
       (
+        success() &&
         github.event_name == 'workflow_dispatch' &&
         (needs.scan-and-push.result == 'success' || needs.scan-and-push.result == 'skipped')
       ) ||
       (
+        !cancelled() &&
         github.event_name == 'push' &&
         startsWith(github.ref, 'refs/tags/v') &&
         needs.scan-and-push.result == 'success'

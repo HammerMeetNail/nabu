@@ -147,6 +147,9 @@ lists the answers that changed. When they differ, or production's release
 can't be found, the `ios` job runs and `scan-and-push` waits for it: the
 image is pushed, released and deployed only after `NabuTests` passes. A
 release that leaves the contract alone skips the job and doesn't wait.
+`release` and `deploy` check `scan-and-push`'s result under `!cancelled()`:
+without a status function GitHub adds `success()`, which a skipped job
+anywhere upstream fails, so v0.1.388 pushed its image and was never deployed.
 
 If the iOS job fails on a release, nothing was pushed or deployed. A
 transient failure (a simulator that didn't boot) can be re-run with "Re-run
