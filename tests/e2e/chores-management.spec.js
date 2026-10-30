@@ -155,6 +155,21 @@ test.describe('Manage Chores: add custom chore', () => {
     await expect(page.locator('.chore-list')).toContainText('Walk the dog');
   });
 
+  // The server's message, as iOS shows it, not the database's.
+  test('a name another activity has says so and keeps the sheet open', async ({ page }) => {
+    await setupManageChores(page);
+    const countBefore = await page.locator('.chore-row').count();
+
+    await page.click('.fab[data-action="chore-add"]');
+    await expect(page.locator('.chore-edit-sheet')).toBeVisible({ timeout: 3000 });
+    await page.fill('#chore-edit-name', 'Laundry');
+    await page.click('[data-action="save-chore"]');
+
+    await expect(page.locator('#toast-container')).toContainText('An activity with this name already exists.');
+    await expect(page.locator('.chore-edit-sheet')).toBeVisible();
+    await expect(page.locator('.chore-row')).toHaveCount(countBefore);
+  });
+
   test('new chore also appears on the Home tab grid', async ({ page }) => {
     await setupManageChores(page);
 

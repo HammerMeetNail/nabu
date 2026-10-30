@@ -737,6 +737,17 @@ struct StarRatingView: View {
         .accessibilityIdentifier("star-rating")
         .accessibilityLabel("Rating")
         .accessibilityValue(String(format: "%.1f stars", Double(rating) / 10))
+        .accessibilityAdjustableAction { rating = Self.rating(rating, adjusted: $0) }
+    }
+
+    /// A VoiceOver adjustment: half a star at a time, as the PWA's arrow keys
+    /// step its slider.
+    static func rating(_ rating: Int, adjusted direction: AccessibilityAdjustmentDirection) -> Int {
+        switch direction {
+        case .increment: min(rating + 5, 50)
+        case .decrement: max(rating - 5, 0)
+        @unknown default: rating
+        }
     }
 
     /// The rating at `x` across stars `width` wide: the nearest half star (a

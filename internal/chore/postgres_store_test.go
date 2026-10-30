@@ -3,11 +3,13 @@ package chore
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"regexp"
 	"testing"
 	"time"
 
 	"github.com/DATA-DOG/go-sqlmock"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var testTime = time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -133,5 +135,29 @@ func TestPostgresChoreStore_CreateChore(t *testing.T) {
 	}
 	if c.ID != 3 {
 		t.Fatalf("ID = %d, want 3", c.ID)
+	}
+}
+
+// A name the household already gives another chore comes back as
+// ErrDuplicateName, creating or renaming, as it does from the memory store.
+func TestPostgresChoreStore_DuplicateName(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatalf("sqlmock.New: %v", err)
+	}
+	defer db.Close()
+	store := NewPostgresStore(db)
+	duplicate := &pgconn.PgError{Code: "23505", ConstraintName: "chores_household_id_name_key"}
+
+	mock.ExpectQuery(`INSERT INTO chores`).WillReturnError(duplicate)
+	if _, err := store.CreateChore(context.Background(), Chore{HouseholdID: 1, Name: "Laundry"}); !errors.Is(err, ErrDuplicateName) {
+		t.Fatalf("CreateChore: %v, want ErrDuplicateName", err)
+	}
+	mock.ExpectExec(`UPDATE chores SET name`).WillReturnError(duplicate)
+	if err := store.UpdateChore(context.Background(), Chore{ID: 2, HouseholdID: 1, Name: "Laundry"}); !errors.Is(err, ErrDuplicateName) {
+		t.Fatalf("UpdateChore: %v, want ErrDuplicateName", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }

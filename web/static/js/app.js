@@ -2407,7 +2407,7 @@ export async function init() {
             }
             render(app);
             showToast(`${icon} ${name} added`, "success");
-          })).catch(owned(() => showToast("Failed to create chore", "error")));
+          })).catch(owned((err) => showToast(err?.data?.error || "Failed to create chore", "error")));
         } else {
           const chore = (state.chores || []).find(c => c.id === choreId);
           const oldVis = chore?.visibility || "household";
@@ -2426,20 +2426,8 @@ export async function init() {
           apiFetch(`/api/chores/${choreId}`, {
             method: "PATCH",
             body: JSON.stringify(body),
-          }).then(owned(async ({ data, response }) => {
+          }).then(owned(async ({ data }) => {
   const contextScope = captureScope(state);
-            if (!response.ok) {
-              const msg = data?.error || "Failed to update chore";
-              showToast(msg, "error");
-              // If 404, the task may have become private and viewer lost access; reload.
-              if (response.status === 404) {
-                state.activeSheet = null;
-                state.activeSheetData = {};
-                await withCurrentContext(loadChoreData(), contextScope);
-                render(app);
-              }
-              return;
-            }
             const updated = data?.chore;
             if (updated) {
               const idx = (state.chores || []).findIndex(c => c.id === choreId);
@@ -2458,7 +2446,18 @@ export async function init() {
             } else {
               showToast("Chore updated", "success");
             }
-          })).catch(owned(() => showToast("Failed to update chore", "error")));
+          })).catch(owned(async (err) => {
+            // A failed request rejects, with the server's answer as its data.
+            showToast(err?.data?.error || "Failed to update chore", "error");
+            // A 404: the task may have become private and the viewer lost access; reload.
+            if (err?.status === 404) {
+              const contextScope = captureScope(state);
+              state.activeSheet = null;
+              state.activeSheetData = {};
+              await withCurrentContext(loadChoreData(), contextScope);
+              render(app);
+            }
+          }));
         }
         break;
       }

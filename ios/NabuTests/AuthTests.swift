@@ -433,6 +433,22 @@ final class ProfileEditorTests: XCTestCase {
         XCTAssertEqual(state.members.map(\.avatarColor), ["#7B5EA7", "#2E86AB"])
     }
 
+    func testRenamingTheHouseholdIsAnOrdinaryWrite() async throws {
+        let (api, state, sent) = signedIn { _ in
+            (200, #"{"household":{"id":3,"name":"Jones Home","initials":"JH","createdAt":"1970-01-01T00:00:00Z"}}"#)
+        }
+        let revision = state.revision
+        let response: HouseholdResponse = try await api.patch("/api/household", body: UpdateHouseholdRequest(name: "Jones Home", initials: "JH"))
+        XCTAssertEqual(response.household.name, "Jones Home")
+        // Same account, household and role: the PATCH carries the claim, and
+        // no session check follows it, as one does after an identity change.
+        XCTAssertEqual(sent.requests.map { "\($0.httpMethod ?? "") \($0.url?.path ?? "")" }, ["PATCH /api/household"])
+        XCTAssertEqual(sent.requests.first?.value(forHTTPHeaderField: "X-Nabu-User-ID"), "7")
+        XCTAssertEqual(sent.requests.first?.value(forHTTPHeaderField: "X-Nabu-Household-ID"), "3")
+        XCTAssertEqual(state.revision, revision, "renaming the household is not an identity change")
+        XCTAssertNotNil(state.user)
+    }
+
     func testTheServersMessageIsShownAndNothingChanges() async {
         let (api, state, _) = signedIn { _ in (400, #"{"error":"name must be 1 to 50 characters"}"#) }
         let error = await ProfileEditor.save(name: String(repeating: "a", count: 51), color: nil, api: api, state: state)

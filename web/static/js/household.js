@@ -330,6 +330,13 @@ function memberName(userId) {
   return member ? (member.displayName || member.email) : "this member";
 }
 
+// Says why a change failed, as iOS does: the server's message when it sent
+// one, otherwise the action's own. A request that fails rejects, with the
+// server's answer as its error's data.
+function failed(failure) {
+  return owned((err) => showToast(err?.data?.error || failure, "error"));
+}
+
 // Reloads the household after a member change the server confirmed with
 // status; otherwise shows its error.
 function afterMemberChange(change, status, failure, success) {
@@ -342,7 +349,7 @@ function afterMemberChange(change, status, failure, success) {
     } else {
       showToast(data.error || failure, "error");
     }
-  })).catch(owned(() => showToast(failure, "error")));
+  })).catch(failed(failure));
 }
 
 registerActions("click", {
@@ -358,7 +365,7 @@ registerActions("click", {
         );
         rerender();
       }
-    }));
+    })).catch(failed("Failed to create invite"));
   },
   "copy-invite-link": (e, el) => {
     e.preventDefault();
@@ -379,7 +386,7 @@ registerActions("click", {
       const contextScope = captureScope(state);
       await withCurrentContext(loadHouseholdData(), contextScope);
       rerender();
-    }));
+    })).catch(failed("Failed to delete invite"));
   },
   "leave-household": (e) => {
     e.preventDefault();
@@ -451,11 +458,9 @@ registerActions("submit", {
     const name = form.querySelector("#edit-hh-name")?.value?.trim() || "";
     const initials = (form.querySelector("#edit-hh-initials")?.value || "").trim();
     if (!name) return;
-    const data = await withCurrentContext(updateHousehold(name, initials || generateInitials(name)), contextScope);
-    if (!data || data.error) {
-      showToast(data?.error || "Failed to update household", "error");
-      return;
-    }
+    const data = await withCurrentContext(updateHousehold(name, initials || generateInitials(name)), contextScope)
+      .catch(failed("Failed to update household"));
+    if (!data) return;
     await withCurrentContext(loadHouseholdData(), contextScope);
     refreshTopBar();
     rerender();

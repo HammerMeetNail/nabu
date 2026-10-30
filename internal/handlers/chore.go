@@ -18,6 +18,9 @@ import (
 
 var hexColorRe = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
 
+// A household's activities have distinct names; both clients show this as is.
+const duplicateChoreName = "An activity with this name already exists."
+
 // validIcon rejects HTML-significant and control characters. Icons are
 // rendered in every member's views, so markup in one is a stored injection
 // against the whole household even where clients escape it.
@@ -205,7 +208,7 @@ func (h *ChoreHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	created, err := h.service.CreateChoreWithVisibility(r.Context(), *user.HouseholdID, user.ID, req.Name, req.Icon, req.Color, req.Category, req.IndicatorLabels, req.IndicatorDefaults, req.FollowUpEnabled, req.MetricType, req.MetricUnit, req.Subjects, vis)
 	if err != nil {
-		if errors.Is(err, chore.ErrNotAdmin) {
+		if errors.Is(err, chore.ErrNotAdmin) || errors.Is(err, household.ErrNotMember) {
 			writeError(w, http.StatusForbidden, "admin access required")
 			return
 		}
@@ -213,7 +216,11 @@ func (h *ChoreHandler) Create(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeError(w, http.StatusConflict, err.Error())
+		if errors.Is(err, chore.ErrDuplicateName) {
+			writeError(w, http.StatusConflict, duplicateChoreName)
+			return
+		}
+		writeServerError(w, "could not create activity", err)
 		return
 	}
 
@@ -332,7 +339,15 @@ func (h *ChoreHandler) Update(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		writeError(w, http.StatusForbidden, err.Error())
+		if errors.Is(err, household.ErrNotMember) {
+			writeError(w, http.StatusForbidden, "admin access required")
+			return
+		}
+		if errors.Is(err, chore.ErrDuplicateName) {
+			writeError(w, http.StatusConflict, duplicateChoreName)
+			return
+		}
+		writeServerError(w, "could not update activity", err)
 		return
 	}
 
