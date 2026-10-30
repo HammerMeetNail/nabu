@@ -1481,6 +1481,85 @@ final class NabuDynamicTypeUITests: XCTestCase {
     func testAccessibilityXXXLText() {
         everydayPath(textSize: "UICTContentSizeCategoryAccessibilityXXXL")
     }
+
+    /// At AX-XXXL a log sheet's rows stack rather than wrap mid-word, as the
+    /// PWA's do at 200% zoom (large-text-zoom.spec.js): a type's amount goes
+    /// under it, and the follow-up choices one under another. The stars'
+    /// size and taps are StarRatingTests'; their row is kept as a screenshot.
+    func testLogSheetRowsStackAtAccessibilityXXXLText() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-disableAnimations", "-resetState", "-seedHomeForUITest", "-useMockAPI",
+                               "-reviewScenario", "rating", "-nabuBaseURL", "http://localhost:9998",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launchForLocalTest()
+
+        open("Feed Baby", in: app)
+        let amount = app.textFields["indicator-amount-input"]
+        reveal(amount, in: app)
+        XCTAssertGreaterThanOrEqual(amount.frame.minY, app.buttons["Formula"].frame.maxY, "the amount is under its type")
+        let choices = ["Days", "Hours", "Mins"].map {
+            app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", $0)).firstMatch
+        }
+        reveal(choices[2], in: app)
+        XCTAssertGreaterThanOrEqual(choices[1].frame.minY, choices[0].frame.maxY, "hours are under days")
+        XCTAssertGreaterThanOrEqual(choices[2].frame.minY, choices[1].frame.maxY, "minutes are under hours")
+        keep(app, "log-sheet-follow-up-ax-xxxl")
+        app.buttons["Cancel"].firstMatch.tap()
+        XCTAssertTrue(app.buttons["save-log-button"].waitForNonExistence(timeout: 5))
+
+        open("Read Book", in: app)
+        let stars = app.descendants(matching: .any)["star-rating"]
+        revealInSheet(stars, in: app)
+        XCTAssertEqual(stars.value as? String, "0.0 stars")
+        keep(app, "log-sheet-rating-ax-xxxl")
+    }
+
+    /// Scrolls the sheet's form until `element` is clear of the sheet's header
+    /// and its pinned Log button, where a tap would land on another control.
+    /// The form draws rows as they near the screen: one not drawn yet is
+    /// further down. A slow swipe moves less than the space between the two.
+    private func revealInSheet(_ element: XCUIElement, in app: XCUIApplication) {
+        let header = app.buttons["Cancel"].firstMatch
+        let log = app.buttons["save-log-button"]
+        let clear = { element.exists && element.frame.minY >= header.frame.maxY && element.frame.maxY <= log.frame.minY }
+        for _ in 0..<8 where !clear() {
+            if !element.exists || element.frame.maxY > log.frame.minY {
+                app.swipeUp(velocity: .slow)
+            } else {
+                app.swipeDown(velocity: .slow)
+            }
+        }
+        XCTAssertTrue(clear(), "\(element) is clear of the sheet's header and Log button")
+    }
+
+    private func open(_ name: String, in app: XCUIApplication) {
+        let tile = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", name)).firstMatch
+        XCTAssertTrue(tile.waitForExistence(timeout: 5))
+        reveal(tile, in: app)
+        tile.tap()
+        XCTAssertTrue(app.buttons["save-log-button"].waitForExistence(timeout: 5))
+    }
+
+    /// Scrolls until the whole element is on screen.
+    private func reveal(_ element: XCUIElement, in app: XCUIApplication) {
+        let reachable = { element.exists && element.isHittable && app.frame.contains(element.frame) }
+        for upward in [true, false] {
+            for _ in 0..<12 {
+                if reachable() { return }
+                if upward { app.swipeUp() } else { app.swipeDown() }
+            }
+        }
+        XCTAssertTrue(reachable(), "Expected reachable element: \(element)")
+    }
+
+    /// Kept with the result, to see the sheet at this size.
+    private func keep(_ app: XCUIApplication, _ name: String) {
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = name
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
 }
 
 // MARK: - Quick Log Sheet Tests

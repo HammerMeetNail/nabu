@@ -109,6 +109,7 @@
 		B300000000000000000003B9 /* DeepLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000003F9 /* DeepLinkTests.swift */; };
 		E100000000000000000002B1 /* ErrorReportingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000002F1 /* ErrorReportingTests.swift */; };
 		E100000000000000000005B1 /* HouseholdDisplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000005F1 /* HouseholdDisplayTests.swift */; };
+		E100000000000000000006B1 /* StarRatingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000006F1 /* StarRatingTests.swift */; };
 		B300000000000000000003BA /* PushPrePromptSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000003FA /* PushPrePromptSnapshotTests.swift */; };
 		B400000000000000000004B1 /* StateQualitySnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A400000000000000000004F1 /* StateQualitySnapshotTests.swift */; };
 		C500000000000000000005B1 /* NabuWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C500000000000000000005F1 /* NabuWidgets.swift */; };
@@ -222,6 +223,7 @@
 		A300000000000000000003F9 /* DeepLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkTests.swift; sourceTree = "<group>"; };
 		E100000000000000000002F1 /* ErrorReportingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorReportingTests.swift; sourceTree = "<group>"; };
 		E100000000000000000005F1 /* HouseholdDisplayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HouseholdDisplayTests.swift; sourceTree = "<group>"; };
+		E100000000000000000006F1 /* StarRatingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StarRatingTests.swift; sourceTree = "<group>"; };
 		A300000000000000000003FA /* PushPrePromptSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushPrePromptSnapshotTests.swift; sourceTree = "<group>"; };
 		A300000000000000000003FD /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Localizable.xcstrings; sourceTree = "<group>"; };
 		A300000000000000000003FB /* Nabu.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Nabu.entitlements; sourceTree = "<group>"; };
@@ -383,6 +385,7 @@
 				A300000000000000000003F9 /* DeepLinkTests.swift */,
 				E100000000000000000002F1 /* ErrorReportingTests.swift */,
 				E100000000000000000005F1 /* HouseholdDisplayTests.swift */,
+				E100000000000000000006F1 /* StarRatingTests.swift */,
 				A300000000000000000003FA /* PushPrePromptSnapshotTests.swift */,
 				A300000000000000000003FC /* WidgetTests.swift */,
 				A400000000000000000004F1 /* StateQualitySnapshotTests.swift */,
@@ -724,6 +727,7 @@
 				B300000000000000000003B9 /* DeepLinkTests.swift in Sources */,
 				E100000000000000000002B1 /* ErrorReportingTests.swift in Sources */,
 				E100000000000000000005B1 /* HouseholdDisplayTests.swift in Sources */,
+				E100000000000000000006B1 /* StarRatingTests.swift in Sources */,
 				B300000000000000000003BA /* PushPrePromptSnapshotTests.swift in Sources */,
 				B300000000000000000003BC /* WidgetTests.swift in Sources */,
 				B400000000000000000004B1 /* StateQualitySnapshotTests.swift in Sources */,

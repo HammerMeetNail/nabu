@@ -2893,8 +2893,10 @@ details[open] .chore-stat-chevron {
 
 /* ─── Star rating (log sheet) ──────────────────────────────────────────────── */
 
+/* The stars go under "Rating" when they don't fit beside it (200% zoom). */
 .star-rating-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   margin-bottom: 14px;
@@ -3005,10 +3007,21 @@ details[open] .chore-stat-chevron {
   height: 44px;
 }
 
-/* At 200% zoom a phone is about 195 CSS px wide: the amount and its unit
-   stack rather than squeeze their labels into each other. */
+/* At 200% zoom a phone is about 195 CSS px wide: an amount and its unit, or a
+   type's amounts and their shared unit, stack rather than squeeze their labels
+   into each other. */
 @media (max-width: 300px) {
-  .sheet-amount-row { grid-template-columns: minmax(0, 1fr); }
+  .sheet-amount-row,
+  .sheet-indicator-amounts { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* From 240 px down a type no longer fits beside its amount either: each amount
+   goes under its type, and the Amount heading, with no column to head, goes. */
+@media (max-width: 240px) {
+  .indicator-rows { gap: 12px; }
+  .indicator-row,
+  .indicator-amount-headings { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .indicator-amount-headings .field-label + .field-label { display: none; }
 }
 
 /* ─── Log sheet: member row ──────────────────────────────────────────────────── */
@@ -3135,11 +3148,14 @@ body.sheet-open .timer-chip { visibility: hidden; }
   max-width: 100%;
 }
 
-/* Follow-up scheduling inside log sheet */
+/* Follow-up scheduling inside log sheet. Each choice has room for its widest
+   value ("40m"). The three sit beside the label, go under it when they don't
+   fit there, and wrap when they don't fit side by side (200% zoom). */
 .sheet-followup-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 8px 12px;
   margin-bottom: 12px;
 }
 
@@ -3150,7 +3166,9 @@ body.sheet-open .timer-chip { visibility: hidden; }
 }
 
 .followup-inputs {
-  display: flex;
+  flex: 0 1 228px; /* three 72px choices and their gaps */
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
   gap: 6px;
   align-items: center;
 }
@@ -3163,7 +3181,6 @@ body.sheet-open .timer-chip { visibility: hidden; }
   background: #fff;
   color: #111827;
   min-width: 0;
-  flex: 1;
   -webkit-appearance: none;
   appearance: none;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 5l3 3 3-3' stroke='%236b7280' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");

@@ -24,6 +24,7 @@ func initialAmountForNewLog(_ chore: Chore, latestLogs: [Int: ChoreLog], unit: S
 
 struct LogSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let state: AppState
     let chore: Chore
     let log: ChoreLog?
@@ -94,7 +95,8 @@ struct LogSheet: View {
                     Section("Type") {
                         ForEach(chore.indicatorLabels, id: \.self) { label in
                             let isOn = selectedIndicators.contains(label)
-                            HStack(spacing: 8) {
+                            let layout = rowLayout(spacing: 8)
+                            layout {
                                 Button {
                                     toggleIndicator(label)
                                 } label: {
@@ -111,8 +113,8 @@ struct LogSheet: View {
 
                                 if isOn {
                                     volumePicker(id: label)
-                                    .frame(maxWidth: 140)
-                                } else {
+                                    .frame(maxWidth: stacksRows ? .infinity : 140)
+                                } else if !stacksRows {
                                     Spacer().frame(width: 140)
                                 }
                             }
@@ -165,9 +167,13 @@ struct LogSheet: View {
                         TextField("Enter a title...", text: $title)
                     }
                     Section("Rating") {
-                        HStack {
+                        let layout = rowLayout()
+                        layout {
+                            // The stars grow with the text up to the first
+                            // accessibility size; past that five don't fit a row.
                             StarRatingView(rating: $rating)
-                            Spacer()
+                                .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+                            if !stacksRows { Spacer() }
                             if rating > 0 {
                                 Button("clear") { rating = 0 }
                                     .font(.caption)
@@ -195,7 +201,8 @@ struct LogSheet: View {
 
                 if !isEditing && chore.followUpEnabled {
                     Section("Follow-up in") {
-                        HStack(spacing: 6) {
+                        let layout = rowLayout(spacing: 6)
+                        layout {
                             Picker("Days", selection: $followUpDays) {
                                 ForEach(0..<15, id: \.self) { d in Text("\(d)d").tag(d) }
                             }
@@ -273,6 +280,16 @@ struct LogSheet: View {
     private var hasIndicators: Bool { !chore.indicatorLabels.isEmpty }
 
     private var recentVolumeValues: [Int] { recentAmounts }
+
+    /// At accessibility text sizes a row's parts go one under another, as the
+    /// PWA's do at 200% zoom: side by side they only fit by wrapping mid-word.
+    private var stacksRows: Bool { dynamicTypeSize.isAccessibilitySize }
+
+    private func rowLayout(spacing: CGFloat? = nil) -> AnyLayout {
+        stacksRows
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(spacing: spacing))
+    }
 
     private func volumePicker(id: String = "plain") -> some View {
         let text = Binding(
@@ -686,35 +703,46 @@ private struct NumberChoiceButton: View {
 }
 
 /// 0–50 rating ("tenths of stars", half-star resolution) matching the PWA's
-/// star-rating slider. Tap or drag across the stars to set the value.
+/// star-rating slider. Tap or drag across the stars to set the value. Like the
+/// PWA's, the view is the stars' own size: it grows with Dynamic Type, and a
+/// tap is measured across the stars, so the last one's right edge is five.
 struct StarRatingView: View {
     @Binding var rating: Int
 
     var body: some View {
-        GeometryReader { geo in
-            ZStack(alignment: .leading) {
-                Text("☆☆☆☆☆")
-                    .foregroundColor(.secondary)
-                Text("★★★★★")
-                    .foregroundColor(.yellow)
-                    .mask(alignment: .leading) {
+        ZStack(alignment: .leading) {
+            Text("☆☆☆☆☆")
+                .foregroundColor(.secondary)
+            Text("★★★★★")
+                .foregroundColor(.yellow)
+                .mask(alignment: .leading) {
+                    GeometryReader { geo in
                         Rectangle().frame(width: geo.size.width * CGFloat(rating) / 50)
                     }
-            }
-            .font(.title2)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        let pct = min(max(value.location.x / geo.size.width, 0), 1)
-                        // Round to the nearest half star (multiple of 5).
-                        rating = Int((pct * 50 / 5).rounded()) * 5
-                    }
-            )
+                }
         }
-        .frame(width: 140, height: 30)
+        .font(.title2)
+        .fixedSize()
+        .overlay {
+            GeometryReader { geo in
+                Color.clear
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in rating = Self.rating(at: value.location.x, of: geo.size.width) }
+                    )
+            }
+        }
         .accessibilityElement()
+        .accessibilityIdentifier("star-rating")
         .accessibilityLabel("Rating")
         .accessibilityValue(String(format: "%.1f stars", Double(rating) / 10))
+    }
+
+    /// The rating at `x` across stars `width` wide: the nearest half star (a
+    /// multiple of 5), as the PWA rounds a tap.
+    static func rating(at x: CGFloat, of width: CGFloat) -> Int {
+        let pct = min(max(x / width, 0), 1)
+        return Int((pct * 50 / 5).rounded()) * 5
     }
 }
