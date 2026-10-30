@@ -19,7 +19,8 @@ final class LogDataLoader {
             guard state.owns(owner) else { return }
             state.todayLogs = data.logs
         } catch {
-            // Silent failure
+            // The last good logs stay, as in the PWA.
+            Log.loading.failure("Load today's logs", error)
         }
     }
 
@@ -40,7 +41,7 @@ final class LogDataLoader {
             // exactly the data ("time since last log") the widget renders.
             WidgetDataCache.write(chores: WidgetDataCache.snapshots(from: state))
         } catch {
-            // Silent failure
+            Log.loading.failure("Load the latest logs", error)
         }
     }
 

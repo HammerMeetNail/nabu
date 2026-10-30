@@ -92,7 +92,7 @@ final class NotificationDataLoader {
             state.notificationPrefs = data.preferences
             state.availableNotificationTypes = data.availableTypes
         } catch {
-            // Silent failure
+            Log.loading.failure("Load notification preferences", error)
         }
     }
 
@@ -112,7 +112,9 @@ final class NotificationDataLoader {
             let data: ChoreReminderPrefsResponse = try await api.get("/api/chore-reminder-prefs")
             guard state.owns(owner) else { return }
             state.choreReminderPrefs = data.prefs
-        } catch {}
+        } catch {
+            Log.loading.failure("Load activity reminders", error)
+        }
     }
 
     func saveChoreReminderPref(choreId: Int, enabled: Bool, leadMinutes: Int) async throws -> ChoreReminderPref {

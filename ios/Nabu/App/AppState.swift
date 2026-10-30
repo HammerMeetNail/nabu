@@ -1,11 +1,13 @@
 import Foundation
+import Observation
 
 @MainActor
-final class AppState: ObservableObject {
-    @Published private(set) var revision = UUID()
-    @Published var sessionPhase: ClientIdentity.Phase = .checking
-    @Published var logoutIsDurable = true
-    private var operations: [String: UUID] = [:]
+@Observable
+final class AppState {
+    private(set) var revision = UUID()
+    var sessionPhase: ClientIdentity.Phase = .checking
+    var logoutIsDurable = true
+    @ObservationIgnored private var operations: [String: UUID] = [:]
     struct Owner { let revision: UUID; let key: String; let request: UUID }
     func beginOperation(_ key: String) -> Owner {
         let request = UUID()
@@ -14,6 +16,18 @@ final class AppState: ObservableObject {
     }
     func owns(_ owner: Owner) -> Bool {
         revision == owner.revision && operations[owner.key] == owner.request
+    }
+    /// Reports a failed action as the PWA's error toast does: the server's
+    /// message when it sent one, otherwise `fallback`, above the tabs
+    /// (`ErrorToast`). Always logged. With an `owner`, shown only while that
+    /// identity is current, as its screens are gone otherwise. Without one,
+    /// for a request that changes the identity (`APIClient.changesIdentity`):
+    /// its failure belongs to whichever identity the app confirmed after it,
+    /// on screens rebuilt for that identity.
+    func reportFailure(_ fallback: String, _ error: any Error, owner: UUID? = nil) {
+        let message = Log.actions.failureMessage(fallback, error)
+        guard owner == nil || revision == owner else { return }
+        toast = Toast(message: message)
     }
     func adopt(_ session: ClientIdentity.Snapshot) {
         if revision != session.revision {
@@ -32,78 +46,79 @@ final class AppState: ObservableObject {
             }
         }
     }
-    @Published var user: User?
-    @Published var household: Household?
-    @Published var userHouseholds: [HouseholdWithRole] = []
-    @Published var activeHouseholdId: Int?
-    @Published var members: [Member] = []
-    @Published var historicalMembers: [HistoricalMember] = []
-    @Published var invites: [Invite] = []
+    var user: User?
+    var household: Household?
+    var userHouseholds: [HouseholdWithRole] = []
+    var activeHouseholdId: Int?
+    var members: [Member] = []
+    var historicalMembers: [HistoricalMember] = []
+    var invites: [Invite] = []
     /// Non-nil when this account's household membership is disabled. The
     /// message comes from the server: "Your access to <household> is
     /// temporarily disabled. Contact an administrator to re-enable access."
-    @Published var accessSuspendedMessage: String?
-    @Published var chores: [Chore] = []
-    @Published var todayLogs: [ChoreLog] = []
-    @Published var schedules: [ChoreSchedule] = []
-    @Published var recentAmounts: [Int: [Int]] = [:]
+    var accessSuspendedMessage: String?
+    var chores: [Chore] = []
+    var todayLogs: [ChoreLog] = []
+    var schedules: [ChoreSchedule] = []
+    var recentAmounts: [Int: [Int]] = [:]
     var recentAmountUnits: [Int: String] = [:]
-    @Published var latestLogs: [Int: ChoreLog] = [:]
-    @Published var notifications: [AppNotification] = []
-    @Published var notificationCursor: String?
-    @Published var notificationLoading = false
-    @Published var notificationLoadingMore = false
-    @Published var notificationMutating = false
-    @Published var notificationError: String?
-    @Published var notificationErrorIsAppend = false
-    @Published var notificationPanelOpen = false
-    @Published var unreadNotifications = 0
-    @Published var notificationPrefs: ReminderPreference?
-    @Published var availableNotificationTypes: [NotificationTypeInfo] = []
-    @Published var choreReminderPrefs: [ChoreReminderPref] = []
-    @Published var choreOrder: [Int] = []
-    @Published var hiddenHomeChoreIDs: [Int] = []
-    @Published var currentTab: MainTab = .home
-    @Published var homeView: HomeViewMode = .log
-    @Published var activeSheet: ActiveSheet?
-    @Published var toast: Toast?
-    @Published var jiggleMode = false
-    @Published var historyChoreFilter: [Int]?
-    @Published var historyFilterOpen = false
+    var latestLogs: [Int: ChoreLog] = [:]
+    var notifications: [AppNotification] = []
+    var notificationCursor: String?
+    var notificationLoading = false
+    var notificationLoadingMore = false
+    var notificationMutating = false
+    var notificationError: String?
+    var notificationErrorIsAppend = false
+    var notificationPanelOpen = false
+    var unreadNotifications = 0
+    var notificationPrefs: ReminderPreference?
+    var availableNotificationTypes: [NotificationTypeInfo] = []
+    var choreReminderPrefs: [ChoreReminderPref] = []
+    var choreOrder: [Int] = []
+    var hiddenHomeChoreIDs: [Int] = []
+    var currentTab: MainTab = .home
+    var homeView: HomeViewMode = .log
+    var activeSheet: ActiveSheet?
+    /// A failed action's message (`reportFailure`).
+    var toast: Toast?
+    var jiggleMode = false
+    var historyChoreFilter: [Int]?
+    var historyFilterOpen = false
     /// Per-user volume display/input unit ("ml" | "oz"); volumes stay mL in the API.
-    @Published var volumeUnit: String = "ml"
+    var volumeUnit: String = "ml"
     /// Per-user pref: hide the unread count badge on the Settings tab and
     /// bell rows. Notifications still accumulate (PWA `hideNotificationBadge`).
-    @Published var hideNotificationBadge = false
+    var hideNotificationBadge = false
     /// The single running duration timer (persisted via `DurationTimer`).
-    @Published var activeTimer: ActiveTimer?
+    var activeTimer: ActiveTimer?
     /// Offline-queued logs shown inline in Activity with a "pending" badge
     /// until the queue replays.
-    @Published var pendingLogs: [PendingLog] = []
+    var pendingLogs: [PendingLog] = []
     /// Shared per-day diary notes keyed by "YYYY-MM-DD" (Phase 5.4).
-    @Published var dayNotes: [String: String] = [:]
+    var dayNotes: [String: String] = [:]
     /// Deep-link target from a notification "Log now" action, widget tap, or
     /// quick action (parity with the PWA's `?quicklog=`); HomeView consumes
     /// it once chores exist.
-    @Published var pendingQuickLog: QuickLogTarget?
+    var pendingQuickLog: QuickLogTarget?
     /// Invite code from a `/join?code=…` universal link opened while logged
     /// out; OnboardingView prefills its Join tab from it.
-    @Published var pendingInviteCode: String?
+    var pendingInviteCode: String?
     /// What that invite link is for, shown above sign-in and sign-up (the
     /// PWA's /join page). A dead link's `.invalid` outlives its dropped code.
-    @Published var invitePreview: InvitePreviewStatus?
+    var invitePreview: InvitePreviewStatus?
     /// Connectivity from DataLoader's NWPathMonitor; drives the global
     /// offline banner (C4). Not reset on logout — it's device state.
-    @Published var isOffline = false
+    var isOffline = false
     /// Home shows the copy saved on this device: the server could not be
     /// reached to confirm the session at launch. Cleared by the server's
     /// answer, which reloads everything (`ClientIdentity.resumeSavedHome`).
-    @Published var showingSavedHome = false
+    var showingSavedHome = false
     /// Stats customization (P4): stored section order/hidden sets and the
     /// user-defined widgets, synced via `/api/preferences`.
-    @Published var statsSectionOrder: [String] = []
-    @Published var statsSectionHidden: [String] = []
-    @Published var statsWidgets: [StatsWidget] = []
+    var statsSectionOrder: [String] = []
+    var statsSectionHidden: [String] = []
+    var statsWidgets: [StatsWidget] = []
 
     /// Applies a log write's answer for its chore's latest log ("time ago" on
     /// Home and the widget) instead of reloading every chore's latest log. A

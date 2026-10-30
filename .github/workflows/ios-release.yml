@@ -40,17 +40,9 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v7
-      - name: Pick an iPhone simulator
+      - name: Select Xcode 26 and an iPhone simulator
         id: sim
-        run: |
-          UDID=$(xcrun simctl list devices available -j \
-            | jq -r '.devices | to_entries[] | .value[] | select(.name|test("iPhone")) | .udid' \
-            | head -1)
-          if [ -z "$UDID" ]; then
-            echo "No iPhone simulator available" >&2
-            exit 1
-          fi
-          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
+        run: ios/ci-toolchain.sh >> "$GITHUB_OUTPUT"
       - name: Run NabuTests (unit/contract)
         working-directory: ios
         run: |
@@ -70,6 +62,10 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+      - name: Select Xcode 26
+        # App Store Connect takes uploads built with the iOS 26 SDK or later;
+        # the runner's default Xcode is older.
+        run: ios/ci-toolchain.sh --xcode-only
       - name: Build number
         id: build
         # Every upload needs a higher build number than the last. The number

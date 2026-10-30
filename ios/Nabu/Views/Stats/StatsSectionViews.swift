@@ -21,7 +21,7 @@ struct StatsCard<Content: View>: View {
 }
 
 struct StatsLoadStatus: View {
-    @ObservedObject var model: StatsModel
+    var model: StatsModel
     let resource: String
 
     var body: some View {
@@ -178,7 +178,7 @@ struct LastDoneSection: View {
 // MARK: - Baby care section
 
 struct BabyCareSection: View {
-    @ObservedObject var model: StatsModel
+    var model: StatsModel
     let members: [Member]
     let volumeUnit: String
 
@@ -208,7 +208,7 @@ struct BabyCareSection: View {
 }
 
 struct BabyColumn: View {
-    @ObservedObject var model: StatsModel
+    var model: StatsModel
     let ts: ChoreTimeSeries
     let type: String // "feed" | "change"
     let period: String // daily | weekly | monthly
@@ -344,7 +344,7 @@ struct IndicatorPeriodChart: View {
 // MARK: - Cluster feeding (feeding gaps)
 
 struct FeedingGapsColumn: View {
-    @ObservedObject var model: StatsModel
+    var model: StatsModel
     let volumeUnit: String
 
     var body: some View {
@@ -451,7 +451,7 @@ struct StatsDatePicker: View {
 /// Member split plus a metric-appropriate chart for any chore that tracks a
 /// metric or has indicator labels (PWA `renderChoreAnalyticsSection`).
 struct ChoreAnalyticsSection: View {
-    @ObservedObject var model: StatsModel
+    var model: StatsModel
     let chore: Chore
     let members: [Member]
 

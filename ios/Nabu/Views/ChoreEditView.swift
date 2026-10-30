@@ -15,8 +15,8 @@ let QUICK_EMOJIS = [
 
 struct ChoreEditView: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
     let chore: Chore?
     let choreStore: ChoreStore
 
@@ -295,7 +295,9 @@ struct ChoreEditView: View {
                     reminderEnabled = pref?.enabled ?? false
                     reminderLeadMinutes = pref?.leadMinutes ?? state.notificationPrefs?.defaultReminderLeadMinutes ?? 10
                 }
-            } catch {}
+            } catch {
+                Log.loading.failure("Load the activity's reminder", error)
+            }
         }
     }
 
@@ -318,7 +320,15 @@ struct ChoreEditView: View {
                         state.choreReminderPrefs.append(data.pref)
                     }
                 }
-            } catch {}
+            } catch {
+                // Back to the saved reminder, as the PWA puts its switch back.
+                Log.actions.failure("Save the activity's reminder", error)
+                await MainActor.run {
+                    let saved = state.choreReminderPrefs.first(where: { $0.choreId == choreId })
+                    reminderEnabled = saved?.enabled ?? false
+                    reminderLeadMinutes = saved?.leadMinutes ?? reminderLeadMinutes
+                }
+            }
         }
     }
 
@@ -397,13 +407,8 @@ struct ChoreEditView: View {
                     subjects: cleanedSubjects, visibility: visToSend
                 )
                 state.chores.append(response.chore)
-                var newOrder = state.choreOrder
-                newOrder.append(response.chore.id)
-                let patch = PatchUserPreferencesRequest(choreOrder: newOrder)
-                Task {
-                    let _: UserPreferencesResponse? = try? await environment.apiClient.patch("/api/preferences", body: patch)
-                }
-                state.choreOrder = newOrder
+                PreferencesDataLoader(api: environment.apiClient, state: state)
+                    .saveChoreOrder(state.choreOrder + [response.chore.id])
             } else if let choreId = chore?.id {
                 let response = try await choreStore.updateChore(
                     choreId: choreId, name: trimmedName, icon: icon, color: color,

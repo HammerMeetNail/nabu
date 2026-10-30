@@ -211,24 +211,12 @@ jobs:
     if: needs.changes.outputs.ios == 'true'
     steps:
       - uses: actions/checkout@v7
-      - name: Show toolchain
-        run: |
-          xcodebuild -version
-          xcrun simctl list runtimes
-      - name: Pick an iPhone simulator
+      - name: Select Xcode 26 and an iPhone simulator
         id: sim
-        run: |
-          # Choose the first available iPhone simulator on this runner's Xcode,
-          # rather than hardcoding a model that may not exist on every image.
-          UDID=$(xcrun simctl list devices available -j \
-            | jq -r '.devices | to_entries[] | .value[] | select(.name|test("iPhone")) | .udid' \
-            | head -1)
-          if [ -z "$UDID" ]; then
-            echo "No iPhone simulator available" >&2
-            exit 1
-          fi
-          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
-          echo "Using simulator $UDID"
+        # The runner's default Xcode is older: Xcode 26 builds with the SDK
+        # App Store Connect requires, and its iOS 26 simulator runs the
+        # snapshot tests, which skip on other iOS majors.
+        run: ios/ci-toolchain.sh >> "$GITHUB_OUTPUT"
       - name: Run NabuTests (unit/contract)
         working-directory: ios
         run: |
@@ -244,7 +232,16 @@ jobs:
             -project Nabu.xcodeproj -scheme Nabu -destination "$DEST"
           xcodebuild test-without-building \
             -project Nabu.xcodeproj -scheme Nabu -destination "$DEST" \
-            -only-testing:NabuTests
+            -only-testing:NabuTests -resultBundlePath "$RUNNER_TEMP/NabuTests.xcresult"
+      - name: Keep the test results
+        # A failed snapshot test attaches the reference, the new image and
+        # their difference to the result bundle.
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: NabuTests-xcresult
+          path: ${{ runner.temp }}/NabuTests.xcresult
+          retention-days: 7
 
   e2e:
     name: E2E Tests

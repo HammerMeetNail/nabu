@@ -623,7 +623,9 @@ struct LogSheet: View {
                 let data: ChoresResponse = try await logStore.api.get("/api/chores")
                 guard state.revision == owner else { return }
                 state.chores = data.chores
-            } catch {}
+            } catch {
+                Log.loading.failure("Load activities", error)
+            }
         }
     }
 }

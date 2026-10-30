@@ -336,6 +336,7 @@ struct PillTabBar<T: Hashable>: View {
 /// UI test passed -disableAnimations, so callers can write
 /// `withAnimation(Motion.snappy) { … }` and get the fade-or-nothing fallback
 /// for free.
+@MainActor
 enum Motion {
     static var reduceMotion: Bool {
         UIAccessibility.isReduceMotionEnabled || TestHooks.disableAnimations
@@ -445,6 +446,56 @@ struct OfflineBanner: View {
             .clipShape(Capsule())
             .padding(.horizontal, 16)
             .accessibilityIdentifier("offline-banner")
+    }
+}
+
+/// A failed action's message, above the tabs (`AppState.reportFailure`) or
+/// over a sheet (`errorToast`): read out by VoiceOver, and gone after four
+/// seconds or a tap.
+struct ErrorToast: View {
+    let toast: Toast
+    let dismiss: () -> Void
+
+    var body: some View {
+        Label {
+            Text(toast.message)
+        } icon: {
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(DesignColors.danger)
+                .accessibilityHidden(true)
+        }
+        .font(.footnote.weight(.medium))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(Color.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 16))
+        .padding(.horizontal, 16)
+        .onTapGesture(perform: dismiss)
+        .accessibilityElement(children: .combine)
+        .accessibilityAction(named: "Dismiss", dismiss)
+        .accessibilityIdentifier("error-toast")
+        .task(id: toast.id) {
+            AccessibilityNotification.Announcement(toast.message).post()
+            try? await Task.sleep(for: .seconds(4))
+            if !Task.isCancelled { dismiss() }
+        }
+    }
+}
+
+extension View {
+    /// Shows a failure's toast over this view: for a sheet, which hides the
+    /// app's toast above the tabs.
+    func errorToast(_ toast: Binding<Toast?>) -> some View {
+        overlay(alignment: .top) {
+            if let current = toast.wrappedValue {
+                ErrorToast(toast: current) {
+                    if toast.wrappedValue?.id == current.id { toast.wrappedValue = nil }
+                }
+                .padding(.top, 8)
+                .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(Motion.slide ?? Motion.fade, value: toast.wrappedValue)
     }
 }
 

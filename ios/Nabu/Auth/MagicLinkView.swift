@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct MagicLinkView: View {
-    @ObservedObject var auth: AuthStore
+    var auth: AuthStore
     @State private var email = ""
     @State private var sent = false
 
@@ -66,7 +66,7 @@ struct MagicLinkView: View {
 }
 
 struct ForgotPasswordView: View {
-    @ObservedObject var auth: AuthStore
+    var auth: AuthStore
     @State private var email = ""
     @State private var sent = false
 
@@ -131,8 +131,8 @@ struct ForgotPasswordView: View {
 }
 
 struct ResetPasswordView: View {
-    @EnvironmentObject var state: AppState
-    @ObservedObject var auth: AuthStore
+    @Environment(AppState.self) var state
+    var auth: AuthStore
     let token: String
     @State private var password = ""
     @State private var confirmPassword = ""

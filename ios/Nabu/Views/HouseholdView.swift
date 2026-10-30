@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct HouseholdView: View {
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
-    @StateObject private var auth = AuthStore(api: APIClient(baseURL: URL(string: "http://localhost:8080")!))
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
+    @State private var auth = AuthStore()
     @State private var showingEdit = false
     @State private var showingInviteQR = false
     @State private var showingTransfer = false
@@ -21,7 +21,7 @@ struct HouseholdView: View {
     @State private var exportKind: ExportKind?
     @State private var exportJob = UUID()
     @State private var exportTempURL: URL?
-    @EnvironmentObject private var accountDeletion: AccountDeletionModel
+    @Environment(AccountDeletionModel.self) private var accountDeletion
     @State private var showingLeaveConfirm = false
     @State private var verificationSent = false
 	@State private var showingPassword = false
@@ -485,7 +485,10 @@ struct HouseholdView: View {
             guard state.revision == owner else { return }
             state.household = resp.household
             showingEdit = false
-        } catch {}
+        } catch {
+            // Saving changes the identity, which rebuilds these screens.
+            state.reportFailure("Failed to update household", error)
+        }
         isSaving = false
     }
 
@@ -497,7 +500,9 @@ struct HouseholdView: View {
             guard state.revision == owner else { return }
             state.invites.append(resp.invite)
             inviteCode = resp.invite.code
-        } catch {}
+        } catch {
+            state.reportFailure("Failed to create invite", error, owner: owner)
+        }
     }
 
     private func deleteInvite(_ invite: Invite) async {
@@ -507,7 +512,9 @@ struct HouseholdView: View {
             let _: StatusResponse = try await api.delete("/api/household/invites/\(invite.id)")
             guard state.revision == owner else { return }
             state.invites.removeAll { $0.id == invite.id }
-        } catch {}
+        } catch {
+            state.reportFailure("Failed to delete invite", error, owner: owner)
+        }
     }
 
     private func updateMemberRole(_ member: Member, role: String) async {
@@ -525,7 +532,9 @@ struct HouseholdView: View {
                                      suspended: member.suspended)
                 state.members[idx] = updated
             }
-        } catch {}
+        } catch {
+            state.reportFailure("Failed to update role", error, owner: owner)
+        }
     }
 
     private func setMemberAccess(_ member: Member, suspended: Bool) async {
@@ -536,7 +545,9 @@ struct HouseholdView: View {
             let _: StatusResponse = try await api.patch("/api/household/members/\(member.userId)/access", body: body)
             guard state.revision == owner else { return }
             await refreshHousehold()
-        } catch {}
+        } catch {
+            state.reportFailure("Failed to update access", error, owner: owner)
+        }
     }
 
     private func removeMember(_ member: Member) async {
@@ -546,32 +557,32 @@ struct HouseholdView: View {
             let _: StatusResponse = try await api.delete("/api/household/members/\(member.userId)")
             guard state.revision == owner else { return }
             await refreshHousehold()
-        } catch {}
+        } catch {
+            state.reportFailure("Failed to remove member", error, owner: owner)
+        }
     }
 
     private func leaveHousehold() async {
         let api = environment.apiClient.scoped()
         do {
             let _: StatusResponse = try await api.postEmpty("/api/household/leave")
-        } catch {}
+        } catch {
+            // Leaving changes the identity, which rebuilds these screens.
+            state.reportFailure("Could not change household. Please retry.", error)
+        }
     }
 
     private func transferOwnership(to member: Member) async {
-        var api = environment.apiClient.scoped()
         let body = TransferOwnershipRequest(newOwnerId: member.userId)
         do {
-            let _: StatusResponse = try await api.post("/api/household/transfer", body: body)
-            api = environment.apiClient.scoped()
-            let owner = state.revision
-            showingTransfer = false
-            // Reload household data
-            let data: HouseholdResponse = try await api.get("/api/household")
-            guard state.revision == owner else { return }
-            state.household = data.household
-            state.members = data.members
-            state.historicalMembers = data.historicalMembers
-            state.invites = data.invites
-        } catch {}
+            let _: StatusResponse = try await environment.apiClient.scoped().post("/api/household/transfer", body: body)
+        } catch {
+            // Transferring changes the identity, which rebuilds these screens.
+            state.reportFailure("Failed to transfer ownership", error)
+            return
+        }
+        showingTransfer = false
+        await refreshHousehold()
     }
 
     private func refreshHousehold() async {
@@ -584,7 +595,9 @@ struct HouseholdView: View {
             state.members = data.members
             state.historicalMembers = data.historicalMembers
             state.invites = data.invites
-        } catch {}
+        } catch {
+            Log.loading.failure("Load the household", error)
+        }
     }
 
     private func startExport(_ kind: ExportKind) {
@@ -645,17 +658,27 @@ struct HouseholdView: View {
     private func resendVerification() async {
         let owner = state.revision
         let api = environment.apiClient.scoped()
-        let _: StatusResponse? = try? await api.postEmpty("/api/auth/email/verification/resend")
-        guard state.revision == owner else { return }
-        verificationSent = true
+        do {
+            let _: StatusResponse = try await api.postEmpty("/api/auth/email/verification/resend")
+            guard state.revision == owner else { return }
+            verificationSent = true
+        } catch {
+            state.reportFailure("Failed to request verification email. Please try again.", error, owner: owner)
+        }
     }
 
     private func activateHousehold(_ id: Int) async {
         var api = environment.apiClient.scoped()
         do {
             let _: StatusResponse = try await api.postEmpty("/api/households/\(id)/activate")
-            api = environment.apiClient.scoped()
-            let owner = state.revision
+        } catch {
+            // Switching changes the identity, which rebuilds these screens.
+            state.reportFailure("Could not change household. Please retry.", error)
+            return
+        }
+        api = environment.apiClient.scoped()
+        let owner = state.revision
+        do {
             let data: HouseholdResponse = try await api.get("/api/household")
             guard state.revision == owner else { return }
             state.household = data.household
@@ -668,15 +691,17 @@ struct HouseholdView: View {
                 guard state.revision == owner else { return }
                 state.chores = chores.chores
             }
-        } catch {}
+        } catch {
+            Log.loading.failure("Load the household", error)
+        }
     }
 }
 
 struct PasswordChangeSheet: View {
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var auth = AuthStore(api: APIClient(baseURL: URL(string: "http://localhost:8080")!))
+    @State private var auth = AuthStore()
     @State private var current = ""
     @State private var password = ""
     @State private var confirmation = ""
@@ -716,7 +741,6 @@ struct PasswordChangeSheet: View {
     }
 
     private func save() async {
-        let api = environment.apiClient.scoped()
         validationError = nil
         guard password == confirmation else {
             validationError = "New passwords do not match"
@@ -808,10 +832,10 @@ struct ShareSheet: UIViewControllerRepresentable {
 /// multi-member household gets a 409 telling them to transfer ownership
 /// first, surfaced verbatim below the button.
 struct DeleteAccountSheet: View {
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var accountDeletion: AccountDeletionModel
+    @Environment(AccountDeletionModel.self) private var accountDeletion
     @State private var confirmText = ""
     @State private var myDataFile: ExportFile?
     @State private var isExportingMyData = false
@@ -856,9 +880,9 @@ struct DeleteAccountSheet: View {
                 }
 
                 Section {
-                    Toggle("Also delete everything I logged in shared households", isOn: $accountDeletion.deleteLogs)
+                    Toggle("Also delete everything I logged in shared households", isOn: Bindable(accountDeletion).deleteLogs)
                         .accessibilityIdentifier("delete-account-logs")
-                    Toggle("Also delete the notes I wrote on logs that stay", isOn: $accountDeletion.deleteNotes)
+                    Toggle("Also delete the notes I wrote on logs that stay", isOn: Bindable(accountDeletion).deleteNotes)
                         .disabled(accountDeletion.deleteLogs)
                         .accessibilityIdentifier("delete-account-notes")
                 }
@@ -926,7 +950,7 @@ struct DeleteAccountSheet: View {
 // MARK: - Member Row
 
 struct MemberRow: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) var state
     let member: Member
     let isCurrentUser: Bool
     let currentUserRole: String
@@ -1090,17 +1114,15 @@ enum ProfileEditor {
                               role: member.role, suspended: member.suspended)
             }
             return nil
-        } catch APIError.serverError(_, let message) {
-            return message
         } catch {
-            return "Could not save your profile. Please retry."
+            return Log.actions.failureMessage("Could not save your profile. Please retry.", error)
         }
     }
 }
 
 struct ProfileEditSheet: View {
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var color: String?

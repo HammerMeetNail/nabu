@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 @MainActor
 final class ActivityStore {
@@ -105,18 +106,19 @@ final class ActivityStore {
 /// One owner for entry, search, refresh, edit dismissal and pagination. Query
 /// bindings invalidate synchronously, before a debounced request is scheduled.
 @MainActor
-final class ActivityModel: ObservableObject {
+@Observable
+final class ActivityModel {
     let store: ActivityStore
-    private var state: AppState?
-    private var revision: UUID?
-    @Published var logs: [ChoreLog] = []
-    @Published var searchResults: [ChoreLog]?
-    @Published private(set) var query = ""
-    @Published private(set) var hasMore = false
-    @Published private(set) var before: String?
-    @Published private(set) var isLoading = false
-    @Published private(set) var isLoadingMore = false
-    @Published var errorMessage: String?
+    @ObservationIgnored private var state: AppState?
+    @ObservationIgnored private var revision: UUID?
+    var logs: [ChoreLog] = []
+    var searchResults: [ChoreLog]?
+    private(set) var query = ""
+    private(set) var hasMore = false
+    private(set) var before: String?
+    private(set) var isLoading = false
+    private(set) var isLoadingMore = false
+    var errorMessage: String?
 
     init(store: ActivityStore) { self.store = store }
     func configure(state: AppState) {

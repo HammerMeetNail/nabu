@@ -2,11 +2,11 @@ import AuthenticationServices
 import SwiftUI
 
 struct LoginView: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) var state
     @Environment(\.colorScheme) private var colorScheme
-    @ObservedObject var auth: AuthStore
-    @StateObject private var googleAuth: GoogleOAuthCoordinator
-    @StateObject private var appleAuth = SignInWithAppleCoordinator()
+    var auth: AuthStore
+    @State private var googleAuth: GoogleOAuthCoordinator
+    @State private var appleAuth = SignInWithAppleCoordinator()
     @State private var email = ""
     @State private var password = ""
     @State private var showRegister = false
@@ -15,7 +15,7 @@ struct LoginView: View {
 
     init(auth: AuthStore, apiBaseURL: URL) {
         self.auth = auth
-        self._googleAuth = StateObject(wrappedValue: GoogleOAuthCoordinator(baseURL: apiBaseURL))
+        self._googleAuth = State(initialValue: GoogleOAuthCoordinator(baseURL: apiBaseURL))
     }
 
     var body: some View {
