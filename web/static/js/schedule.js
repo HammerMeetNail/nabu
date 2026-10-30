@@ -389,6 +389,37 @@ export function renderConfigureScheduleSheet(chore, date, hour, presetTime, pres
 
 // ─── Render: log-with-indicators bottom sheet ────────────────────────────────
 
+/**
+ * Puts each type's amount under it when a word of a type's name has no room
+ * beside its amount. CSS can't see how wide a name's words are, so after
+ * each render and resize this lays the types out beside their amounts and
+ * keeps that only if the browser split no word to fit: a long word
+ * ("supplementation"), or zoom, otherwise breaks a name mid-word. Every type
+ * moves together, under the column headings.
+ *
+ * @param {ParentNode} root
+ */
+export function fitIndicatorRows(root) {
+  for (const fields of root.querySelectorAll(".indicator-amount-fields")) {
+    fields.classList.remove("indicator-amount-fields--stacked");
+    if ([...fields.querySelectorAll(".log-chip")].some(splitsAWord)) {
+      fields.classList.add("indicator-amount-fields--stacked");
+    }
+  }
+}
+
+function splitsAWord(chip) {
+  const text = chip.firstChild;
+  if (text?.nodeType !== Node.TEXT_NODE) return false;
+  const range = document.createRange();
+  for (const word of text.data.matchAll(/\S+/g)) {
+    range.setStart(text, word.index);
+    range.setEnd(text, word.index + word[0].length);
+    if (new Set([...range.getClientRects()].map(rect => Math.round(rect.top))).size > 1) return true;
+  }
+  return false;
+}
+
 function renderIndicatorVolumeRow(label, on, selectedML = null, unit = "mL") {
   return `<div class="indicator-row">
     <button type="button" class="log-chip${on ? ' log-chip--on' : ''}" data-action="toggle-indicator" data-label="${escapeHTML(label)}" aria-pressed="${on}">${escapeHTML(label)}</button>

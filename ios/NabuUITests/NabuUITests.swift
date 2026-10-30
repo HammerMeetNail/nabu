@@ -1478,6 +1478,52 @@ final class NabuDynamicTypeUITests: XCTestCase {
         everydayPath(textSize: "UICTContentSizeCategoryAccessibilityL")
     }
 
+    /// At the largest text size a Stats card's period toggle goes under its
+    /// title, which beside it was cut to its first letter ("C…").
+    func testStatsCardTitlesStayWholeAtAccessibilityXXXL() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-disableAnimations", "-resetState", "-seedHomeForUITest", "-useMockAPI",
+                               "-reviewScenario", "stats-cards", "-nabuBaseURL", "http://localhost:9998",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launchForLocalTest()
+        XCTAssertTrue(app.tabBars.buttons["Stats"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Stats"].tap()
+        XCTAssertTrue(app.staticTexts["Leaderboard"].waitForExistence(timeout: 8))
+        for title in ["Leaderboard", "Top Chores", "Categories", "Chores", "⚖️ Weigh flour", "Feeds this week"] {
+            let text = app.staticTexts[title]
+            for _ in 0..<12 where !(text.exists && text.isHittable) { app.swipeUp(velocity: .slow) }
+            XCTAssertTrue(text.exists, "\(title) shows")
+            let under = app.segmentedControls.allElementsBoundByIndex.contains {
+                $0.frame.minY >= text.frame.maxY - 1 && $0.frame.minY - text.frame.maxY < 60
+            }
+            XCTAssertTrue(under, "\(title)'s period toggle is under it")
+        }
+        keep(app, "stats-card-titles-ax-xxxl")
+    }
+
+    /// A type whose name doesn't fit on one line beside its amount (one long
+    /// word at the largest standard size) goes over it rather than break the
+    /// word, and a short one stays beside its amount (PWA `fitIndicatorRows`).
+    func testLongTypeNameGoesOverItsAmountAtXXXLText() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-disableAnimations", "-resetState", "-seedHomeForUITest", "-useMockAPI",
+                               "-reviewScenario", "long-types", "-nabuBaseURL", "http://localhost:9998",
+                               "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryXXXL"]
+        app.launchForLocalTest()
+
+        open("Pump", in: app)
+        let amounts = app.textFields.matching(identifier: "indicator-amount-input")
+        let long = app.buttons["🧴 supplementation"], short = app.buttons["💧 water"]
+        reveal(amounts.element(boundBy: 1), in: app)
+        XCTAssertGreaterThanOrEqual(amounts.element(boundBy: 0).frame.minY, long.frame.maxY - 1,
+                                    "the long type's amount is under it")
+        XCTAssertLessThan(abs(amounts.element(boundBy: 1).frame.midY - short.frame.midY), 12,
+                          "the short type's amount is beside it")
+        keep(app, "log-sheet-long-type-xxxl")
+    }
+
     /// The Stats Baby card at the largest text size: its dates go one under
     /// the other, as Busy Hours' do, and its pickers under their titles. Side
     /// by side the dates were wider than the screen, which pushed every card

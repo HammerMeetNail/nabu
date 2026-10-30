@@ -9,6 +9,13 @@ test.use({ serviceWorkers: 'block', viewport: { width: 195, height: 422 } });
 
 const overflow = page => page.evaluate(() => document.scrollingElement.scrollWidth - window.innerWidth);
 
+// Resizes the window and waits for the frame its resize event runs in, where
+// an open log sheet lays its types out again.
+async function resize(page, width, height) {
+  await page.setViewportSize({ width, height });
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+}
+
 function overlaps(a, b) {
   return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
 }
@@ -61,9 +68,9 @@ function sheetProblems(sheet) {
 
 // What doesn't fit in a Stats card: anything that leaves the card, a Baby
 // column or the explainer, text that runs past its own box, or a date field
-// narrower than its date. Where a column is narrower still (Chromium's date
-// field, with its calendar button, needs 152 px; WebKit's 109), the field must
-// have the column's whole width. Charts scale to their column.
+// narrower than its date (Chromium's, with its calendar button, is the
+// widest). Charts scale to their column; what scrolls sideways (the heatmap)
+// may be wider.
 function cardProblems(card) {
   return card.evaluate(card => {
     const inner = box => {
@@ -71,10 +78,17 @@ function cardProblems(card) {
       return [r.left + parseFloat(s.paddingLeft) + parseFloat(s.borderLeftWidth),
         r.right - parseFloat(s.paddingRight) - parseFloat(s.borderRightWidth)];
     };
-    const name = el => el.getAttribute('aria-label') || el.textContent.trim().slice(0, 30) || el.className;
+    const name = el => el.getAttribute('aria-label') || el.textContent.trim().slice(0, 30) || el.getAttribute('class');
     const problems = [];
+    const scrolls = el => {
+      for (let up = el.parentElement; up && up !== card; up = up.parentElement) {
+        if (['auto', 'scroll'].includes(getComputedStyle(up).overflowX)) return true;
+      }
+      return false;
+    };
     for (const el of card.querySelectorAll('*')) {
-      if (!el.getClientRects().length || (el.closest('svg') && el.tagName.toLowerCase() !== 'svg')) continue;
+      if (!el.getClientRects().length || getComputedStyle(el).visibility === 'hidden'
+        || (el.closest('svg') && el.tagName.toLowerCase() !== 'svg') || scrolls(el)) continue;
       const b = el.getBoundingClientRect();
       if (!b.width) continue;
       for (const box of [card, el.parentElement.closest('.baby-care-column'), el.parentElement.closest('.feeding-gaps-explainer')]) {
@@ -87,13 +101,13 @@ function cardProblems(card) {
       if (getComputedStyle(el).textOverflow !== 'ellipsis' && el.scrollWidth > el.clientWidth + 1) problems.push(`${name(el)} runs past its box`);
     }
     for (const input of card.querySelectorAll('input[type="date"]')) {
+      // Beside the field, so it has the field's styles.
       const probe = input.cloneNode();
       probe.style.cssText = 'position:absolute;visibility:hidden;width:auto;min-width:0;flex:none';
-      card.append(probe);
+      input.after(probe);
       const needs = probe.getBoundingClientRect().width;
       probe.remove();
-      const [left, right] = inner(input.closest('.baby-care-column') || card);
-      if (input.getBoundingClientRect().width < Math.min(needs, right - left) - 1) problems.push(`${input.getAttribute('aria-label')} cuts its date`);
+      if (input.getBoundingClientRect().width < needs - 1) problems.push(`${input.getAttribute('aria-label') || `${input.dataset.filter} date`} cuts its date`);
     }
     return [...new Set(problems)];
   });
@@ -156,7 +170,7 @@ test('each kind of log sheet fits at 200% zoom', async ({ page }) => {
   await sheet.getByRole('spinbutton', { name: '🍼 formula amount' }).fill('90');
   await sheet.getByRole('spinbutton', { name: '🤱 breast amount' }).fill('30');
   for (const width of [390, 355, 330, 312, 260, 195]) {
-    await page.setViewportSize({ width, height: 422 });
+    await resize(page, width, 422);
     expect(await sheetProblems(sheet), `Feed Baby at ${width} px`).toEqual([]);
   }
   await sheet.getByRole('button', { name: 'Log', exact: true }).click();
@@ -182,7 +196,7 @@ test('each kind of log sheet fits at 200% zoom', async ({ page }) => {
   expect(await overflow(page)).toBe(0);
 });
 
-test('the Baby card fits at 200% zoom', async ({ page }) => {
+test('every Stats card fits at 200% zoom', async ({ page }) => {
   const { headers } = await fixture(page);
   expect((await page.request.post('/api/chores/seed-defaults', { headers })).ok()).toBe(true);
   const { chores } = await (await page.request.get('/api/chores')).json();
@@ -195,6 +209,9 @@ test('the Baby card fits at 200% zoom', async ({ page }) => {
     const logged = await page.request.post('/api/logs', { headers, data: { choreId: chore.id, completedAt: at.toISOString(), date, hour: at.getHours(), ...data } });
     expect(logged.ok()).toBe(true);
   }
+  // A widget, whose header holds a toggle and a remove button.
+  const widgets = [{ id: 'w1', type: 'total', choreIds: [feed.id], metric: 'count', agg: 'sum', period: 'week', grain: '', title: 'Feeds this week' }];
+  expect((await page.request.patch('/api/preferences', { headers, data: { statsWidgets: widgets } })).ok()).toBe(true);
   await page.reload();
   await expect(page.locator('.home-grid')).toBeVisible();
   await page.locator('[data-nav="stats"]').click();
@@ -204,21 +221,58 @@ test('the Baby card fits at 200% zoom', async ({ page }) => {
   await card.getByRole('button', { name: 'How to read this chart' }).click();
   await expect(card.locator('.feeding-gaps-explainer--visible')).toBeVisible();
 
+  await expect(page.locator('[data-stats-section="widget:w1"] .card')).toBeVisible();
   // 200%, 150%, 125% and 100% zoom on a 390 px phone, and a tablet's narrow
-  // columns, three to a row. Busy Hours has dates side by side too.
-  const busyHours = page.locator('[data-stats-section="busy-hours"] .card');
+  // columns, three to a row.
   for (const width of [195, 260, 312, 390, 600]) {
-    await page.setViewportSize({ width, height: 844 });
-    expect(await cardProblems(card), `the Baby card at ${width} px`).toEqual([]);
-    expect(await cardProblems(busyHours), `Busy Hours at ${width} px`).toEqual([]);
+    await resize(page, width, 844);
+    for (const each of await page.locator('.stats-page .card').all()) {
+      const section = await each.evaluate(c => c.closest('[data-stats-section]')?.dataset.statsSection || 'Stats');
+      expect(await cardProblems(each), `${section} at ${width} px`).toEqual([]);
+    }
   }
   expect(await overflow(page)).toBe(0);
 
-  // Its controls still work when wrapped.
-  await page.setViewportSize({ width: 195, height: 844 });
+  // The Baby card's controls still work when wrapped.
+  await resize(page, 195, 844);
   await card.locator(`[data-action="stats-baby-period"][data-chore-id="${feed.id}"][data-period="monthly"]`).click();
   await expect(card.locator(`[data-chore-id="${feed.id}"][data-period="monthly"]`)).toHaveAttribute('aria-pressed', 'true');
   await card.locator('[data-action="stats-feeding-gaps-quick"][data-days="14"]').click();
   await expect(card.locator('[data-action="stats-feeding-gaps-quick"][data-days="14"]')).toHaveClass(/period-toggle--active/);
   expect(await cardProblems(card), 'the Baby card after its controls').toEqual([]);
+});
+
+test('a type with a long name keeps it whole, beside or over its amount', async ({ page }) => {
+  // A member's own types: one long word, and two words.
+  const { headers } = await fixture(page, {
+    name: 'Pump', metricUnit: 'mL',
+    indicatorLabels: ['🧴 supplementation', '🥛 expressed milk'],
+    indicatorDefaults: ['🧴 supplementation', '🥛 expressed milk'],
+  });
+  expect(headers).toBeTruthy();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator('.home-chore-card', { hasText: 'Pump' }).click();
+  const sheet = page.locator('.bottom-sheet');
+  await expect(sheet).toBeVisible();
+  await expect(sheet.locator('.indicator-row')).toHaveCount(2);
+
+  // At 100%, 110%, 118%, 125%, 150% and 200% zoom on a 390 px phone, and at
+  // 360 px, with the sheet open as the window changes.
+  for (const width of [390, 360, 355, 330, 312, 260, 195]) {
+    await resize(page, width, 844);
+    expect(await sheetProblems(sheet), `Pump at ${width} px`).toEqual([]);
+    // Every type sits the same way: all beside their amounts, or all over them.
+    const under = await sheet.locator('.indicator-row').evaluateAll(rows => rows.map(row => {
+      const chip = row.querySelector('.log-chip').getBoundingClientRect();
+      const amount = row.querySelector('input').getBoundingClientRect();
+      return amount.top >= chip.bottom - 1;
+    }));
+    expect(new Set(under).size, `Pump's types at ${width} px all sit the same way`).toBe(1);
+  }
+  // Its amounts still save.
+  await page.setViewportSize({ width: 312, height: 844 });
+  await sheet.getByRole('spinbutton', { name: '🧴 supplementation amount' }).fill('20');
+  await sheet.getByRole('spinbutton', { name: '🥛 expressed milk amount' }).fill('60');
+  await sheet.getByRole('button', { name: 'Log', exact: true }).click();
+  await expect(sheet).toHaveCount(0);
 });

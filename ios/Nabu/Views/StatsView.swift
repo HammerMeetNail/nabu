@@ -240,9 +240,7 @@ struct StatsView: View {
 
     private var leaderboardSection: some View {
         StatsCard {
-            HStack {
-                Text("Leaderboard").font(.headline)
-                Spacer()
+            StatsCardHeader(title: Text("Leaderboard")) {
                 StatsPeriodToggle(period: model.leaderboardPeriod, includeAll: true) { p in
                     Task { await model.setLeaderboardPeriod(p) }
                 }
@@ -284,9 +282,7 @@ struct StatsView: View {
 
     private var topChoresSection: some View {
         StatsCard {
-            HStack {
-                Text("Top Chores").font(.headline)
-                Spacer()
+            StatsCardHeader(title: Text("Top Chores")) {
                 StatsPeriodToggle(period: model.topChoresPeriod, includeAll: true) { p in
                     Task { await model.setTopChoresPeriod(p) }
                 }
@@ -364,9 +360,7 @@ struct StatsView: View {
         let entries = model.categoriesBreakdown
 
         return StatsCard {
-            HStack {
-                Text("Categories").font(.headline)
-                Spacer()
+            StatsCardHeader(title: Text("Categories")) {
                 StatsPeriodToggle(period: model.categoriesPeriod, includeAll: false) { p in
                     Task { await model.setCategoriesPeriod(p) }
                 }
@@ -416,9 +410,7 @@ struct StatsView: View {
 
     private var choresSection: some View {
         StatsCard {
-            HStack {
-                Text("Chores").font(.headline)
-                Spacer()
+            StatsCardHeader(title: Text("Chores")) {
                 StatsPeriodToggle(period: model.choreStatsPeriod, includeAll: false) { p in
                     Task { await model.setChoreStatsPeriod(p) }
                 }
