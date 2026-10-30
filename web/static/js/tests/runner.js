@@ -2610,6 +2610,25 @@ describe("Wide layout", () => {
     assert.equal(order(), "stats,activity,today,schedule,settings");
   });
 
+  it("quick-log links open their activity, and Log feed a feeding one", async () => {
+    const { quickLogChore } = await import("../home.js");
+    const vacuum = { id: 1, name: "Vacuum", category: "chores" };
+    const feedCats = { id: 2, name: "Feed Cats", category: "feeding" };
+    const feedAda = { id: 3, name: "Feed Ada", category: "feeding" };
+    const feedBaby = { id: 4, name: "Feed Baby", category: "feeding", predefinedKey: "Feed Baby" };
+    const state = (chores, extra = {}) => ({ chores, ...extra });
+
+    assert.equal(quickLogChore(state([vacuum, feedCats]), "chore:2"), feedCats);
+    assert.equal(quickLogChore(state([vacuum]), "chore:9"), null);
+    assert.equal(quickLogChore(state([feedCats, feedBaby]), "feed-baby"), feedBaby);
+    // A named baby's activity, or a pet's, when there is no Feed Baby: the
+    // first feeding tile in Home's order, skipping hidden ones.
+    assert.equal(quickLogChore(state([vacuum, feedCats, feedAda], { choreOrder: [1, 3, 2] }), "feed-baby"), feedAda);
+    assert.equal(quickLogChore(state([vacuum, feedCats, feedAda], { choreOrder: [1, 3, 2], hiddenHomeChoreIDs: [3] }), "feed-baby"), feedCats);
+    assert.equal(quickLogChore(state([vacuum]), "feed-baby"), null);
+    assert.equal(quickLogChore(state([feedCats]), "chore"), null);
+  });
+
   it("numbers the first nine Home tiles", async () => {
     const { renderHomeView } = await import("../home.js");
     const chores = Array.from({ length: 11 }, (_, i) => ({ id: i + 1, name: `C${i + 1}`, icon: "x", color: "#000000" }));

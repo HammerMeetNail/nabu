@@ -1,0 +1,12 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/stats/breakdown?period=week"
+  },
+  "status": 200,
+  "response": {
+    "breakdown": [],
+    "end": "2026-01-02",
+    "start": "2026-01-02"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/household"
+  },
+  "status": 404,
+  "response": {
+    "error": "no household found"
+  }
+}

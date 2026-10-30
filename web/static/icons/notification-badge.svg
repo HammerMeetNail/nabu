@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96">
+  <!-- Android's status bar shows only this glyph's shape, in white. -->
+  <polyline points="14,52 38,76 82,22"
+    fill="none" stroke="#FFFFFF" stroke-width="14"
+    stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

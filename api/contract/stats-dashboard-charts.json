@@ -1,0 +1,140 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/stats/dashboard?read=chores%2F11%2Ftime-series%3Fperiod%3Dday&read=chores%2F11%2Fsummary%3Fperiod%3Dweek"
+  },
+  "status": 200,
+  "response": {
+    "results": [
+      {
+        "data": {
+          "timeSeries": {
+            "byMember": [
+              {
+                "count": 2,
+                "userId": 16
+              }
+            ],
+            "choreIcon": "🍼",
+            "choreId": 11,
+            "choreName": "Feed Baby",
+            "metricType": "amount",
+            "metricUnit": "mL",
+            "periods": [
+              {
+                "count": 0,
+                "end": "2026-01-02",
+                "start": "2026-01-02",
+                "totalML": 0
+              },
+              {
+                "count": 0,
+                "end": "2026-01-02",
+                "start": "2026-01-02",
+                "totalML": 0
+              },
+              {
+                "count": 0,
+                "end": "2026-01-02",
+                "start": "2026-01-02",
+                "totalML": 0
+              },
+              {
+                "count": 0,
+                "end": "2026-01-02",
+                "start": "2026-01-02",
+                "totalML": 0
+              },
+              {
+                "count": 0,
+                "end": "2026-01-02",
+                "start": "2026-01-02",
+                "totalML": 0
+              },
+              {
+                "count": 0,
+                "end": "2026-01-02",
+                "start": "2026-01-02",
+                "totalML": 0
+              },
+              {
+                "count": 0,
+                "end": "2026-01-02",
+                "start": "2026-01-02",
+                "totalML": 0
+              },
+              {
+                "count": 0,
+                "end": "2026-01-02",
+                "start": "2026-01-02",
+                "totalML": 0
+              },
+              {
+                "count": 0,
+                "end": "2026-01-02",
+                "start": "2026-01-02",
+                "totalML": 0
+              },
+              {
+                "count": 0,
+                "end": "2026-01-02",
+                "start": "2026-01-02",
+                "totalML": 0
+              },
+              {
+                "count": 0,
+                "end": "2026-01-02",
+                "start": "2026-01-02",
+                "totalML": 0
+              },
+              {
+                "count": 0,
+                "end": "2026-01-02",
+                "start": "2026-01-02",
+                "totalML": 0
+              },
+              {
+                "count": 0,
+                "end": "2026-01-02",
+                "start": "2026-01-02",
+                "totalML": 0
+              },
+              {
+                "amountsByUnit": {
+                  "mL": 210
+                },
+                "count": 2,
+                "end": "2026-01-02",
+                "start": "2026-01-02",
+                "totalML": 210
+              }
+            ]
+          }
+        },
+        "status": 200
+      },
+      {
+        "data": {
+          "summary": {
+            "amountsByUnit": {
+              "mL": 210
+            },
+            "byMember": [
+              {
+                "count": 2,
+                "userId": 16
+              }
+            ],
+            "choreId": 11,
+            "count": 2,
+            "metricType": "amount",
+            "metricUnit": "mL",
+            "totalDuration": 0,
+            "totalML": 210
+          }
+        },
+        "status": 200
+      }
+    ]
+  }
+}

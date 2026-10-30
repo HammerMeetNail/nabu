@@ -1,0 +1,23 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/stats/overview"
+  },
+  "status": 200,
+  "response": {
+    "overview": {
+      "breakdown": [],
+      "leaderboard": [],
+      "recap": {
+        "byCategory": [],
+        "mostActiveDay": "",
+        "topPerformer": null,
+        "totalChores": 0
+      },
+      "streaks": {
+        "current": 0,
+        "longest": 0
+      }
+    }
+  }
+}
