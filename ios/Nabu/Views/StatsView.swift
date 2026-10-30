@@ -206,17 +206,13 @@ struct StatsView: View {
                 .onChange(of: model.bhUserId) { Task { await model.loadBusyHours() } }
             }
 
-            HStack(spacing: 8) {
-                StatsDatePicker(dateString: Binding(
-                    get: { model.bhFilterStart.isEmpty ? model.busyHoursStart : model.bhFilterStart },
-                    set: { model.bhFilterStart = $0; Task { await model.loadBusyHours() } }
-                ))
-                Text("–").font(.caption).foregroundColor(DesignColors.textSecondary)
-                StatsDatePicker(dateString: Binding(
-                    get: { model.bhFilterEnd.isEmpty ? model.busyHoursEnd : model.bhFilterEnd },
-                    set: { model.bhFilterEnd = $0; Task { await model.loadBusyHours() } }
-                ))
-            }
+            StatsDateRange(start: Binding(
+                get: { model.bhFilterStart.isEmpty ? model.busyHoursStart : model.bhFilterStart },
+                set: { model.bhFilterStart = $0; Task { await model.loadBusyHours() } }
+            ), end: Binding(
+                get: { model.bhFilterEnd.isEmpty ? model.busyHoursEnd : model.bhFilterEnd },
+                set: { model.bhFilterEnd = $0; Task { await model.loadBusyHours() } }
+            ))
 
             BusyHoursChart(busyHours: model.busyHours)
         }

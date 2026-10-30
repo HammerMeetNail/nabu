@@ -1232,8 +1232,7 @@ function renderFeedingGapsColumn(choreId, gaps, explainerVisible, dateStart, dat
     </div>
     <div class="feeding-gaps-dates">
       <input type="date" class="feeding-gaps-date" data-action="stats-feeding-gaps-date" data-chore-id="${choreId}" data-field="start" value="${dateStart || ""}" aria-label="Start date">
-      <span class="feeding-gaps-date-sep">&ndash;</span>
-      <input type="date" class="feeding-gaps-date" data-action="stats-feeding-gaps-date" data-chore-id="${choreId}" data-field="end" value="${dateEnd || ""}" aria-label="End date">
+      <span class="feeding-gaps-date-end"><span class="feeding-gaps-date-sep">&ndash;</span><input type="date" class="feeding-gaps-date" data-action="stats-feeding-gaps-date" data-chore-id="${choreId}" data-field="end" value="${dateEnd || ""}" aria-label="End date"></span>
     </div>
     <div class="feeding-gaps-explainer${explainerClass}">
       <p><strong>Cluster feeding = 2+ feeds within 2 hours.</strong> Each dot is one inter-feed gap. The dashed&nbsp;line marks 2&nbsp;hours: dots <em>below</em> it are short gaps, dots <em>above</em> it are typical spacing.</p>

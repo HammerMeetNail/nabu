@@ -1662,7 +1662,7 @@ details[open] .member-chevron {
 
 @media (max-width: 480px) {
   .baby-care-columns {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -1671,6 +1671,27 @@ details[open] .member-chevron {
   border-radius: var(--radius-card);
   padding: 12px;
   border: 1px solid var(--border);
+  /* The cluster-feeding legend lays itself out by the column's width. */
+  container-type: inline-size;
+}
+
+/* At 125% zoom and more a phone's baby card is narrower than its controls
+   side by side. They wrap or stack inside their column instead of widening
+   it past the card, where they were cut off: a period toggle wraps onto a
+   second row and fills it, and the dates stack. A toggle's lines are the
+   gaps between its buttons, so a wrapped row ends without a doubled one. */
+.baby-col-header .period-toggle,
+.feeding-gaps-quick {
+  flex-wrap: wrap;
+  gap: 1px;
+  background: var(--border);
+}
+
+.baby-col-header .period-toggle-btn,
+.feeding-gaps-quick .period-toggle-btn {
+  flex: 1 0 auto;
+  border-right: none;
+  background: var(--bg);
 }
 
 .baby-col-title {
@@ -1717,7 +1738,7 @@ details[open] .member-chevron {
 }
 
 .baby-member-name {
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   min-width: 0;
   max-width: 80px;
   overflow: hidden;
@@ -1812,13 +1833,26 @@ details[open] .member-chevron {
 
 .feeding-gaps-dates {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
   margin-bottom: 8px;
 }
 
+/* The end date goes under the start, with its dash, when the two don't fit
+   side by side at the width the browser gives a date. */
+.feeding-gaps-date-end {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
 .feeding-gaps-date {
-  flex: 1;
+  flex: 1 1 auto;
+  width: auto; /* a date's own width, which decides when the two stack */
+  min-width: 0;
   padding: 3px 6px;
   font-size: 16px; /* under 16px, iOS zooms in on focus */
   border: 1px solid var(--border);
@@ -1904,6 +1938,68 @@ details[open] .member-chevron {
   height: 10px;
   border-radius: 50%;
   margin-top: 2px;
+}
+
+/* In a narrow column (a tablet's three, or a phone from 150% zoom) each of
+   the legend's rows has its dot and name, which may wrap, over its
+   description, instead of the three side by side running out of it. */
+@container (max-width: 220px) {
+  .feeding-gaps-legend tr {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr);
+  }
+
+  .feeding-gaps-legend td {
+    padding: 0;
+  }
+
+  .feeding-gaps-legend td:nth-child(2) {
+    white-space: normal;
+  }
+
+  .feeding-gaps-legend td:nth-child(3) {
+    grid-column: 2;
+    padding-bottom: 4px;
+  }
+}
+
+/* From 150% zoom (300 px) a phone's baby column keeps more of its width. */
+@media (max-width: 300px) {
+  .baby-care-column {
+    padding: 8px;
+  }
+}
+
+/* From 240 px (200% zoom) a member's bar goes under their name and count,
+   and the end date, under the start, has the column's width without a dash. */
+@media (max-width: 240px) {
+  .feeding-gaps-date-sep {
+    display: none;
+  }
+
+  .baby-member-row {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    row-gap: 2px;
+  }
+
+  .baby-member-row .avatar-circle-sm {
+    grid-row: 1 / 3;
+  }
+
+  .baby-member-name {
+    max-width: none;
+  }
+
+  .baby-member-count {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .baby-member-bar-track {
+    grid-column: 2 / 4;
+    grid-row: 2;
+  }
 }
 
 /* Heatmap */
@@ -2036,16 +2132,19 @@ details[open] .member-chevron {
   margin-bottom: 4px;
 }
 
+/* The dates go one under the other when they don't fit side by side at the
+   width the browser gives a date (200% zoom), as the Baby card's do. */
 .busy-hours-date-filters {
   display: flex;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.busy-hours-date-filters {
-  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 8px;
+}
+
+.busy-hours-date-filters .busy-hours-filter {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
 }
 
 .busy-hours-filter {
@@ -4605,7 +4704,7 @@ body.sheet-open .timer-chip { visibility: hidden; }
   }
 
   .baby-care-columns {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
