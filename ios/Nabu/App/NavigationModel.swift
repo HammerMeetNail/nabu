@@ -48,6 +48,22 @@ enum QuickLogTarget: Equatable {
     /// Resolved against `predefinedKey` (falling back to name) once the
     /// chore list is loaded — e.g. "Feed Baby" for the Log-feed shortcut.
     case predefined(key: String)
+
+    /// The activity the target opens, from the household's activities and
+    /// Home's tiles in order. "Feed Baby", the Log Feed shortcut, falls back
+    /// to the first feeding tile on Home, so that a named baby's "Feed Ada" or
+    /// a household's "Feed Cats" opens too (the PWA's `quickLogChore`). Nil
+    /// lands on Home's grid.
+    func chore(in chores: [Chore], home: [Chore]) -> Chore? {
+        switch self {
+        case .chore(let id):
+            return chores.first { $0.id == id }
+        case .predefined(let key):
+            let named = chores.first { $0.predefinedKey == key } ?? chores.first { $0.name == key }
+            guard named == nil, key == "Feed Baby" else { return named }
+            return home.first { $0.category == "feeding" }
+        }
+    }
 }
 
 enum ActiveSheet: Identifiable {

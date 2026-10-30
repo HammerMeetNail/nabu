@@ -1,0 +1,10 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/chore-reminder-prefs"
+  },
+  "status": 200,
+  "response": {
+    "prefs": []
+  }
+}
