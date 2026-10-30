@@ -420,6 +420,61 @@ function splitsAWord(chip) {
   return false;
 }
 
+/**
+ * Gives the When row a date field and a time field where the browser's
+ * date-and-time field can't show its whole value: Chromium's, with its
+ * calendar button, needs 266 px, which it doesn't have from 118% zoom on a
+ * 390 px phone, and WebKit's 208. After each render and resize this shows
+ * #log-when and keeps it only if it is as wide as its value. The two fields
+ * start from its value and set it as they change, so a log saves what they
+ * show.
+ *
+ * @param {ParentNode} root
+ */
+export function fitWhenField(root) {
+  const when = root.querySelector("#log-when");
+  const row = when?.closest(".sheet-time-row");
+  if (!row) return;
+  const wasParts = row.classList.contains("sheet-time-row--parts");
+  row.classList.remove("sheet-time-row--parts");
+  const parts = when.getClientRects().length
+    ? when.getBoundingClientRect().width < naturalWidth(when) - 1
+    : wasParts;
+  row.classList.toggle("sheet-time-row--parts", parts);
+  if (parts === wasParts) return;
+  // The fields coming into view start from #log-when, and nothing half-typed
+  // stays in those going out of view, where it would stop the log saving.
+  const value = when.value;
+  when.value = value;
+  const [date = "", time = ""] = value.split("T");
+  row.querySelector("#log-when-date").value = date;
+  row.querySelector("#log-when-time").value = time;
+}
+
+/**
+ * Sets #log-when from the When row's date and time fields.
+ *
+ * @param {HTMLInputElement} part  #log-when-date or #log-when-time
+ */
+export function syncWhenParts(part) {
+  const row = part.closest(".sheet-time-row");
+  const date = row.querySelector("#log-when-date").value;
+  const time = row.querySelector("#log-when-time").value;
+  row.querySelector("#log-when").value = date && time ? `${date}T${time}` : "";
+}
+
+// The width a field needs for its whole value: a copy beside it, so it has
+// the field's styles, at its natural width.
+function naturalWidth(field) {
+  const probe = field.cloneNode(false);
+  probe.removeAttribute("id");
+  probe.style.cssText = "position:absolute;visibility:hidden;width:auto;min-width:0;max-width:none;flex:none";
+  field.after(probe);
+  const width = probe.getBoundingClientRect().width;
+  probe.remove();
+  return width;
+}
+
 function renderIndicatorVolumeRow(label, on, selectedML = null, unit = "mL") {
   return `<div class="indicator-row">
     <button type="button" class="log-chip${on ? ' log-chip--on' : ''}" data-action="toggle-indicator" data-label="${escapeHTML(label)}" aria-pressed="${on}">${escapeHTML(label)}</button>
@@ -622,9 +677,16 @@ export function renderLogSheet(chore, log, date, members, currentUserId, cachedV
     } else if (date) {
       whenVal = `${date}T${pad(now.getHours())}:${pad(now.getMinutes())}`;
     }
+    // The date and time fields stand in for #log-when where its whole value
+    // doesn't fit (fitWhenField), and set it as they change (syncWhenParts).
+    const [whenDate, whenTime] = whenVal.split("T");
     return `<div class="sheet-time-row">
       <label for="log-when" class="field-label">When</label>
       <input type="datetime-local" id="log-when" class="sheet-time-input text-input" value="${whenVal}" data-original-value="${whenVal}" step="60">
+      <div class="sheet-when-parts">
+        <input type="date" id="log-when-date" class="text-input" aria-label="Date" value="${whenDate}">
+        <input type="time" id="log-when-time" class="text-input" aria-label="Time" value="${whenTime}" step="60">
+      </div>
     </div>`;
   })() : "";
 

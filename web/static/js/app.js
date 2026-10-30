@@ -36,7 +36,7 @@ import { createHousehold, joinHousehold, loadInvitePreview, loadHouseholdData, c
 import { loadToday, loadWeek, loadHistory, logChore, undoLog, updateLog, loadChores, renderHistoryView as renderHistoryPage, todayISO } from "./today.js";
 import { renderStatsView, renderStatsPage, loadOverview, loadBusyHours, loadChoreStats, loadHeatmap, loadChoreTimeSeries, loadTopChores, loadLeaderboard, loadFeedingGaps, loadCategoryBreakdown, STATS_SECTIONS, choreHasAnalytics, renderWidgetWizard, widgetGrain, loadChoreSummary, choreAnalyticsGrain } from "./stats.js";
 import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
-import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet, renderRecentAmounts, fitIndicatorRows } from "./schedule.js";
+import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet, renderRecentAmounts, fitIndicatorRows, fitWhenField, syncWhenParts } from "./schedule.js";
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone, saveStatsWidgets } from "./preferences.js";
 import { loadTimer, startTimer, stopTimer, clearFinishedTimer, elapsedSeconds, formatElapsed } from "./timer.js";
 import { loadLatestLogs, quickLogChore, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeActivity, renderHomeManageView, renderConfirmRemoveFromHomeSheet, refreshHomeCardTimes } from "./home.js";
@@ -308,6 +308,7 @@ export function render(root) {
   renderTimerChip();
   syncLogSaveControls(root);
   fitIndicatorRows(root);
+  fitWhenField(root);
   sheetController?.afterRender(root);
   ensureSheetRecentAmounts(root);
 
@@ -3844,8 +3845,16 @@ export async function init() {
     else void resumeSession();
   });
   window.addEventListener("pagehide", persistSnapshot);
-  // Zoom and rotation change the room an open log sheet's types have.
-  window.addEventListener("resize", () => fitIndicatorRows(app));
+  // Zoom and rotation change the room an open log sheet's types and When
+  // field have.
+  window.addEventListener("resize", () => { fitIndicatorRows(app); fitWhenField(app); });
+  // Where the When row shows a date field and a time field, they set the
+  // time a log saves.
+  for (const type of ["input", "change"]) {
+    document.addEventListener(type, e => {
+      if (e.target.matches?.("#log-when-date, #log-when-time")) syncWhenParts(e.target);
+    });
+  }
   // An unreachable server sends no "online" event; keep trying while offline.
   setInterval(() => { if (state.offline && !document.hidden) void resumeSession(); }, 30000);
   if (state.user) startNotifPoll();
