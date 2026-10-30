@@ -37,6 +37,13 @@ export function joinPendingInvite() { return identityFlow.joinPendingInvite(); }
 // Switches, joins or leaves a household: the answer becomes the identity.
 export function changeHousehold(run, options) { return identityFlow.changeHousehold(run, options); }
 
+let logFlow = {};
+// app.js registers what follows a log written without the log sheet.
+export function setLogFlow(flow) { logFlow = flow; }
+// After a log the household display wrote: Home's tiles take its answer, and
+// its toast offers Undo, as after the log sheet.
+export function afterDirectLog(choreId, data, label) { return logFlow.afterDirectLog(choreId, data, label); }
+
 // Capture ownership when a continuation is attached, before its request settles.
 export function owned(callback) { return captureScope(state).guard(callback); }
 

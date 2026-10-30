@@ -5155,3 +5155,137 @@ body.sheet-open .timer-chip { visibility: hidden; }
 .pack-names { display: flex; flex-direction: column; gap: 8px; padding: 0 12px 12px 46px; }
 .pack-name-input { width: 100%; min-height: 44px; }
 .pack-names .btn { align-self: flex-start; }
+
+/* Household display (display.js): a shared tablet's big tiles under the
+   household's members. No tabs or top bar while it's on. */
+body[data-display] #top-bar,
+body[data-display] #bottom-tabs { display: none; }
+body[data-display] #toast-container { bottom: calc(var(--safe-bottom) + 16px); }
+/* A wall tablet's whole width, whichever tab turned the display on. */
+body[data-display] #app { max-width: none; }
+
+.display-view {
+  padding: 12px 16px calc(var(--safe-bottom) + 16px);
+}
+
+.display-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.display-people {
+  display: flex;
+  flex: 1;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 4px 0;
+}
+
+.display-person {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 76px;
+  padding: 6px 8px;
+  border: 2px solid transparent;
+  border-radius: 16px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.display-person--picked {
+  border-color: var(--primary);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.display-avatar {
+  width: 56px;
+  height: 56px;
+  font-size: 22px;
+}
+
+.display-person-name {
+  max-width: 88px;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.display-leave {
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.display-prompt {
+  margin: 8px 0 12px;
+  color: var(--text-secondary);
+  font-size: 18px;
+}
+
+.display-prompt--needed {
+  color: var(--danger);
+  font-weight: 600;
+}
+
+.display-grid {
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 16px;
+}
+
+.display-grid .home-chore-card {
+  min-height: 140px;
+  gap: 8px;
+}
+
+.display-grid .home-card-icon { font-size: 3rem; }
+.display-grid .home-card-name { font-size: 18px; }
+.display-grid .home-card-time { font-size: 14px; }
+/* Read from across a room: "never" in secondary text, not Home's faint grey. */
+.display-grid .home-card-time--never { color: var(--text-secondary); }
+
+.display-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 320;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.display-overlay[hidden] { display: none; }
+
+.display-dialog {
+  width: min(420px, 100%);
+  padding: 24px;
+  border-radius: 20px;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-lg);
+}
+
+.display-choices {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.display-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}

@@ -24,6 +24,7 @@ struct HouseholdView: View {
     @Environment(AccountDeletionModel.self) private var accountDeletion
     @State private var showingLeaveConfirm = false
     @State private var verificationSent = false
+    @State private var showingDisplaySetup = false
 	@State private var showingPassword = false
 	@State private var showingProfile = false
 
@@ -293,6 +294,17 @@ struct HouseholdView: View {
                     Text("How feed amounts are shown and entered. Stored values don't change.")
                 }
 
+                if HouseholdDisplay.canManage(user: state.user, members: state.members) {
+                    Section {
+                        Button("Use This Device as a Household Display") { showingDisplaySetup = true }
+                            .accessibilityIdentifier("display-turn-on")
+                    } header: {
+                        Text("Household display")
+                    } footer: {
+                        Text("For a shared tablet: big tiles and everyone in the household to pick from, and one tap logs. Admins-only activities stay off it. Only this device keeps the PIN, and only the PIN leaves it.")
+                    }
+                }
+
                 Section {
                     Toggle("All dates", isOn: $exportAllDates).disabled(isExporting)
                     if !exportAllDates {
@@ -403,6 +415,9 @@ struct HouseholdView: View {
         }
         .sheet(isPresented: $showingPassword) {
             PasswordChangeSheet()
+        }
+        .sheet(isPresented: $showingDisplaySetup) {
+            DisplayPINSheet(purpose: .turnOn)
         }
         .sheet(isPresented: $showingProfile) {
             ProfileEditSheet()

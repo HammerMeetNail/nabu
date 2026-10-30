@@ -1,5 +1,5 @@
 import { createAppState, resetAuthedState } from "./state.js";
-import { state, initState, setRenderer, setTopBar, setIdentityFlow, owned, withCurrentContext } from "./app-core.js";
+import { state, initState, setRenderer, setTopBar, setIdentityFlow, setLogFlow, owned, withCurrentContext } from "./app-core.js";
 import { runAction } from "./actions.js";
 import { showToast } from "./toast.js";
 import { bootstrapIdentity, checkIdentity, changeIdentity, contextSnapshot, contextIsCurrent, resultIsCurrent, sameOrigin, storedIdentity, onExternalIdentityChange, clearBrowserIdentity } from "./browser-context.js";
@@ -46,6 +46,7 @@ import { maybeSubscribePush, pushOfferState, setPushOfferState, shouldOfferPush,
 import { renderScheduleTab } from "./schedule-tab.js";
 import { renderProfileSheet, saveProfile } from "./profile.js";
 import { renderSettingsView } from "./settings.js";
+import { displayActive, renderDisplayView } from "./display.js";
 import { createOnboarding, duplicateName, householdNameFor, onboardingPicks, renderOnboarding, renderPacksSheet, MAX_PACK_NAMES } from "./onboarding.js";
 
 /**
@@ -155,6 +156,7 @@ setIdentityFlow({
     if (state._pendingInviteCode && !state.household) await doJoinWithCode(state._pendingInviteCode);
   },
 });
+setLogFlow({ afterDirectLog });
 export function render(root) {
   maybeCheckSWUpdate();
   sheetController?.beforeRender();
@@ -235,6 +237,9 @@ export function render(root) {
       default:
         html = renderLoginView(state.googleOAuthEnabled, state.appleSignInEnabled);
     }
+  } else if (displayActive(state)) {
+    // The household display replaces every route until its PIN leaves it.
+    html = renderDisplayView(state);
   } else {
     switch (route) {
       case "/":
@@ -298,7 +303,7 @@ export function render(root) {
   updateTabs(tabRoute);
   updateTopBar();
   // The wide layout sizes content for the tab on screen.
-  if (state.user) document.body.dataset.tab = tabRoute === "/" ? "today" : tabRoute.slice(1);
+  if (state.user) document.body.dataset.tab = displayActive(state) ? "display" : tabRoute === "/" ? "today" : tabRoute.slice(1);
   else delete document.body.dataset.tab;
   renderTimerChip();
   syncLogSaveControls(root);
@@ -989,6 +994,17 @@ function dismissUndoToasts() {
   document.querySelectorAll("#toast-container [data-undo-toast]").forEach(t => t.remove());
 }
 
+// After a log the household display wrote, what follows the log sheet's save:
+// this device's queued logs, the tile's latest log, and the undo toast.
+async function afterDirectLog(choreId, data, label) {
+  const contextScope = captureScope(state);
+  await withCurrentContext(hydratePendingLogs(), contextScope);
+  if (data?.queued) showToast("Saved on this device. Waiting to sync.", "info");
+  if (!applyLatestLog(choreId, data)) await withCurrentContext(loadLatestLogsData(), contextScope);
+  render(document.querySelector("#app"));
+  if (data?.log?.id) showToastWithUndo(label, data.log.id, choreId);
+}
+
 function showToastWithUndo(message, logId, choreId) {
   // Haptic tick on a successful log where supported (Android; harmless no-op
   // on iOS). This is the shared success path for logging a chore.
@@ -1098,6 +1114,14 @@ function updateTopBar() {
   const topBar = document.querySelector("#top-bar");
   const tabs = document.querySelector("#bottom-tabs");
   if (!topBar || !tabs) return;
+  // The household display has no tabs, top bar or account switching.
+  const display = !!state.user && displayActive(state);
+  document.body.toggleAttribute("data-display", display);
+  if (display) {
+    topBar.hidden = true;
+    tabs.hidden = true;
+    return;
+  }
 
   if (state.user) {
     topBar.hidden = false;
@@ -3836,7 +3860,11 @@ export async function init() {
   setInterval(() => {
     if (document.hidden || !state.user) return;
     const route = activeRoute();
-    if (route === "/" || route === "/today") refreshHomeCardTimes(state);
+    if (route === "/" || route === "/today" || displayActive(state)) refreshHomeCardTimes(state);
+    // A household display stays up for days: it shows what others log too.
+    if (displayActive(state) && !state.offline) {
+      void loadLatestLogsData().then(owned(() => render(app)));
+    }
     if (homeShowsActivity() && !state.offline && !state.activeSheet && !state.jiggleMode) {
       void loadLatestLogsData().then(owned(() => { if (!state.activeSheet) render(app); }));
     }

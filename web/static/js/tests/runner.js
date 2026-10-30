@@ -2896,3 +2896,100 @@ describe("head-init.js frame height", () => {
     assert.equal(app.remembered(), false);
   });
 });
+
+describe("Household display", () => {
+  const owner = { userId: 1, email: "owner@example.com", displayName: "Ada", avatarColor: "#2E86AB", role: "owner" };
+  const member = { userId: 2, email: "sam@example.com", displayName: "", avatarColor: "#A23B72", role: "member" };
+  const display = (overrides = {}) => ({
+    user: { id: 1, householdId: 9, email: "owner@example.com" },
+    household: { id: 9, name: "Home" },
+    members: [owner, member, { userId: 3, email: "away@example.com", displayName: "Away", role: "member", suspended: true }],
+    chores: [
+      { id: 10, name: "Feed Cats", icon: "🐱", color: "#F59E0B", visibility: "household", subjects: [] },
+      { id: 11, name: "Payroll", icon: "💼", color: "#2E86AB", visibility: "admins", subjects: [] },
+      { id: 12, name: "Water Plants", icon: "🌱", color: "#386641", visibility: "household", subjects: [] },
+    ],
+    choreOrder: [12, 10, 11],
+    hiddenHomeChoreIDs: [],
+    latestLogs: {},
+    display: null,
+    ...overrides,
+  });
+
+  it("shows Home's tiles in order, without hidden or Admins-only ones, under the members who can log", async () => {
+    const { renderDisplayView } = await import("../display.js");
+    const root = JSDOM.fragment(renderDisplayView(display({ hiddenHomeChoreIDs: [10] })));
+    assert.deepEqual([...root.querySelectorAll(".display-tile")].map(t => t.dataset.choreId), ["12"]);
+    assert.deepEqual([...root.querySelectorAll(".display-person-name")].map(n => n.textContent), ["Ada", "sam@example.com"]);
+    assert.equal(root.querySelector('[data-testid="display-prompt"]').textContent, "Tap who you are, then what you did");
+    assert.ok(root.querySelector(".display-overlay").hasAttribute("hidden"));
+  });
+
+  it("names who it logs for, asks for someone first, and forgets them after two quiet minutes", async () => {
+    const { renderDisplayView, PICK_IDLE_MS } = await import("../display.js");
+    const prompt = (d) => JSDOM.fragment(renderDisplayView(display({ display: d }))).querySelector('[data-testid="display-prompt"]').textContent;
+    const fresh = { pickedUserId: null, pickedAt: 0, needsPick: false, choosing: null, leaving: null };
+    assert.equal(prompt({ ...fresh, pickedUserId: 2, pickedAt: Date.now() }), "Logging for sam@example.com");
+    assert.equal(prompt({ ...fresh, needsPick: true }), "Tap who you are first");
+    assert.equal(prompt({ ...fresh, pickedUserId: 2, pickedAt: Date.now() - PICK_IDLE_MS - 1000 }), "Tap who you are, then what you did");
+    assert.equal(prompt({ ...fresh, pickedUserId: 3, pickedAt: Date.now() }), "Tap who you are, then what you did", "a suspended member can't be picked");
+  });
+
+  it("escapes members' and activities' text in the display and its subject chooser", async () => {
+    const { renderDisplayView } = await import("../display.js");
+    const hostile = '<img src=x onerror="alert(1)">';
+    const html = renderDisplayView(display({
+      members: [{ ...member, displayName: hostile, avatarColor: '"><script>alert(2)</script>' }],
+      chores: [{ id: 10, name: hostile, icon: hostile, color: '#000;"><b>x', visibility: "household", subjects: [hostile] }],
+      choreOrder: [10],
+      display: { pickedUserId: null, pickedAt: 0, needsPick: false, choosing: 10, leaving: null },
+    }));
+    const root = JSDOM.fragment(html);
+    assert.equal(root.querySelector("img"), null);
+    assert.equal(root.querySelector("script"), null);
+    assert.equal(root.querySelector("b"), null);
+    assert.equal(root.querySelector('[data-action="display-log-subject"]').dataset.subject, hostile);
+  });
+
+  it("offers turning a device into a display to owners and admins only", async () => {
+    const { renderDisplaySettings } = await import("../display.js");
+    assert.match(renderDisplaySettings(display()), /Use this device as a household display/);
+    const admin = display({ user: { id: 2, householdId: 9 }, members: [owner, { ...member, role: "admin" }] });
+    assert.match(renderDisplaySettings(admin), /household-display/);
+    assert.equal(renderDisplaySettings(display({ user: { id: 2, householdId: 9 } })), "");
+    assert.equal(renderDisplaySettings(display({ household: null })), "");
+  });
+
+  it("keeps a salted hash of a 4 to 8 digit PIN, per account and household on this device", async () => {
+    const { validPIN, hashPIN, displayActive, displayKey } = await import("../display.js");
+    assert.ok(validPIN("1234") && validPIN("12345678"));
+    assert.ok(!validPIN("123") && !validPIN("123456789") && !validPIN("12a4") && !validPIN(""));
+    const hash = await hashPIN("1234", "salt");
+    assert.match(hash, /^[0-9a-f]{64}$/);
+    assert.equal(await hashPIN("1234", "salt"), hash);
+    assert.notEqual(await hashPIN("1234", "pepper"), hash);
+    assert.notEqual(await hashPIN("1235", "salt"), hash);
+
+    const store = { [displayKey(1, 9)]: JSON.stringify({ salt: "salt", hash }) };
+    globalThis.localStorage = { getItem: (k) => (k in store ? store[k] : null), setItem: () => {}, removeItem: () => {} };
+    assert.equal(displayActive(display()), true);
+    assert.equal(displayActive(display({ user: { id: 2, householdId: 9 } })), false, "another account on this device");
+    assert.equal(displayActive(display({ household: { id: 8 } })), false, "another household");
+    store[displayKey(1, 9)] = "{not json";
+    assert.equal(displayActive(display()), false);
+    delete globalThis.localStorage;
+  });
+
+  it("pauses after five wrong PINs, even for the right one, then lets it leave", async () => {
+    const { tryLeave, MAX_PIN_TRIES, PIN_PAUSE_MS } = await import("../display.js");
+    const leaving = {};
+    const now = 1_000_000;
+    for (let i = 1; i < MAX_PIN_TRIES; i++) {
+      assert.deepEqual(tryLeave(leaving, false, now), { left: false, error: "That PIN isn't right." });
+    }
+    assert.deepEqual(tryLeave(leaving, false, now), { left: false, error: "Too many tries. Wait 30 seconds." });
+    assert.equal(tryLeave(leaving, true, now + 1000).left, false);
+    assert.match(tryLeave(leaving, true, now + 1000).error, /Wait 29 seconds/);
+    assert.deepEqual(tryLeave(leaving, true, now + PIN_PAUSE_MS), { left: true, error: null });
+  });
+});
