@@ -17,23 +17,22 @@ struct WidgetCard: View {
 
     var body: some View {
         StatsCard {
-            HStack {
-                Text(widget.title.isEmpty ? "Widget" : widget.title)
-                    .font(.headline).lineLimit(1)
-                Spacer()
-                // last-done has no period scope (PWA parity).
-                if widget.type != "last-done" {
-                    StatsPeriodToggle(period: widget.period.isEmpty ? "week" : widget.period, includeAll: false) { p in
-                        Task { await model.setWidgetPeriod(p, widgetId: widget.id) }
+            StatsCardHeader(title: Text(widget.title.isEmpty ? "Widget" : widget.title), truncates: true) {
+                HStack {
+                    // last-done has no period scope (PWA parity).
+                    if widget.type != "last-done" {
+                        StatsPeriodToggle(period: widget.period.isEmpty ? "week" : widget.period, includeAll: false) { p in
+                            Task { await model.setWidgetPeriod(p, widgetId: widget.id) }
+                        }
                     }
+                    Button {
+                        Task { await model.removeWidget(id: widget.id) }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(DesignColors.textSecondary.opacity(0.6))
+                    }
+                    .accessibilityLabel("Remove widget")
                 }
-                Button {
-                    Task { await model.removeWidget(id: widget.id) }
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(DesignColors.textSecondary.opacity(0.6))
-                }
-                .accessibilityLabel("Remove widget")
             }
             widgetBody
         }

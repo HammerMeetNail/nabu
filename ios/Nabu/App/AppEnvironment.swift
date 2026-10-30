@@ -205,6 +205,22 @@ final class AppEnvironment {
                 state.latestLogs = [:]
                 state.todayLogs = []
             }
+            if scenario == "stats-cards" {
+                // Stats' cards whose titles share a row with a period toggle
+                // (NabuDynamicTypeUITests).
+                state.statsSectionHidden = StatsSections.all.filter { !["leaderboard", "top-chores", "categories", "chores"].contains($0) }
+                    + state.chores.filter { $0.id != 6 }.map { StatsSections.choreSectionKey($0.id) }
+                state.statsWidgets = [StatsWidget(id: "w1", type: "total", choreIds: [4], metric: "count", agg: "sum",
+                                                  period: "week", grain: "", title: "Feeds this week")]
+            }
+            if scenario == "long-types" {
+                // A long one-word type and a short one (NabuDynamicTypeUITests).
+                state.chores.append(Chore(id: 10, householdId: 1, name: "Pump", icon: "🥛", color: "#6080AA",
+                    sortOrder: 9, category: "feeding", isPredefined: false, predefinedKey: nil, createdBy: 1,
+                    createdAt: now, indicatorLabels: ["🧴 supplementation", "💧 water"],
+                    indicatorDefaults: ["🧴 supplementation", "💧 water"], hasVolumeML: true,
+                    metricType: "amount", metricUnit: "mL"))
+            }
             if scenario == "baby-card" {
                 // Stats with Feed Baby's card and Busy Hours, whose dates sit
                 // side by side (NabuDynamicTypeUITests).
@@ -477,7 +493,7 @@ final class ReviewUITestResponses {
         latestLogs = state.latestLogs
         todayLogs = state.todayLogs
         preferences = UserPreferences(choreOrder: state.chores.map(\.id), hiddenHomeChoreIds: [], timezone: TimeZone.current.identifier,
-            statsSectionHidden: state.statsSectionHidden)
+            statsSectionHidden: state.statsSectionHidden, statsWidgets: state.statsWidgets)
     }
 
     private struct HouseholdFixture: Encodable {

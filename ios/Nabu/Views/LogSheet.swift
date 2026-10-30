@@ -95,27 +95,17 @@ struct LogSheet: View {
                     Section("Type") {
                         ForEach(chore.indicatorLabels, id: \.self) { label in
                             let isOn = selectedIndicators.contains(label)
-                            let layout = rowLayout(spacing: 8)
-                            layout {
-                                Button {
-                                    toggleIndicator(label)
-                                } label: {
-                                    Text(label)
-                                        .font(.subheadline)
-                                        .padding(.horizontal, 14)
-                                        .padding(.vertical, 8)
-                                        .frame(minHeight: 36)
-                                        .background(isOn ? Color.accentColor : DesignColors.surfaceSecondary)
-                                        .foregroundColor(isOn ? .white : .primary)
-                                        .clipShape(Capsule())
-                                }
-                                .buttonStyle(.plain)
-
-                                if isOn {
-                                    volumePicker(id: label)
-                                    .frame(maxWidth: stacksRows ? .infinity : 140)
-                                } else if !stacksRows {
-                                    Spacer().frame(width: 140)
+                            if stacksRows {
+                                typeRow(label, isOn: isOn, stacked: true)
+                            } else {
+                                // Beside its amount only where the type's name
+                                // fits on one line there; otherwise a long word
+                                // ("supplementation" at the largest standard
+                                // size) was broken mid-word (PWA
+                                // `fitIndicatorRows`).
+                                ViewThatFits(in: .horizontal) {
+                                    typeRow(label, isOn: isOn, stacked: false)
+                                    typeRow(label, isOn: isOn, stacked: true)
                                 }
                             }
                         }
@@ -284,6 +274,34 @@ struct LogSheet: View {
     /// At accessibility text sizes a row's parts go one under another, as the
     /// PWA's do at 200% zoom: side by side they only fit by wrapping mid-word.
     private var stacksRows: Bool { dynamicTypeSize.isAccessibilitySize }
+
+    /// A type's chip and, when it's on, its amount: side by side, or the
+    /// amount under the chip.
+    private func typeRow(_ label: String, isOn: Bool, stacked: Bool) -> some View {
+        let layout = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+        return layout {
+            Button {
+                toggleIndicator(label)
+            } label: {
+                Text(label)
+                    .font(.subheadline)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .frame(minHeight: 36)
+                    .background(isOn ? Color.accentColor : DesignColors.surfaceSecondary)
+                    .foregroundColor(isOn ? .white : .primary)
+                    .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+
+            if isOn {
+                volumePicker(id: label)
+                    .frame(maxWidth: stacked ? .infinity : 140)
+            } else if !stacked {
+                Spacer().frame(width: 140)
+            }
+        }
+    }
 
     private func rowLayout(spacing: CGFloat? = nil) -> AnyLayout {
         stacksRows

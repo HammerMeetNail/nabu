@@ -839,6 +839,33 @@ input:focus, select:focus, textarea:focus {
 .invite-item:last-child,
 .stat-item:last-child { border-bottom: none; }
 
+/* A leaderboard name wraps at its spaces (an address anywhere) rather than
+   push its count off the card. */
+.stat-item-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.stat-item-count {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* From 300 px (150% zoom) the count goes under the name: beside it a name
+   had too little room and was split mid-word. */
+@media (max-width: 300px) {
+  .stat-item--member {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 8px;
+    row-gap: 2px;
+  }
+
+  .stat-item--member .avatar-circle-sm { grid-row: 1 / 3; }
+  .stat-item--member .stat-item-count { grid-column: 2; }
+}
+
 .hist-table { display: none; } /* replaced by hist-group/hist-row */
 
 .hist-chunk {
@@ -1675,23 +1702,22 @@ details[open] .member-chevron {
   container-type: inline-size;
 }
 
-/* At 125% zoom and more a phone's baby card is narrower than its controls
-   side by side. They wrap or stack inside their column instead of widening
-   it past the card, where they were cut off: a period toggle wraps onto a
-   second row and fills it, and the dates stack. A toggle's lines are the
-   gaps between its buttons, so a wrapped row ends without a doubled one. */
-.baby-col-header .period-toggle,
+/* At 125% zoom and more a Stats card can be narrower than its controls side
+   by side. They wrap or stack inside it instead of running past its edge,
+   where they were cut off: a period toggle wraps onto a second row and fills
+   it, and the Baby card's dates stack. Each of a toggle's buttons draws the
+   lines to its right and below it, which the toggle's edge clips, so a
+   wrapped row ends without a doubled line on any card's background. */
+.stats-page .period-toggle,
 .feeding-gaps-quick {
   flex-wrap: wrap;
-  gap: 1px;
-  background: var(--border);
 }
 
-.baby-col-header .period-toggle-btn,
-.feeding-gaps-quick .period-toggle-btn {
+.stats-page .period-toggle-btn {
   flex: 1 0 auto;
-  border-right: none;
-  background: var(--bg);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  margin: 0 -1px -1px 0;
 }
 
 .baby-col-title {
@@ -1971,10 +1997,35 @@ details[open] .member-chevron {
 }
 
 /* From 240 px (200% zoom) a member's bar goes under their name and count,
-   and the end date, under the start, has the column's width without a dash. */
+   and the end date, under the start, has the column's width without a dash.
+   A Stats card's padding halves, and a Baby card's columns drop their own
+   frames, so a date field fits: Chromium's, with its calendar button, needs
+   140 px even with its padding trimmed (WebKit's 101), and a column had
+   113 px, where its last digit was cut. */
 @media (max-width: 240px) {
   .feeding-gaps-date-sep {
     display: none;
+  }
+
+  .stats-page .card {
+    padding: 8px;
+  }
+
+  .baby-care-column {
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+  }
+
+  .baby-care-column + .baby-care-column {
+    border-top: 1px solid var(--border);
+    padding-top: 12px;
+  }
+
+  .feeding-gaps-date,
+  .busy-hours-date-filters .busy-hours-filter {
+    padding-inline: 2px;
   }
 
   .baby-member-row {
@@ -1999,6 +2050,15 @@ details[open] .member-chevron {
   .baby-member-bar-track {
     grid-column: 2 / 4;
     grid-row: 2;
+  }
+}
+
+/* Alone, so a browser without the pseudo-element (Safari) keeps the rest. */
+@media (max-width: 240px) {
+  .feeding-gaps-date::-webkit-calendar-picker-indicator,
+  .busy-hours-date-filters .busy-hours-filter::-webkit-calendar-picker-indicator {
+    margin: 0;
+    padding: 0;
   }
 }
 
@@ -2252,6 +2312,23 @@ details[open] .chore-stat-chevron {
   color: var(--text-secondary);
 }
 
+/* From 240 px (200% zoom) an activity's counts go under its name, between
+   its icon and chevron: beside it, "Change Baby" and "1 this month" pushed
+   the chevron off the card. */
+@media (max-width: 240px) {
+  .chore-stat-summary {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    column-gap: 8px;
+    row-gap: 2px;
+  }
+
+  .chore-stat-icon { grid-row: 1 / 3; }
+  .chore-stat-name { grid-column: 2; grid-row: 1; }
+  .chore-stat-counts { grid-column: 2; grid-row: 2; }
+  .chore-stat-chevron { grid-column: 3; grid-row: 1 / 3; }
+}
+
 .chore-stat-week {
   color: var(--primary);
   font-weight: 600;
@@ -2397,6 +2474,24 @@ details[open] .chore-stat-chevron {
   text-align: center;
 }
 
+/* From 240 px (200% zoom) an activity's name has its own line, out to the
+   count's column, with its bar and count under it: beside them it was cut
+   to its first letter. */
+@media (max-width: 240px) {
+  .top-chore-row {
+    display: grid;
+    grid-template-columns: 18px 24px minmax(0, 1fr) 40px;
+    column-gap: 8px;
+    row-gap: 4px;
+  }
+
+  .top-chore-rank,
+  .top-chore-icon { grid-row: 1 / 3; }
+  .top-chore-name { grid-column: 3 / 5; grid-row: 1; white-space: normal; }
+  .top-chore-bar-track { grid-column: 3; grid-row: 2; }
+  .top-chore-count { grid-column: 4; grid-row: 2; }
+}
+
 .top-chore-count--day {
   color: var(--text-primary);
 }
@@ -2419,6 +2514,8 @@ details[open] .chore-stat-chevron {
 .top-chore-pill {
   display: flex;
   align-items: center;
+  max-width: 100%;
+  min-width: 0;
   gap: 6px;
   padding: 4px 10px 4px 4px;
   border-radius: var(--radius-pill);
@@ -2428,6 +2525,14 @@ details[open] .chore-stat-chevron {
   color: var(--text-primary);
   cursor: pointer;
   transition: background 0.15s;
+}
+
+/* A long name ends in an ellipsis rather than widen its pill past the card. */
+.top-chore-pill-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .top-chore-pill--active {
@@ -2891,11 +2996,6 @@ details[open] .chore-stat-chevron {
   min-width: 0;
 }
 
-/* The types and their amounts lay themselves out by their column's width. */
-.indicator-amount-fields {
-  container-type: inline-size;
-}
-
 .indicator-amount-headings {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(100px, 1fr);
@@ -3119,26 +3219,16 @@ details[open] .chore-stat-chevron {
   .sheet-indicator-amounts { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* Where a type's name has no room beside its amount, each amount goes under
-   its type, and the Amount heading, with no column to head, goes. Beside a
-   100 px amount, Feed Baby's "🍼 formula" wraps after its emoji from a 196 px
-   column, and "formula" itself needs a 175 px one: in a narrower column (a
-   phone from 125% zoom) it was split mid-word ("formul" / "a"), and in WebKit
-   it ran into the next type. */
-@container (max-width: 175px) {
-  .indicator-rows { gap: 12px; }
-  .indicator-row,
-  .indicator-amount-headings { grid-template-columns: minmax(0, 1fr); gap: 4px; }
-  .indicator-amount-headings .field-label + .field-label { display: none; }
-}
-
-/* From 240 px down (200% zoom) the same, whatever the types' names. */
-@media (max-width: 240px) {
-  .indicator-rows { gap: 12px; }
-  .indicator-row,
-  .indicator-amount-headings { grid-template-columns: minmax(0, 1fr); gap: 4px; }
-  .indicator-amount-headings .field-label + .field-label { display: none; }
-}
+/* Where a word of a type's name has no room beside its amount, each amount
+   goes under its type, and the Amount heading, with no column to head, goes
+   (schedule.js `fitIndicatorRows`, which measures the words). In a narrower
+   type column a name was split mid-word: Feed Baby's "formul" / "a" from
+   125% zoom, which in WebKit ran into the next type, or a member's own
+   "supplementation" at any size. */
+.indicator-amount-fields--stacked .indicator-rows { gap: 12px; }
+.indicator-amount-fields--stacked .indicator-row,
+.indicator-amount-fields--stacked .indicator-amount-headings { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+.indicator-amount-fields--stacked .indicator-amount-headings .field-label + .field-label { display: none; }
 
 /* ─── Log sheet: member row ──────────────────────────────────────────────────── */
 
@@ -5036,7 +5126,8 @@ body.sheet-open .timer-chip { visibility: hidden; }
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  min-width: 0; /* its toggle wraps where the card is narrower (200% zoom) */
 }
 .widget-remove-btn {
   flex: 0 0 auto;

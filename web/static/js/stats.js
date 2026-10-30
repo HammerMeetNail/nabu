@@ -670,10 +670,10 @@ export function renderLeaderboardList(leaderboard, memberMap, period) {
     const name = member ? (member.displayName || member.email) : `User ${entry.userId}`;
     const initial = name.charAt(0).toUpperCase();
     const color = member ? member.avatarColor : "#19323C";
-    return `<li class="stat-item">
+    return `<li class="stat-item stat-item--member">
       <span class="avatar-circle-sm" style="background:${escapeHTML(color)}">${escapeHTML(initial)}</span>
-      <span>${escapeHTML(name)}</span>
-      <span class="text-secondary">${entry.count} chores</span>
+      <span class="stat-item-name">${escapeHTML(name)}</span>
+      <span class="text-secondary stat-item-count">${entry.count} chores</span>
     </li>`;
   }).join("") || `<p class="text-secondary text-center">${emptyLabel}</p>`;
 
@@ -766,7 +766,7 @@ function renderTopChoresSection(state) {
     const initial = (m.displayName || m.email).charAt(0).toUpperCase();
     return `<button class="top-chore-pill${active}" data-action="top-chores-user" data-user-id="${m.userId}" aria-pressed="${m.userId === topChoresUserId}">
       <span class="avatar-circle-sm" style="background:${escapeHTML(m.avatarColor || "#19323C")}">${escapeHTML(initial)}</span>
-      <span>${escapeHTML(m.displayName || m.email)}</span>
+      <span class="top-chore-pill-name">${escapeHTML(m.displayName || m.email)}</span>
     </button>`;
   }).join("");
 
@@ -1743,10 +1743,10 @@ export function renderStatsView(state) {
     const name = member ? (member.displayName || member.email) : `User ${entry.userId}`;
     const initial = name.charAt(0).toUpperCase();
     const color = member ? member.avatarColor : "#19323C";
-    return `<li class="stat-item">
+    return `<li class="stat-item stat-item--member">
       <span class="avatar-circle-sm" style="background:${escapeHTML(color)}">${escapeHTML(initial)}</span>
-      <span>${escapeHTML(name)}</span>
-      <span class="text-secondary">${entry.count} chores</span>
+      <span class="stat-item-name">${escapeHTML(name)}</span>
+      <span class="text-secondary stat-item-count">${entry.count} chores</span>
     </li>`;
   }).join("") || '<p class="text-secondary text-center">No data yet</p>';
 

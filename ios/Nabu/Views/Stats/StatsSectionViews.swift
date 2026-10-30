@@ -39,6 +39,27 @@ struct StatsLoadStatus: View {
     }
 }
 
+/// A Stats card's title and its controls: side by side, or the controls under
+/// the title at accessibility sizes, where beside them a title was cut to its
+/// first letter ("C…"). The PWA's headers wrap the same way at 200% zoom.
+/// `truncates` keeps a long name to one line beside the controls.
+struct StatsCardHeader<Controls: View>: View {
+    let title: Text
+    var truncates = false
+    @ViewBuilder var controls: Controls
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let stacks = dynamicTypeSize.isAccessibilitySize
+        let layout = stacks ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8)) : AnyLayout(HStackLayout())
+        layout {
+            title.font(.headline).lineLimit(truncates && !stacks ? 1 : nil)
+            if !stacks { Spacer() }
+            controls
+        }
+    }
+}
+
 /// Native segmented day/week/month(/all) period control (PWA
 /// `renderStatsPeriodToggle` semantics, §2.1 presentation).
 struct StatsPeriodToggle: View {
@@ -524,9 +545,7 @@ struct ChoreAnalyticsSection: View {
         let ts = model.choreTimeSeries[chore.id]
 
         StatsCard {
-            HStack {
-                Text("\(chore.icon) \(chore.name)").font(.headline).lineLimit(1)
-                Spacer()
+            StatsCardHeader(title: Text("\(chore.icon) \(chore.name)"), truncates: true) {
                 StatsPeriodToggle(period: period, includeAll: false) { p in
                     Task { await model.setChoreAnalyticsPeriod(p, choreId: chore.id) }
                 }
