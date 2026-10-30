@@ -9,6 +9,7 @@ import (
 	"maps"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -32,6 +33,9 @@ var (
 	contractTimestamp = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$`)
 	contractDate      = regexp.MustCompile(`\d{4}-\d{2}-\d{2}`)
 )
+
+// Stats name the day of the week the most logs fall on.
+var contractWeekdays = []string{"Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"}
 
 const (
 	contractFixedTimestamp         = "2026-01-02T03:04:05Z"
@@ -186,6 +190,9 @@ func (c *contractRecorder) normalize(v any) any {
 func (c *contractRecorder) normalizeString(s string) string {
 	for secret, fixed := range c.secrets {
 		s = strings.ReplaceAll(s, secret, fixed)
+	}
+	if slices.Contains(contractWeekdays, s) {
+		return "Monday"
 	}
 	if m := contractTimestamp.FindStringSubmatch(s); m != nil {
 		if m[1] != "" {
@@ -412,7 +419,115 @@ func TestAPIContract(t *testing.T) {
 	c.call("auth-magic-link", "", http.MethodPost, "/api/auth/magic-link/request", `{"email":"owner@example.com"}`, http.StatusOK)
 	c.call("auth-password-forgot", "", http.MethodPost, "/api/auth/password/forgot", `{"email":"owner@example.com"}`, http.StatusOK)
 
+	contractNewHousehold(t, c, password)
 	compareContract(t, c.files())
+}
+
+// contractNewHousehold records what a new account sees: no household, then a
+// household with nothing in it, then Stats once it has logs. Go encodes a
+// list it never filled as null, which the app must read as empty.
+func contractNewHousehold(t *testing.T, c *contractRecorder, password string) {
+	t.Helper()
+	fresh := c.signIn("", http.MethodPost, "/api/auth/register",
+		`{"email":"fresh@example.com","password":"`+password+`"}`, http.StatusCreated)
+	c.call("empty-me", fresh, http.MethodGet, "/api/me", "", http.StatusOK)
+	c.call("empty-households", fresh, http.MethodGet, "/api/households", "", http.StatusOK)
+	c.call("empty-household", fresh, http.MethodGet, "/api/household", "", http.StatusNotFound)
+	c.setup(fresh, http.MethodPost, "/api/household", `{"name":"Fresh Home","initials":"FH"}`, http.StatusCreated)
+
+	// Stats count in the viewer's time zone. One where it is now midday puts
+	// the logs below in today, this week and this month, at fixed hours,
+	// whenever the test runs.
+	zone, loc := contractMiddayZone(time.Now())
+	c.setup(fresh, http.MethodPatch, "/api/preferences", `{"timezone":"`+zone+`"}`, http.StatusOK)
+	now := time.Now().In(loc)
+	date := now.Format(time.DateOnly)
+
+	for _, read := range []struct{ name, path string }{
+		{"empty-chores", "/api/chores"},
+		{"empty-logs-today", "/api/logs/today?date=" + date},
+		{"empty-logs-latest-per-chore", "/api/logs/latest-per-chore"},
+		{"empty-logs-history", "/api/logs/history"},
+		{"empty-schedules", "/api/schedules"},
+		{"empty-notifications", "/api/notifications"},
+		{"empty-day-notes", "/api/day-notes"},
+		{"empty-chore-reminder-prefs", "/api/chore-reminder-prefs"},
+	} {
+		c.call(read.name, fresh, http.MethodGet, read.path, "", http.StatusOK)
+	}
+	sections := contractStatsSections(now)
+	for _, read := range sections {
+		c.call("empty-stats-"+read.name, fresh, http.MethodGet, "/api/stats/"+read.path, "", http.StatusOK)
+	}
+	c.call("empty-stats-dashboard-sections", fresh, http.MethodGet, contractDashboard(sections), "", http.StatusOK)
+
+	// The default activities: Stats' baby section reads "Feed Baby".
+	c.setup(fresh, http.MethodPost, "/api/chores/seed-defaults", "", http.StatusOK)
+	feed := contractChore(t, c.setup(fresh, http.MethodGet, "/api/chores", "", http.StatusOK), "Feed Baby")
+	charts := []contractStatsRead{
+		{"time-series", fmt.Sprintf("chores/%d/time-series?period=day", feed)},
+		{"summary", fmt.Sprintf("chores/%d/summary?period=week", feed)},
+	}
+	for _, read := range charts {
+		c.call("empty-stats-"+read.name, fresh, http.MethodGet, "/api/stats/"+read.path, "", http.StatusOK)
+	}
+
+	for i, hour := range []int{10, 11} {
+		at := time.Date(now.Year(), now.Month(), now.Day(), hour, 0, 0, 0, loc).UTC().Format(time.RFC3339)
+		c.setup(fresh, http.MethodPost, "/api/logs", fmt.Sprintf(
+			`{"choreId":%d,"note":"","indicators":[],"date":%q,"hour":%d,"completedAt":%q,"volumeML":%d,"metricUnit":"mL","idempotencyKey":"00000000-0000-4000-8000-00000000001%d"}`,
+			feed, date, hour, at, 90+30*i, i), http.StatusCreated)
+	}
+	for _, read := range append(sections, charts...) {
+		c.call("stats-"+read.name, fresh, http.MethodGet, "/api/stats/"+read.path, "", http.StatusOK)
+	}
+	c.call("stats-dashboard-sections", fresh, http.MethodGet, contractDashboard(sections), "", http.StatusOK)
+	c.call("stats-dashboard-charts", fresh, http.MethodGet, contractDashboard(charts), "", http.StatusOK)
+}
+
+type contractStatsRead struct{ name, path string }
+
+// contractStatsSections are the Stats page's section reads (StatsModel), by
+// the name their files take. The app sends the heatmap without a range and
+// the activity stats for a week; here the heatmap covers two weeks and the
+// activity stats a day, since its default three months and a week's daily
+// volumes would make the answers' lengths change with the date.
+func contractStatsSections(now time.Time) []contractStatsRead {
+	day := func(days int) string { return now.AddDate(0, 0, days).Format(time.DateOnly) }
+	return []contractStatsRead{
+		{"overview", "overview"},
+		{"heatmap", "heatmap?start=" + day(-13) + "&end=" + day(1)},
+		{"busy-hours", "busy-hours"},
+		{"chores", "chores?period=day"},
+		{"breakdown", "breakdown?period=week"},
+		{"top-chores", "top-chores?period=week"},
+		{"leaderboard", "leaderboard?period=week"},
+		{"feeding-gaps", "feeding-gaps?start=" + day(0) + "&end=" + day(1)},
+	}
+}
+
+// contractDashboard is the one request the app sends for several reads.
+func contractDashboard(reads []contractStatsRead) string {
+	query := url.Values{}
+	for _, read := range reads {
+		query.Add("read", read.path)
+	}
+	return "/api/stats/dashboard?" + query.Encode()
+}
+
+// contractMiddayZone returns a fixed-offset time zone in which it is between
+// noon and 1 p.m. at now.
+func contractMiddayZone(now time.Time) (string, *time.Location) {
+	offset := 12 - now.UTC().Hour()
+	name := fmt.Sprintf("Etc/GMT%+d", -offset) // Etc/GMT+5 is five hours behind UTC
+	if offset == 0 {
+		name = "UTC"
+	}
+	loc, err := time.LoadLocation(name)
+	if err != nil {
+		panic(err)
+	}
+	return name, loc
 }
 
 // compareContract checks the files against api/contract, or rewrites it.

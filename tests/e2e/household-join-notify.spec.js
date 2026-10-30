@@ -148,13 +148,12 @@ test.describe('Household Join Notification', () => {
 
     // Navigate to settings
     await ownerPage.click('[data-nav="settings"]');
-    await ownerPage.waitForSelector('.notif-pref-toggle', { timeout: 10000 });
 
-    // The "Household Joined" toggle should be visible
-    const toggleLabels = ownerPage.locator('.notif-pref-title');
-    const labelTexts = await toggleLabels.allTextContents();
-    const hasJoinToggle = labelTexts.some(t => t.includes('Household Joined'));
-    expect(hasJoinToggle).toBe(true);
+    // The "Household Joined" toggle should be visible. The per-type toggles
+    // render after the notification types load, later than the push toggle,
+    // so wait for this one rather than reading the labels once.
+    await expect(ownerPage.locator('.notif-pref-title', { hasText: 'Household Joined' }))
+      .toBeVisible({ timeout: 10000 });
 
     await ownerCtx.close();
   });
