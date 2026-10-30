@@ -13,6 +13,16 @@
     "%@ %@" : {
 
     },
+    "%@ %@: which one?" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ %2$@: which one?"
+          }
+        }
+      }
+    },
     "%@ (optional)" : {
 
     },
@@ -211,6 +221,9 @@
     "Check your email for a verification link." : {
 
     },
+    "Choose a PIN, 4 to 8 digits" : {
+
+    },
     "Chore" : {
 
     },
@@ -340,6 +353,9 @@
     "Discard this saved request?" : {
 
     },
+    "Dismiss" : {
+
+    },
     "Done" : {
 
     },
@@ -412,6 +428,9 @@
     "Enter code" : {
 
     },
+    "Enter it again" : {
+
+    },
     "Enter the code from your invite, or open the invite link on this device." : {
 
     },
@@ -455,6 +474,9 @@
 
     },
     "Follow-up in" : {
+
+    },
+    "For a shared tablet: big tiles and everyone in the household to pick from, and one tap logs. Admins-only activities stay off it. Only this device keeps the PIN, and only the PIN leaves it." : {
 
     },
     "For an activity that asks who it was for." : {
@@ -514,7 +536,13 @@
     "Household" : {
 
     },
+    "Household Display" : {
+
+    },
     "Household Name" : {
+
+    },
+    "Household display" : {
 
     },
     "How did it go?" : {
@@ -595,7 +623,16 @@
     "Leaderboard" : {
 
     },
+    "Leave" : {
+
+    },
     "Leave Household" : {
+
+    },
+    "Leave the Display" : {
+
+    },
+    "Leave the household display" : {
 
     },
     "Less" : {
@@ -628,6 +665,9 @@
     "Log ${activity}" : {
 
     },
+    "Log %@" : {
+
+    },
     "Log Activity" : {
 
     },
@@ -644,6 +684,9 @@
 
     },
     "Logged %@" : {
+
+    },
+    "Logging for %@" : {
 
     },
     "Logs %@" : {
@@ -823,6 +866,9 @@
     "Offline — showing what's saved on this device. Logs you add sync when you reconnect." : {
 
     },
+    "Only this device keeps the PIN, and only the PIN leaves the display." : {
+
+    },
     "Open Nabu and set up your household first." : {
 
     },
@@ -842,6 +888,9 @@
 
     },
     "Owners and admins" : {
+
+    },
+    "PIN" : {
 
     },
     "Pending saves" : {
@@ -982,6 +1031,9 @@
     "Schedule next occurrence after logging" : {
 
     },
+    "Search Activity" : {
+
+    },
     "Search notes & titles" : {
 
     },
@@ -1066,6 +1118,12 @@
     "Tap a chore to log it instantly." : {
 
     },
+    "Tap who you are first" : {
+
+    },
+    "Tap who you are, then what you did" : {
+
+    },
     "That activity isn't in your household any more." : {
 
     },
@@ -1114,6 +1172,9 @@
     "Try Again" : {
 
     },
+    "Turn On" : {
+
+    },
     "Turn on" : {
 
     },
@@ -1129,10 +1190,16 @@
     "Undo Last Log" : {
 
     },
+    "Undo Log" : {
+
+    },
     "Unit" : {
 
     },
     "Update" : {
+
+    },
+    "Use This Device as a Household Display" : {
 
     },
     "Use the Home tab to add chores." : {

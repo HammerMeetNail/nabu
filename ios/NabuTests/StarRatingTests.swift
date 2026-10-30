@@ -16,6 +16,14 @@ final class StarRatingTests: XCTestCase {
         XCTAssertEqual(StarRatingView.rating(at: 150, of: 110), 50, "a drag past the last star")
     }
 
+    func testVoiceOverStepsHalfAStarAsThePWAsArrowKeysDo() {
+        XCTAssertEqual(StarRatingView.rating(0, adjusted: .increment), 5)
+        XCTAssertEqual(StarRatingView.rating(45, adjusted: .increment), 50)
+        XCTAssertEqual(StarRatingView.rating(50, adjusted: .increment), 50)
+        XCTAssertEqual(StarRatingView.rating(25, adjusted: .decrement), 20)
+        XCTAssertEqual(StarRatingView.rating(0, adjusted: .decrement), 0)
+    }
+
     func testTheViewIsTheStarsOwnSizeAtEveryTextSize() {
         func width<V: View>(_ view: V, at size: DynamicTypeSize) -> CGFloat {
             UIHostingController(rootView: view.environment(\.dynamicTypeSize, size))

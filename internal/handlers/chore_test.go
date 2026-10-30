@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -576,5 +577,39 @@ func TestChoreCreateRejectsMarkupInIcon(t *testing.T) {
 		if rec.Code != http.StatusCreated && rec.Code != http.StatusOK {
 			t.Errorf("icon %q: status = %d, want success, body=%s", icon, rec.Code, rec.Body.String())
 		}
+	}
+}
+
+// A name another of the household's activities has is a 409 that says so,
+// creating or renaming.
+func TestChoreDuplicateNameIsAConflict(t *testing.T) {
+	handler, sessionID, authService, _ := setupChoreTest(t)
+	create := func(name string) *httptest.ResponseRecorder {
+		req := withUser(httptest.NewRequest(http.MethodPost, "/api/chores", strings.NewReader(`{"name":"`+name+`","icon":"👕","color":"#F97316"}`)), authService, sessionID)
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		handler.Create(rec, req)
+		return rec
+	}
+	if rec := create("Laundry"); rec.Code != http.StatusCreated {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+	if rec := create("Laundry"); rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), duplicateChoreName) {
+		t.Fatalf("create a duplicate: %d %s", rec.Code, rec.Body.String())
+	}
+
+	var dishes struct {
+		Chore chore.Chore `json:"chore"`
+	}
+	if err := json.Unmarshal(create("Dishes").Body.Bytes(), &dishes); err != nil {
+		t.Fatal(err)
+	}
+	req := withUser(httptest.NewRequest(http.MethodPatch, "/api/chores/"+strconv.FormatInt(dishes.Chore.ID, 10), strings.NewReader(`{"name":"Laundry"}`)), authService, sessionID)
+	req.SetPathValue("id", strconv.FormatInt(dishes.Chore.ID, 10))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.Update(rec, req)
+	if rec.Code != http.StatusConflict || !strings.Contains(rec.Body.String(), duplicateChoreName) {
+		t.Fatalf("rename to a duplicate: %d %s", rec.Code, rec.Body.String())
 	}
 }

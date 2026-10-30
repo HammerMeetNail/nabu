@@ -328,8 +328,11 @@ struct APIClient {
         if ["/api/auth/email/verify", "/api/auth/magic-link/consume"].contains(path) { return true }
         guard request.httpMethod != "GET" else { return false }
         return ["/api/auth/login", "/api/auth/register", "/api/auth/logout", "/api/auth/password",
-                "/api/auth/password/reset", "/api/auth/apple/native", "/api/household",
+                "/api/auth/password/reset", "/api/auth/apple/native",
                 "/api/household/join", "/api/household/leave", "/api/household/transfer"].contains(path)
+            // Creating a household changes it; renaming one (PATCH) is an
+            // ordinary write, as a profile change is.
+            || (path == "/api/household" && request.httpMethod == "POST")
             || (path == "/api/me" && request.httpMethod == "DELETE")
             || (path.hasPrefix("/api/households/") && path.hasSuffix("/activate"))
     }

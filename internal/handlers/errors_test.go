@@ -289,6 +289,27 @@ func TestHouseholdCreateStoreErrorHidesInternals(t *testing.T) {
 	}
 }
 
+// TestChoreWriteStoreErrorsHideInternals proves a store failure creating or
+// renaming an activity is a static 500: the database's text is never the
+// answer, which iOS would show as is.
+func TestChoreWriteStoreErrorsHideInternals(t *testing.T) {
+	sessionID, authService := errSvc(t)
+	handler := NewChoreHandler(chore.NewService(chore.NewPostgresStore(failingDB(t))))
+
+	req := withUser(httptest.NewRequest(http.MethodPost, "/api/chores", strings.NewReader(`{"name":"Laundry","icon":"👕","color":"#F97316"}`)), authService, sessionID)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	handler.Create(rec, req)
+	assertStatic500(t, rec, "could not create activity", "sqlmock")
+
+	req = withUser(httptest.NewRequest(http.MethodPatch, "/api/chores/1", strings.NewReader(`{"name":"Laundry"}`)), authService, sessionID)
+	req.SetPathValue("id", "1")
+	req.Header.Set("Content-Type", "application/json")
+	rec = httptest.NewRecorder()
+	handler.Update(rec, req)
+	assertStatic500(t, rec, "could not update activity", "sqlmock")
+}
+
 // TestLogCreateStoreErrorHidesInternals proves the 409 path from
 // LogChoreIdempotent is a static message even when the store errors.
 func TestLogCreateStoreErrorHidesInternals(t *testing.T) {

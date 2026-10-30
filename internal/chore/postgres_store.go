@@ -4,8 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
+
 	"github.com/HammerMeetNail/nabu/internal/readlimit"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// isDuplicateName reports a name the household already gives another chore:
+// chores are UNIQUE (household_id, name).
+func isDuplicateName(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+}
 
 type PostgresStore struct {
 	db *sql.DB
@@ -25,6 +35,9 @@ func (s *PostgresStore) CreateChore(ctx context.Context, chore Chore) (Chore, er
 		INSERT INTO chores (household_id, name, icon, color, sort_order, category, is_predefined, predefined_key, created_by, indicator_labels, has_volume_ml, indicator_defaults, follow_up_enabled, last_follow_up_minutes, has_rating, metric_type, metric_unit, subjects, visibility)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING id, created_at
 	`, chore.HouseholdID, chore.Name, chore.Icon, chore.Color, chore.SortOrder, chore.Category, chore.IsPredefined, nullableString(chore.PredefinedKey), chore.CreatedBy, string(labels), chore.HasVolumeML, string(defaults), chore.FollowUpEnabled, chore.LastFollowUpMinutes, chore.HasRating, chore.MetricType, chore.MetricUnit, string(subjects), chore.Visibility).Scan(&chore.ID, &chore.CreatedAt)
+	if isDuplicateName(err) {
+		return Chore{}, ErrDuplicateName
+	}
 	return chore, err
 }
 
@@ -100,6 +113,9 @@ func (s *PostgresStore) UpdateChore(ctx context.Context, chore Chore) error {
 	chore.NormalizeMetric()
 	subjects, _ := json.Marshal(nilToEmpty(chore.Subjects))
 	_, err := s.db.ExecContext(ctx, `UPDATE chores SET name=$1, icon=$2, color=$3, category=$4, indicator_labels=$5, indicator_defaults=$6, follow_up_enabled=$7, last_follow_up_minutes=$8, has_volume_ml=$9, has_rating=$10, metric_type=$11, metric_unit=$12, subjects=$13, visibility=$14 WHERE id=$15`, chore.Name, chore.Icon, chore.Color, chore.Category, string(labels), string(defaults), chore.FollowUpEnabled, chore.LastFollowUpMinutes, chore.HasVolumeML, chore.HasRating, chore.MetricType, chore.MetricUnit, string(subjects), chore.Visibility, chore.ID)
+	if isDuplicateName(err) {
+		return ErrDuplicateName
+	}
 	return err
 }
 

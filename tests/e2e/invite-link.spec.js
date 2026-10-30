@@ -59,6 +59,46 @@ test.describe('Invite link UI', () => {
     expect(listItemText).toMatch(/https?:\/\/.+\/join\?code=[A-Z0-9]{10}/);
   });
 
+  // As on iOS: the server's message when it sent one, otherwise the action's.
+  test('invite and household changes that fail say why', async ({ page }) => {
+    await setupWithHousehold(page);
+    await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+    const toasts = page.locator('#toast-container');
+
+    const refuse = route => route.request().method() === 'POST'
+      ? route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ error: 'Invites are paused' }) })
+      : route.fallback();
+    await page.route('**/api/household/invites', refuse);
+    await page.click('button[data-action="create-invite"]');
+    await expect(toasts).toContainText('Invites are paused');
+    await page.unroute('**/api/household/invites', refuse);
+
+    const drop = route => route.request().method() === 'POST' ? route.abort() : route.fallback();
+    await page.route('**/api/household/invites', drop);
+    await page.click('button[data-action="create-invite"]');
+    await expect(toasts).toContainText('Failed to create invite');
+    await page.unroute('**/api/household/invites', drop);
+    await expect(page.locator('[data-action="delete-invite"]')).toHaveCount(0);
+
+    // A revoke that fails leaves the invite listed.
+    await page.click('button[data-action="create-invite"]');
+    const revoke = page.locator('[data-action="delete-invite"]');
+    await expect(revoke).toHaveCount(1);
+    await page.route('**/api/household/invites/*', route => route.fulfill({ status: 500, contentType: 'application/json', body: '{}' }));
+    await revoke.click();
+    await expect(toasts).toContainText('Failed to delete invite');
+    await expect(revoke).toHaveCount(1);
+    await page.unroute('**/api/household/invites/*');
+
+    await page.route('**/api/household', route => route.request().method() === 'PATCH'
+      ? route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ error: 'That name is too long' }) })
+      : route.fallback());
+    await page.locator('[data-action="toggle-edit-household"]').first().click();
+    await page.fill('#edit-hh-name', 'Renamed home');
+    await page.locator('#edit-household-form button[type="submit"]').click();
+    await expect(toasts).toContainText('That name is too long');
+  });
+
   test('"New tracked link" copies full URL to clipboard', async ({ page }) => {
     await setupWithHousehold(page);
     await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);

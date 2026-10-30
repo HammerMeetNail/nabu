@@ -25,10 +25,12 @@ struct HouseholdView: View {
     @State private var showingLeaveConfirm = false
     @State private var verificationSent = false
     @State private var showingDisplaySetup = false
+    @State private var editFailure: Toast?
 	@State private var showingPassword = false
 	@State private var showingProfile = false
 
-    private var canExportHousehold: Bool {
+    /// Owners and admins: whom the server lets rename and export the household.
+    private var managesHousehold: Bool {
         let role = state.members.first(where: { $0.userId == state.user?.id })?.role ?? state.user?.role
         return role == "owner" || role == "admin"
     }
@@ -108,10 +110,12 @@ struct HouseholdView: View {
                                 .font(.headline)
                         }
 
-                        Button("Edit Household") {
-                            householdName = household.name
-                            householdInitials = household.initials
-                            showingEdit = true
+                        if managesHousehold {
+                            Button("Edit Household") {
+                                householdName = household.name
+                                householdInitials = household.initials
+                                showingEdit = true
+                            }
                         }
 
                         // Only owners see the household's permanent invite link.
@@ -325,7 +329,7 @@ struct HouseholdView: View {
                     Text("Each export can contain up to 10,000 records and 16 MB. Choose a smaller date range if needed.")
                 }
 
-                if canExportHousehold {
+                if managesHousehold {
                     Section {
                         Button {
                             startExport(.household)
@@ -442,6 +446,7 @@ struct HouseholdView: View {
                     }
                 }
             }
+            .errorToast($editFailure)
         }
         .sheet(isPresented: $showingTransfer) {
             NavigationStack {
@@ -501,8 +506,9 @@ struct HouseholdView: View {
             state.household = resp.household
             showingEdit = false
         } catch {
-            // Saving changes the identity, which rebuilds these screens.
-            state.reportFailure("Failed to update household", error)
+            // Over the edit sheet, which stays open with what was typed.
+            let message = Log.actions.failureMessage("Failed to update household", error)
+            if state.revision == owner { editFailure = Toast(message: message) }
         }
         isSaving = false
     }
