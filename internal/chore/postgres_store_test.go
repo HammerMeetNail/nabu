@@ -22,10 +22,10 @@ func TestPostgresChoreStore_GetChore(t *testing.T) {
 	defer db.Close()
 	store := NewPostgresStore(db)
 
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, COALESCE(predefined_key,''), created_by, created_at, indicator_labels, has_volume_ml, COALESCE(indicator_defaults,'[]'), follow_up_enabled, last_follow_up_minutes, has_rating, COALESCE(metric_type,'none'), COALESCE(metric_unit,''), COALESCE(subjects,'[]'), COALESCE(visibility,'household'), COALESCE(default_name,'') FROM chores WHERE id = $1`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, COALESCE(predefined_key,''), created_by, created_at, indicator_labels, has_volume_ml, COALESCE(indicator_defaults,'[]'), follow_up_enabled, last_follow_up_minutes, has_rating, COALESCE(metric_type,'none'), COALESCE(metric_unit,''), COALESCE(subjects,'[]'), COALESCE(visibility,'household'), COALESCE(default_name,''), COALESCE(template_key,''), COALESCE(named_for,'') FROM chores WHERE id = $1`)).
 		WithArgs(int64(1)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "name", "icon", "color", "sort_order", "category", "is_predefined", "predefined_key", "created_by", "created_at", "indicator_labels", "has_volume_ml", "indicator_defaults", "follow_up_enabled", "last_follow_up_minutes", "has_rating", "metric_type", "metric_unit", "subjects", "visibility", "default_name"}).
-			AddRow(1, 1, "Test", "🧹", "#FF0000", 0, "cleaning", false, "", nil, testTime, "[]", false, "[]", false, 0, false, "none", "", "[]", "household", ""))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "name", "icon", "color", "sort_order", "category", "is_predefined", "predefined_key", "created_by", "created_at", "indicator_labels", "has_volume_ml", "indicator_defaults", "follow_up_enabled", "last_follow_up_minutes", "has_rating", "metric_type", "metric_unit", "subjects", "visibility", "default_name", "template_key", "named_for"}).
+			AddRow(1, 1, "Test", "🧹", "#FF0000", 0, "cleaning", false, "", nil, testTime, "[]", false, "[]", false, 0, false, "none", "", "[]", "household", "", "", ""))
 
 	c, err := store.GetChore(context.Background(), 1)
 	if err != nil {
@@ -60,11 +60,11 @@ func TestPostgresChoreStore_ListChores(t *testing.T) {
 	defer db.Close()
 	store := NewPostgresStore(db)
 
-	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, COALESCE(predefined_key,''), created_by, created_at, indicator_labels, has_volume_ml, COALESCE(indicator_defaults,'[]'), follow_up_enabled, last_follow_up_minutes, has_rating, COALESCE(metric_type,'none'), COALESCE(metric_unit,''), COALESCE(subjects,'[]'), COALESCE(visibility,'household'), COALESCE(default_name,'') FROM chores WHERE household_id = $1 ORDER BY sort_order`)).
+	mock.ExpectQuery(regexp.QuoteMeta(`SELECT id, household_id, name, icon, color, sort_order, category, is_predefined, COALESCE(predefined_key,''), created_by, created_at, indicator_labels, has_volume_ml, COALESCE(indicator_defaults,'[]'), follow_up_enabled, last_follow_up_minutes, has_rating, COALESCE(metric_type,'none'), COALESCE(metric_unit,''), COALESCE(subjects,'[]'), COALESCE(visibility,'household'), COALESCE(default_name,''), COALESCE(template_key,''), COALESCE(named_for,'') FROM chores WHERE household_id = $1 ORDER BY sort_order`)).
 		WithArgs(int64(1)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "name", "icon", "color", "sort_order", "category", "is_predefined", "predefined_key", "created_by", "created_at", "indicator_labels", "has_volume_ml", "indicator_defaults", "follow_up_enabled", "last_follow_up_minutes", "has_rating", "metric_type", "metric_unit", "subjects", "visibility", "default_name"}).
-			AddRow(1, 1, "A", "🧹", "#F00", 0, "cleaning", false, "", nil, testTime, "[]", false, "[]", false, 0, false, "none", "", "[]", "household", "").
-			AddRow(2, 1, "B", "🧹", "#0F0", 1, "care", false, "", nil, testTime, "[]", false, "[]", false, 0, false, "none", "", "[]", "household", ""))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "household_id", "name", "icon", "color", "sort_order", "category", "is_predefined", "predefined_key", "created_by", "created_at", "indicator_labels", "has_volume_ml", "indicator_defaults", "follow_up_enabled", "last_follow_up_minutes", "has_rating", "metric_type", "metric_unit", "subjects", "visibility", "default_name", "template_key", "named_for"}).
+			AddRow(1, 1, "A", "🧹", "#F00", 0, "cleaning", false, "", nil, testTime, "[]", false, "[]", false, 0, false, "none", "", "[]", "household", "", "", "").
+			AddRow(2, 1, "B", "🧹", "#0F0", 1, "care", false, "", nil, testTime, "[]", false, "[]", false, 0, false, "none", "", "[]", "household", "", "", ""))
 
 	chores, err := store.ListChores(context.Background(), 1)
 	if err != nil {

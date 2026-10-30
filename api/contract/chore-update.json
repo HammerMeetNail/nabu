@@ -28,9 +28,11 @@
       "metricType": "none",
       "metricUnit": "",
       "name": "Water the Fern",
+      "namedFor": "",
       "predefinedKey": "",
       "sortOrder": 0,
       "subjects": [],
+      "templateKey": "",
       "visibility": "household"
     },
     "status": "updated"

@@ -41,9 +41,31 @@ final class StatsSectionsTests: XCTestCase {
         XCTAssertTrue(StatsSections.choreHasAnalytics(makeChore(id: 1, name: "Naps", metricType: "duration")))
         XCTAssertTrue(StatsSections.choreHasAnalytics(makeChore(id: 2, name: "Meds", indicatorLabels: ["am"])))
         XCTAssertFalse(StatsSections.choreHasAnalytics(makeChore(id: 3, name: "Vacuum")))
-        // Baby chores are covered by the dedicated baby section.
+        // Baby chores are covered by the dedicated baby section, whatever
+        // their names; a pet's feeds keep their own.
         XCTAssertFalse(StatsSections.choreHasAnalytics(makeChore(id: 4, name: "Feed Baby", metricType: "amount")))
         XCTAssertFalse(StatsSections.choreHasAnalytics(makeChore(id: 5, name: "Change Baby", indicatorLabels: ["💩 poo"])))
+        XCTAssertFalse(StatsSections.choreHasAnalytics(makeChore(id: 6, name: "Bottles", metricType: "amount", templateKey: "Feed Baby", namedFor: "Ada")))
+        XCTAssertTrue(StatsSections.choreHasAnalytics(makeChore(id: 7, name: "Feed Mongo", metricType: "amount", templateKey: "Feed Cats", namedFor: "Mongo")))
+    }
+
+    /// One card per baby, by template, in the activities' order (runner.js
+    /// "babyCards").
+    func testBabyCardsGiveEachBabyACard() {
+        let cards = StatsSections.babyCards([
+            makeChore(id: 1, name: "Feed Ada", templateKey: "Feed Baby", namedFor: "Ada"),
+            makeChore(id: 2, name: "Feed Ben", templateKey: "Feed Baby", namedFor: "Ben"),
+            makeChore(id: 3, name: "Ada's diapers", templateKey: "Change Baby", namedFor: "Ada"),
+            makeChore(id: 4, name: "Change Ben", templateKey: "Change Baby", namedFor: "Ben"),
+            makeChore(id: 5, name: "Feed Mongo", templateKey: "Feed Cats", namedFor: "Mongo"),
+            // The household's own, renamed, and one with no template, by its name.
+            makeChore(id: 6, name: "Night feeds", predefinedKey: "Feed Baby"),
+            makeChore(id: 7, name: "Change Baby", predefinedKey: ""),
+            makeChore(id: 8, name: "Feed Baby", predefinedKey: "Feed Cats"),
+        ])
+        XCTAssertEqual(cards.map(\.name), ["Ada", "Ben", ""])
+        XCTAssertEqual(cards.map { [$0.feed?.id, $0.change?.id] }, [[1, 3], [2, 4], [6, 7]])
+        XCTAssertEqual(cards.map(\.id), [1, 2, 6])
     }
 
     func testEligibleChoreSectionKeys() {
@@ -127,13 +149,14 @@ final class StatsSectionsTests: XCTestCase {
     }
 }
 
-private func makeChore(id: Int, name: String, metricType: String = "none", indicatorLabels: [String] = []) -> Chore {
+private func makeChore(id: Int, name: String, metricType: String = "none", indicatorLabels: [String] = [],
+                       predefinedKey: String? = nil, templateKey: String = "", namedFor: String = "") -> Chore {
     Chore(
         id: id, householdId: 1, name: name, icon: "📋", color: "#000000",
-        sortOrder: 0, category: "test", isPredefined: false,
-        predefinedKey: nil, createdBy: nil, createdAt: Date(),
+        sortOrder: 0, category: "test", isPredefined: predefinedKey?.isEmpty == false,
+        predefinedKey: predefinedKey, createdBy: nil, createdAt: Date(),
         indicatorLabels: indicatorLabels, indicatorDefaults: [], hasVolumeML: false,
-        metricType: metricType
+        metricType: metricType, templateKey: templateKey, namedFor: namedFor
     )
 }
 

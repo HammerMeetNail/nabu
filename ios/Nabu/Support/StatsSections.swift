@@ -64,12 +64,53 @@ enum StatsSections {
         return Int(key.dropFirst("chore:".count))
     }
 
+    enum BabyKind { case feed, change }
+
+    /// Whether an activity is a baby's feeds or changes, by the template it
+    /// started from: a pack's "Feed Ada", or the household's Feed Baby,
+    /// however either was renamed. One with no template counts when it is
+    /// called Feed Baby or Change Baby, as Stats always read it (PWA
+    /// `babyKind`).
+    static func babyKind(_ chore: Chore) -> BabyKind? {
+        switch chore.template ?? chore.name {
+        case "Feed Baby": return .feed
+        case "Change Baby": return .change
+        default: return nil
+        }
+    }
+
+    /// One baby's Stats card: their feeds and changes. The household's Feed
+    /// Baby and Change Baby share one with no name.
+    struct BabyCard: Equatable {
+        let name: String
+        var feed: Chore?
+        var change: Chore?
+
+        var id: Int { (feed ?? change)?.id ?? 0 }
+    }
+
+    /// The baby activities on one card per baby, in the activities' order
+    /// (PWA `babyCards`).
+    static func babyCards(_ chores: [Chore]) -> [BabyCard] {
+        var cards: [BabyCard] = []
+        for chore in chores {
+            guard let kind = babyKind(chore) else { continue }
+            let open = cards.firstIndex {
+                $0.name == chore.namedFor && (kind == .feed ? $0.feed : $0.change) == nil
+            }
+            var card = open.map { cards[$0] } ?? BabyCard(name: chore.namedFor)
+            if kind == .feed { card.feed = chore } else { card.change = chore }
+            if let open { cards[open] = card } else { cards.append(card) }
+        }
+        return cards
+    }
+
     /// Whether a chore is rich enough to warrant its own generalized
-    /// analytics section: it tracks a metric or has indicator labels. The two
-    /// dedicated baby chores are excluded because the "baby" section already
-    /// renders them.
+    /// analytics section: it tracks a metric or has indicator labels. A
+    /// baby's feeds and changes are excluded because the "baby" section
+    /// already renders them.
     static func choreHasAnalytics(_ chore: Chore) -> Bool {
-        if chore.name == "Feed Baby" || chore.name == "Change Baby" { return false }
+        if babyKind(chore) != nil { return false }
         let hasMetric = !chore.metricType.isEmpty && chore.metricType != "none"
         return hasMetric || !chore.indicatorLabels.isEmpty
     }

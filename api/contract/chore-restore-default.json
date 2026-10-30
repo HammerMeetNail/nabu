@@ -23,9 +23,11 @@
       "metricType": "none",
       "metricUnit": "",
       "name": "Take Out Trash",
+      "namedFor": "",
       "predefinedKey": "Take Out Trash",
       "sortOrder": 3,
       "subjects": [],
+      "templateKey": "Take Out Trash",
       "visibility": "household"
     },
     "status": "restored"

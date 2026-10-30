@@ -39,17 +39,36 @@ type Chore struct {
 	// visible to all household members; "admins" is visible only to owners and
 	// admins (private household tasks).
 	Visibility string `json:"visibility"`
+	// TemplateKey is the template a pack's own activity started from ("Feed
+	// Baby" for "Feed Ada"). Such an activity is a custom task, so no template
+	// change reaches it, but Stats still knows a baby's feeds by it. A shared
+	// or seeded activity's template is its PredefinedKey (see Template).
+	TemplateKey string `json:"templateKey"`
+	// NamedFor is the name of the baby or pet a pack made its own activity
+	// for ("Ada" for "Feed Ada"), which a rename keeps. Stats gives each baby
+	// a card. Empty for every other activity.
+	NamedFor string `json:"namedFor"`
 	// DefaultName is the name a pack gave a named activity before those became
 	// custom tasks; Restore default returns such an activity to it. Packs no
 	// longer set it. Empty means the template's name.
 	DefaultName string `json:"-"`
 }
 
+// Template returns the predefined template the activity started from, its
+// own or a pack's, or "" for one a member made.
+func (c Chore) Template() string {
+	if c.TemplateKey != "" {
+		return c.TemplateKey
+	}
+	return c.PredefinedKey
+}
+
 // MarshalJSON encodes nil list fields as [] so clients can decode them into
-// non-optional arrays.
+// non-optional arrays, and templateKey as the activity's Template.
 func (c Chore) MarshalJSON() ([]byte, error) {
 	type plain Chore
 	out := plain(c)
+	out.TemplateKey = c.Template()
 	out.IndicatorLabels = nilToEmpty(out.IndicatorLabels)
 	out.IndicatorDefaults = nilToEmpty(out.IndicatorDefaults)
 	out.Subjects = nilToEmpty(out.Subjects)

@@ -128,7 +128,7 @@ Session cookie name: `nabu_session`. CSRF cookie name: `nabu_csrf`.
 
 ### When adding or changing predefined activities
 
-New households pick **activity packs** during setup (`internal/chore/packs.go`), and any household can add packs later from Manage. A shared pack activity ("Clean Litter Box") is a predefined template whose name is its `predefined_key`. A baby's or pet's own activity ("Feed Mongo") is a **custom task** that starts with its template's fields: no template change or migration alters it. A shared activity for several of them (meds for two cats) asks which one, with their names as its subjects.
+New households pick **activity packs** during setup (`internal/chore/packs.go`), and any household can add packs later from Manage. A shared pack activity ("Clean Litter Box") is a predefined template whose name is its `predefined_key`. A baby's or pet's own activity ("Feed Mongo") is a **custom task** that starts with its template's fields: no template change or migration alters it. It records the template it came from and whom it is for (`template_key`, `named_for`; the API's `templateKey` is either key), which a rename keeps: Stats finds each baby's feeds and changes by them, never by name. A shared activity for several of them (meds for two cats) asks which one, with their names as its subjects.
 
 - **Changing an existing template's fields** (icon, color, indicatorLabels, hasVolumeML, hasRating, metric, etc.) requires two changes — never skip either one:
   1. **Update the template**: `PredefinedChores` in `internal/chore/service.go`, or `packOnlyChores` in `internal/chore/packs.go`.

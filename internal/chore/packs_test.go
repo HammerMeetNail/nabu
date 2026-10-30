@@ -56,6 +56,17 @@ func TestPlanPacksNamesActivitiesForEachBabyAndPet(t *testing.T) {
 	if byName["Feed Roger"].Icon != "🐱" || byName["Feed Roger"].Category != byName["Feed Mongo"].Category || byName["Feed Dog"].Icon != "🐶" {
 		t.Fatalf("templates = %+v", byName)
 	}
+	// Each knows its template, and an own activity whom it is for.
+	for name, want := range map[string][2]string{
+		"Feed Ada": {"Feed Baby", "Ada"}, "Change Ada": {"Change Baby", "Ada"}, "Ada's Bath": {"Baby Bath", "Ada"},
+		"Feed Mongo": {"Feed Cats", "Mongo"}, "Feed Roger": {"Feed Cats", "Roger"},
+		"Clean Litter Box": {"Clean Litter Box", ""}, "Walk Dog": {"Walk Dog", ""},
+	} {
+		c := byName[name]
+		if c.Template() != want[0] || c.NamedFor != want[1] || (c.TemplateKey != "") != own[name] {
+			t.Fatalf("%s: template %q (own %q) for %q, want %q for %q", name, c.Template(), c.TemplateKey, c.NamedFor, want[0], want[1])
+		}
+	}
 }
 
 func TestPlanPacksMedsFollowTheOtherPacks(t *testing.T) {
@@ -90,6 +101,13 @@ func TestPlanPacksMedsFollowTheOtherPacks(t *testing.T) {
 				}
 				if c.IsPredefined == strings.Contains(c.Name, "'s ") {
 					t.Fatalf("%s predefined = %v", c.Name, c.IsPredefined)
+				}
+				template, namedFor := c.Name, ""
+				if owner, ok := strings.CutSuffix(c.Name, "'s Meds"); ok {
+					template, namedFor = "Baby Meds", owner
+				}
+				if c.Template() != template || c.NamedFor != namedFor {
+					t.Fatalf("%s: template %q for %q", c.Name, c.Template(), c.NamedFor)
 				}
 			}
 			if !reflect.DeepEqual(meds, tc.meds) {
@@ -217,8 +235,12 @@ func TestAddPacksKeepsWhatTheHouseholdHas(t *testing.T) {
 		// A pet's own activity is a custom task: a rename sticks, and there is
 		// no template to restore it to.
 		mongo := list[0]
-		if mongo.Name != "Feed Mongo" || mongo.IsPredefined || mongo.PredefinedKey != "" || mongo.Icon != "🐱" {
+		if mongo.Name != "Feed Mongo" || mongo.IsPredefined || mongo.PredefinedKey != "" || mongo.Icon != "🐱" ||
+			mongo.TemplateKey != "Feed Cats" || mongo.NamedFor != "Mongo" {
 			t.Fatalf("Feed Mongo = %+v", mongo)
+		}
+		if meds := list[2]; meds.TemplateKey != "Cat Meds" || meds.NamedFor != "Mongo" || list[1].Template() != "Clean Litter Box" || list[1].NamedFor != "" {
+			t.Fatalf("stored %+v", list)
 		}
 		if err := svc.UpdateChore(ctx, mongo.ID, 1, "Dinner", "🍣", mongo.Color, mongo.Category, nil, nil, nil, nil, nil, nil); err != nil {
 			t.Fatal(err)
@@ -226,8 +248,9 @@ func TestAddPacksKeepsWhatTheHouseholdHas(t *testing.T) {
 		if err := svc.RestoreDefaultChore(ctx, mongo.ID, 1); err == nil {
 			t.Fatal("restored a custom task to a template")
 		}
+		// It is still Mongo's, from Feed Cats.
 		renamed, err := svc.GetChore(ctx, mongo.ID)
-		if err != nil || renamed.Name != "Dinner" || renamed.Icon != "🍣" {
+		if err != nil || renamed.Name != "Dinner" || renamed.Icon != "🍣" || renamed.TemplateKey != "Feed Cats" || renamed.NamedFor != "Mongo" {
 			t.Fatalf("renamed = %+v, %v", renamed, err)
 		}
 	})

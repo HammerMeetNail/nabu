@@ -125,6 +125,18 @@ final class DeepLinkTests: XCTestCase {
         XCTAssertEqual(QuickLogTarget.predefined(key: "Feed Baby").chore(in: chores, home: chores)?.id, 4)
     }
 
+    /// A pack's "Feed Ada" came from Feed Baby: the Log Feed shortcut opens
+    /// it before Home's first feeding tile, a pet's (PWA `quickLogChore`).
+    func testFeedBabyOpensANamedBabysFeedsBeforeAPets() {
+        let feedCats = chore(1, "Feed Cats", category: "feeding", predefinedKey: "Feed Cats")
+        let bottles = Chore(id: 5, householdId: 1, name: "Bottles", icon: "🍼", color: "#000000", sortOrder: 1,
+                            category: "feeding", isPredefined: false, predefinedKey: "", createdBy: nil, createdAt: Date(),
+                            indicatorLabels: [], indicatorDefaults: [], hasVolumeML: true, metricType: "amount",
+                            templateKey: "Feed Baby", namedFor: "Ada")
+        let chores = [feedCats, bottles]
+        XCTAssertEqual(QuickLogTarget.predefined(key: "Feed Baby").chore(in: chores, home: chores)?.id, 5)
+    }
+
     /// Packs name a baby's activities after the baby, and a household can
     /// have only pets: the Log Feed shortcut opens Home's first feeding tile.
     func testFeedBabyFallsBackToHomesFirstFeedingActivity() {

@@ -2,11 +2,11 @@ import { captureScope } from './request-scope.js';
 import { localDateStr, shiftDateStr } from './utils.js';
 import { loadOverview, loadHeatmap, loadBusyHours, loadChoreStats, loadCategoryBreakdown,
   loadTopChores, loadLeaderboard, loadChoreTimeSeries, loadChoreSummary, loadFeedingGaps,
-  choreHasAnalytics, choreAnalyticsGrain, widgetGrain } from './stats.js';
+  choreHasAnalytics, choreAnalyticsGrain, widgetGrain, babyCards } from './stats.js';
 
 const visible = (state, section) => !(state.stats.sectionHidden || []).includes(section);
 const selectedUser = state => state.stats.topChoresUserId || state.user?.id || 0;
-const babyChore = (state, type) => state.chores.find(c => c.name === (type === 'feed' ? 'Feed Baby' : 'Change Baby'));
+const babyChore = (state, id, kind) => babyCards(state.chores).map(card => card[kind]).find(c => c?.id === id);
 
 // Every producer of a section uses this owner, including refresh and controls.
 // Query changes clear obsolete results; transient failures retain same-query data.
@@ -73,22 +73,27 @@ export function loadStatsResource(state, section, id = null) {
       return read(state, `chore:${id}`, `chore:${id}`, () => choreAnalyticsGrain(s.choreAnalyticsPeriod?.[id] || 'day'),
         grain => loadChoreTimeSeries(id,grain), data => {s.choreTimeSeries[id] = data.timeSeries;},
         () => {delete s.choreTimeSeries[id];});
+    // A baby's feeds or changes (id), and a baby's cluster feeding (its feed
+    // activity's id), each with its own period or dates.
     case 'baby': {
-      const chore = babyChore(state,id);
-      if (!chore) return Promise.resolve();
-      s.babyTimeSeries ||= {};
-      const field = id === 'feed' ? 'feedBaby' : 'changeBaby';
-      return read(state, `baby:${id}`, 'baby', () => [babyChore(state,id)?.id,s[`${field}Period`] || 'daily'],
-        ([cid,period]) => loadChoreTimeSeries(cid,period), data => {s.babyTimeSeries[field] = data.timeSeries;},
-        () => {delete s.babyTimeSeries[field];});
+      const kind = () => babyChore(state,id,'feed') ? 'feed' : babyChore(state,id,'change') ? 'change' : null;
+      if (!kind()) return Promise.resolve();
+      s.babyTimeSeries ||= {}; s.babyPeriods ||= {};
+      return read(state, `baby:${id}`, 'baby', () => [kind(),s.babyPeriods[id] || 'daily'],
+        ([,period]) => loadChoreTimeSeries(id,period), data => {s.babyTimeSeries[id] = data.timeSeries;},
+        () => {delete s.babyTimeSeries[id];});
     }
     case 'gaps': {
-      if (!babyChore(state,'feed')) return Promise.resolve();
-      s.feedingGapsEnd ||= localDateStr(new Date());
-      s.feedingGapsStart ||= shiftDateStr(s.feedingGapsEnd,-6);
-      return read(state, 'gaps', 'baby', () => [s.feedingGapsStart,shiftDateStr(s.feedingGapsEnd,1)],
-        ([start,end]) => loadFeedingGaps(start,end), data => {s.feedingGaps = data.feedingGaps;},
-        () => {s.feedingGaps = null;});
+      if (!babyChore(state,id,'feed')) return Promise.resolve();
+      s.feedingGaps ||= {}; s.feedingGapsRanges ||= {};
+      const range = s.feedingGapsRanges[id] ||= {};
+      range.end ||= localDateStr(new Date());
+      range.start ||= shiftDateStr(range.end,-6);
+      return read(state, `gaps:${id}`, 'baby', () => {
+        const {start,end} = s.feedingGapsRanges[id] || {};
+        return [Boolean(babyChore(state,id,'feed')),start,shiftDateStr(end,1)];
+      }, ([,start,end]) => loadFeedingGaps(id,start,end), data => {s.feedingGaps[id] = data.feedingGaps;},
+        () => {delete s.feedingGaps[id];});
     }
     case 'widget': {
       const getWidget = () => s.widgets?.find(w => w.id === id) || null;
@@ -114,14 +119,17 @@ export function loadStatsPage(state, onProgress = () => {}) {
   state.stats.topChoresUserId ||= state.user?.id || 0;
   for (const key of Object.keys(state.stats.loading || {})) {
     const section = key.startsWith('leaderboard:') ? 'leaderboard' : key.startsWith('top-chores:') ? 'top-chores'
-      : key.startsWith('baby:') || key === 'gaps' ? 'baby' : key;
+      : key.startsWith('baby:') || key.startsWith('gaps:') ? 'baby' : key;
     const deleted = key.startsWith('widget:') && !(state.stats.widgets || []).some(w => key === `widget:${w.id}`);
     if (deleted || !visible(state,section)) {state.stats.loading[key] = false; delete state.stats.errors?.[key];}
   }
   const sections = ['overview','activity','busy-hours','chores','categories','top-chores','leaderboard'];
   const load = (section,id = null) => loadStatsResource(state,section,id).then(progress);
   const tasks = sections.map(section => load(section));
-  tasks.push(load('baby','feed'),load('baby','change'),load('gaps'));
+  for (const {feed,change} of babyCards(state.chores)) {
+    for (const chore of [feed,change]) if (chore) tasks.push(load('baby',chore.id));
+    if (feed) tasks.push(load('gaps',feed.id));
+  }
   tasks.push(loadChoreAnalytics(state,progress),loadStatsWidgets(state,progress));
   return Promise.all(tasks);
 }

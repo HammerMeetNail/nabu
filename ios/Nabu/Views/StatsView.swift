@@ -42,11 +42,8 @@ struct StatsView: View {
                             ForEach(model.sectionLayout, id: \.self) { key in
                                 VStack(spacing: 8) {
                                     sectionView(for: key)
-                                    if key == "baby" {
-                                        StatsLoadStatus(model: model, resource: "baby:feed")
-                                        StatsLoadStatus(model: model, resource: "baby:change")
-                                        StatsLoadStatus(model: model, resource: "gaps")
-                                    } else {
+                                    // Each baby's card shows its own.
+                                    if key != "baby" {
                                         StatsLoadStatus(model: model, resource: key == "recap" ? "overview" : key)
                                     }
                                 }
@@ -100,7 +97,7 @@ struct StatsView: View {
         case "last-done":
             LastDoneSection(chores: state.chores, latestLogs: state.latestLogs)
         case "baby":
-            if model.feedBabyChore != nil || model.changeBabyChore != nil {
+            if !model.babyCards.isEmpty {
                 BabyCareSection(model: model, members: state.authorMembers, volumeUnit: volumeUnit)
             }
         case "activity":

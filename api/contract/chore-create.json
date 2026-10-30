@@ -38,9 +38,11 @@
       "metricType": "none",
       "metricUnit": "",
       "name": "Water Fern",
+      "namedFor": "",
       "predefinedKey": "",
       "sortOrder": 0,
       "subjects": [],
+      "templateKey": "",
       "visibility": "household"
     }
   }

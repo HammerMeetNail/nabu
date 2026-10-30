@@ -231,6 +231,20 @@ struct Chore: Codable, Identifiable, Equatable {
     let subjects: [String]
     /// Visibility: "household" (default) or "admins" (private household tasks, migration 042).
     let visibility: String
+    /// The template the activity started from (migration 062): a pack's
+    /// "Feed Ada" sends "Feed Baby", as a predefined activity sends its key.
+    let templateKey: String
+    /// Whom a pack made its own activity for ("Ada" for "Feed Ada"), which a
+    /// rename keeps. Stats gives each baby a card.
+    let namedFor: String
+
+    /// The template the activity started from, or nil for one a member made.
+    /// Older answers carry only the predefined key.
+    var template: String? {
+        if !templateKey.isEmpty { return templateKey }
+        if let predefinedKey, !predefinedKey.isEmpty { return predefinedKey }
+        return nil
+    }
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -255,9 +269,11 @@ struct Chore: Codable, Identifiable, Equatable {
         metricUnit = try container.decodeIfPresent(String.self, forKey: .metricUnit) ?? ""
         subjects = try container.decodeIfPresent([String].self, forKey: .subjects) ?? []
         visibility = try container.decodeIfPresent(String.self, forKey: .visibility) ?? "household"
+        templateKey = try container.decodeIfPresent(String.self, forKey: .templateKey) ?? ""
+        namedFor = try container.decodeIfPresent(String.self, forKey: .namedFor) ?? ""
     }
 
-    init(id: Int, householdId: Int, name: String, icon: String, color: String, sortOrder: Int, category: String, isPredefined: Bool, predefinedKey: String?, createdBy: Int?, createdAt: Date, indicatorLabels: [String], indicatorDefaults: [String], hasVolumeML: Bool, hasRating: Bool = false, metricType: String = "none", metricUnit: String = "", subjects: [String] = [], visibility: String = "household") {
+    init(id: Int, householdId: Int, name: String, icon: String, color: String, sortOrder: Int, category: String, isPredefined: Bool, predefinedKey: String?, createdBy: Int?, createdAt: Date, indicatorLabels: [String], indicatorDefaults: [String], hasVolumeML: Bool, hasRating: Bool = false, metricType: String = "none", metricUnit: String = "", subjects: [String] = [], visibility: String = "household", templateKey: String = "", namedFor: String = "") {
         self.id = id
         self.householdId = householdId
         self.name = name
@@ -279,6 +295,8 @@ struct Chore: Codable, Identifiable, Equatable {
         self.metricUnit = metricUnit
         self.subjects = subjects
         self.visibility = visibility
+        self.templateKey = templateKey
+        self.namedFor = namedFor
     }
 
     enum CodingKeys: String, CodingKey {
@@ -287,6 +305,7 @@ struct Chore: Codable, Identifiable, Equatable {
         case indicatorLabels, indicatorDefaults, hasVolumeML
         case followUpEnabled, lastFollowUpMinutes
         case hasRating, metricType, metricUnit, subjects, visibility
+        case templateKey, namedFor
     }
 }
 
