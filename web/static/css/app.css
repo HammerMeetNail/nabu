@@ -2891,6 +2891,11 @@ details[open] .chore-stat-chevron {
   min-width: 0;
 }
 
+/* The types and their amounts lay themselves out by their column's width. */
+.indicator-amount-fields {
+  container-type: inline-size;
+}
+
 .indicator-amount-headings {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(100px, 1fr);
@@ -3114,8 +3119,20 @@ details[open] .chore-stat-chevron {
   .sheet-indicator-amounts { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* From 240 px down a type no longer fits beside its amount either: each amount
-   goes under its type, and the Amount heading, with no column to head, goes. */
+/* Where a type's name has no room beside its amount, each amount goes under
+   its type, and the Amount heading, with no column to head, goes. Beside a
+   100 px amount, Feed Baby's "🍼 formula" wraps after its emoji from a 196 px
+   column, and "formula" itself needs a 175 px one: in a narrower column (a
+   phone from 125% zoom) it was split mid-word ("formul" / "a"), and in WebKit
+   it ran into the next type. */
+@container (max-width: 175px) {
+  .indicator-rows { gap: 12px; }
+  .indicator-row,
+  .indicator-amount-headings { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .indicator-amount-headings .field-label + .field-label { display: none; }
+}
+
+/* From 240 px down (200% zoom) the same, whatever the types' names. */
 @media (max-width: 240px) {
   .indicator-rows { gap: 12px; }
   .indicator-row,
