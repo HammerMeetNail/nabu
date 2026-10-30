@@ -164,6 +164,10 @@ These PWA behaviors must be preserved in the native iOS app:
 10. Never update only one client when behavior is shared.
 11. Versions and the server live in `ios/Config` (see `ios/README.md`). Never set `MARKETING_VERSION`, `CURRENT_PROJECT_VERSION` or a server URL on a target, and never hard-code a server in Swift.
 
+## Swift 6
+
+The app, the widget extension and the unit tests build in the Swift 6 language mode with Approachable Concurrency (`SWIFT_APPROACHABLE_CONCURRENCY`): a nonisolated `async` function runs on its caller's actor, so a `@MainActor` store calling `APIClient` sends nothing across actors. Building needs Xcode 26 or later, which CI selects (`ios/ci-toolchain.sh`). The UI tests stay in Swift 5 mode: `XCUIElement` is main-actor isolated and XCTest's methods are not, so their 19 classes would need restructuring for no runtime gain. A shared static that a lock or immutability makes safe is `nonisolated(unsafe)`, with a comment saying why.
+
 ## Strings
 
 The app's user-facing text lives in a String Catalog, `Nabu/Resources/Localizable.xcstrings` (English only, until localization after launch). The compiler extracts the literals in `Text`, `Label`, `Button` and the like (`SWIFT_EMIT_LOC_STRINGS`), and building in Xcode adds new ones to the catalog; a command-line build does not, so after adding UI text from the command line, build once in Xcode or add the key to the catalog. Text built as a plain `String` (an error message, a toast) is only extracted through `String(localized:)`.

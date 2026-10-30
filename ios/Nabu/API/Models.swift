@@ -24,12 +24,10 @@ struct LocalDate: Codable, Hashable, Equatable {
 
 let apiDecoder: JSONDecoder = {
     let d = JSONDecoder()
-    let formatter = ISO8601DateFormatter()
-    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
     d.dateDecodingStrategy = .custom { decoder in
         let container = try decoder.singleValueContainer()
         let string = try container.decode(String.self)
-        if let date = formatter.date(from: string) {
+        if let date = DateFormatting.isoFormatter.date(from: string) {
             return date
         }
         // Fallback: try without fractional seconds

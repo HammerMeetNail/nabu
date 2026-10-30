@@ -15,7 +15,9 @@ func formatTimeAgo(_ date: Date) -> String {
 }
 
 enum DateFormatting {
-    static let isoFormatter: ISO8601DateFormatter = {
+    // ISO8601DateFormatter is thread-safe once configured, and this one
+    // never changes after it is made.
+    nonisolated(unsafe) static let isoFormatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f

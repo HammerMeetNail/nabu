@@ -355,7 +355,8 @@ final class ClientIdentity: @unchecked Sendable {
     @MainActor var observer: ((Snapshot) -> Void)?
 
     private static let registryLock = NSLock()
-    private static var registry: [String: ClientIdentity] = [:]
+    // Read and written only while registryLock is held.
+    nonisolated(unsafe) private static var registry: [String: ClientIdentity] = [:]
     static func shared(for baseURL: URL) -> ClientIdentity {
         registryLock.lock(); defer { registryLock.unlock() }
         let key = baseURL.absoluteString
