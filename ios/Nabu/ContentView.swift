@@ -14,7 +14,7 @@ struct ContentView: View {
     /// Identity revision of the `loadAppData()` run currently in flight, so the
     /// several triggers that fire for one sign-in cannot overlap.
     @State private var loadRevision: UUID?
-    @State private var handledLinks: Set<URL> = []
+    @State private var handledLinks = HandledLinks()
 
     var body: some View {
         Group {
@@ -185,9 +185,7 @@ struct ContentView: View {
     /// Handles a universal link or deep link — same endpoints and outcomes as
     /// the PWA's route handling for /verify-email, /magic-login, and /join.
     func handleIncomingURL(_ url: URL) async {
-        guard let link = DeepLink.parse(url), !handledLinks.contains(url) else { return }
-        // onOpenURL and Handoff can deliver the same proof concurrently.
-        handledLinks.insert(url)
+        guard let link = DeepLink.parse(url), handledLinks.shouldHandle(link, from: url) else { return }
         switch link {
         case .verifyEmail(let token):
             let _: StatusResponse? = try? await environment.apiClient.get(

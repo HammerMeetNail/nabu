@@ -1,7 +1,8 @@
 import SwiftUI
 import WidgetKit
 
-/// Home-Screen widget: "time since last ⟨chore⟩" (P6/B8). Reads the
+/// Home-Screen widget: "time since last ⟨chore⟩" (P6/B8), plus the Lock
+/// Screen widget and the Control Center button (TimeSinceWidget.swift). Reads the
 /// app-group snapshot the app refreshes on launch/foreground; relative
 /// times render with self-updating date text so the widget stays honest
 /// between timeline reloads.
@@ -9,6 +10,8 @@ import WidgetKit
 struct NabuWidgetsBundle: WidgetBundle {
     var body: some Widget {
         LastLoggedWidget()
+        TimeSinceWidget()
+        OpenLogSheetControl()
     }
 }
 
@@ -35,12 +38,7 @@ struct LastLoggedProvider: TimelineProvider {
         completion(Timeline(entries: [entry], policy: .after(next)))
     }
 
-    static let sampleChores = [
-        WidgetChoreSnapshot(id: 1, name: "Feed Baby", icon: "🍼", lastCompletedAt: Date().addingTimeInterval(-5400)),
-        WidgetChoreSnapshot(id: 2, name: "Feed Cats", icon: "🐱", lastCompletedAt: Date().addingTimeInterval(-120)),
-        WidgetChoreSnapshot(id: 3, name: "Walk Dog", icon: "🐕", lastCompletedAt: nil),
-        WidgetChoreSnapshot(id: 4, name: "Vitamins", icon: "💊", lastCompletedAt: Date().addingTimeInterval(-86000)),
-    ]
+    static var sampleChores: [WidgetChoreSnapshot] { WidgetDataCache.sampleChores }
 }
 
 struct LastLoggedWidget: Widget {
@@ -115,8 +113,7 @@ struct LastLoggedWidgetView: View {
         }
     }
 
-    /// Same deep link the notification "Log now" action and the PWA use.
     private func quickLogURL(for chore: WidgetChoreSnapshot) -> URL {
-        URL(string: "https://nabu-app.com/?quicklog=chore:\(chore.id)")!
+        WidgetDataCache.quickLogURL(choreID: chore.id)
     }
 }

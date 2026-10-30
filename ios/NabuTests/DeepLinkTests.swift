@@ -73,6 +73,43 @@ final class DeepLinkTests: XCTestCase {
         )
     }
 
+    // MARK: - Handling a link again
+
+    /// A widget, a control or a notification sends the same quick-log link
+    /// every time; each tap must open the sheet, not just the first.
+    func testQuickLogLinksAreHandledEveryTime() {
+        var handled = HandledLinks()
+        let url = URL(string: "https://nabu-app.com/?quicklog=chore:7")!
+        let link = DeepLink.parse(url)!
+        XCTAssertTrue(handled.shouldHandle(link, from: url))
+        XCTAssertTrue(handled.shouldHandle(link, from: url))
+        XCTAssertFalse(link.isOneTime)
+    }
+
+    /// onOpenURL and Handoff can deliver a token link at once; it is spent once.
+    func testOneTimeLinksAreHandledOnce() {
+        var handled = HandledLinks()
+        for string in ["https://nabu-app.com/verify-email?token=t1",
+                       "https://nabu-app.com/magic-login?token=t2",
+                       "https://nabu-app.com/join?code=ABC123"] {
+            let url = URL(string: string)!
+            let link = DeepLink.parse(url)!
+            XCTAssertTrue(link.isOneTime, string)
+            XCTAssertTrue(handled.shouldHandle(link, from: url), string)
+            XCTAssertFalse(handled.shouldHandle(link, from: url), string)
+        }
+    }
+
+    func testOtherAppLinksAreHandledEveryTime() {
+        var handled = HandledLinks()
+        for string in ["https://nabu-app.com/?quicklog=activity", "https://nabu-app.com/?quicklog=chore"] {
+            let url = URL(string: string)!
+            let link = DeepLink.parse(url)!
+            XCTAssertTrue(handled.shouldHandle(link, from: url), string)
+            XCTAssertTrue(handled.shouldHandle(link, from: url), string)
+        }
+    }
+
     // MARK: - What a quick-log target opens
 
     private func chore(_ id: Int, _ name: String, category: String = "chores", predefinedKey: String? = nil) -> Chore {

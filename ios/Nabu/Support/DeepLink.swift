@@ -57,4 +57,26 @@ enum DeepLink: Equatable {
         }
         return nil
     }
+
+    /// A link that spends something once: a sign-in or verification token,
+    /// or an invite. A quick-log link from a widget, a control or a
+    /// notification arrives the same way every time it is tapped.
+    var isOneTime: Bool {
+        switch self {
+        case .verifyEmail, .magicLogin, .joinHousehold: return true
+        case .quickLog, .showActivity, .showHomeLog: return false
+        }
+    }
+}
+
+/// The links the app has acted on. onOpenURL and Handoff can deliver the same
+/// link at once, so a one-time link is acted on once; any other is acted on
+/// every time, or a widget's link would open its sheet only the first time.
+struct HandledLinks {
+    private var seen: Set<URL> = []
+
+    mutating func shouldHandle(_ link: DeepLink, from url: URL) -> Bool {
+        guard link.isOneTime else { return true }
+        return seen.insert(url).inserted
+    }
 }
