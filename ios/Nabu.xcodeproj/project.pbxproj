@@ -32,6 +32,7 @@
 		44C43E962D082C797E8AA07D /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 503722677D3152A3454B91FF /* AuthStore.swift */; };
 		44E8CBFEEF9645C181DFBE1B /* TestHooks.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BA815567454CC42301A7CF2 /* TestHooks.swift */; };
 		E100000000000000000001B1 /* Log.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000001F1 /* Log.swift */; };
+		E100000000000000000003B1 /* HouseholdDisplay.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000003F1 /* HouseholdDisplay.swift */; };
 		47CFB6E9DDAD437CC519734F /* StatsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8A56EC19E09D88AA99BFC6A /* StatsView.swift */; };
 		4AD1F406FC2015E5E4E75A14 /* RegisterView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 284D882588919C92877456B5 /* RegisterView.swift */; };
 		561EC4912267CE43DE21AF81 /* ScheduleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E8F3699DE10AAEC9B1D4309 /* ScheduleView.swift */; };
@@ -57,6 +58,7 @@
 		8A81ABCE02B949771A4AF05B /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E7E20F4F01013A3A3CF87C5 /* Models.swift */; };
 		8E0661BEB6420C608962C130 /* DataLoaderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4885491FB43D9B825A95DA77 /* DataLoaderTests.swift */; };
 		96CD96099D43D7EFA3A43520 /* UndoToast.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B1737331BD355C47490324D /* UndoToast.swift */; };
+		E100000000000000000004B1 /* HouseholdDisplayView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000004F1 /* HouseholdDisplayView.swift */; };
 		99DBD9E1126B02EFF39394CC /* HomeGrid.swift in Sources */ = {isa = PBXBuildFile; fileRef = A362C360E9DBB0CC2B582E64 /* HomeGrid.swift */; };
 		9F8C93EACD4B1826D610976F /* HomeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0028D86990B385F619BA187 /* HomeTests.swift */; };
 		AB013CF907664535EF274228 /* AuthTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 59AC45E177EDA6283FB39CF4 /* AuthTests.swift */; };
@@ -105,6 +107,7 @@
 		B300000000000000000003B8 /* PushRegistrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000003F8 /* PushRegistrationTests.swift */; };
 		B300000000000000000003B9 /* DeepLinkTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000003F9 /* DeepLinkTests.swift */; };
 		E100000000000000000002B1 /* ErrorReportingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000002F1 /* ErrorReportingTests.swift */; };
+		E100000000000000000005B1 /* HouseholdDisplayTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E100000000000000000005F1 /* HouseholdDisplayTests.swift */; };
 		B300000000000000000003BA /* PushPrePromptSnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A300000000000000000003FA /* PushPrePromptSnapshotTests.swift */; };
 		B400000000000000000004B1 /* StateQualitySnapshotTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A400000000000000000004F1 /* StateQualitySnapshotTests.swift */; };
 		C500000000000000000005B1 /* NabuWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = C500000000000000000005F1 /* NabuWidgets.swift */; };
@@ -118,6 +121,7 @@
 		035F93DC91EA4CF466FA0C1E /* MagicLinkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MagicLinkView.swift; sourceTree = "<group>"; };
 		04E82D0A2850166FAE3F9F87 /* ScheduleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleTests.swift; sourceTree = "<group>"; };
 		0B1737331BD355C47490324D /* UndoToast.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UndoToast.swift; sourceTree = "<group>"; };
+		E100000000000000000004F1 /* HouseholdDisplayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HouseholdDisplayView.swift; sourceTree = "<group>"; };
 		0BAF2C99AFAF3270F61217E8 /* NavigationModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationModel.swift; sourceTree = "<group>"; };
 		0DAADAB592218A0605B85519 /* Nabu.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Nabu.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1007311842A11060CB4DD36A /* ManageChoresView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ManageChoresView.swift; sourceTree = "<group>"; };
@@ -135,6 +139,7 @@
 		48A7D031C9F72FA74DE4C1AF /* LogDataLoader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogDataLoader.swift; sourceTree = "<group>"; };
 		4BA815567454CC42301A7CF2 /* TestHooks.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHooks.swift; sourceTree = "<group>"; };
 		E100000000000000000001F1 /* Log.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Log.swift; sourceTree = "<group>"; };
+		E100000000000000000003F1 /* HouseholdDisplay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HouseholdDisplay.swift; sourceTree = "<group>"; };
 		4CC042FD2FD2699642D0DE0A /* LogStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogStore.swift; sourceTree = "<group>"; };
 		4E7E20F4F01013A3A3CF87C5 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		4E8F3699DE10AAEC9B1D4309 /* ScheduleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScheduleView.swift; sourceTree = "<group>"; };
@@ -213,6 +218,7 @@
 		A300000000000000000003F8 /* PushRegistrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushRegistrationTests.swift; sourceTree = "<group>"; };
 		A300000000000000000003F9 /* DeepLinkTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkTests.swift; sourceTree = "<group>"; };
 		E100000000000000000002F1 /* ErrorReportingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ErrorReportingTests.swift; sourceTree = "<group>"; };
+		E100000000000000000005F1 /* HouseholdDisplayTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HouseholdDisplayTests.swift; sourceTree = "<group>"; };
 		A300000000000000000003FA /* PushPrePromptSnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushPrePromptSnapshotTests.swift; sourceTree = "<group>"; };
 		A300000000000000000003FB /* Nabu.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Nabu.entitlements; sourceTree = "<group>"; };
 		A400000000000000000004F1 /* StateQualitySnapshotTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StateQualitySnapshotTests.swift; sourceTree = "<group>"; };
@@ -369,6 +375,7 @@
 				A300000000000000000003F8 /* PushRegistrationTests.swift */,
 				A300000000000000000003F9 /* DeepLinkTests.swift */,
 				E100000000000000000002F1 /* ErrorReportingTests.swift */,
+				E100000000000000000005F1 /* HouseholdDisplayTests.swift */,
 				A300000000000000000003FA /* PushPrePromptSnapshotTests.swift */,
 				A400000000000000000004F1 /* StateQualitySnapshotTests.swift */,
 			);
@@ -383,6 +390,7 @@
 				D17B9D65DD3F425B5976D7C9 /* LogSheet.swift */,
 				B66DFDFF5ABF4754538EBCD8 /* QuickLogSheet.swift */,
 				0B1737331BD355C47490324D /* UndoToast.swift */,
+				E100000000000000000004F1 /* HouseholdDisplayView.swift */,
 				3046D997DC84E0F7EA521698 /* ChoreEditView.swift */,
 				1007311842A11060CB4DD36A /* ManageChoresView.swift */,
 				24525FE7B9F3E4ABA6A4C612 /* ActivityView.swift */,
@@ -473,6 +481,7 @@
 				DCC215E9F6F2846F244889F0 /* DateFormatting.swift */,
 				4BA815567454CC42301A7CF2 /* TestHooks.swift */,
 				E100000000000000000001F1 /* Log.swift */,
+				E100000000000000000003F1 /* HouseholdDisplay.swift */,
 				A100000000000000000001A1 /* VolumeUnits.swift */,
 				A100000000000000000001A2 /* DurationTimer.swift */,
 				A100000000000000000001A3 /* RecentVolumes.swift */,
@@ -704,6 +713,7 @@
 				B300000000000000000003B8 /* PushRegistrationTests.swift in Sources */,
 				B300000000000000000003B9 /* DeepLinkTests.swift in Sources */,
 				E100000000000000000002B1 /* ErrorReportingTests.swift in Sources */,
+				E100000000000000000005B1 /* HouseholdDisplayTests.swift in Sources */,
 				B300000000000000000003BA /* PushPrePromptSnapshotTests.swift in Sources */,
 				B400000000000000000004B1 /* StateQualitySnapshotTests.swift in Sources */,
 			);
@@ -767,6 +777,7 @@
 				20A03C13676FA5F95B611C9C /* LogSheet.swift in Sources */,
 				61E90A30C46CF40E4AAEF74E /* QuickLogSheet.swift in Sources */,
 				96CD96099D43D7EFA3A43520 /* UndoToast.swift in Sources */,
+				E100000000000000000004B1 /* HouseholdDisplayView.swift in Sources */,
 				68E8EDE188029870FF0C4193 /* ChoreEditView.swift in Sources */,
 				7A2FB0FC1B3E1F06CC12AB5D /* ManageChoresView.swift in Sources */,
 				007D52A6925501BE3FE2192E /* ActivityView.swift in Sources */,
@@ -787,6 +798,7 @@
 				6E47D94757693F9700B7C198 /* DateFormatting.swift in Sources */,
 				44E8CBFEEF9645C181DFBE1B /* TestHooks.swift in Sources */,
 				E100000000000000000001B1 /* Log.swift in Sources */,
+				E100000000000000000003B1 /* HouseholdDisplay.swift in Sources */,
 				B100000000000000000001B1 /* VolumeUnits.swift in Sources */,
 				B100000000000000000001B2 /* DurationTimer.swift in Sources */,
 				B100000000000000000001B3 /* RecentVolumes.swift in Sources */,

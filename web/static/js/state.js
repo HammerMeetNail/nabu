@@ -42,6 +42,8 @@ export function createAppState() {
     volumeUnit: "ml",          // per-user volume display/input unit ("ml" | "oz")
     hideNotificationBadge: false, // per-user pref: hide the unread count on the bell
     jiggleMode: false,         // home grid reorder mode
+    display: null,             // the household display's picks and dialogs (display.js)
+    displaySetup: null,        // Settings' form for turning the display on
     homeView: "log",           // "log" | "manage"
     latestLogs: {},            // map of choreId -> ChoreLog (most recent per chore)
     homeActivity: { logs: [], loaded: false, error: null }, // Home's activity column (wide layout)

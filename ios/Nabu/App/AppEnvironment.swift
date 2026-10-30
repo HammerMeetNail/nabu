@@ -76,6 +76,7 @@ final class AppEnvironment {
             DurationTimer.save(nil)
             OfflineLogQueue.shared.removeAll()
             PushOffer.reset()
+            HouseholdDisplay.removeAll()
         }
 
         if TestHooks.seedHomeForUITest {
@@ -215,6 +216,16 @@ final class AppEnvironment {
                 state.latestLogs = [:]
                 state.todayLogs = []
             }
+            if scenario == "display" {
+                // Someone else to pick on the household display, and an
+                // activity for two cats, which asks which one.
+                state.members.append(Member(userId: 2, email: "sam@nabu.local", displayName: "Sam",
+                    avatarColor: "#A23B72", emailVerified: true, role: "member"))
+                state.chores.append(Chore(id: 8, householdId: 1, name: "Cat meds", icon: "💊", color: "#A23B72",
+                    sortOrder: 7, category: "pets", isPredefined: false, predefinedKey: nil, createdBy: 1,
+                    createdAt: now, indicatorLabels: [], indicatorDefaults: [], hasVolumeML: false,
+                    subjects: ["Mongo", "Ziggy"]))
+            }
             if scenario == "invite" {
                 // The owner sees the household's permanent invite link.
                 state.household = Household(id: 1, name: "Test Home", initials: "TH", inviteCode: "TESTHOME01", createdAt: now)
@@ -283,6 +294,7 @@ final class AppEnvironment {
         var userId = 1
         var durationSeconds: Int?
         var indicatorVolumes: [String: Int]?
+        var subject: String?
 
         if let body = request.httpBody,
            let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] {
@@ -295,13 +307,14 @@ final class AppEnvironment {
             userId = json["userId"] as? Int ?? 1
             durationSeconds = json["durationSeconds"] as? Int
             indicatorVolumes = json["indicatorVolumes"] as? [String: Int]
+            subject = json["subject"] as? String
         }
 
         let log = ChoreLog(
             id: 9001, householdId: 1, userId: userId, choreId: choreId,
             completedAt: Date(), note: note, indicators: indicators,
             slotHour: slotHour, createdAt: Date(), volumeML: volumeML,
-            indicatorVolumes: indicatorVolumes, durationSeconds: durationSeconds, metricUnit: metricUnit
+            indicatorVolumes: indicatorVolumes, durationSeconds: durationSeconds, subject: subject, metricUnit: metricUnit
         )
         let response = LogResponse(log: log)
         let data = try! apiEncoder.encode(response)

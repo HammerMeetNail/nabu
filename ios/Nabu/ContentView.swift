@@ -59,6 +59,8 @@ struct ContentView: View {
             } else if !hasLoadedData {
                 SkeletonScreen()
                     .task { await loadAppData() }
+            } else if state.householdDisplayOn {
+                HouseholdDisplayView()
             } else {
                 MainTabView(dataLoader: dataLoader)
             }

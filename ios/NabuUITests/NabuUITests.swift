@@ -740,6 +740,91 @@ final class NabuReviewRecoveryUITests: XCTestCase {
         XCTAssertTrue(row.exists, "The schedule stays")
     }
 
+    /// The household display (PWA `household-display.spec.js`): an owner
+    /// turns it on with a PIN; a tile logs at once for whoever is picked, with
+    /// Undo; an activity for two cats asks which one; it survives a relaunch,
+    /// and only the PIN leaves it.
+    func testHouseholdDisplayLogsForWhoeverIsPicked() throws {
+        // Its own launch: on iPad the tabs sit at the top, outside `tabBars`.
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-disableAnimations", "-resetState", "-seedHomeForUITest", "-useMockAPI",
+                               "-reviewScenario", "display", "-nabuBaseURL", "http://localhost:9998",
+                               "-reviewDate", "2026-09-10T12:34:00Z"]
+        app.launchForLocalTest()
+        func tab(_ name: String) -> XCUIElement {
+            app.tabBars.buttons[name].exists ? app.tabBars.buttons[name] : app.buttons[name].firstMatch
+        }
+        XCTAssertTrue(tab("Settings").waitForExistence(timeout: 10))
+        tab("Settings").tap()
+        let turnOn = app.buttons["display-turn-on"]
+        reveal(turnOn, in: app)
+        turnOn.tap()
+        let pin = app.secureTextFields["display-pin"]
+        let again = app.secureTextFields["display-pin-again"]
+        XCTAssertTrue(pin.waitForExistence(timeout: 5))
+        pin.tap(); pin.typeText("2468")
+        again.tap(); again.typeText("2486")
+        app.buttons["display-pin-submit"].tap()
+        XCTAssertEqual(app.staticTexts["display-pin-error"].label, "The PINs don't match.")
+        again.tap(); again.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 4) + "2468")
+        app.buttons["display-pin-submit"].tap()
+
+        // No tabs: the household's members and Home's tiles.
+        let prompt = app.staticTexts["display-prompt"]
+        XCTAssertTrue(prompt.waitForExistence(timeout: 5))
+        XCTAssertFalse(tab("Home").exists)
+        let sam = app.buttons["display-person-2"]
+        XCTAssertTrue(sam.exists)
+
+        // Nobody picked: a tile logs nothing.
+        let tile = app.buttons["display-tile-1"]
+        tile.tap()
+        XCTAssertEqual(prompt.label, "Tap who you are first")
+        XCTAssertFalse(app.buttons["Undo"].exists)
+
+        // Pick Sam, then the tile: logged at once for Sam, as the server answered.
+        sam.tap()
+        XCTAssertEqual(prompt.label, "Logging for Sam")
+        // Kept with the result, to see the display as each device shows it.
+        let shot = XCTAttachment(screenshot: app.screenshot())
+        shot.name = "household-display"
+        shot.lifetime = .keepAlways
+        add(shot)
+        tile.tap()
+        XCTAssertTrue(app.staticTexts["Logged Feed Cats for Sam"].waitForExistence(timeout: 5))
+        app.buttons["Undo"].tap()
+        XCTAssertTrue(app.staticTexts["Logged Feed Cats for Sam"].waitForNonExistence(timeout: 5))
+
+        // An activity for two cats asks which one.
+        let meds = app.buttons["display-tile-8"]
+        reveal(meds, in: app)
+        meds.tap()
+        let ziggy = app.buttons["Ziggy"]
+        XCTAssertTrue(ziggy.waitForExistence(timeout: 5))
+        ziggy.tap()
+        XCTAssertTrue(app.staticTexts["Logged Cat meds (Ziggy) for Sam"].waitForExistence(timeout: 5))
+
+        // The display survives a relaunch.
+        app.terminate()
+        app.launchArguments.removeAll { $0 == "-resetState" }
+        app.launchArguments.append("-preserveTestState")
+        app.launchForLocalTest()
+        XCTAssertTrue(prompt.waitForExistence(timeout: 10))
+        XCTAssertFalse(tab("Home").exists)
+
+        // Only the PIN leaves it.
+        app.buttons["display-leave"].tap()
+        XCTAssertTrue(pin.waitForExistence(timeout: 5))
+        pin.tap(); pin.typeText("1111")
+        app.buttons["display-pin-submit"].tap()
+        XCTAssertEqual(app.staticTexts["display-pin-error"].label, "That PIN isn't right.")
+        pin.tap(); pin.typeText("2468")
+        app.buttons["display-pin-submit"].tap()
+        XCTAssertTrue(tab("Settings").waitForExistence(timeout: 5))
+        XCTAssertFalse(prompt.exists)
+    }
+
     func testOwnershipDeletionFailureCanCancelAndReopenCleanly() throws {
         let app = launch("delete-account")
         app.tabBars.buttons["Settings"].tap()

@@ -6,6 +6,7 @@ import { registerActions } from "./actions.js";
 import { apiFetch } from "./api.js";
 import { state, rerender, refreshTopBar, owned, withCurrentContext, finishIdentity, recoverIdentity } from "./app-core.js";
 import { renderApiKeys } from "./api-keys.js";
+import { renderDisplaySettings } from "./display.js";
 import { handleChangePassword } from "./auth.js";
 import { resultIsCurrent } from "./browser-context.js";
 import { renderExports, renderMyDataDownload } from "./exports.js";
@@ -218,9 +219,9 @@ export function renderSettingsView() {
     const householdCard = state.accessSuspended
       ? renderAccessSuspendedCard(state)
       : renderHouseholdView(null, null, null, state.user);
-    return `<div class="settings-view">${householdCard}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3" data-key="account"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${myDataLine}${deleteAccountSection}</div>${aboutLine}</div>`;
+    return `<div class="settings-view">${householdCard}${yourHouseholdsCard}${prefsCard}${renderDisplaySettings(state)}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3" data-key="account"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${myDataLine}${deleteAccountSection}</div>${aboutLine}</div>`;
   }
-  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user, { showInviteQR: !!state.showInviteQR })}${yourHouseholdsCard}${prefsCard}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3" data-key="account"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${myDataLine}${deleteAccountSection}</div>${aboutLine}</div>`;
+  return `<div class="settings-view"><h2>Settings</h2>${renderHouseholdView(hh, state.members, state.invites, state.user, { showInviteQR: !!state.showInviteQR })}${yourHouseholdsCard}${prefsCard}${renderDisplaySettings(state)}${notifPrefsCard}${exportCard}${apiKeysCard}<div class="card mt-3" data-key="account"><h3>Account</h3>${state.user ? renderProfileForm(state.user) : ''}<p class="text-secondary">${escapeHTML(state.user ? state.user.email : '')}</p>${verificationSection}${passwordSection}${myDataLine}${deleteAccountSection}</div>${aboutLine}</div>`;
 }
 
 

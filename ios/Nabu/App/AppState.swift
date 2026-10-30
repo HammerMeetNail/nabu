@@ -39,6 +39,7 @@ final class AppState {
         logoutIsDurable = session.logoutIsDurable
         user = session.user
         activeHouseholdId = session.user?.householdId
+        householdDisplayOn = HouseholdDisplay.setting(for: session.origin) != nil
         if let origin = session.origin {
             activeTimer = DurationTimer.load(origin: origin)
             pendingLogs = OfflineLogQueue.shared.scopedItems(origin).map {
@@ -82,6 +83,9 @@ final class AppState {
     var activeSheet: ActiveSheet?
     /// A failed action's message (`reportFailure`).
     var toast: Toast?
+    /// This device is the household display for the signed-in account
+    /// (`HouseholdDisplay`): it shows `HouseholdDisplayView` instead of the tabs.
+    var householdDisplayOn = false
     var jiggleMode = false
     var historyChoreFilter: [Int]?
     var historyFilterOpen = false
@@ -184,6 +188,7 @@ final class AppState {
         homeView = .log
         activeSheet = nil
         toast = nil
+        householdDisplayOn = false
         jiggleMode = false
         historyChoreFilter = nil
         historyFilterOpen = false
@@ -241,6 +246,7 @@ final class AppState {
         pendingLogs = []
         activeSheet = nil
         toast = nil
+        householdDisplayOn = false
         pendingQuickLog = nil
         jiggleMode = false
         currentTab = .home
