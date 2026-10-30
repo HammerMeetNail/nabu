@@ -79,6 +79,8 @@ final class AppState {
     var choreOrder: [Int] = []
     var hiddenHomeChoreIDs: [Int] = []
     var currentTab: MainTab = .home
+    /// ⌘F asked Activity to focus its search field; Activity clears it.
+    var activitySearchRequested = false
     var homeView: HomeViewMode = .log
     var activeSheet: ActiveSheet?
     /// A failed action's message (`reportFailure`).

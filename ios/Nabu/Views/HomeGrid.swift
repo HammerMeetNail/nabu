@@ -97,6 +97,9 @@ struct HomeChoreCell: View {
             .rotationEffect(.degrees(wobbleAngle))
         }
         .buttonStyle(.plain)
+        // A pointer (iPad trackpad, Mac) highlights the tile it's over.
+        .contentShape(.hoverEffect, RoundedRectangle(cornerRadius: 18))
+        .hoverEffect(.highlight)
         // VoiceOver (C6): the context-menu actions exposed as custom actions
         // so rotor users can edit/hide without discovering the long-press.
         .accessibilityAction(named: "Edit chore") { onEdit() }
