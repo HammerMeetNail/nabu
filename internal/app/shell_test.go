@@ -1,9 +1,13 @@
 package app
 
 import (
+	"bytes"
+	"compress/gzip"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"path"
+	"slices"
 	"strings"
 	"testing"
 
@@ -50,6 +54,54 @@ func TestAppModulePathsCoversImportGraph(t *testing.T) {
 		if !listed[want] {
 			t.Errorf("%s missing", want)
 		}
+	}
+}
+
+// shellBudgetCompressed is the plan's slow-4G budget for a cold launch: Home
+// within 1.5 s on 150 ms round trips and 1.6 Mbit/s. With every module
+// preloaded, a cold launch takes three round trips (the page, its modules and
+// stylesheet, then Home's data), 0.45 s, which leaves 1.05 s to carry the
+// shell: 210 KB compressed. Production sends Brotli, smaller than the gzip
+// measured here.
+const shellBudgetCompressed = 210 * 1024
+
+func TestShellFitsTheSlow4GBudget(t *testing.T) {
+	staticFS := staticAssets(t)
+	files := append(appModulePaths(staticFS), "css/app.css")
+	type size struct {
+		file  string
+		bytes int
+	}
+	sizes := make([]size, 0, len(files))
+	total := 0
+	for _, file := range files {
+		raw, err := fs.ReadFile(staticFS, file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var buf bytes.Buffer
+		zw, err := gzip.NewWriterLevel(&buf, gzip.BestCompression)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := zw.Write(raw); err != nil {
+			t.Fatal(err)
+		}
+		if err := zw.Close(); err != nil {
+			t.Fatal(err)
+		}
+		sizes = append(sizes, size{file, buf.Len()})
+		total += buf.Len()
+	}
+	t.Logf("the shell is %d files, %d KB compressed; the budget is %d KB", len(files), total/1024, shellBudgetCompressed/1024)
+	if total > shellBudgetCompressed {
+		slices.SortFunc(sizes, func(a, b size) int { return b.bytes - a.bytes })
+		var largest []string
+		for _, s := range sizes[:min(5, len(sizes))] {
+			largest = append(largest, fmt.Sprintf("%s %d KB", s.file, s.bytes/1024))
+		}
+		t.Fatalf("the shell is %d KB compressed, over the %d KB a cold Home can load in 1.5 s on slow 4G; largest: %s",
+			total/1024, shellBudgetCompressed/1024, strings.Join(largest, ", "))
 	}
 }
 

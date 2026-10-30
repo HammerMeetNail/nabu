@@ -166,6 +166,7 @@ These four rules cover classes of bug found in past audits. Apply them to every 
 
 - **Never add `?v=anything` manually to a relative import in JS source.** The rewriter skips paths that already contain `?`, so a hard-coded version will not update on deploy and serves stale code.
 - New JS modules that import other modules are handled automatically — no extra work.
+- **Performance budgets (plan §8).** The shell a cold launch loads (every module `app.js` statically imports, plus `app.css`; all preloaded) must stay within 210 KB gzip (`TestShellFitsTheSlow4GBudget`): three round trips and that many bytes take 1.5 s on slow 4G (150 ms, 1.6 Mbit/s). Opening Stats sends at most three Stats requests (`stats-performance.spec.js`); today it sends two dashboard requests. Load a large, rarely used module with a dynamic `import()` rather than growing the shell.
 - Verify after a deploy (see `docs/deploy-runbook.md`).
 
 ## Client parity
