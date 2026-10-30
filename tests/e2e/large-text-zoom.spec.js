@@ -14,7 +14,8 @@ function overlaps(a, b) {
 }
 
 // What doesn't fit in the sheet: a label or field that leaves it or overlaps
-// another, or a follow-up choice too narrow for its longest value.
+// another, a type's name split mid-word, or a follow-up choice too narrow for
+// its longest value.
 function sheetProblems(sheet) {
   return sheet.evaluate(sheet => {
     const style = getComputedStyle(sheet);
@@ -36,6 +37,16 @@ function sheetProblems(sheet) {
         if (x > 1 && y > 1) problems.push(`${name(el)} overlaps ${name(other)}`);
       }
     });
+    for (const chip of sheet.querySelectorAll('.log-chip')) {
+      const text = chip.firstChild;
+      if (text?.nodeType !== Node.TEXT_NODE) continue;
+      for (const word of text.data.matchAll(/\S+/g)) {
+        const range = document.createRange();
+        range.setStart(text, word.index);
+        range.setEnd(text, word.index + word[0].length);
+        if (new Set([...range.getClientRects()].map(r => Math.round(r.top))).size > 1) problems.push(`${name(chip)} splits "${word[0]}"`);
+      }
+    }
     const measure = document.createElement('canvas').getContext('2d');
     for (const select of sheet.querySelectorAll('.followup-select')) {
       const s = getComputedStyle(select);
@@ -138,12 +149,13 @@ test('each kind of log sheet fits at 200% zoom', async ({ page }) => {
   };
 
   // A type with its own amount, both types on, and one unit for them, at
-  // 100%, 125%, 150% and 200% zoom on a 390 px phone.
+  // 100%, 110%, 118%, 125%, 150% and 200% zoom on a 390 px phone. At 125%
+  // each amount goes under its type, whose name had no room beside it.
   const feedBaby = await open('Feed Baby');
   await sheet.getByRole('button', { name: '🤱 breast' }).click();
   await sheet.getByRole('spinbutton', { name: '🍼 formula amount' }).fill('90');
   await sheet.getByRole('spinbutton', { name: '🤱 breast amount' }).fill('30');
-  for (const width of [390, 312, 260, 195]) {
+  for (const width of [390, 355, 330, 312, 260, 195]) {
     await page.setViewportSize({ width, height: 422 });
     expect(await sheetProblems(sheet), `Feed Baby at ${width} px`).toEqual([]);
   }
