@@ -1,23 +1,25 @@
 import Foundation
+import Observation
 
 /// Lives above the identity-gated tabs so canonical session confirmation cannot
 /// destroy a deletion failure before the user can read it.
 @MainActor
-final class AccountDeletionModel: ObservableObject {
-    @Published var isPresented = false
-    @Published private(set) var isDeleting = false
-    @Published private(set) var errorMessage: String?
+@Observable
+final class AccountDeletionModel {
+    var isPresented = false
+    private(set) var isDeleting = false
+    private(set) var errorMessage: String?
     /// Opt-in: also delete every log the user recorded in shared households.
-    @Published var deleteLogs = false
+    var deleteLogs = false
     /// Opt-in: strip the user's notes from the logs that stay.
-    @Published var deleteNotes = false
+    var deleteNotes = false
     private struct Owner: Equatable {
         let server: URL
         let actorID: Int
         let householdID: Int?
     }
-    private var owner: Owner?
-    private var intent = UUID()
+    @ObservationIgnored private var owner: Owner?
+    @ObservationIgnored private var intent = UUID()
 
     private func currentOwner(_ api: APIClient) -> Owner? {
         let snapshot = api.identity.snapshot
@@ -70,15 +72,21 @@ final class AccountDeletionModel: ObservableObject {
 }
 
 @MainActor
-final class AuthStore: ObservableObject {
+@Observable
+final class AuthStore {
     private(set) var api: APIClient
-    @Published var isLoading = false
-    @Published var errorMessage: String?
-    @Published var registrationNotice: String?
+    var isLoading = false
+    var errorMessage: String?
+    var registrationNotice: String?
 
     init(api: APIClient) {
         self.api = api
     }
+
+    /// Until `configure(api:)`: a view's state is made anew each time SwiftUI
+    /// rebuilds the view, so its placeholders share one client.
+    convenience init() { self.init(api: Self.unconfigured) }
+    private static let unconfigured = APIClient(baseURL: URL(string: "http://localhost:8080")!)
 
     func configure(api: APIClient) {
         self.api = api

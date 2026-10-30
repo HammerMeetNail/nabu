@@ -1,4 +1,5 @@
 import Foundation
+import Observation
 
 /// View model for the Stats tab. Mirrors the PWA's stats data-loading and
 /// interaction semantics (`app.js` loadAllStatsData / loadWidgetData /
@@ -8,7 +9,8 @@ import Foundation
 /// requests, sections and per-chore charts, like the PWA's `stats-batch.js`.
 /// Presentation is native (§2.1); behavior must not diverge.
 @MainActor
-final class StatsModel: ObservableObject {
+@Observable
+final class StatsModel {
 
     /// Bounds the per-chore/per-widget time-series fan-out on a single Stats
     /// load, so a household with many metric/indicator chores can't trigger
@@ -20,74 +22,74 @@ final class StatsModel: ObservableObject {
     private(set) var state: AppState?
     private(set) var preferences: PreferencesDataLoader?
 
-    @Published var isLoading = true
-    @Published private(set) var loading: Set<String> = []
-    @Published private(set) var errors: [String: String] = [:]
-    private var stateRevision: UUID?
-    private var requests: [String: UUID] = [:]
-    private var queries: [String: String] = [:]
-    private var pageRequest = UUID()
+    var isLoading = true
+    private(set) var loading: Set<String> = []
+    private(set) var errors: [String: String] = [:]
+    @ObservationIgnored private var stateRevision: UUID?
+    @ObservationIgnored private var requests: [String: UUID] = [:]
+    @ObservationIgnored private var queries: [String: String] = [:]
+    @ObservationIgnored private var pageRequest = UUID()
     /// The current page load's reads, fetched up front by `loadAll`.
     private var prefetched: [StatsRead: Task<StatsReadOutcome, Never>] = [:]
 
     // Overview
-    @Published var overview: StatsOverview?
+    var overview: StatsOverview?
 
     // Heatmap
-    @Published var heatmap: [HeatmapEntry] = []
+    var heatmap: [HeatmapEntry] = []
 
     // Busy hours (+ filters)
-    @Published var busyHours: [BusyHour] = []
-    @Published var busyHoursStart = ""
-    @Published var busyHoursEnd = ""
-    @Published var bhChoreId: Int?
-    @Published var bhUserId: Int?
-    @Published var bhFilterStart = ""
-    @Published var bhFilterEnd = ""
+    var busyHours: [BusyHour] = []
+    var busyHoursStart = ""
+    var busyHoursEnd = ""
+    var bhChoreId: Int?
+    var bhUserId: Int?
+    var bhFilterStart = ""
+    var bhFilterEnd = ""
 
     // Leaderboard
-    @Published var leaderboardPeriod = "week"
-    @Published var leaderboardByPeriod: [String: LeaderboardResponse] = [:]
+    var leaderboardPeriod = "week"
+    var leaderboardByPeriod: [String: LeaderboardResponse] = [:]
 
     // Top chores
-    @Published var topChoresPeriod = "month"
-    @Published var topChoresUserId: Int = 0
-    @Published var topChoresByUserAndPeriod: [String: [TopChore]] = [:]
+    var topChoresPeriod = "month"
+    var topChoresUserId: Int = 0
+    var topChoresByUserAndPeriod: [String: [TopChore]] = [:]
 
     // Categories (breakdown endpoint, period-scoped — #84/#85 convergence)
-    @Published var categoriesPeriod = "week"
-    @Published var categoriesBreakdown: [BreakdownEntry] = []
+    var categoriesPeriod = "week"
+    var categoriesBreakdown: [BreakdownEntry] = []
 
     // Chores section (period-scoped)
-    @Published var choreStatsPeriod = "month"
-    @Published var choreStats: [ChoreStat] = []
-    @Published var choreStatsStart = ""
-    @Published var choreStatsEnd = ""
+    var choreStatsPeriod = "month"
+    var choreStats: [ChoreStat] = []
+    var choreStatsStart = ""
+    var choreStatsEnd = ""
 
     // Baby care
-    @Published var feedBabyPeriod = "daily"
-    @Published var changeBabyPeriod = "daily"
-    @Published var feedBabyTS: ChoreTimeSeries?
-    @Published var changeBabyTS: ChoreTimeSeries?
+    var feedBabyPeriod = "daily"
+    var changeBabyPeriod = "daily"
+    var feedBabyTS: ChoreTimeSeries?
+    var changeBabyTS: ChoreTimeSeries?
 
     // Feeding gaps (cluster feeding)
-    @Published var feedingGaps: [FeedingGap] = []
-    @Published var feedingGapsStart = ""
-    @Published var feedingGapsEnd = ""
-    @Published var feedingGapsExplainerVisible = false
+    var feedingGaps: [FeedingGap] = []
+    var feedingGapsStart = ""
+    var feedingGapsEnd = ""
+    var feedingGapsExplainerVisible = false
 
     // Generalized per-chore analytics (chore:<id> sections)
-    @Published var choreTimeSeries: [Int: ChoreTimeSeries] = [:]
-    @Published var choreAnalyticsPeriod: [Int: String] = [:]
+    var choreTimeSeries: [Int: ChoreTimeSeries] = [:]
+    var choreAnalyticsPeriod: [Int: String] = [:]
 
     // Widget data, keyed by widget id. Each entry is the per-chore results
     // the widget renders from (time-series or summary, by widget type).
-    @Published var widgetTimeSeries: [String: [ChoreTimeSeries]] = [:]
-    @Published var widgetSummaries: [String: [ChoreSummary]] = [:]
+    var widgetTimeSeries: [String: [ChoreTimeSeries]] = [:]
+    var widgetSummaries: [String: [ChoreSummary]] = [:]
 
     // Customize panel
-    @Published var customizeOpen = false
-    @Published var widgetWizardOpen = false
+    var customizeOpen = false
+    var widgetWizardOpen = false
 
     func configure(api: APIClient, state: AppState) {
         // A retained view model must never adopt a later account implicitly.

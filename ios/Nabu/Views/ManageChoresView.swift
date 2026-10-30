@@ -1,8 +1,8 @@
 import SwiftUI
 
 struct ManageChoresView: View {
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
     @State private var showingAddSheet = false
     @State private var showingPacks = false
     @State private var editingChore: Chore?
@@ -170,9 +170,9 @@ struct ManageChoresView: View {
 /// Manage → Add activities: the setup's pack picker for this household
 /// (PWA `renderPacksSheet`). Activities the household has are kept.
 struct AddPacksSheet: View {
-    @EnvironmentObject var environment: AppEnvironment
+    @Environment(AppEnvironment.self) var environment
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var selection = PackSelection()
+    @State private var selection = PackSelection()
     @State private var saving = false
     @State private var message: String?
     /// Reloads the household's activities after an add.

@@ -1,9 +1,9 @@
 import SwiftUI
 
 struct HouseholdView: View {
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
-    @StateObject private var auth = AuthStore(api: APIClient(baseURL: URL(string: "http://localhost:8080")!))
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
+    @State private var auth = AuthStore()
     @State private var showingEdit = false
     @State private var showingInviteQR = false
     @State private var showingTransfer = false
@@ -21,7 +21,7 @@ struct HouseholdView: View {
     @State private var exportKind: ExportKind?
     @State private var exportJob = UUID()
     @State private var exportTempURL: URL?
-    @EnvironmentObject private var accountDeletion: AccountDeletionModel
+    @Environment(AccountDeletionModel.self) private var accountDeletion
     @State private var showingLeaveConfirm = false
     @State private var verificationSent = false
 	@State private var showingPassword = false
@@ -698,10 +698,10 @@ struct HouseholdView: View {
 }
 
 struct PasswordChangeSheet: View {
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
     @Environment(\.dismiss) private var dismiss
-    @StateObject private var auth = AuthStore(api: APIClient(baseURL: URL(string: "http://localhost:8080")!))
+    @State private var auth = AuthStore()
     @State private var current = ""
     @State private var password = ""
     @State private var confirmation = ""
@@ -832,10 +832,10 @@ struct ShareSheet: UIViewControllerRepresentable {
 /// multi-member household gets a 409 telling them to transfer ownership
 /// first, surfaced verbatim below the button.
 struct DeleteAccountSheet: View {
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject private var accountDeletion: AccountDeletionModel
+    @Environment(AccountDeletionModel.self) private var accountDeletion
     @State private var confirmText = ""
     @State private var myDataFile: ExportFile?
     @State private var isExportingMyData = false
@@ -880,9 +880,9 @@ struct DeleteAccountSheet: View {
                 }
 
                 Section {
-                    Toggle("Also delete everything I logged in shared households", isOn: $accountDeletion.deleteLogs)
+                    Toggle("Also delete everything I logged in shared households", isOn: Bindable(accountDeletion).deleteLogs)
                         .accessibilityIdentifier("delete-account-logs")
-                    Toggle("Also delete the notes I wrote on logs that stay", isOn: $accountDeletion.deleteNotes)
+                    Toggle("Also delete the notes I wrote on logs that stay", isOn: Bindable(accountDeletion).deleteNotes)
                         .disabled(accountDeletion.deleteLogs)
                         .accessibilityIdentifier("delete-account-notes")
                 }
@@ -950,7 +950,7 @@ struct DeleteAccountSheet: View {
 // MARK: - Member Row
 
 struct MemberRow: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) var state
     let member: Member
     let isCurrentUser: Bool
     let currentUserRole: String
@@ -1121,8 +1121,8 @@ enum ProfileEditor {
 }
 
 struct ProfileEditSheet: View {
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
     @State private var color: String?

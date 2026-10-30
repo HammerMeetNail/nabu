@@ -2,11 +2,11 @@ import AuthenticationServices
 import SwiftUI
 
 struct RegisterView: View {
-    @EnvironmentObject var state: AppState
+    @Environment(AppState.self) var state
     @Environment(\.colorScheme) private var colorScheme
-    @ObservedObject var auth: AuthStore
-    @ObservedObject var googleAuth: GoogleOAuthCoordinator
-    @StateObject private var appleAuth = SignInWithAppleCoordinator()
+    var auth: AuthStore
+    var googleAuth: GoogleOAuthCoordinator
+    @State private var appleAuth = SignInWithAppleCoordinator()
     @Environment(\.dismiss) private var dismiss
     @State private var email = ""
     @State private var password = ""

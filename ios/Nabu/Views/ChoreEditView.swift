@@ -15,8 +15,8 @@ let QUICK_EMOJIS = [
 
 struct ChoreEditView: View {
     @Environment(\.dismiss) private var dismiss
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
     let chore: Chore?
     let choreStore: ChoreStore
 

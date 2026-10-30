@@ -3,9 +3,10 @@ import SwiftUI
 import WebKit
 
 @MainActor
-final class GoogleOAuthCoordinator: NSObject, ObservableObject {
-    @Published var isAuthenticating = false
-    @Published var errorMessage: String?
+@Observable
+final class GoogleOAuthCoordinator: NSObject {
+    var isAuthenticating = false
+    var errorMessage: String?
 
     let baseURL: URL
 

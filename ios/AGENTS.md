@@ -168,6 +168,12 @@ These PWA behaviors must be preserved in the native iOS app:
 
 The app, the widget extension and the unit tests build in the Swift 6 language mode with Approachable Concurrency (`SWIFT_APPROACHABLE_CONCURRENCY`): a nonisolated `async` function runs on its caller's actor, so a `@MainActor` store calling `APIClient` sends nothing across actors. Building needs Xcode 26 or later, which CI selects (`ios/ci-toolchain.sh`). The UI tests stay in Swift 5 mode: `XCUIElement` is main-actor isolated and XCTest's methods are not, so their 19 classes would need restructuring for no runtime gain. A shared static that a lock or immutability makes safe is `nonisolated(unsafe)`, with a comment saying why.
 
+## State
+
+The app's models are `@Observable` (Observation), not `ObservableObject`: a view re-renders when a property it read changes, not when anything in the object does. A view reads a shared model with `@Environment(AppState.self)` (injected with `.environment(_:)`), owns one with `@State`, takes one as a plain property, and binds through `@Bindable` or `Bindable(model).property`. Mark bookkeeping that no view reads `@ObservationIgnored` (request tokens, operation owners), but never a property a view's body reads, even through a method. A view's `@State` is made anew each time SwiftUI rebuilds the view (unlike a `@StateObject`'s autoclosure), so a model created there must be cheap: `AuthStore()` and `DataLoader()` share one placeholder `APIClient` until they are configured. Hold a shared model a view doesn't own (`OfflineLogQueue.shared`) in a `let`, not a `private var`: Xcode 26's Swift 6.2 makes the view's memberwise initializer private for a `private var` with a default value.
+
+`AppState` is still the one store for every screen's data. Splitting it into feature models (Home, Activity, Stats, Settings) under a thin app model is the plan's next step for it.
+
 ## Errors
 
 No failure ends in an empty `catch`. `APIClient`'s requests are `throws(APIError)`: a request that got no answer is `networkError` (which `LogStore.isNetworkFailure` queues), and an answer the app can't read is `decodingError`.

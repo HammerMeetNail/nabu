@@ -1,14 +1,14 @@
 import SwiftUI
 
 struct ContentView: View {
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
-    @StateObject private var auth = AuthStore(api: APIClient(baseURL: URL(string: "http://localhost:8080")!))
-    @StateObject private var dataLoader = DataLoader()
-    @StateObject private var accountDeletion = AccountDeletionModel()
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
+    @State private var auth = AuthStore()
+    @State private var dataLoader = DataLoader()
+    @State private var accountDeletion = AccountDeletionModel()
     /// Outlives the onboarding screen, which creating a household replaces
     /// for a moment (see HouseholdSetup).
-    @StateObject private var householdSetup = HouseholdSetup()
+    @State private var householdSetup = HouseholdSetup()
     @State private var hasCheckedSession = false
     @State private var hasLoadedData = false
     /// Identity revision of the `loadAppData()` run currently in flight, so the
@@ -63,14 +63,14 @@ struct ContentView: View {
                 MainTabView(dataLoader: dataLoader)
             }
         }
-        .environmentObject(accountDeletion)
+        .environment(accountDeletion)
         .pageBackground()
         .sheet(isPresented: $accountDeletion.isPresented, onDismiss: {
             let returnToSettings = accountDeletion.matches(environment.apiClient)
             accountDeletion.cancel()
             if returnToSettings { state.currentTab = .settings }
         }) {
-            DeleteAccountSheet().environmentObject(accountDeletion)
+            DeleteAccountSheet().environment(accountDeletion)
         }
         .onChange(of: state.revision) { _, _ in
             accountDeletion.reconcile(api: environment.apiClient)
@@ -305,9 +305,9 @@ struct ContentView: View {
 }
 
 struct MainTabView: View {
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
-    @ObservedObject var dataLoader: DataLoader
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
+    let dataLoader: DataLoader
 
     var body: some View {
         tabs
@@ -334,7 +334,7 @@ struct MainTabView: View {
     }
 
     private var tabs: some View {
-        TabView(selection: $state.currentTab) {
+        TabView(selection: Bindable(state).currentTab) {
             StatsView()
                 .tabItem {
                     Label(MainTab.stats.title, systemImage: MainTab.stats.systemImage)
@@ -374,10 +374,10 @@ struct MainTabView: View {
 }
 
 struct PendingSavesButton: View {
-    @EnvironmentObject var state: AppState
-    @EnvironmentObject var environment: AppEnvironment
-    @ObservedObject var dataLoader: DataLoader
-    @ObservedObject private var queue = OfflineLogQueue.shared
+    @Environment(AppState.self) var state
+    @Environment(AppEnvironment.self) var environment
+    let dataLoader: DataLoader
+    private let queue = OfflineLogQueue.shared
     @State private var showingPending = false
     @State private var discardKey: String?
     @State private var storageError = false

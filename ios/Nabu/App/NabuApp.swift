@@ -3,14 +3,14 @@ import SwiftUI
 @main
 struct NabuApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var state = AppState()
-    @StateObject private var environment = AppEnvironment()
+    @State private var state = AppState()
+    @State private var environment = AppEnvironment()
 
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(state)
-                .environmentObject(environment)
+                .environment(state)
+                .environment(environment)
                 .onAppear {
                     environment.configure(with: state)
                     appDelegate.attach(appState: state)

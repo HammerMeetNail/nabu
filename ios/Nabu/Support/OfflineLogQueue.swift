@@ -1,9 +1,11 @@
 import Foundation
+import Observation
 
 /// An immutable journal. A request is durable before its first POST and is
 /// removed only after confirmed success or explicit discard by its owner.
 @MainActor
-final class OfflineLogQueue: ObservableObject {
+@Observable
+final class OfflineLogQueue {
     static let shared = OfflineLogQueue()
 
     struct Item: Codable, Equatable {
@@ -13,9 +15,9 @@ final class OfflineLogQueue: ObservableObject {
         var failure: String?
         var needsRetry: Bool?
     }
-    @Published private(set) var items: [Item] = []
-    @Published private(set) var inFlight: Set<String> = []
-    @Published private(set) var storageUnavailable = false
+    private(set) var items: [Item] = []
+    private(set) var inFlight: Set<String> = []
+    private(set) var storageUnavailable = false
     private let fileURL: URL
     private let defaultOrigin: LogOrigin?
 
