@@ -1,7 +1,7 @@
 {
   "request": {
     "method": "GET",
-    "path": "/api/stats/dashboard?read=overview&read=heatmap%3Fstart%3D2026-01-02%26end%3D2026-01-02&read=busy-hours&read=chores%3Fperiod%3Dday&read=breakdown%3Fperiod%3Dweek&read=top-chores%3Fperiod%3Dweek&read=leaderboard%3Fperiod%3Dweek&read=feeding-gaps%3Fstart%3D2026-01-02%26end%3D2026-01-02"
+    "path": "/api/stats/dashboard?read=overview&read=heatmap%3Fstart%3D2026-01-02%26end%3D2026-01-02&read=busy-hours&read=chores%3Fperiod%3Dday&read=breakdown%3Fperiod%3Dweek&read=top-chores%3Fperiod%3Dweek&read=leaderboard%3Fperiod%3Dweek&read=feeding-gaps%3FchoreId%3D11%26start%3D2026-01-02%26end%3D2026-01-02"
   },
   "status": 200,
   "response": {

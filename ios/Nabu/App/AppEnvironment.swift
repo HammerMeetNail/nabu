@@ -509,24 +509,29 @@ final class ReviewUITestResponses {
             if scenario == "onboarding-pack-error", attempt == 1 { return try failed("failed to add activities", 500) }
             let picks = try apiDecoder.decode(AddPacksRequest.self, from: request.httpBody ?? Data()).packs
             // As the server plans them: a baby's or pet's own activities are
-            // custom tasks; shared ones keep their template's key.
-            var names: [(name: String, icon: String, own: Bool)] = []
+            // custom tasks, named for one of them; shared ones keep their
+            // template's key.
+            var names: [(name: String, icon: String, template: String, namedFor: String)] = []
             for pick in picks {
                 let given = pick.names ?? []
                 switch pick.key {
                 case "baby":
-                    names += given.isEmpty ? [("Feed Baby", "🍼", false), ("Change Baby", "👶", false)]
-                        : given.flatMap { [("Feed \($0)", "🍼", true), ("Change \($0)", "👶", true)] }
-                case "cat": names += (given.isEmpty ? [("Feed Cats", "🐱", false)] : given.map { ("Feed \($0)", "🐱", true) }) + [("Clean Litter Box", "🧹", false)]
-                case "plants": names.append(("Water Plants", "🌱", false))
+                    names += given.isEmpty ? [("Feed Baby", "🍼", "Feed Baby", ""), ("Change Baby", "👶", "Change Baby", "")]
+                        : given.flatMap { [("Feed \($0)", "🍼", "Feed Baby", $0), ("Change \($0)", "👶", "Change Baby", $0)] }
+                case "cat":
+                    names += (given.isEmpty ? [("Feed Cats", "🐱", "Feed Cats", "")] : given.map { ("Feed \($0)", "🐱", "Feed Cats", $0) })
+                        + [("Clean Litter Box", "🧹", "Clean Litter Box", "")]
+                case "plants": names.append(("Water Plants", "🌱", "Water Plants", ""))
                 default: break
                 }
             }
             var added: [Chore] = []
-            for (name, icon, own) in names where !chores.contains(where: { $0.name == name }) {
+            for (name, icon, template, namedFor) in names where !chores.contains(where: { $0.name == name }) {
+                let own = !namedFor.isEmpty
                 let chore = Chore(id: 100 + chores.count, householdId: household.id, name: name, icon: icon, color: "#F59E0B",
                     sortOrder: chores.count, category: "care", isPredefined: !own, predefinedKey: own ? nil : name, createdBy: nil,
-                    createdAt: user.createdAt, indicatorLabels: [], indicatorDefaults: [], hasVolumeML: false)
+                    createdAt: user.createdAt, indicatorLabels: [], indicatorDefaults: [], hasVolumeML: false,
+                    templateKey: template, namedFor: namedFor)
                 chores.append(chore)
                 added.append(chore)
             }

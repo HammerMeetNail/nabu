@@ -746,9 +746,52 @@ describe("Stats: generalized per-chore sections (Phase 3)", () => {
     assert.equal(choreHasAnalytics({ id: 1, name: "Naps", metricType: "duration" }), true);
     assert.equal(choreHasAnalytics({ id: 2, name: "Meds", metricType: "none", indicatorLabels: ["am"] }), true);
     assert.equal(choreHasAnalytics({ id: 3, name: "Vacuum", metricType: "none", indicatorLabels: [] }), false);
-    // Baby chores are covered by the dedicated baby section.
+    // Baby chores are covered by the dedicated baby section, whatever their
+    // names; a pet's feeds keep their own.
     assert.equal(choreHasAnalytics({ id: 4, name: "Feed Baby", metricType: "amount" }), false);
     assert.equal(choreHasAnalytics({ id: 5, name: "Change Baby", indicatorLabels: ["poo"] }), false);
+    assert.equal(choreHasAnalytics({ id: 6, name: "Bottles", templateKey: "Feed Baby", namedFor: "Ada", metricType: "amount" }), false);
+    assert.equal(choreHasAnalytics({ id: 7, name: "Feed Mongo", templateKey: "Feed Cats", namedFor: "Mongo", metricType: "amount" }), true);
+  });
+
+  it("babyCards gives each baby a card, by template, in the activities' order", async () => {
+    const { babyCards } = await import("../stats.js");
+    const cards = babyCards([
+      { id: 1, name: "Feed Ada", templateKey: "Feed Baby", namedFor: "Ada" },
+      { id: 2, name: "Feed Ben", templateKey: "Feed Baby", namedFor: "Ben" },
+      { id: 3, name: "Ada's diapers", templateKey: "Change Baby", namedFor: "Ada" },
+      { id: 4, name: "Change Ben", templateKey: "Change Baby", namedFor: "Ben" },
+      { id: 5, name: "Feed Mongo", templateKey: "Feed Cats", namedFor: "Mongo" },
+      // The household's own, renamed, and one with no template, by its name.
+      { id: 6, name: "Night feeds", predefinedKey: "Feed Baby", templateKey: "Feed Baby" },
+      { id: 7, name: "Change Baby" },
+      { id: 8, name: "Feed Baby", predefinedKey: "Feed Cats" },
+    ]);
+    assert.deepEqual(cards.map(c => [c.name, c.feed?.id ?? null, c.change?.id ?? null]), [["Ada", 1, 3], ["Ben", 2, 4], ["", 6, 7]]);
+  });
+
+  it("renders a card for each baby, each with its own controls", async () => {
+    const { renderBabyCareSection } = await import("../stats.js");
+    const html = renderBabyCareSection({
+      chores: [
+        { id: 1, name: "Feed Ada", icon: "🍼", templateKey: "Feed Baby", namedFor: "Ada" },
+        { id: 2, name: "Change Ada", icon: "👶", templateKey: "Change Baby", namedFor: "Ada" },
+        { id: 3, name: "Feed Ben", icon: "🍼", templateKey: "Feed Baby", namedFor: "Ben" },
+      ],
+      stats: { babyPeriods: { 3: "weekly" }, feedingGapsRanges: { 3: { start: "2026-09-01", end: "2026-09-14" } }, feedingGapsExplainer: { 1: true } },
+    });
+    const doc = new dom.window.DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
+    const cards = [...doc.querySelectorAll(".card")];
+    assert.deepEqual(cards.map(c => c.querySelector("h3").textContent), ["Ada", "Ben"]);
+    assert.deepEqual(cards.map(c => c.dataset.key), ["baby-1", "baby-3"]);
+    const [ada, ben] = cards;
+    assert.deepEqual([...ada.querySelectorAll('[data-action="stats-baby-period"][aria-pressed="true"]')].map(b => [b.dataset.choreId, b.dataset.period]), [["1", "daily"], ["2", "daily"]]);
+    assert.deepEqual([...ben.querySelectorAll('[data-action="stats-baby-period"][aria-pressed="true"]')].map(b => [b.dataset.choreId, b.dataset.period]), [["3", "weekly"]]);
+    assert.equal(ada.querySelector(".feeding-gaps-info-btn").getAttribute("aria-expanded"), "true");
+    assert.equal(ben.querySelector(".feeding-gaps-info-btn").getAttribute("aria-expanded"), "false");
+    assert.deepEqual([...ben.querySelectorAll(".feeding-gaps-date")].map(i => [i.dataset.choreId, i.value]), [["3", "2026-09-01"], ["3", "2026-09-14"]]);
+    assert.equal(ben.querySelector('[data-action="stats-feeding-gaps-quick"][data-days="14"]').classList.contains("period-toggle--active"), true);
+    assert.equal(ben.querySelectorAll(".baby-care-column").length, 2, "Ben has no changes yet: feeds and cluster feeding");
   });
 
   it("eligibleChoreSectionKeys maps eligible chores to chore:<id> keys", async () => {
@@ -1442,8 +1485,10 @@ describe('Scoped chart loading and metric rendering', () => {
     const html=renderLogSheet(chore,null,'2026-09-10',[],null,null,{showWhen:true,recentVolumes:[37]});
     assert.ok(html.includes('for="log-volume" class="field-label">Amount</label>'));assert.ok(html.includes('37 g'));assert.ok(!html.includes('37 mL'));
     assert.ok(html.includes('for="log-when"'));
-    const rendered=renderBabyCareSection({stats:{babyTimeSeries:{feedBaby:{choreIcon:'<img src=x onerror=alert(1)>',choreName:'Feed Baby',periods:[]}}}});
+    const rendered=renderBabyCareSection({chores:[{id:4,name:'Feed Baby',icon:'🍼',templateKey:'Feed Baby',namedFor:'<b onclick=alert(1)>Ada</b>'}],stats:{babyTimeSeries:{4:{choreIcon:'<img src=x onerror=alert(1)>',choreName:'<i>Feed</i>',periods:[]}}}});
     assert.ok(!rendered.includes('<img'));assert.ok(rendered.includes('&lt;img'));
+    assert.ok(!rendered.includes('<b onclick'));assert.ok(rendered.includes('<h3>&lt;b onclick=alert(1)&gt;Ada&lt;/b&gt;</h3>'));
+    assert.ok(!rendered.includes('<i>'));assert.ok(rendered.includes('aria-label="Time period for &lt;i&gt;Feed&lt;/i&gt;"'));
   });
 });
 
@@ -2621,6 +2666,9 @@ describe("Wide layout", () => {
     assert.equal(quickLogChore(state([vacuum, feedCats]), "chore:2"), feedCats);
     assert.equal(quickLogChore(state([vacuum]), "chore:9"), null);
     assert.equal(quickLogChore(state([feedCats, feedBaby]), "feed-baby"), feedBaby);
+    // A baby's own feeds come before a pet's, whatever they're called.
+    const bottles = { id: 5, name: "Bottles", category: "feeding", templateKey: "Feed Baby", namedFor: "Ada" };
+    assert.equal(quickLogChore(state([feedCats, bottles], { choreOrder: [2, 5] }), "feed-baby"), bottles);
     // A named baby's activity, or a pet's, when there is no Feed Baby: the
     // first feeding tile in Home's order, skipping hidden ones.
     assert.equal(quickLogChore(state([vacuum, feedCats, feedAda], { choreOrder: [1, 3, 2] }), "feed-baby"), feedAda);

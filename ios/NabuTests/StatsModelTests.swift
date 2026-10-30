@@ -153,15 +153,16 @@ final class StatsModelTests: XCTestCase {
         XCTAssertTrue(urls.contains { $0.contains("/api/stats/leaderboard?period=week") })
         // Top chores default to the signed-in user, like the PWA.
         XCTAssertTrue(urls.contains { $0.contains("/api/stats/top-chores?userId=7&period=month") })
-        // Feeding gaps: last 7 days with an exclusive API end (inclusive + 1).
+        // Feeding gaps: the baby's feeds, the last 7 days with an exclusive
+        // API end (inclusive + 1).
         let start = StatsModel.dateString(Calendar.current.date(byAdding: .day, value: -6, to: Date())!)
         let apiEnd = StatsModel.exclusiveEnd(StatsModel.dateString(Date()))
-        XCTAssertTrue(urls.contains { $0.contains("/api/stats/feeding-gaps?start=\(start)&end=\(apiEnd)") })
+        XCTAssertTrue(urls.contains { $0.contains("/api/stats/feeding-gaps?choreId=1&start=\(start)&end=\(apiEnd)") })
 
         XCTAssertFalse(model.isLoading)
         XCTAssertEqual(model.overview?.streaks.current, 2)
         XCTAssertEqual(model.choreStats.first?.totalInRange, 6)
-        XCTAssertEqual(model.feedingGaps.first?.gapMinutes, 95)
+        XCTAssertEqual(model.feedingGaps[1]?.first?.gapMinutes, 95)
         XCTAssertEqual(model.categoriesBreakdown.first?.count, 9)
     }
 
@@ -183,11 +184,11 @@ final class StatsModelTests: XCTestCase {
                      "top-chores?userId=7&period=month", "leaderboard?period=week"] {
             XCTAssertTrue(sections.contains(read), read)
         }
-        XCTAssertTrue(sections.contains { $0.hasPrefix("feeding-gaps?start=") })
+        XCTAssertTrue(sections.contains { $0.hasPrefix("feeding-gaps?choreId=1&start=") })
 
         XCTAssertEqual(model.overview?.streaks.current, 2)
         XCTAssertEqual(model.choreStats.first?.totalInRange, 6)
-        XCTAssertEqual(model.feedBabyTS?.byMember.first?.count, 3)
+        XCTAssertEqual(model.babyTimeSeries[1]?.byMember.first?.count, 3)
         XCTAssertEqual(model.choreTimeSeries[4]?.periods.first?.count, 2)
         XCTAssertEqual(model.widgetTimeSeries["w1"]?.count, 1)
         XCTAssertTrue(model.errors.isEmpty)
@@ -232,7 +233,7 @@ final class StatsModelTests: XCTestCase {
         XCTAssertTrue(model.errors.isEmpty, "\(model.errors)")
         XCTAssertEqual(model.overview?.streaks.current, 2)
         XCTAssertNotNil(model.choreTimeSeries[3])
-        XCTAssertNotNil(model.feedBabyTS)
+        XCTAssertNotNil(model.babyTimeSeries[1])
         XCTAssertTrue(requests.transport.contains { $0.path == "/api/stats/overview" })
     }
 
@@ -369,17 +370,55 @@ final class StatsModelTests: XCTestCase {
     func testFeedingGapsQuickRange() async {
         state.chores = [makeFeedBaby()]
         installMock()
-        await model.setFeedingGapsQuickRange(days: 14)
-        XCTAssertTrue(model.isFeedingGapsQuickActive(days: 14))
-        XCTAssertFalse(model.isFeedingGapsQuickActive(days: 7))
+        await model.setFeedingGapsQuickRange(days: 14, choreId: 1)
+        XCTAssertTrue(model.isFeedingGapsQuickActive(days: 14, choreId: 1))
+        XCTAssertFalse(model.isFeedingGapsQuickActive(days: 7, choreId: 1))
         let expectedStart = StatsModel.dateString(Calendar.current.date(byAdding: .day, value: -13, to: Date())!)
-        XCTAssertEqual(model.feedingGapsStart, expectedStart)
-        XCTAssertTrue(requests.urlStrings().contains { $0.contains("/api/stats/feeding-gaps?start=\(expectedStart)") })
+        XCTAssertEqual(model.feedingGapsRange(1).start, expectedStart)
+        XCTAssertTrue(requests.urlStrings().contains { $0.contains("/api/stats/feeding-gaps?choreId=1&start=\(expectedStart)") })
     }
 
     func testFeedingGapsDefaultQuickActiveIsWeek() {
         installMock()
-        XCTAssertTrue(model.isFeedingGapsQuickActive(days: 7))
+        XCTAssertTrue(model.isFeedingGapsQuickActive(days: 7, choreId: 1))
+    }
+
+    /// A baby pack's babies each get a card, found by template, whose charts
+    /// and cluster feeding load and change on their own (PWA
+    /// `stats-baby-cards.spec.js`).
+    func testEachNamedBabyLoadsAndChangesOnTheirOwn() async {
+        func baby(_ id: Int, _ name: String, _ template: String, _ namedFor: String) -> Chore {
+            Chore(id: id, householdId: 1, name: name, icon: "🍼", color: "#EC4899", sortOrder: id, category: "feeding",
+                  isPredefined: false, predefinedKey: "", createdBy: nil, createdAt: Date(), indicatorLabels: [],
+                  indicatorDefaults: [], hasVolumeML: true, metricType: "amount", templateKey: template, namedFor: namedFor)
+        }
+        state.chores = [baby(11, "Feed Ada", "Feed Baby", "Ada"), baby(12, "Bottles", "Feed Baby", "Ben"),
+                        baby(13, "Change Ada", "Change Baby", "Ada")]
+        installMock()
+        await model.loadAll()
+
+        XCTAssertEqual(model.babyCards.map(\.name), ["Ada", "Ben"])
+        XCTAssertEqual(model.babyCards.map { [$0.feed?.id, $0.change?.id] }, [[11, 13], [12, nil]])
+        let sections = requests.dashboards().flatMap { $0 }
+        for id in [11, 12] {
+            XCTAssertTrue(sections.contains { $0.hasPrefix("feeding-gaps?choreId=\(id)&start=") }, "\(id)")
+            XCTAssertNotNil(model.feedingGaps[id], "\(id)")
+        }
+        for id in [11, 12, 13] {
+            XCTAssertTrue(sections.contains("chores/\(id)/time-series?period=daily"), "\(id)")
+            XCTAssertNotNil(model.babyTimeSeries[id], "\(id)")
+        }
+        XCTAssertTrue(StatsSections.eligibleChoreSectionKeys(state.chores).isEmpty, "no generic cards for the babies")
+
+        await model.setBabyPeriod("weekly", choreId: 12)
+        await model.setFeedingGapsQuickRange(days: 1, choreId: 12)
+        XCTAssertEqual([model.babyPeriod(11), model.babyPeriod(12)], ["daily", "weekly"])
+        XCTAssertTrue(model.isFeedingGapsQuickActive(days: 1, choreId: 12))
+        XCTAssertTrue(model.isFeedingGapsQuickActive(days: 7, choreId: 11))
+        let urls = requests.urlStrings()
+        XCTAssertTrue(urls.contains { $0.contains("/api/stats/chores/12/time-series?period=weekly") })
+        XCTAssertFalse(urls.contains { $0.contains("/api/stats/chores/11/time-series?period=weekly") })
+        XCTAssertTrue(model.errors.isEmpty, "\(model.errors)")
     }
 
     func testHiddenSectionsOnlyFetchOverviewAndRefreshRepeatsItOnce() async {

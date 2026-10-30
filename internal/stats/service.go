@@ -1142,10 +1142,11 @@ func buildMonthBuckets(start, end time.Time, loc *time.Location) []timeBucket {
 }
 
 // GetFeedingGaps computes inter-log interval "gaps" for a chore — the
-// generalized interval analysis (Phase 3). When choreID is nil it targets the
-// household's "Feed Baby" chore (the historical baby-care behavior). When set,
-// it must belong to the household; any chore where intervals matter (feeds,
-// medication, watering) can be analyzed.
+// generalized interval analysis (Phase 3). The clients ask for each baby's
+// feed activity by its ID, which must belong to the household; any chore where
+// intervals matter (feeds, medication, watering) can be analyzed. When choreID
+// is nil it targets the household's "Feed Baby" chore, by that name, as the
+// installed apps that send none find it.
 func (s *Service) GetFeedingGaps(ctx context.Context, householdID int64, choreID *int64, start, end time.Time, loc *time.Location) ([]FeedingGap, error) {
 	chores, err := s.visibleChoresForContext(ctx, householdID)
 	if err != nil {

@@ -177,28 +177,39 @@ struct LastDoneSection: View {
 
 // MARK: - Baby care section
 
+/// A card for each baby, named for the baby (PWA `renderBabyCareSection`).
+/// The household's Feed Baby and Change Baby share one called Baby.
 struct BabyCareSection: View {
     var model: StatsModel
     let members: [Member]
     let volumeUnit: String
 
     var body: some View {
-        StatsCard {
-            Text("Baby").font(.headline)
-            if let chore = model.feedBabyChore {
-                let ts = model.feedBabyTS ?? emptySeries(chore)
-                BabyColumn(model: model, ts: ts, type: "feed", period: model.feedBabyPeriod,
-                           members: members, volumeUnit: volumeUnit)
-            }
-            if let chore = model.changeBabyChore {
-                let ts = model.changeBabyTS ?? emptySeries(chore)
-                BabyColumn(model: model, ts: ts, type: "change", period: model.changeBabyPeriod,
-                           members: members, volumeUnit: volumeUnit)
-            }
-            if model.feedBabyChore != nil {
-                FeedingGapsColumn(model: model, volumeUnit: volumeUnit)
+        VStack(spacing: 16) {
+            ForEach(model.babyCards, id: \.id) { card in
+                VStack(spacing: 8) {
+                    StatsCard {
+                        Text(card.name.isEmpty ? String(localized: "Baby") : card.name).font(.headline)
+                        if let chore = card.feed {
+                            BabyColumn(model: model, ts: model.babyTimeSeries[chore.id] ?? emptySeries(chore), type: "feed",
+                                       choreId: chore.id, members: members, volumeUnit: volumeUnit)
+                        }
+                        if let chore = card.change {
+                            BabyColumn(model: model, ts: model.babyTimeSeries[chore.id] ?? emptySeries(chore), type: "change",
+                                       choreId: chore.id, members: members, volumeUnit: volumeUnit)
+                        }
+                        if let feed = card.feed {
+                            FeedingGapsColumn(model: model, choreId: feed.id, volumeUnit: volumeUnit)
+                        }
+                    }
+                    ForEach(resources(card), id: \.self) { StatsLoadStatus(model: model, resource: $0) }
+                }
             }
         }
+    }
+
+    private func resources(_ card: StatsSections.BabyCard) -> [String] {
+        [card.feed, card.change].compactMap { $0.map { "baby:\($0.id)" } } + (card.feed.map { ["gaps:\($0.id)"] } ?? [])
     }
 
     private func emptySeries(_ chore: Chore) -> ChoreTimeSeries {
@@ -211,9 +222,11 @@ struct BabyColumn: View {
     var model: StatsModel
     let ts: ChoreTimeSeries
     let type: String // "feed" | "change"
-    let period: String // daily | weekly | monthly
+    let choreId: Int
     let members: [Member]
     let volumeUnit: String
+
+    private var period: String { model.babyPeriod(choreId) } // daily | weekly | monthly
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -223,7 +236,7 @@ struct BabyColumn: View {
                 Spacer(minLength: 4)
                 Picker("Time period", selection: Binding(
                     get: { period },
-                    set: { p in Task { await model.setBabyPeriod(p, type: type) } }
+                    set: { p in Task { await model.setBabyPeriod(p, choreId: choreId) } }
                 )) {
                     Text("Daily").tag("daily")
                     Text("Weekly").tag("weekly")
@@ -345,14 +358,24 @@ struct IndicatorPeriodChart: View {
 
 struct FeedingGapsColumn: View {
     var model: StatsModel
+    /// The baby's feed activity.
+    let choreId: Int
     let volumeUnit: String
+
+    private var explainerVisible: Bool { model.feedingGapsExplainers.contains(choreId) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("🕐 Cluster Feeding").font(.subheadline).fontWeight(.semibold)
                 Button {
-                    withAnimation { model.feedingGapsExplainerVisible.toggle() }
+                    withAnimation {
+                        if explainerVisible {
+                            model.feedingGapsExplainers.remove(choreId)
+                        } else {
+                            model.feedingGapsExplainers.insert(choreId)
+                        }
+                    }
                 } label: {
                     Image(systemName: "info.circle")
                         .font(.caption)
@@ -362,16 +385,16 @@ struct FeedingGapsColumn: View {
                 Spacer()
                 Picker("Range", selection: Binding(
                     get: {
-                        [1, 7, 14].first { model.isFeedingGapsQuickActive(days: $0) } ?? 0
+                        [1, 7, 14].first { model.isFeedingGapsQuickActive(days: $0, choreId: choreId) } ?? 0
                     },
                     set: { days in
-                        if days > 0 { Task { await model.setFeedingGapsQuickRange(days: days) } }
+                        if days > 0 { Task { await model.setFeedingGapsQuickRange(days: days, choreId: choreId) } }
                     }
                 )) {
                     Text("Day").tag(1)
                     Text("Week").tag(7)
                     Text("2 Weeks").tag(14)
-                    if ![1, 7, 14].contains(where: { model.isFeedingGapsQuickActive(days: $0) }) {
+                    if ![1, 7, 14].contains(where: { model.isFeedingGapsQuickActive(days: $0, choreId: choreId) }) {
                         Text("Custom").tag(0)
                     }
                 }
@@ -381,24 +404,30 @@ struct FeedingGapsColumn: View {
 
             HStack(spacing: 8) {
                 StatsDatePicker(dateString: Binding(
-                    get: { model.feedingGapsStart },
-                    set: { model.feedingGapsStart = $0; Task { await model.loadFeedingGaps() } }
+                    get: { model.feedingGapsRange(choreId).start },
+                    set: {
+                        model.setFeedingGapsDate($0, start: true, choreId: choreId)
+                        Task { await model.loadFeedingGaps(choreId: choreId) }
+                    }
                 ))
                 Text("–").font(.caption).foregroundStyle(DesignColors.textSecondary)
                 StatsDatePicker(dateString: Binding(
-                    get: { model.feedingGapsEnd },
-                    set: { model.feedingGapsEnd = $0; Task { await model.loadFeedingGaps() } }
+                    get: { model.feedingGapsRange(choreId).end },
+                    set: {
+                        model.setFeedingGapsDate($0, start: false, choreId: choreId)
+                        Task { await model.loadFeedingGaps(choreId: choreId) }
+                    }
                 ))
             }
 
-            if model.feedingGapsExplainerVisible {
+            if explainerVisible {
                 FeedingGapsExplainer()
             }
 
-            if model.feedingGaps.isEmpty {
-                Text("No data").font(.caption).foregroundStyle(DesignColors.textSecondary)
+            if let gaps = model.feedingGaps[choreId], !gaps.isEmpty {
+                FeedingGapsScatter(gaps: gaps, volumeUnit: volumeUnit)
             } else {
-                FeedingGapsScatter(gaps: model.feedingGaps, volumeUnit: volumeUnit)
+                Text("No data").font(.caption).foregroundStyle(DesignColors.textSecondary)
             }
         }
     }

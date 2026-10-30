@@ -42,9 +42,11 @@
         "metricType": "amount",
         "metricUnit": "mL",
         "name": "Feed Ada",
+        "namedFor": "Ada",
         "predefinedKey": "",
         "sortOrder": 0,
         "subjects": [],
+        "templateKey": "Feed Baby",
         "visibility": "household"
       },
       {
@@ -70,9 +72,11 @@
         "metricType": "none",
         "metricUnit": "",
         "name": "Change Ada",
+        "namedFor": "Ada",
         "predefinedKey": "",
         "sortOrder": 1,
         "subjects": [],
+        "templateKey": "Change Baby",
         "visibility": "household"
       },
       {
@@ -93,9 +97,11 @@
         "metricType": "none",
         "metricUnit": "",
         "name": "Ada's Bath",
+        "namedFor": "Ada",
         "predefinedKey": "",
         "sortOrder": 2,
         "subjects": [],
+        "templateKey": "Baby Bath",
         "visibility": "household"
       },
       {
@@ -116,9 +122,11 @@
         "metricType": "none",
         "metricUnit": "",
         "name": "Take Out Trash",
+        "namedFor": "",
         "predefinedKey": "Take Out Trash",
         "sortOrder": 3,
         "subjects": [],
+        "templateKey": "Take Out Trash",
         "visibility": "household"
       },
       {
@@ -139,9 +147,11 @@
         "metricType": "none",
         "metricUnit": "",
         "name": "Wash Dishes",
+        "namedFor": "",
         "predefinedKey": "Wash Dishes",
         "sortOrder": 4,
         "subjects": [],
+        "templateKey": "Wash Dishes",
         "visibility": "household"
       },
       {
@@ -162,9 +172,11 @@
         "metricType": "none",
         "metricUnit": "",
         "name": "Vacuum",
+        "namedFor": "",
         "predefinedKey": "Vacuum",
         "sortOrder": 5,
         "subjects": [],
+        "templateKey": "Vacuum",
         "visibility": "household"
       },
       {
@@ -185,9 +197,11 @@
         "metricType": "none",
         "metricUnit": "",
         "name": "Laundry",
+        "namedFor": "",
         "predefinedKey": "Laundry",
         "sortOrder": 6,
         "subjects": [],
+        "templateKey": "Laundry",
         "visibility": "household"
       },
       {
@@ -208,9 +222,11 @@
         "metricType": "none",
         "metricUnit": "",
         "name": "Make Bed",
+        "namedFor": "",
         "predefinedKey": "Make Bed",
         "sortOrder": 7,
         "subjects": [],
+        "templateKey": "Make Bed",
         "visibility": "household"
       }
     ]

@@ -1,7 +1,7 @@
 {
   "request": {
     "method": "GET",
-    "path": "/api/stats/feeding-gaps?start=2026-01-02&end=2026-01-02"
+    "path": "/api/stats/feeding-gaps?choreId=11&start=2026-01-02&end=2026-01-02"
   },
   "status": 200,
   "response": {

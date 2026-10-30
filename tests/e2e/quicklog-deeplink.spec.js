@@ -4,8 +4,9 @@ function uniqueEmail() {
   return `e2e-deeplink-${Date.now()}-${Math.random().toString(36).slice(2, 6)}@test.com`;
 }
 
-// A household set up with activity packs instead of the defaults.
-async function setupWithPacks(page, packs) {
+// A household set up with activity packs instead of the defaults, and any
+// later packs added in turn.
+async function setupWithPacks(page, packs, ...later) {
   const email = uniqueEmail();
   await page.goto("/register");
   await page.waitForSelector("#register-form");
@@ -20,11 +21,13 @@ async function setupWithPacks(page, packs) {
     data: { name: `Deeplink packs ${Date.now()}` },
     headers: { "X-CSRF-Token": csrf },
   });
-  const added = await page.request.post("/api/chores/packs", {
-    data: { packs },
-    headers: { "X-CSRF-Token": csrf },
-  });
-  expect(added.ok()).toBeTruthy();
+  for (const pick of [packs, ...later]) {
+    const added = await page.request.post("/api/chores/packs", {
+      data: { packs: pick },
+      headers: { "X-CSRF-Token": csrf },
+    });
+    expect(added.ok()).toBeTruthy();
+  }
   await page.reload();
   await page.waitForSelector(".home-grid", { timeout: 15000 });
 }
@@ -84,6 +87,15 @@ test.describe("Quick-log deep links", () => {
   test("?quicklog=feed-baby opens a named baby's feeding activity", async ({ page }) => {
     // The baby pack names the activity after the baby: there is no Feed Baby.
     await setupWithPacks(page, [{ key: "baby", names: ["Ada"] }]);
+
+    await page.goto("/?quicklog=feed-baby");
+    await expect(page.locator(".bottom-sheet")).toBeVisible({ timeout: 10000 });
+    await expect(page.locator(".bottom-sheet")).toContainText("Feed Ada");
+  });
+
+  test("?quicklog=feed-baby opens a named baby's feeds before a pet's", async ({ page }) => {
+    // The cats came first, so Feed Cats is Home's first feeding tile.
+    await setupWithPacks(page, [{ key: "cat" }], [{ key: "baby", names: ["Ada"] }]);
 
     await page.goto("/?quicklog=feed-baby");
     await expect(page.locator(".bottom-sheet")).toBeVisible({ timeout: 10000 });

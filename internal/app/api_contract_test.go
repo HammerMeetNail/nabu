@@ -461,9 +461,15 @@ func contractNewHousehold(t *testing.T, c *contractRecorder, password string) {
 	}
 	c.call("empty-stats-dashboard-sections", fresh, http.MethodGet, contractDashboard(sections), "", http.StatusOK)
 
-	// The default activities: Stats' baby section reads "Feed Baby".
+	// The default activities: Stats' baby card reads "Feed Baby", and asks
+	// for its cluster feeding by its id.
 	c.setup(fresh, http.MethodPost, "/api/chores/seed-defaults", "", http.StatusOK)
 	feed := contractChore(t, c.setup(fresh, http.MethodGet, "/api/chores", "", http.StatusOK), "Feed Baby")
+	for i, read := range sections {
+		if gaps, ok := strings.CutPrefix(read.path, "feeding-gaps?"); ok {
+			sections[i].path = fmt.Sprintf("feeding-gaps?choreId=%d&%s", feed, gaps)
+		}
+	}
 	charts := []contractStatsRead{
 		{"time-series", fmt.Sprintf("chores/%d/time-series?period=day", feed)},
 		{"summary", fmt.Sprintf("chores/%d/summary?period=week", feed)},

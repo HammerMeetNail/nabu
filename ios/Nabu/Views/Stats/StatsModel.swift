@@ -66,17 +66,18 @@ final class StatsModel {
     var choreStatsStart = ""
     var choreStatsEnd = ""
 
-    // Baby care
-    var feedBabyPeriod = "daily"
-    var changeBabyPeriod = "daily"
-    var feedBabyTS: ChoreTimeSeries?
-    var changeBabyTS: ChoreTimeSeries?
+    // Baby care: each baby's feeds and changes, by activity
+    var babyPeriods: [Int: String] = [:]
+    var babyTimeSeries: [Int: ChoreTimeSeries] = [:]
 
-    // Feeding gaps (cluster feeding)
-    var feedingGaps: [FeedingGap] = []
-    var feedingGapsStart = ""
-    var feedingGapsEnd = ""
-    var feedingGapsExplainerVisible = false
+    // Feeding gaps (cluster feeding), by each baby's feed activity
+    struct DateRange: Equatable {
+        var start = ""
+        var end = ""
+    }
+    var feedingGaps: [Int: [FeedingGap]] = [:]
+    var feedingGapsRanges: [Int: DateRange] = [:]
+    var feedingGapsExplainers: Set<Int> = []
 
     // Generalized per-chore analytics (chore:<id> sections)
     var choreTimeSeries: [Int: ChoreTimeSeries] = [:]
@@ -140,8 +141,16 @@ final class StatsModel {
 
     var chores: [Chore] { state?.chores ?? [] }
 
-    var feedBabyChore: Chore? { chores.first { $0.name == "Feed Baby" } }
-    var changeBabyChore: Chore? { chores.first { $0.name == "Change Baby" } }
+    /// A card for each baby, named for the baby (PWA `babyCards`).
+    var babyCards: [StatsSections.BabyCard] { StatsSections.babyCards(chores) }
+
+    func babyPeriod(_ choreId: Int) -> String { babyPeriods[choreId] ?? "daily" }
+
+    func feedingGapsRange(_ choreId: Int) -> DateRange { feedingGapsRanges[choreId] ?? DateRange() }
+
+    private func isBaby(_ choreId: Int, feed: Bool = false) -> Bool {
+        babyCards.contains { $0.feed?.id == choreId || (!feed && $0.change?.id == choreId) }
+    }
 
     /// The ordered, visible section keys for the current preferences +
     /// eligible dynamic sections.
@@ -230,11 +239,14 @@ final class StatsModel {
         if visible("top-chores") { reads.append(topChoresRead) }
         if visible("leaderboard") { reads.append(periodRead("leaderboard", leaderboardPeriod)) }
         if visible("baby") {
-            if let chore = feedBabyChore { reads.append(timeSeriesRead(chore.id, feedBabyPeriod)) }
-            if let chore = changeBabyChore { reads.append(timeSeriesRead(chore.id, changeBabyPeriod)) }
-            if feedBabyChore != nil {
-                prepareFeedingGapsRange()
-                reads.append(feedingGapsRead)
+            for card in babyCards {
+                for chore in [card.feed, card.change].compactMap({ $0 }) {
+                    reads.append(timeSeriesRead(chore.id, babyPeriod(chore.id)))
+                }
+                if let feed = card.feed {
+                    prepareFeedingGapsRange(feed.id)
+                    reads.append(feedingGapsRead(feed.id))
+                }
             }
         }
         for id in analyticsChoreIDs {
@@ -294,10 +306,12 @@ final class StatsModel {
         periodRead("chores/\(choreId)/time-series", period)
     }
 
-    private var feedingGapsRead: StatsRead {
-        StatsRead(path: "feeding-gaps", query: [
-            URLQueryItem(name: "start", value: feedingGapsStart),
-            URLQueryItem(name: "end", value: Self.exclusiveEnd(feedingGapsEnd)),
+    private func feedingGapsRead(_ choreId: Int) -> StatsRead {
+        let range = feedingGapsRange(choreId)
+        return StatsRead(path: "feeding-gaps", query: [
+            URLQueryItem(name: "choreId", value: "\(choreId)"),
+            URLQueryItem(name: "start", value: range.start),
+            URLQueryItem(name: "end", value: Self.exclusiveEnd(range.end)),
         ])
     }
 
@@ -403,68 +417,89 @@ final class StatsModel {
         }
     }
 
+    /// Loads every baby's feeds and changes.
     func loadBabyTimeSeries() async {
-        await loadBaby(type: "feed")
-        await loadBaby(type: "change")
-    }
-
-    private func loadBaby(type: String) async {
-        let feed = type == "feed"
-        guard let chore = feed ? feedBabyChore : changeBabyChore else { return }
-        let period = feed ? feedBabyPeriod : changeBabyPeriod
-        await read("baby:\(type)", section: "baby", query: "\(chore.id)|\(period)", matches: {
-            (feed ? feedBabyPeriod : changeBabyPeriod) == period && (feed ? feedBabyChore : changeBabyChore)?.id == chore.id
-        }, clear: {
-            if feed { feedBabyTS = nil } else { changeBabyTS = nil }
-        }, fetch: { api in
-            try await self.get(self.timeSeriesRead(chore.id, period), api: api) as TimeSeriesResponse
-        }) { data in
-            if feed { feedBabyTS = data.timeSeries } else { changeBabyTS = data.timeSeries }
+        guard contextIsCurrent else { return }
+        let ids = babyCards.flatMap { [$0.feed, $0.change].compactMap { $0?.id } }
+        await withTaskGroup(of: Void.self) { group in
+            for id in ids { group.addTask { await self.loadBaby(choreId: id) } }
         }
     }
 
-    /// Loads the cluster-feeding gap scatter. The stored end date is
+    private func loadBaby(choreId: Int) async {
+        guard isBaby(choreId) else { return }
+        let period = babyPeriod(choreId)
+        await read("baby:\(choreId)", section: "baby", query: period, matches: {
+            babyPeriod(choreId) == period && isBaby(choreId)
+        }, clear: {
+            babyTimeSeries[choreId] = nil
+        }, fetch: { api in
+            try await self.get(self.timeSeriesRead(choreId, period), api: api) as TimeSeriesResponse
+        }) { data in
+            babyTimeSeries[choreId] = data.timeSeries
+        }
+    }
+
+    /// Loads every baby's cluster feeding.
+    func loadFeedingGaps() async {
+        guard contextIsCurrent else { return }
+        let ids = babyCards.compactMap { $0.feed?.id }
+        await withTaskGroup(of: Void.self) { group in
+            for id in ids { group.addTask { await self.loadFeedingGaps(choreId: id) } }
+        }
+    }
+
+    /// Loads one baby's cluster-feeding gap scatter. The stored end date is
     /// inclusive (what the pickers show); the API gets an exclusive end one
     /// day later (PWA `apiExclusiveEnd`). Defaults to the last 7 days.
-    func loadFeedingGaps() async {
-        guard contextIsCurrent, visible("baby"), let chore = feedBabyChore else { return }
-        prepareFeedingGapsRange()
-        let target = feedingGapsRead
-        let dates = [feedingGapsStart, feedingGapsEnd]
-        await read("gaps", section: "baby", query: dates.joined(separator: "|"), matches: {
-            dates == [feedingGapsStart, feedingGapsEnd] && feedBabyChore?.id == chore.id
-        }, clear: { feedingGaps = [] }, fetch: { api in
+    func loadFeedingGaps(choreId: Int) async {
+        guard contextIsCurrent, visible("baby"), isBaby(choreId, feed: true) else { return }
+        prepareFeedingGapsRange(choreId)
+        let target = feedingGapsRead(choreId)
+        let range = feedingGapsRange(choreId)
+        await read("gaps:\(choreId)", section: "baby", query: "\(range.start)|\(range.end)", matches: {
+            feedingGapsRange(choreId) == range && isBaby(choreId, feed: true)
+        }, clear: { feedingGaps[choreId] = nil }, fetch: { api in
             try await self.get(target, api: api) as FeedingGapsResponse
         }) { data in
-            feedingGaps = data.feedingGaps
+            feedingGaps[choreId] = data.feedingGaps
         }
     }
 
     /// Defaults the range to the last 7 days.
-    private func prepareFeedingGapsRange() {
+    private func prepareFeedingGapsRange(_ choreId: Int) {
         let today = Date()
-        if feedingGapsEnd.isEmpty { feedingGapsEnd = Self.dateString(today) }
-        if feedingGapsStart.isEmpty {
-            feedingGapsStart = Self.dateString(Calendar.current.date(byAdding: .day, value: -6, to: today) ?? today)
+        var range = feedingGapsRange(choreId)
+        if range.end.isEmpty { range.end = Self.dateString(today) }
+        if range.start.isEmpty {
+            range.start = Self.dateString(Calendar.current.date(byAdding: .day, value: -6, to: today) ?? today)
         }
+        if feedingGapsRanges[choreId] != range { feedingGapsRanges[choreId] = range }
     }
 
     /// Quick-range buttons on the cluster feeding column: Day / Week / 2 Weeks.
-    func setFeedingGapsQuickRange(days: Int) async {
+    func setFeedingGapsQuickRange(days: Int, choreId: Int) async {
         let end = Date()
         let start = Calendar.current.date(byAdding: .day, value: -(days - 1), to: end) ?? end
-        feedingGapsEnd = Self.dateString(end)
-        feedingGapsStart = Self.dateString(start)
-        await loadFeedingGaps()
+        feedingGapsRanges[choreId] = DateRange(start: Self.dateString(start), end: Self.dateString(end))
+        await loadFeedingGaps(choreId: choreId)
     }
 
-    /// Whether a quick-range button is the active one for the current dates
+    /// A date picked on a cluster feeding column; the caller then loads it.
+    func setFeedingGapsDate(_ date: String, start: Bool, choreId: Int) {
+        var range = feedingGapsRange(choreId)
+        if start { range.start = date } else { range.end = date }
+        feedingGapsRanges[choreId] = range
+    }
+
+    /// Whether a quick-range button is the active one for a baby's dates
     /// (PWA `isQuickActive`).
-    func isFeedingGapsQuickActive(days: Int) -> Bool {
-        if feedingGapsStart.isEmpty || feedingGapsEnd.isEmpty { return days == 7 }
-        guard let end = Self.parseDate(feedingGapsEnd) else { return false }
+    func isFeedingGapsQuickActive(days: Int, choreId: Int) -> Bool {
+        let range = feedingGapsRange(choreId)
+        if range.start.isEmpty || range.end.isEmpty { return days == 7 }
+        guard let end = Self.parseDate(range.end) else { return false }
         let expected = Calendar.current.date(byAdding: .day, value: -(days - 1), to: end)
-        return expected.map { Self.dateString($0) == feedingGapsStart } ?? false
+        return expected.map { Self.dateString($0) == range.start } ?? false
     }
 
     /// Fetches daily time-series for chores with a generalized analytics
@@ -549,11 +584,12 @@ final class StatsModel {
         case "leaderboard": await loadLeaderboard()
         case "top-chores": await loadTopChores()
         case "baby": await loadBabyTimeSeries(); await loadFeedingGaps()
-        case "baby:feed": await loadBaby(type: "feed")
-        case "baby:change": await loadBaby(type: "change")
-        case "gaps": await loadFeedingGaps()
         default:
-            if let id = StatsSections.choreId(fromSectionKey: key) {
+            if let id = key.hasPrefix("baby:") ? Int(key.dropFirst("baby:".count)) : nil {
+                await loadBaby(choreId: id)
+            } else if let id = key.hasPrefix("gaps:") ? Int(key.dropFirst("gaps:".count)) : nil {
+                await loadFeedingGaps(choreId: id)
+            } else if let id = StatsSections.choreId(fromSectionKey: key) {
                 await loadChoreAnalytics(choreId: id)
             } else if let api, let widget = state?.statsWidgets.first(where: { StatsSections.widgetSectionKey($0.id) == key }) {
                 await loadData(for: widget, api: api)
@@ -593,15 +629,10 @@ final class StatsModel {
         await loadChoreStats()
     }
 
-    func setBabyPeriod(_ period: String, type: String) async {
-        if type == "feed" {
-            guard contextIsCurrent, period != feedBabyPeriod else { return }
-            feedBabyPeriod = period
-        } else {
-            guard contextIsCurrent, period != changeBabyPeriod else { return }
-            changeBabyPeriod = period
-        }
-        await loadBaby(type: type)
+    func setBabyPeriod(_ period: String, choreId: Int) async {
+        guard contextIsCurrent, period != babyPeriod(choreId) else { return }
+        babyPeriods[choreId] = period
+        await loadBaby(choreId: choreId)
     }
 
     // MARK: - Widgets (customize)

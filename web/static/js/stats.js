@@ -65,13 +65,40 @@ export function isChoreSectionKey(k) { return /^chore:\d+$/.test(k); }
 export function isWidgetSectionKey(k) { return /^widget:[A-Za-z0-9_-]{1,64}$/.test(k); }
 export function isDynamicSectionKey(k) { return isChoreSectionKey(k) || isWidgetSectionKey(k); }
 
+const BABY_TEMPLATES = { "Feed Baby": "feed", "Change Baby": "change" };
+
+// babyKind reports whether an activity is a baby's feeds ("feed") or changes
+// ("change"), by the template it started from: a pack's "Feed Ada", or the
+// household's Feed Baby, however either was renamed. One with no template
+// counts when it is called Feed Baby or Change Baby, as Stats always read it.
+export function babyKind(c) {
+  const template = c?.templateKey || c?.predefinedKey;
+  return (template ? BABY_TEMPLATES[template] : BABY_TEMPLATES[c?.name]) || null;
+}
+
+// babyCards puts the baby activities on one card per baby, in the
+// activities' order: Ada's feeds and changes share her card, and the
+// household's Feed Baby and Change Baby share one with no name.
+export function babyCards(chores) {
+  const cards = [];
+  for (const chore of chores || []) {
+    const kind = babyKind(chore);
+    if (!kind) continue;
+    const name = chore.namedFor || "";
+    let card = cards.find(c => c.name === name && !c[kind]);
+    if (!card) cards.push(card = { name, feed: null, change: null });
+    card[kind] = chore;
+  }
+  return cards;
+}
+
 // choreHasAnalytics reports whether a chore is rich enough to warrant its own
 // generalized analytics section: it tracks a metric or has indicator labels.
-// The two dedicated baby chores are excluded because the "baby" section already
+// A baby's feeds and changes are excluded because the "baby" section already
 // renders them.
 export function choreHasAnalytics(c) {
   if (!c) return false;
-  if (c.name === "Feed Baby" || c.name === "Change Baby") return false;
+  if (babyKind(c)) return false;
   const hasMetric = c.metricType && c.metricType !== "none";
   const hasIndicators = (c.indicatorLabels || []).length > 0;
   return Boolean(hasMetric || hasIndicators);
@@ -169,8 +196,8 @@ export async function loadChoreSummary(choreId, period) {
   return statsGet(`/api/stats/chores/${choreId}/summary?period=${period || "week"}`);
 }
 
-export async function loadFeedingGaps(start, end) {
-  const params = new URLSearchParams();
+export async function loadFeedingGaps(choreId, start, end) {
+  const params = new URLSearchParams({ choreId });
   if (start) params.set("start", start);
   if (end) params.set("end", end);
   const qs = params.toString();
@@ -823,39 +850,34 @@ export function renderChoreStatsList(choreStats, choreMap, period) {
   return items || '<p class="text-secondary text-center">No chores logged this month</p>';
 }
 
+// renderBabyCareSection renders a card for each baby, named for the baby (a
+// household's Feed Baby and Change Baby share one called Baby). Each chart
+// keeps its own period, and each baby's cluster feeding its own dates.
 export function renderBabyCareSection(state) {
   const stats = state.stats || {};
-  const feedBabyPeriod = stats.feedBabyPeriod || "daily";
-  const changeBabyPeriod = stats.changeBabyPeriod || "daily";
-  const babyTimeSeries = stats.babyTimeSeries || {};
   const members = [...(state.members || []), ...(state.historicalMembers || [])];
 
   const memberMap = {};
   members.forEach(m => { memberMap[m.userId] = m; });
 
-  const placeholder = name => {
-    const chore = (state.chores || []).find(c => c.name === name);
-    return chore ? {choreName:chore.name,choreIcon:chore.icon,periods:[],byMember:[]} : null;
+  const column = (chore, type) => {
+    const ts = stats.babyTimeSeries?.[chore.id] || { choreName: chore.name, choreIcon: chore.icon, periods: [], byMember: [] };
+    return renderBabyColumn(ts, memberMap, stats.babyPeriods?.[chore.id] || "daily", type, chore.id);
   };
-  const feedBaby = babyTimeSeries.feedBaby || placeholder('Feed Baby');
-  const changeBaby = babyTimeSeries.changeBaby || placeholder('Change Baby');
-  const feedingGaps = stats.feedingGaps || [];
-  const explainerVisible = stats.feedingGapsExplainerVisible || false;
-  const gapsStart = stats.feedingGapsStart || "";
-  const gapsEnd = stats.feedingGapsEnd || "";
-
-  if (!feedBaby && !changeBaby) return "";
-
-  return `<div class="card mb-3">
+  return babyCards(state.chores).map(card => {
+    const feed = card.feed;
+    const range = (feed && stats.feedingGapsRanges?.[feed.id]) || {};
+    return `<div class="card mb-3" data-key="baby-${(feed || card.change).id}">
     <div class="baby-care-header">
-      <h3>Baby</h3>
+      <h3>${escapeHTML(card.name || "Baby")}</h3>
     </div>
     <div class="baby-care-columns">
-      ${feedBaby ? renderBabyColumn(feedBaby, memberMap, feedBabyPeriod, "feed") : ""}
-      ${changeBaby ? renderBabyColumn(changeBaby, memberMap, changeBabyPeriod, "change") : ""}
-      ${feedBaby ? renderFeedingGapsColumn(feedingGaps, explainerVisible, gapsStart, gapsEnd) : ""}
+      ${feed ? column(feed, "feed") : ""}
+      ${card.change ? column(card.change, "change") : ""}
+      ${feed ? renderFeedingGapsColumn(feed.id, stats.feedingGaps?.[feed.id] || [], Boolean(stats.feedingGapsExplainer?.[feed.id]), range.start || "", range.end || "") : ""}
     </div>
   </div>`;
+  }).join("");
 }
 
 // choreAnalyticsGrain maps a per-chore section's day/week/month period to the
@@ -1182,37 +1204,36 @@ function renderSimpleMetricChart(periods, opts) {
   return svg;
 }
 
-function renderBabyPeriodToggle(activePeriod, type) {
+function renderBabyPeriodToggle(activePeriod, type, choreId, choreName) {
   const periodLabel = { daily: "Daily", weekly: "Weekly", monthly: "Monthly", all: "All" };
-  const labelName = type === "feed" ? "Feed Baby" : "Change Baby";
-  return `<div class="period-toggle" role="group" aria-label="Time period for ${labelName}">
+  return `<div class="period-toggle" role="group" aria-label="Time period for ${escapeHTML(choreName)}">
     ${["daily", "weekly", "monthly", "all"].map(p => {
       const active = p === activePeriod ? " period-toggle--active" : "";
       const label = periodLabel[p];
-      return `<button class="period-toggle-btn${active}" data-action="stats-baby-period" data-period="${p}" data-type="${type}" aria-pressed="${p === activePeriod}">${label}</button>`;
+      return `<button class="period-toggle-btn${active}" data-action="stats-baby-period" data-period="${p}" data-type="${type}" data-chore-id="${choreId}" aria-pressed="${p === activePeriod}">${label}</button>`;
     }).join("")}
   </div>`;
 }
 
-function renderFeedingGapsColumn(gaps, explainerVisible, dateStart, dateEnd) {
+function renderFeedingGapsColumn(choreId, gaps, explainerVisible, dateStart, dateEnd) {
   const chartHTML = renderClusterGapScatter(gaps);
   const explainerClass = explainerVisible ? " feeding-gaps-explainer--visible" : "";
 
   return `<div class="baby-care-column">
     <div class="feeding-gaps-header">
       <h4 class="baby-col-title">🕐 Cluster Feeding
-        <button class="feeding-gaps-info-btn" data-action="toggle-feeding-gaps-info" aria-label="How to read this chart" aria-expanded="${explainerVisible}">&#9432;</button>
+        <button class="feeding-gaps-info-btn" data-action="toggle-feeding-gaps-info" data-chore-id="${choreId}" aria-label="How to read this chart" aria-expanded="${explainerVisible}">&#9432;</button>
       </h4>
       <div class="feeding-gaps-quick">
-        <button class="period-toggle-btn${isQuickActive(dateStart, dateEnd, 1) ? " period-toggle--active" : ""}" data-action="stats-feeding-gaps-quick" data-days="1">Day</button>
-        <button class="period-toggle-btn${isQuickActive(dateStart, dateEnd, 7) ? " period-toggle--active" : ""}" data-action="stats-feeding-gaps-quick" data-days="7">Week</button>
-        <button class="period-toggle-btn${isQuickActive(dateStart, dateEnd, 14) ? " period-toggle--active" : ""}" data-action="stats-feeding-gaps-quick" data-days="14">2 Weeks</button>
+        <button class="period-toggle-btn${isQuickActive(dateStart, dateEnd, 1) ? " period-toggle--active" : ""}" data-action="stats-feeding-gaps-quick" data-chore-id="${choreId}" data-days="1">Day</button>
+        <button class="period-toggle-btn${isQuickActive(dateStart, dateEnd, 7) ? " period-toggle--active" : ""}" data-action="stats-feeding-gaps-quick" data-chore-id="${choreId}" data-days="7">Week</button>
+        <button class="period-toggle-btn${isQuickActive(dateStart, dateEnd, 14) ? " period-toggle--active" : ""}" data-action="stats-feeding-gaps-quick" data-chore-id="${choreId}" data-days="14">2 Weeks</button>
       </div>
     </div>
     <div class="feeding-gaps-dates">
-      <input type="date" class="feeding-gaps-date" data-action="stats-feeding-gaps-date" data-field="start" value="${dateStart || ""}" aria-label="Start date">
+      <input type="date" class="feeding-gaps-date" data-action="stats-feeding-gaps-date" data-chore-id="${choreId}" data-field="start" value="${dateStart || ""}" aria-label="Start date">
       <span class="feeding-gaps-date-sep">&ndash;</span>
-      <input type="date" class="feeding-gaps-date" data-action="stats-feeding-gaps-date" data-field="end" value="${dateEnd || ""}" aria-label="End date">
+      <input type="date" class="feeding-gaps-date" data-action="stats-feeding-gaps-date" data-chore-id="${choreId}" data-field="end" value="${dateEnd || ""}" aria-label="End date">
     </div>
     <div class="feeding-gaps-explainer${explainerClass}">
       <p><strong>Cluster feeding = 2+ feeds within 2 hours.</strong> Each dot is one inter-feed gap. The dashed&nbsp;line marks 2&nbsp;hours: dots <em>below</em> it are short gaps, dots <em>above</em> it are typical spacing.</p>
@@ -1359,17 +1380,17 @@ function formatScatterDate(d) {
   return `${mo} ${parseInt(m[3], 10)}`;
 }
 
-function renderBabyColumn(ts, memberMap, period, type) {
+function renderBabyColumn(ts, memberMap, period, type, choreId) {
   const isVolume = type === "feed";
   const membersHTML = renderMemberList(ts.byMember, memberMap);
   const chartHTML = isVolume
-    ? renderVolumeChart(ts.periods, period) + renderAmountCharts(ts.periods, "", period, true)
+    ? renderVolumeChart(ts.periods, period, ts.choreName) + renderAmountCharts(ts.periods, "", period, true)
     : renderIndicatorChart(ts.periods, period);
 
   return `<div class="baby-care-column">
     <div class="baby-col-header">
       <h4 class="baby-col-title">${escapeHTML(ts.choreIcon)} ${escapeHTML(ts.choreName)}</h4>
-      ${renderBabyPeriodToggle(period, type)}
+      ${renderBabyPeriodToggle(period, type, choreId, ts.choreName)}
     </div>
     ${membersHTML}
     <div class="baby-chart">${chartHTML}</div>
@@ -1399,7 +1420,7 @@ export function renderMemberList(byMember, memberMap) {
   </div>`;
 }
 
-function renderVolumeChart(periods, period) {
+function renderVolumeChart(periods, period, choreName) {
   if (!periods || periods.length === 0) return '<p class="text-secondary text-sm text-center mt-2">No data</p>';
 
   const maxML = Math.max(1, ...periods.map(p => p.totalML || 0));
@@ -1418,7 +1439,7 @@ function renderVolumeChart(periods, period) {
   const ticks = [];
   for (let v = 0; v <= maxML + step / 2; v += step) ticks.push(v);
 
-  let svg = `<svg viewBox="0 0 ${totalW} ${totalH}" class="baby-svg-chart" role="img" aria-label="Feed Baby volume chart">`;
+  let svg = `<svg viewBox="0 0 ${totalW} ${totalH}" class="baby-svg-chart" role="img" aria-label="${escapeHTML(choreName)} volume chart">`;
 
   ticks.forEach(t => {
     const y = topM + chartH - Math.round((t / maxML) * chartH);

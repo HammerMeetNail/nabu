@@ -96,6 +96,8 @@ func (s *MemoryStore) UpdateChore(_ context.Context, chore Chore) error {
 	chore.IsPredefined = existing.IsPredefined
 	chore.PredefinedKey = existing.PredefinedKey
 	chore.DefaultName = existing.DefaultName
+	chore.TemplateKey = existing.TemplateKey
+	chore.NamedFor = existing.NamedFor
 	chore.CreatedAt = existing.CreatedAt
 	chore.CreatedBy = existing.CreatedBy
 	chore.NormalizeVisibility()

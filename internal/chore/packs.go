@@ -165,21 +165,24 @@ func PlanPacks(picks []PackPick) ([]Chore, error) {
 		return nil, err
 	}
 	var planned []Chore
-	// A pet's or baby's own activity ("Feed Mongo") is a custom task that
-	// starts with its template's fields; no later template change reaches it.
-	// Shared ones ("Clean Litter Box") keep their template's key. subjects
-	// are the names a shared activity asks "who?" between.
-	add := func(template, name string, own bool, subjects []string) {
+	// A pet's or baby's own activity ("Feed Mongo", for Mongo) is a custom
+	// task that starts with its template's fields; no later template change
+	// reaches it. It records its template and whom it is for. Shared ones
+	// ("Clean Litter Box") keep their template's key. subjects are the names
+	// a shared activity asks "who?" between.
+	add := func(template, name, namedFor string, subjects []string) {
 		c, ok := templateFor(template)
 		if !ok {
 			panic("chore: pack template not found: " + template)
 		}
+		own := namedFor != ""
 		c.Name = name
 		c.IsPredefined = !own
-		c.PredefinedKey = ""
-		if !own {
-			c.PredefinedKey = template
+		c.PredefinedKey, c.TemplateKey = template, ""
+		if own {
+			c.PredefinedKey, c.TemplateKey = "", template
 		}
+		c.NamedFor = namedFor
 		c.SortOrder = len(planned)
 		c.FollowUpEnabled = true
 		c.Visibility = VisibilityHousehold
@@ -203,24 +206,24 @@ func PlanPacks(picks []PackPick) ([]Chore, error) {
 				}
 				anyFor = true
 				if len(owners) == 1 {
-					add(m.template, owners[0]+"'s Meds", true, nil)
+					add(m.template, owners[0]+"'s Meds", owners[0], nil)
 				} else {
 					// One activity for the group asks which of them.
-					add(m.template, m.template, false, owners)
+					add(m.template, m.template, "", owners)
 				}
 			}
 			if !anyFor {
-				add("Meds", "Meds", false, nil)
+				add("Meds", "Meds", "", nil)
 			}
 			continue
 		}
 		for _, a := range pack.Activities {
 			if a.PerName == "" || len(given) == 0 {
-				add(a.Template, a.Template, false, nil)
+				add(a.Template, a.Template, "", nil)
 				continue
 			}
 			for _, name := range given {
-				add(a.Template, fmt.Sprintf(a.PerName, name), true, nil)
+				add(a.Template, fmt.Sprintf(a.PerName, name), name, nil)
 			}
 		}
 	}

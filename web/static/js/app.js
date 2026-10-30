@@ -2879,24 +2879,20 @@ export async function init() {
       case "stats-baby-period": {
         e.preventDefault();
         const period = actionEl.dataset.period;
-        const type = actionEl.dataset.type;
-        if (!period || !type) break;
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
+        if (!period || !choreId) break;
         state.stats = state.stats || {};
-        if (type === "feed") {
-          state.stats.feedBabyPeriod = period;
-        } else if (type === "change") {
-          state.stats.changeBabyPeriod = period;
-        } else {
-          break;
-        }
-        void refreshStatsResource('baby', type);
+        (state.stats.babyPeriods ||= {})[choreId] = period;
+        void refreshStatsResource('baby', choreId);
         break;
       }
 
       case "toggle-feeding-gaps-info": {
         e.preventDefault();
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
         state.stats = state.stats || {};
-        state.stats.feedingGapsExplainerVisible = !state.stats.feedingGapsExplainerVisible;
+        const open = state.stats.feedingGapsExplainer ||= {};
+        open[choreId] = !open[choreId];
         render(app);
         break;
       }
@@ -2985,14 +2981,14 @@ export async function init() {
       case "stats-feeding-gaps-quick": {
         e.preventDefault();
         const days = parseInt(actionEl.dataset.days, 10);
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
         state.stats = state.stats || {};
         const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
         const endDate = new Date();
         const startDate = new Date(endDate);
         startDate.setDate(startDate.getDate() - (days - 1));
-        state.stats.feedingGapsEnd = fmt(endDate);
-        state.stats.feedingGapsStart = fmt(startDate);
-        void refreshStatsResource('gaps');
+        (state.stats.feedingGapsRanges ||= {})[choreId] = { start: fmt(startDate), end: fmt(endDate) };
+        void refreshStatsResource('gaps', choreId);
         break;
       }
 
@@ -3220,13 +3216,13 @@ export async function init() {
       }
       if (actionEl?.dataset?.action === "stats-feeding-gaps-date") {
         const field = actionEl.dataset.field;
+        const choreId = parseInt(actionEl.dataset.choreId, 10);
         state.stats = state.stats || {};
-        if (field === "start") state.stats.feedingGapsStart = actionEl.value || "";
-        if (field === "end") state.stats.feedingGapsEnd = actionEl.value || "";
-        const s = state.stats.feedingGapsStart;
-        const e = state.stats.feedingGapsEnd;
-        if (s && e) {
-          void refreshStatsResource('gaps');
+        const range = (state.stats.feedingGapsRanges ||= {})[choreId] ||= {};
+        if (field === "start") range.start = actionEl.value || "";
+        if (field === "end") range.end = actionEl.value || "";
+        if (range.start && range.end) {
+          void refreshStatsResource('gaps', choreId);
         }
       }
     if (actionEl?.dataset?.action === "pick-metric-type") {
