@@ -206,6 +206,32 @@ private func contractDecodes<T: Decodable & SendableMetatype>(_ type: T.Type) ->
     { data in _ = try contractAnswer(type, data) }
 }
 
+/// A `/api/stats/dashboard` answer: one result per read, in order, each read
+/// as the type its own endpoint answers with (`StatsDashboard.decode`).
+private func contractDashboard(_ types: [any (Decodable & SendableMetatype).Type]) -> ContractCheck {
+    { data in
+        let exchange = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let body = try JSONSerialization.data(withJSONObject: exchange?["response"] ?? [:])
+        guard let results = StatsDashboard.decode(body) else {
+            throw ContractMismatch(description: "not a dashboard answer")
+        }
+        try contractExpect(results.count == types.count, "\(results.count) results for \(types.count) reads")
+        for (result, type) in zip(results, types) {
+            guard case .data(let read) = result else {
+                throw ContractMismatch(description: "the \(type) read failed: \(result)")
+            }
+            _ = try apiDecoder.decode(type, from: read)
+        }
+    }
+}
+
+/// The Stats page's section reads, in the order the contract's dashboard
+/// requests name them.
+private let contractStatsSections: [any (Decodable & SendableMetatype).Type] = [
+    OverviewResponse.self, HeatmapResponse.self, BusyHoursResponse.self, ChoreStatsResponse.self,
+    BreakdownResponse.self, TopChoresResponse.self, LeaderboardResponse.self, FeedingGapsResponse.self,
+]
+
 private let contractUser: ContractCheck = { data in
     let user = try contractAnswer(UserResponse.self, data).user
     try contractExpect(user != nil, "no user")
@@ -311,4 +337,42 @@ private let contractChecks: [String: ContractCheck] = [
     "schedule-delete": contractStatus,
     "schedule-update": contractDecodes(ScheduleResponse.self),
     "schedules": contractList(SchedulesResponse.self, "schedules") { $0.schedules.count },
+
+    // A new account, then a household with nothing in it.
+    "empty-chore-reminder-prefs": contractDecodes(ChoreReminderPrefsResponse.self),
+    "empty-chores": contractDecodes(ChoresResponse.self),
+    "empty-day-notes": contractDecodes(DayNotesResponse.self),
+    "empty-household": contractError,
+    "empty-households": contractDecodes(HouseholdsResponse.self),
+    "empty-logs-history": contractDecodes(HistoryResponse.self),
+    "empty-logs-latest-per-chore": contractDecodes(LatestLogsResponse.self),
+    "empty-logs-today": contractDecodes(TodayResponse.self),
+    "empty-me": contractUser,
+    "empty-notifications": contractDecodes(NotificationsResponse.self),
+    "empty-schedules": contractDecodes(SchedulesResponse.self),
+    "empty-stats-breakdown": contractDecodes(BreakdownResponse.self),
+    "empty-stats-busy-hours": contractDecodes(BusyHoursResponse.self),
+    "empty-stats-chores": contractDecodes(ChoreStatsResponse.self),
+    "empty-stats-dashboard-sections": contractDashboard(contractStatsSections),
+    "empty-stats-feeding-gaps": contractDecodes(FeedingGapsResponse.self),
+    "empty-stats-heatmap": contractDecodes(HeatmapResponse.self),
+    "empty-stats-leaderboard": contractDecodes(LeaderboardResponse.self),
+    "empty-stats-overview": contractDecodes(OverviewResponse.self),
+    "empty-stats-summary": contractDecodes(ChoreSummaryResponse.self),
+    "empty-stats-time-series": contractDecodes(TimeSeriesResponse.self),
+    "empty-stats-top-chores": contractDecodes(TopChoresResponse.self),
+
+    // Stats once the household has logs.
+    "stats-breakdown": contractList(BreakdownResponse.self, "breakdown") { $0.breakdown.count },
+    "stats-busy-hours": contractList(BusyHoursResponse.self, "busyHours") { $0.busyHours.count },
+    "stats-chores": contractList(ChoreStatsResponse.self, "choreStats") { $0.choreStats.count },
+    "stats-dashboard-charts": contractDashboard([TimeSeriesResponse.self, ChoreSummaryResponse.self]),
+    "stats-dashboard-sections": contractDashboard(contractStatsSections),
+    "stats-feeding-gaps": contractList(FeedingGapsResponse.self, "feedingGaps") { $0.feedingGaps.count },
+    "stats-heatmap": contractList(HeatmapResponse.self, "heatmap") { $0.heatmap.count },
+    "stats-leaderboard": contractList(LeaderboardResponse.self, "leaderboard") { $0.leaderboard.count },
+    "stats-overview": contractDecodes(OverviewResponse.self),
+    "stats-summary": contractDecodes(ChoreSummaryResponse.self),
+    "stats-time-series": contractDecodes(TimeSeriesResponse.self),
+    "stats-top-chores": contractList(TopChoresResponse.self, "topChores") { $0.topChores.count },
 ]

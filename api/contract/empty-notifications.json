@@ -1,0 +1,11 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/notifications"
+  },
+  "status": 200,
+  "response": {
+    "notifications": [],
+    "unreadCount": 0
+  }
+}

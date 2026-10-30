@@ -39,7 +39,7 @@ import { renderDayView, renderWeekView, isActiveForDayJS } from "./calendar.js";
 import { loadSchedules, createSchedule, updateSchedule, deleteSchedule, renderPickChoreSheet, renderConfigureScheduleSheet, renderEditScheduleSheet, renderLogSheet, renderQuickLogSheet, renderRecentAmounts } from "./schedule.js";
 import { loadPreferences, saveChoreOrder, saveHiddenHomeChores, saveStatsSectionOrder, saveStatsSectionHidden, sortChoresByOrder, syncTimezone, saveStatsWidgets } from "./preferences.js";
 import { loadTimer, startTimer, stopTimer, clearFinishedTimer, elapsedSeconds, formatElapsed } from "./timer.js";
-import { loadLatestLogs, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeActivity, renderHomeManageView, renderConfirmRemoveFromHomeSheet, refreshHomeCardTimes } from "./home.js";
+import { loadLatestLogs, quickLogChore, renderHomeHeader, renderHomeView as renderHomeViewGrid, renderHomeActivity, renderHomeManageView, renderConfirmRemoveFromHomeSheet, refreshHomeCardTimes } from "./home.js";
 import { wideLayout, onWideLayoutChange, placeHomeTab, keyboardShortcut } from "./desktop.js";
 import { renderChoresView as renderChoresViewList, renderChoreSheet } from "./chores.js";
 import { maybeSubscribePush, pushOfferState, setPushOfferState, shouldOfferPush, renderPushOffer, loadNotificationPreferences, loadChoreReminderPrefs, saveChoreReminderPref } from "./notifications.js";
@@ -3346,7 +3346,7 @@ export async function init() {
 
   // ── PWA manifest shortcuts (?quicklog=…) ───────────────────────────────────
   // Long-pressing the home-screen icon exposes "Log feed", "Log chore", and
-  // "Activity" shortcuts that deep-link via a start_url query param. Handle it
+  // "Activity" shortcuts that deep-link via a ?quicklog= param. Handle it
   // once here after bootstrap so the user lands one tap from logging.
   try {
     const params = new URLSearchParams(window.location.search);
@@ -3360,22 +3360,13 @@ export async function init() {
       } else {
         state.currentRoute = "/";
         state.homeView = "log";
-        const chores = state.chores || [];
-        let chore = null;
-        if (quicklog === "feed-baby") {
-          chore = chores.find(c => c.predefinedKey === "Feed Baby")
-            || chores.find(c => c.name === "Feed Baby");
-        } else if (quicklog.startsWith("chore:")) {
-          // Deep link from a "Log now" notification action.
-          const id = parseInt(quicklog.slice("chore:".length), 10);
-          chore = chores.find(c => c.id === id) || null;
-        }
+        const chore = quickLogChore(state, quicklog);
         if (chore) {
           state.activeSheet = "home-log";
           state.activeSheetData = { choreId: chore.id };
         }
-        // quicklog=chore (or a missing Feed Baby chore) simply lands on the
-        // fast home grid, which is one tap from logging.
+        // quicklog=chore (or no feeding activity) simply lands on the fast
+        // home grid, which is one tap from logging.
       }
       // Strip the query so a refresh doesn't reopen the sheet.
       window.history.replaceState({}, "", window.location.pathname);

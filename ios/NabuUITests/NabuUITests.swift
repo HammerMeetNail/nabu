@@ -1354,6 +1354,57 @@ final class NabuHomeLogFlowUITests: XCTestCase {
     }
 }
 
+// MARK: - Dynamic Type
+
+/// The everyday path at the default text size and two accessibility sizes
+/// (plan §8): log from a tile, undo from the toast, open Stats. The Stats
+/// review scenario answers its overview, so the page loads for real.
+final class NabuDynamicTypeUITests: XCTestCase {
+    private func everydayPath(textSize: String?) {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-disableAnimations", "-resetState", "-seedHomeForUITest", "-useMockAPI",
+                               "-reviewScenario", "stats-switch", "-nabuBaseURL", "http://localhost:9998"]
+        if let textSize { app.launchArguments += ["-UIPreferredContentSizeCategoryName", textSize] }
+        app.launchForLocalTest()
+
+        let tile = app.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Water Plants")).firstMatch
+        XCTAssertTrue(tile.waitForExistence(timeout: 5))
+        for _ in 0..<8 where !tile.isHittable { app.swipeUp() }
+        XCTAssertTrue(tile.label.contains("never done"), "Precondition: \(tile.label)")
+        tile.tap()
+        let save = app.buttons["save-log-button"]
+        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        XCTAssertTrue(save.isHittable, "Log is on screen without scrolling")
+        save.tap()
+        XCTAssertTrue(save.waitForNonExistence(timeout: 5))
+
+        let undo = app.buttons["Undo"]
+        XCTAssertTrue(undo.waitForExistence(timeout: 5), "the toast offers Undo")
+        XCTAssertTrue(undo.isHittable, "the toast's Undo is on screen")
+        undo.tap()
+        expectation(for: NSPredicate(format: "label CONTAINS %@", "never done"), evaluatedWith: tile)
+        waitForExpectations(timeout: 5)
+
+        app.tabBars.buttons["Stats"].tap()
+        XCTAssertTrue(app.buttons["stats-customize"].waitForExistence(timeout: 8), "Stats opens")
+        XCTAssertFalse(app.staticTexts["Stats couldn't be loaded. Try again."].exists, "Stats loads")
+        XCTAssertTrue(app.staticTexts["13"].waitForExistence(timeout: 5), "the overview's total shows")
+    }
+
+    func testDefaultTextSize() {
+        everydayPath(textSize: nil)
+    }
+
+    func testAccessibilityLargeText() {
+        everydayPath(textSize: "UICTContentSizeCategoryAccessibilityL")
+    }
+
+    func testAccessibilityXXXLText() {
+        everydayPath(textSize: "UICTContentSizeCategoryAccessibilityXXXL")
+    }
+}
+
 // MARK: - Quick Log Sheet Tests
 
 /// Tests the quick-log sheet (accessed via the + button in the toolbar).

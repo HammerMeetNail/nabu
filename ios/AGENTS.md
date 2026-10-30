@@ -183,6 +183,10 @@ No failure ends in an empty `catch`. `APIClient`'s requests are `throws(APIError
 - **Catch the rest.** A `do` block around `APIClient` calls throws `APIError`. If it catches only some cases (`catch APIError.contextChanged { }`), end it with a plain `catch` as well. Rethrowing what's left as `any Error` crashed Xcode 26.3's Swift 6.2 compiler in a unit test that Xcode 27 builds.
 - **Logging** goes through `Log` (`os.Logger`, one per area) and `failure(_:_:)`: what failed and the error's kind are public, and the error's text is private, since a server message or a decoding error can carry what someone typed. Never log a token, a cookie, an invite code or a URL with its query.
 
+## Strings
+
+The app's user-facing text lives in a String Catalog, `Nabu/Resources/Localizable.xcstrings` (English only, until localization after launch). The compiler extracts the literals in `Text`, `Label`, `Button` and the like (`SWIFT_EMIT_LOC_STRINGS`), and building in Xcode adds new ones to the catalog; a command-line build does not, so after adding UI text from the command line, build once in Xcode or add the key to the catalog. Text built as a plain `String` (an error message, a toast) is only extracted through `String(localized:)`.
+
 ## Parity bookkeeping on PRs
 
 When a PR touches shared client surface — `ios/**`, `web/static/js/**`, or the shared API in `internal/handlers/**` — it must also update the parity matrix (`docs/plans/client-parity.md`) to reflect the change. The CI `parity` job enforces this (it lints the matrix and fails if client/API code changed without a matrix update); the escape hatch is a `no-parity-update: <reason>` line in the PR body.

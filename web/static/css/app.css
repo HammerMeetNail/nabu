@@ -3005,6 +3005,12 @@ details[open] .chore-stat-chevron {
   height: 44px;
 }
 
+/* At 200% zoom a phone is about 195 CSS px wide: the amount and its unit
+   stack rather than squeeze their labels into each other. */
+@media (max-width: 300px) {
+  .sheet-amount-row { grid-template-columns: minmax(0, 1fr); }
+}
+
 /* ─── Log sheet: member row ──────────────────────────────────────────────────── */
 
 .sheet-member-row {
