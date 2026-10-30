@@ -1,0 +1,451 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/stats/dashboard?read=overview&read=heatmap%3Fstart%3D2026-01-02%26end%3D2026-01-02&read=busy-hours&read=chores%3Fperiod%3Dday&read=breakdown%3Fperiod%3Dweek&read=top-chores%3Fperiod%3Dweek&read=leaderboard%3Fperiod%3Dweek&read=feeding-gaps%3Fstart%3D2026-01-02%26end%3D2026-01-02"
+  },
+  "status": 200,
+  "response": {
+    "results": [
+      {
+        "data": {
+          "overview": {
+            "breakdown": [
+              {
+                "category": "feeding",
+                "count": 2
+              }
+            ],
+            "leaderboard": [
+              {
+                "count": 2,
+                "userId": 16
+              }
+            ],
+            "recap": {
+              "byCategory": [
+                {
+                  "category": "feeding",
+                  "count": 2
+                }
+              ],
+              "mostActiveDay": "Monday",
+              "topPerformer": {
+                "count": 2,
+                "userId": 16
+              },
+              "totalChores": 2
+            },
+            "streaks": {
+              "current": 1,
+              "longest": 1
+            }
+          }
+        },
+        "status": 200
+      },
+      {
+        "data": {
+          "heatmap": [
+            {
+              "count": 0,
+              "date": "2026-01-02"
+            },
+            {
+              "count": 0,
+              "date": "2026-01-02"
+            },
+            {
+              "count": 0,
+              "date": "2026-01-02"
+            },
+            {
+              "count": 0,
+              "date": "2026-01-02"
+            },
+            {
+              "count": 0,
+              "date": "2026-01-02"
+            },
+            {
+              "count": 0,
+              "date": "2026-01-02"
+            },
+            {
+              "count": 0,
+              "date": "2026-01-02"
+            },
+            {
+              "count": 0,
+              "date": "2026-01-02"
+            },
+            {
+              "count": 0,
+              "date": "2026-01-02"
+            },
+            {
+              "count": 0,
+              "date": "2026-01-02"
+            },
+            {
+              "count": 0,
+              "date": "2026-01-02"
+            },
+            {
+              "count": 0,
+              "date": "2026-01-02"
+            },
+            {
+              "count": 0,
+              "date": "2026-01-02"
+            },
+            {
+              "count": 2,
+              "date": "2026-01-02"
+            },
+            {
+              "count": 0,
+              "date": "2026-01-02"
+            }
+          ]
+        },
+        "status": 200
+      },
+      {
+        "data": {
+          "busyHours": [
+            {
+              "count": 0,
+              "hour": 0
+            },
+            {
+              "count": 0,
+              "hour": 1
+            },
+            {
+              "count": 0,
+              "hour": 2
+            },
+            {
+              "count": 0,
+              "hour": 3
+            },
+            {
+              "count": 0,
+              "hour": 4
+            },
+            {
+              "count": 0,
+              "hour": 5
+            },
+            {
+              "count": 0,
+              "hour": 6
+            },
+            {
+              "count": 0,
+              "hour": 7
+            },
+            {
+              "count": 0,
+              "hour": 8
+            },
+            {
+              "count": 0,
+              "hour": 9
+            },
+            {
+              "count": 1,
+              "hour": 10
+            },
+            {
+              "count": 1,
+              "hour": 11
+            },
+            {
+              "count": 0,
+              "hour": 12
+            },
+            {
+              "count": 0,
+              "hour": 13
+            },
+            {
+              "count": 0,
+              "hour": 14
+            },
+            {
+              "count": 0,
+              "hour": 15
+            },
+            {
+              "count": 0,
+              "hour": 16
+            },
+            {
+              "count": 0,
+              "hour": 17
+            },
+            {
+              "count": 0,
+              "hour": 18
+            },
+            {
+              "count": 0,
+              "hour": 19
+            },
+            {
+              "count": 0,
+              "hour": 20
+            },
+            {
+              "count": 0,
+              "hour": 21
+            },
+            {
+              "count": 0,
+              "hour": 22
+            },
+            {
+              "count": 0,
+              "hour": 23
+            }
+          ],
+          "end": "2026-01-02",
+          "start": "2026-01-02"
+        },
+        "status": 200
+      },
+      {
+        "data": {
+          "choreStats": [
+            {
+              "avgVolume": 105,
+              "choreIcon": "🍼",
+              "choreId": 11,
+              "choreName": "Feed Baby",
+              "hasIndicators": true,
+              "hasVolume": true,
+              "totalInRange": 2,
+              "totalThisMonth": 2,
+              "totalThisWeek": 2,
+              "volumeHistory": [
+                {
+                  "date": "2026-01-02",
+                  "totalML": 210
+                }
+              ]
+            },
+            {
+              "choreIcon": "👕",
+              "choreId": 18,
+              "choreName": "Laundry",
+              "hasIndicators": false,
+              "hasVolume": false,
+              "totalInRange": 0,
+              "totalThisMonth": 0,
+              "totalThisWeek": 0
+            },
+            {
+              "choreIcon": "🛀",
+              "choreId": 21,
+              "choreName": "Baby Bath",
+              "hasIndicators": false,
+              "hasVolume": false,
+              "totalInRange": 0,
+              "totalThisMonth": 0,
+              "totalThisWeek": 0
+            },
+            {
+              "choreIcon": "🌱",
+              "choreId": 13,
+              "choreName": "Water Plants",
+              "hasIndicators": false,
+              "hasVolume": false,
+              "totalInRange": 0,
+              "totalThisMonth": 0,
+              "totalThisWeek": 0
+            },
+            {
+              "choreIcon": "🧹",
+              "choreId": 14,
+              "choreName": "Clean Litter Box",
+              "hasIndicators": false,
+              "hasVolume": false,
+              "totalInRange": 0,
+              "totalThisMonth": 0,
+              "totalThisWeek": 0
+            },
+            {
+              "choreIcon": "🗑️",
+              "choreId": 15,
+              "choreName": "Take Out Trash",
+              "hasIndicators": false,
+              "hasVolume": false,
+              "totalInRange": 0,
+              "totalThisMonth": 0,
+              "totalThisWeek": 0
+            },
+            {
+              "choreIcon": "🍽️",
+              "choreId": 16,
+              "choreName": "Wash Dishes",
+              "hasIndicators": false,
+              "hasVolume": false,
+              "totalInRange": 0,
+              "totalThisMonth": 0,
+              "totalThisWeek": 0
+            },
+            {
+              "choreIcon": "👶",
+              "choreId": 12,
+              "choreName": "Change Baby",
+              "hasIndicators": true,
+              "hasVolume": false,
+              "totalInRange": 0,
+              "totalThisMonth": 0,
+              "totalThisWeek": 0
+            },
+            {
+              "choreIcon": "🐕",
+              "choreId": 19,
+              "choreName": "Walk Dog",
+              "hasIndicators": false,
+              "hasVolume": false,
+              "totalInRange": 0,
+              "totalThisMonth": 0,
+              "totalThisWeek": 0
+            },
+            {
+              "choreIcon": "🧹",
+              "choreId": 17,
+              "choreName": "Vacuum",
+              "hasIndicators": false,
+              "hasVolume": false,
+              "totalInRange": 0,
+              "totalThisMonth": 0,
+              "totalThisWeek": 0
+            },
+            {
+              "choreIcon": "🛏️",
+              "choreId": 20,
+              "choreName": "Make Bed",
+              "hasIndicators": false,
+              "hasVolume": false,
+              "totalInRange": 0,
+              "totalThisMonth": 0,
+              "totalThisWeek": 0
+            },
+            {
+              "choreIcon": "🐱",
+              "choreId": 10,
+              "choreName": "Feed Cats",
+              "hasIndicators": false,
+              "hasVolume": false,
+              "totalInRange": 0,
+              "totalThisMonth": 0,
+              "totalThisWeek": 0
+            },
+            {
+              "choreIcon": "💊",
+              "choreId": 22,
+              "choreName": "Cat Meds",
+              "hasIndicators": false,
+              "hasVolume": false,
+              "totalInRange": 0,
+              "totalThisMonth": 0,
+              "totalThisWeek": 0
+            },
+            {
+              "choreIcon": "📖",
+              "choreId": 23,
+              "choreName": "Read Book",
+              "hasIndicators": false,
+              "hasVolume": false,
+              "totalInRange": 0,
+              "totalThisMonth": 0,
+              "totalThisWeek": 0
+            },
+            {
+              "choreIcon": "🎬",
+              "choreId": 25,
+              "choreName": "Watch Movie",
+              "hasIndicators": false,
+              "hasVolume": false,
+              "totalInRange": 0,
+              "totalThisMonth": 0,
+              "totalThisWeek": 0
+            },
+            {
+              "choreIcon": "💊",
+              "choreId": 24,
+              "choreName": "Baby Meds",
+              "hasIndicators": false,
+              "hasVolume": false,
+              "totalInRange": 0,
+              "totalThisMonth": 0,
+              "totalThisWeek": 0
+            }
+          ],
+          "end": "2026-01-02",
+          "start": "2026-01-02"
+        },
+        "status": 200
+      },
+      {
+        "data": {
+          "breakdown": [
+            {
+              "category": "feeding",
+              "count": 2
+            }
+          ],
+          "end": "2026-01-02",
+          "start": "2026-01-02"
+        },
+        "status": 200
+      },
+      {
+        "data": {
+          "period": "week",
+          "topChores": [
+            {
+              "choreIcon": "🍼",
+              "choreId": 11,
+              "choreName": "Feed Baby",
+              "count": 2
+            }
+          ]
+        },
+        "status": 200
+      },
+      {
+        "data": {
+          "end": "2026-01-02",
+          "leaderboard": [
+            {
+              "count": 2,
+              "userId": 16
+            }
+          ],
+          "period": "week",
+          "start": "2026-01-02"
+        },
+        "status": 200
+      },
+      {
+        "data": {
+          "feedingGaps": [
+            {
+              "date": "2026-01-02",
+              "followUpVolume": 120,
+              "gapMinutes": 60,
+              "hour": 10,
+              "precedingVolume": 90
+            }
+          ]
+        },
+        "status": 200
+      }
+    ]
+  }
+}

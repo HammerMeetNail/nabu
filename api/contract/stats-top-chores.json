@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/stats/top-chores?period=week"
+  },
+  "status": 200,
+  "response": {
+    "period": "week",
+    "topChores": [
+      {
+        "choreIcon": "🍼",
+        "choreId": 11,
+        "choreName": "Feed Baby",
+        "count": 2
+      }
+    ]
+  }
+}

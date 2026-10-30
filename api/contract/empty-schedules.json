@@ -1,0 +1,10 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/schedules"
+  },
+  "status": 200,
+  "response": {
+    "schedules": []
+  }
+}
