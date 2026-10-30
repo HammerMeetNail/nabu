@@ -1,0 +1,1287 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "" : {
+
+    },
+    " Each dot is one inter-feed gap. The red line marks 2 hours: dots below it are short gaps, dots above it are typical spacing." : {
+
+    },
+    "%@" : {
+
+    },
+    "%@ %@" : {
+
+    },
+    "%@ (optional)" : {
+
+    },
+    "%@ doesn't record an amount." : {
+
+    },
+    "%@ invited you to join" : {
+
+    },
+    "%@ isn't one of %@'s choices." : {
+
+    },
+    "%@, %@" : {
+
+    },
+    "%@/join?code=%@" : {
+
+    },
+    "%@: %@" : {
+
+    },
+    "%@: %lld" : {
+
+    },
+    "%lld" : {
+
+    },
+    "%lld %@" : {
+
+    },
+    "%lld chores" : {
+
+    },
+    "%lld logs" : {
+
+    },
+    "%lld min" : {
+
+    },
+    "%lld min before" : {
+
+    },
+    "%lld pending save%@" : {
+
+    },
+    "%lld/%lld used" : {
+
+    },
+    "%lld/500" : {
+
+    },
+    "%lldd" : {
+
+    },
+    "%lldh" : {
+
+    },
+    "%lldm" : {
+
+    },
+    "0" : {
+
+    },
+    "2 Weeks" : {
+
+    },
+    "2h" : {
+
+    },
+    ":" : {
+
+    },
+    "About" : {
+
+    },
+    "Access disabled" : {
+
+    },
+    "Account" : {
+
+    },
+    "Activity" : {
+
+    },
+    "Activity heatmap, %lld logs across %lld weeks" : {
+
+    },
+    "Add" : {
+
+    },
+    "Add Chore" : {
+
+    },
+    "Add Chores" : {
+
+    },
+    "Add a note for %@" : {
+
+    },
+    "Add a note..." : {
+
+    },
+    "Add a pack, or name a new baby or pet to give them their own. Activities you have already are kept as they are." : {
+
+    },
+    "Add activities" : {
+
+    },
+    "Add another" : {
+
+    },
+    "Add label" : {
+
+    },
+    "Add subject" : {
+
+    },
+    "Add the chores your household tracks and they'll appear here as one-tap tiles." : {
+
+    },
+    "Add to Schedule" : {
+
+    },
+    "Add widget" : {
+
+    },
+    "Admins only" : {
+
+    },
+    "All activity" : {
+
+    },
+    "All chores" : {
+
+    },
+    "All dates" : {
+
+    },
+    "All members" : {
+
+    },
+    "All members will gain access to the entire retained history." : {
+
+    },
+    "Already have an account? Sign in" : {
+
+    },
+    "Also delete everything I logged in shared households" : {
+
+    },
+    "Also delete the notes I wrote on logs that stay" : {
+
+    },
+    "Amount" : {
+
+    },
+    "Amount (mL/oz/g…)" : {
+
+    },
+    "Applies to your account across all households." : {
+
+    },
+    "Are you sure you want to leave this household? All your data will remain with the household." : {
+
+    },
+    "At least 8 characters" : {
+
+    },
+    "Avg %@ / feed" : {
+
+    },
+    "Baby" : {
+
+    },
+    "Back" : {
+
+    },
+    "Busy Hours" : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Cancel export" : {
+
+    },
+    "Categories" : {
+
+    },
+    "Change Password" : {
+
+    },
+    "Check Your Email" : {
+
+    },
+    "Check your email for a verification link." : {
+
+    },
+    "Chore" : {
+
+    },
+    "Chore name" : {
+
+    },
+    "Chores" : {
+
+    },
+    "Cluster feeding = 2+ feeds within 2 hours." : {
+
+    },
+    "Color" : {
+
+    },
+    "Confirm New Password" : {
+
+    },
+    "Confirm Password" : {
+
+    },
+    "Confirming your session" : {
+
+    },
+    "Continue" : {
+
+    },
+    "Continue with Google" : {
+
+    },
+    "Copied" : {
+
+    },
+    "Copy" : {
+
+    },
+    "Copy link" : {
+
+    },
+    "Could not remove this request from your device. Retry." : {
+
+    },
+    "Couldn't load" : {
+
+    },
+    "Couldn't load the activities." : {
+
+    },
+    "Count" : {
+
+    },
+    "Create Account" : {
+
+    },
+    "Create Single-Use Invite" : {
+
+    },
+    "Create an account or sign in to join." : {
+
+    },
+    "Create household" : {
+
+    },
+    "Current Password" : {
+
+    },
+    "Custom" : {
+
+    },
+    "Customize Stats" : {
+
+    },
+    "Customize stats" : {
+
+    },
+    "Daily" : {
+
+    },
+    "Day" : {
+
+    },
+    "Days" : {
+
+    },
+    "Default" : {
+
+    },
+    "Delete" : {
+
+    },
+    "Delete Account" : {
+
+    },
+    "Delete Account…" : {
+
+    },
+    "Delete My Account" : {
+
+    },
+    "Delete chore" : {
+
+    },
+    "Delete this log?" : {
+
+    },
+    "Delete this schedule?" : {
+
+    },
+    "Deleting your account permanently removes your account, email, name, sessions, devices, preferences, reminders and notifications. Households where you are the only member are deleted with all their logs. This cannot be undone." : {
+
+    },
+    "Disable %@?" : {
+
+    },
+    "Disable access" : {
+
+    },
+    "Disabled" : {
+
+    },
+    "Discard" : {
+
+    },
+    "Discard saved request" : {
+
+    },
+    "Discard this saved request?" : {
+
+    },
+    "Done" : {
+
+    },
+    "Done by" : {
+
+    },
+    "Download My Data" : {
+
+    },
+    "Download activity within the selected dates as a CSV spreadsheet." : {
+
+    },
+    "Drag to reorder · Tap eye to show/hide" : {
+
+    },
+    "Drag to reorder. Toggles hide a section without deleting it." : {
+
+    },
+    "Duration (seconds)" : {
+
+    },
+    "Duration (timer)" : {
+
+    },
+    "Each export can contain up to 10,000 records and 16 MB. Choose a smaller date range if needed." : {
+
+    },
+    "Edit" : {
+
+    },
+    "Edit Chore" : {
+
+    },
+    "Edit Household" : {
+
+    },
+    "Edit Schedule" : {
+
+    },
+    "Edit chore" : {
+
+    },
+    "Edit note: %@" : {
+
+    },
+    "Email" : {
+
+    },
+    "Email Verified!" : {
+
+    },
+    "Emoji" : {
+
+    },
+    "Enable Notifications" : {
+
+    },
+    "Enable access" : {
+
+    },
+    "Enable follow-up scheduling" : {
+
+    },
+    "End date" : {
+
+    },
+    "Enter a title..." : {
+
+    },
+    "Enter code" : {
+
+    },
+    "Enter the code from your invite, or open the invite link on this device." : {
+
+    },
+    "Enter your email and we'll send you a link to sign in." : {
+
+    },
+    "Every %lld days" : {
+
+    },
+    "Everyone" : {
+
+    },
+    "Everything Nabu keeps about you, as a JSON file, or just the logs you recorded, as CSV." : {
+
+    },
+    "Expires %@" : {
+
+    },
+    "Export" : {
+
+    },
+    "Export dates" : {
+
+    },
+    "Export household data as CSV" : {
+
+    },
+    "Export logs as CSV" : {
+
+    },
+    "Failed to add widget" : {
+
+    },
+    "Feeding gaps scatter plot, %lld feeds, red line marks the two hour gap" : {
+
+    },
+    "Filter activity" : {
+
+    },
+    "Follow-up" : {
+
+    },
+    "Follow-up in" : {
+
+    },
+    "For an activity that asks who it was for." : {
+
+    },
+    "Forgot Password" : {
+
+    },
+    "Forgot password?" : {
+
+    },
+    "Frequency" : {
+
+    },
+    "From" : {
+
+    },
+    "G" : {
+
+    },
+    "Gap" : {
+
+    },
+    "Get a push notification before this chore" : {
+
+    },
+    "Get notified when it's time to feed, medicate, or log a chore — right when it's due. You can change this anytime in Settings." : {
+
+    },
+    "Get reminders on this device?" : {
+
+    },
+    "Go to Home" : {
+
+    },
+    "Hide" : {
+
+    },
+    "Hide from Home" : {
+
+    },
+    "Hide notification badge" : {
+
+    },
+    "Hide password" : {
+
+    },
+    "Home" : {
+
+    },
+    "Hour" : {
+
+    },
+    "Hours" : {
+
+    },
+    "Household" : {
+
+    },
+    "Household Name" : {
+
+    },
+    "How did it go?" : {
+
+    },
+    "How feed amounts are shown and entered. Stored values don't change." : {
+
+    },
+    "How to read this chart" : {
+
+    },
+    "How your household sees you in Activity, Stats and Settings." : {
+
+    },
+    "Icon" : {
+
+    },
+    "If an account exists, we sent a password reset link." : {
+
+    },
+    "If you are the only owner of a household with other members, transfer ownership (or remove the other members) first." : {
+
+    },
+    "In households you share, the logs you recorded stay so the others keep their history. They are shown as “Former member” and are no longer linked to you." : {
+
+    },
+    "In the activity's own unit, such as ml or mg." : {
+
+    },
+    "Includes household details, chores, schedules, participants, and activity and notes within the selected dates. Invite codes and account credentials are never included." : {
+
+    },
+    "Indicator labels" : {
+
+    },
+    "Indicators" : {
+
+    },
+    "Initials" : {
+
+    },
+    "Initials (2-4 chars)" : {
+
+    },
+    "Invite Code" : {
+
+    },
+    "Invite QR code" : {
+
+    },
+    "Invite your household" : {
+
+    },
+    "Invites" : {
+
+    },
+    "It will disappear, along with its activity and statistics, for regular members. Information they saw while it was shared cannot be recalled." : {
+
+    },
+    "Join Household" : {
+
+    },
+    "Join a household" : {
+
+    },
+    "Joining someone? Enter an invite code" : {
+
+    },
+    "Last Done" : {
+
+    },
+    "Last done" : {
+
+    },
+    "Lead time" : {
+
+    },
+    "Leaderboard" : {
+
+    },
+    "Leave Household" : {
+
+    },
+    "Less" : {
+
+    },
+    "Load more" : {
+
+    },
+    "Load older notifications" : {
+
+    },
+    "Loading" : {
+
+    },
+    "Loading Activity" : {
+
+    },
+    "Loading chart" : {
+
+    },
+    "Loading notifications…" : {
+
+    },
+    "Loading…" : {
+
+    },
+    "Log" : {
+
+    },
+    "Log ${activity}" : {
+
+    },
+    "Log Activity" : {
+
+    },
+    "Log Your First Chore" : {
+
+    },
+    "Log a chore" : {
+
+    },
+    "Log a chore to start your stats. You can still adjust the charts below." : {
+
+    },
+    "Log a number, rating, or elapsed time with this chore" : {
+
+    },
+    "Logged %@" : {
+
+    },
+    "Logs %@" : {
+
+    },
+    "Logs an activity now, like tapping its tile on Home and then Log." : {
+
+    },
+    "Logs as CSV" : {
+
+    },
+    "Log…" : {
+
+    },
+    "Magic Link" : {
+
+    },
+    "Make \"%@\" Admins only?" : {
+
+    },
+    "Make \"%@\" visible to everyone?" : {
+
+    },
+    "Make Admin" : {
+
+    },
+    "Make Admins only" : {
+
+    },
+    "Make Household" : {
+
+    },
+    "Make Member" : {
+
+    },
+    "Mark notification read" : {
+
+    },
+    "Mark read" : {
+
+    },
+    "Member" : {
+
+    },
+    "Members (%lld)" : {
+
+    },
+    "Min" : {
+
+    },
+    "Mins" : {
+
+    },
+    "Minutes before a scheduled chore's time" : {
+
+    },
+    "Monthly" : {
+
+    },
+    "More" : {
+
+    },
+    "Most active: %@" : {
+
+    },
+    "Nabu" : {
+
+    },
+    "Nabu can remind you when something's due and tell you when someone in your household logs. You can change this any time in Settings." : {
+
+    },
+    "Nabu can't reach its server, and this device has no saved Home to log to yet." : {
+
+    },
+    "Nabu couldn't do that right now. Try again in a moment." : {
+
+    },
+    "Nabu couldn't save that log on this device." : {
+
+    },
+    "Nabu needs to reach its server to remove that log." : {
+
+    },
+    "Nabu works best when everyone logs. Send this link to the people you share the care with, or let them scan the code." : {
+
+    },
+    "Name" : {
+
+    },
+    "Name your household" : {
+
+    },
+    "Never miss a reminder" : {
+
+    },
+    "New Password" : {
+
+    },
+    "New Password (min 8 characters)" : {
+
+    },
+    "New links expire after 7 days. Removing a member or changing a role revokes existing links." : {
+
+    },
+    "No active schedules for the next 14 days." : {
+
+    },
+    "No activity in this range" : {
+
+    },
+    "No activity yet" : {
+
+    },
+    "No chores" : {
+
+    },
+    "No chores in this period" : {
+
+    },
+    "No chores set up yet" : {
+
+    },
+    "No chores yet" : {
+
+    },
+    "No data" : {
+
+    },
+    "No data yet" : {
+
+    },
+    "No notifications" : {
+
+    },
+    "No results" : {
+
+    },
+    "Not Now" : {
+
+    },
+    "Not now" : {
+
+    },
+    "Note" : {
+
+    },
+    "Note for this day (shared)" : {
+
+    },
+    "Nothing" : {
+
+    },
+    "Nothing upcoming" : {
+
+    },
+    "Notification Preferences" : {
+
+    },
+    "Notifications" : {
+
+    },
+    "Notifications are turned off for Nabu in iOS Settings, so reminders can't be delivered to this device." : {
+
+    },
+    "Notifications stay here until you delete them." : {
+
+    },
+    "OH" : {
+
+    },
+    "OK" : {
+
+    },
+    "Offline — logs you add will sync when you're back online" : {
+
+    },
+    "Offline — showing what's saved on this device. Logs you add sync when you reconnect." : {
+
+    },
+    "Open Nabu and set up your household first." : {
+
+    },
+    "Open Nabu and sign in first." : {
+
+    },
+    "Optional" : {
+
+    },
+    "Optional tags logged with this chore" : {
+
+    },
+    "Optional tags to distinguish who a log is about (e.g. twins)" : {
+
+    },
+    "Our home" : {
+
+    },
+    "Owners and admins" : {
+
+    },
+    "Pending saves" : {
+
+    },
+    "Pending saves could not be read. Your device copy has been kept." : {
+
+    },
+    "Pending sync" : {
+
+    },
+    "Period" : {
+
+    },
+    "Pick everything that applies. You can add more later in Manage." : {
+
+    },
+    "Privacy Policy" : {
+
+    },
+    "Profile" : {
+
+    },
+    "Push Notifications" : {
+
+    },
+    "Quick Log" : {
+
+    },
+    "Range" : {
+
+    },
+    "Rating" : {
+
+    },
+    "Rating (stars)" : {
+
+    },
+    "Recent" : {
+
+    },
+    "Reconnect and retry to continue." : {
+
+    },
+    "Records elapsed time. Stop from the timer chip up top." : {
+
+    },
+    "Refresh" : {
+
+    },
+    "Refresh notifications" : {
+
+    },
+    "Remind me" : {
+
+    },
+    "Reminder" : {
+
+    },
+    "Reminder lead time" : {
+
+    },
+    "Remove" : {
+
+    },
+    "Remove %@?" : {
+
+    },
+    "Remove Member" : {
+
+    },
+    "Remove from schedule" : {
+
+    },
+    "Remove log" : {
+
+    },
+    "Remove subject" : {
+
+    },
+    "Remove widget" : {
+
+    },
+    "Removes the last log made with Siri or Shortcuts in the past hour." : {
+
+    },
+    "Repeat" : {
+
+    },
+    "Repeat through (inclusive)" : {
+
+    },
+    "Resend verification email" : {
+
+    },
+    "Reset Password" : {
+
+    },
+    "Restore default" : {
+
+    },
+    "Retry" : {
+
+    },
+    "Retry loading older notifications" : {
+
+    },
+    "Retry reading saved data" : {
+
+    },
+    "Retry save" : {
+
+    },
+    "Retry saves" : {
+
+    },
+    "Retry saving %@" : {
+
+    },
+    "Retry sign-out" : {
+
+    },
+    "Save" : {
+
+    },
+    "Says when an activity was last logged, and by whom." : {
+
+    },
+    "Scan it with a phone's camera to open the invite." : {
+
+    },
+    "Schedule" : {
+
+    },
+    "Schedule a chore" : {
+
+    },
+    "Schedule next occurrence after logging" : {
+
+    },
+    "Search notes & titles" : {
+
+    },
+    "Send Magic Link" : {
+
+    },
+    "Send Reset Link" : {
+
+    },
+    "Series" : {
+
+    },
+    "Set Password" : {
+
+    },
+    "Set up a new household instead" : {
+
+    },
+    "Settings" : {
+
+    },
+    "Share invite link" : {
+
+    },
+    "Share link" : {
+
+    },
+    "Share this code: %@. It can be used once and expires after 7 days." : {
+
+    },
+    "Show" : {
+
+    },
+    "Show as" : {
+
+    },
+    "Show invite QR code" : {
+
+    },
+    "Show password" : {
+
+    },
+    "Sign In" : {
+
+    },
+    "Sign Out" : {
+
+    },
+    "Sign in with magic link" : {
+
+    },
+    "Sign-out is unfinished" : {
+
+    },
+    "Start timer" : {
+
+    },
+    "Stats" : {
+
+    },
+    "Step %lld of 3" : {
+
+    },
+    "Stop & log" : {
+
+    },
+    "Stop timer and log %@" : {
+
+    },
+    "Subjects" : {
+
+    },
+    "Support" : {
+
+    },
+    "Switch" : {
+
+    },
+    "Tap + to add your first chore." : {
+
+    },
+    "Tap a chore to log it instantly." : {
+
+    },
+    "That activity isn't in your household any more." : {
+
+    },
+    "These requests are saved on this device. Server confirmation is still pending." : {
+
+    },
+    "They will be signed out and cannot view or change anything in this household until you re-enable them." : {
+
+    },
+    "This device could not save the sign-out status. Keep the app open and retry." : {
+
+    },
+    "This invite link isn't valid any more. Ask whoever sent it for a new one." : {
+
+    },
+    "This removes the device copy. A request whose response was lost may already exist on the server; check Activity before logging it again." : {
+
+    },
+    "This saved request is fixed for safe retry. You can retry it here or manage it in Pending saves." : {
+
+    },
+    "This week you completed %lld chores." : {
+
+    },
+    "Through" : {
+
+    },
+    "Time" : {
+
+    },
+    "Time period" : {
+
+    },
+    "Title" : {
+
+    },
+    "Top Chores" : {
+
+    },
+    "Track a value" : {
+
+    },
+    "Transfer Ownership" : {
+
+    },
+    "Try Again" : {
+
+    },
+    "Turn on" : {
+
+    },
+    "Type" : {
+
+    },
+    "Type DELETE to confirm" : {
+
+    },
+    "Undo" : {
+
+    },
+    "Undo Last Log" : {
+
+    },
+    "Unit" : {
+
+    },
+    "Update" : {
+
+    },
+    "Use the Home tab to add chores." : {
+
+    },
+    "Value" : {
+
+    },
+    "Verification email queued" : {
+
+    },
+    "Verify Your Email" : {
+
+    },
+    "Version" : {
+
+    },
+    "Visible only to household owners and admins." : {
+
+    },
+    "Visible to" : {
+
+    },
+    "Visible to all household members." : {
+
+    },
+    "Volume (%@)" : {
+
+    },
+    "Volume unit" : {
+
+    },
+    "We sent a magic link to your email address. Click the link to sign in." : {
+
+    },
+    "We'll send you a password reset link." : {
+
+    },
+    "Week" : {
+
+    },
+    "Weekly" : {
+
+    },
+    "Weekly Recap" : {
+
+    },
+    "Welcome to Nabu" : {
+
+    },
+    "When" : {
+
+    },
+    "When Was It Last Done" : {
+
+    },
+    "When was ${activity} last done" : {
+
+    },
+    "Who" : {
+
+    },
+    "Who and what do you look after?" : {
+
+    },
+    "You're invited to join" : {
+
+    },
+    "Your Households" : {
+
+    },
+    "Your color" : {
+
+    },
+    "Your data is hidden. Retry to finish signing out on the server." : {
+
+    },
+    "Your email has been verified. You can now sign in." : {
+
+    },
+    "Your name" : {
+
+    },
+    "clear" : {
+
+    },
+    "default" : {
+
+    },
+    "e.g. Bottles this week" : {
+
+    },
+    "e.g. first solid food!" : {
+
+    },
+    "e.g. 👶 Alice" : {
+
+    },
+    "e.g. 💩 poo" : {
+
+    },
+    "mL" : {
+
+    },
+    "met" : {
+
+    },
+    "never" : {
+
+    },
+    "not met" : {
+
+    },
+    "note" : {
+
+    },
+    "or" : {
+
+    },
+    "oz" : {
+
+    },
+    "pending" : {
+
+    },
+    "you@example.com" : {
+
+    },
+    "· %@" : {
+
+    },
+    "· ★%@" : {
+
+    },
+    "–" : {
+
+    },
+    "★★★★★" : {
+
+    },
+    "☆☆☆☆☆" : {
+
+    },
+    "📋" : {
+
+    },
+    "🕐 Cluster Feeding" : {
+
+    }
+  },
+  "version" : "1.0"
+}

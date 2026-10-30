@@ -45,7 +45,7 @@
 			<key>UIApplicationShortcutItemTitle</key>
 			<string>Log Feed</string>
 			<key>UIApplicationShortcutItemSubtitle</key>
-			<string>Open the log sheet for Feed Baby</string>
+			<string>Feed Baby, or your first feeding activity</string>
 			<key>UIApplicationShortcutItemIconSymbolName</key>
 			<string>waterbottle</string>
 		</dict>

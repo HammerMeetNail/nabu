@@ -72,4 +72,44 @@ final class DeepLinkTests: XCTestCase {
             .verifyEmail(token: "a+b")
         )
     }
+
+    // MARK: - What a quick-log target opens
+
+    private func chore(_ id: Int, _ name: String, category: String = "chores", predefinedKey: String? = nil) -> Chore {
+        Chore(id: id, householdId: 1, name: name, icon: "📋", color: "#000000",
+              sortOrder: 0, category: category, isPredefined: predefinedKey != nil,
+              predefinedKey: predefinedKey, createdBy: nil, createdAt: Date(),
+              indicatorLabels: [], indicatorDefaults: [], hasVolumeML: false, metricType: "none")
+    }
+
+    func testFeedBabyOpensFeedBaby() {
+        let feed = chore(4, "Feed Baby", category: "feeding", predefinedKey: "Feed Baby")
+        let chores = [chore(1, "Feed Cats", category: "feeding"), feed]
+        XCTAssertEqual(QuickLogTarget.predefined(key: "Feed Baby").chore(in: chores, home: chores)?.id, 4)
+    }
+
+    /// Packs name a baby's activities after the baby, and a household can
+    /// have only pets: the Log Feed shortcut opens Home's first feeding tile.
+    func testFeedBabyFallsBackToHomesFirstFeedingActivity() {
+        let vacuum = chore(1, "Vacuum")
+        let feedCats = chore(2, "Feed Cats", category: "feeding")
+        let feedAda = chore(3, "Feed Ada", category: "feeding")
+        let chores = [vacuum, feedCats, feedAda]
+        let target = QuickLogTarget.predefined(key: "Feed Baby")
+        XCTAssertEqual(target.chore(in: chores, home: [vacuum, feedAda, feedCats])?.name, "Feed Ada")
+        // A feeding activity hidden from Home isn't one of its tiles.
+        XCTAssertEqual(target.chore(in: chores, home: [vacuum, feedCats])?.name, "Feed Cats")
+        XCTAssertNil(target.chore(in: [vacuum], home: [vacuum]))
+    }
+
+    func testOtherPredefinedTargetsDontFallBack() {
+        let chores = [chore(2, "Feed Cats", category: "feeding")]
+        XCTAssertNil(QuickLogTarget.predefined(key: "Change Baby").chore(in: chores, home: chores))
+    }
+
+    func testChoreTargetOpensThatActivity() {
+        let chores = [chore(1, "Vacuum"), chore(2, "Feed Cats", category: "feeding")]
+        XCTAssertEqual(QuickLogTarget.chore(id: 2).chore(in: chores, home: [])?.name, "Feed Cats")
+        XCTAssertNil(QuickLogTarget.chore(id: 9).chore(in: chores, home: chores))
+    }
 }

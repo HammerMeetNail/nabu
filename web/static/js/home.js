@@ -78,6 +78,30 @@ export function renderHomeHeader(state) {
  * @param {{keyHints?: boolean}} [options]
  * @returns {string}  HTML string
  */
+/**
+ * The activity a quick-log link opens: `chore:<id>` (a notification's "Log
+ * now", a widget), or for `feed-baby` (the "Log feed" shortcut) Feed Baby,
+ * else the first feeding activity on Home, so that a named baby's "Feed Ada"
+ * or a household's "Feed Cats" opens too. Null lands on the Home grid.
+ *
+ * @param {object} state
+ * @param {string} quicklog  The ?quicklog= value.
+ * @returns {object|null}
+ */
+export function quickLogChore(state, quicklog) {
+  const chores = state.chores || [];
+  if (quicklog.startsWith("chore:")) {
+    const id = parseInt(quicklog.slice("chore:".length), 10);
+    return chores.find(c => c.id === id) || null;
+  }
+  if (quicklog !== "feed-baby") return null;
+  const hidden = new Set(state.hiddenHomeChoreIDs || []);
+  return chores.find(c => c.predefinedKey === "Feed Baby")
+    || chores.find(c => c.name === "Feed Baby")
+    || sortChoresByOrder(chores, state.choreOrder || []).find(c => c.category === "feeding" && !hidden.has(c.id))
+    || null;
+}
+
 export function renderHomeView(state, { keyHints = false } = {}) {
   const hiddenSet = new Set(state.hiddenHomeChoreIDs || []);
   const chores = sortChoresByOrder(state.chores || [], state.choreOrder || [])

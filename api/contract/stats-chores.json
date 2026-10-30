@@ -1,0 +1,180 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/stats/chores?period=day"
+  },
+  "status": 200,
+  "response": {
+    "choreStats": [
+      {
+        "avgVolume": 105,
+        "choreIcon": "🍼",
+        "choreId": 11,
+        "choreName": "Feed Baby",
+        "hasIndicators": true,
+        "hasVolume": true,
+        "totalInRange": 2,
+        "totalThisMonth": 2,
+        "totalThisWeek": 2,
+        "volumeHistory": [
+          {
+            "date": "2026-01-02",
+            "totalML": 210
+          }
+        ]
+      },
+      {
+        "choreIcon": "👕",
+        "choreId": 18,
+        "choreName": "Laundry",
+        "hasIndicators": false,
+        "hasVolume": false,
+        "totalInRange": 0,
+        "totalThisMonth": 0,
+        "totalThisWeek": 0
+      },
+      {
+        "choreIcon": "🛀",
+        "choreId": 21,
+        "choreName": "Baby Bath",
+        "hasIndicators": false,
+        "hasVolume": false,
+        "totalInRange": 0,
+        "totalThisMonth": 0,
+        "totalThisWeek": 0
+      },
+      {
+        "choreIcon": "🌱",
+        "choreId": 13,
+        "choreName": "Water Plants",
+        "hasIndicators": false,
+        "hasVolume": false,
+        "totalInRange": 0,
+        "totalThisMonth": 0,
+        "totalThisWeek": 0
+      },
+      {
+        "choreIcon": "🧹",
+        "choreId": 14,
+        "choreName": "Clean Litter Box",
+        "hasIndicators": false,
+        "hasVolume": false,
+        "totalInRange": 0,
+        "totalThisMonth": 0,
+        "totalThisWeek": 0
+      },
+      {
+        "choreIcon": "🗑️",
+        "choreId": 15,
+        "choreName": "Take Out Trash",
+        "hasIndicators": false,
+        "hasVolume": false,
+        "totalInRange": 0,
+        "totalThisMonth": 0,
+        "totalThisWeek": 0
+      },
+      {
+        "choreIcon": "🍽️",
+        "choreId": 16,
+        "choreName": "Wash Dishes",
+        "hasIndicators": false,
+        "hasVolume": false,
+        "totalInRange": 0,
+        "totalThisMonth": 0,
+        "totalThisWeek": 0
+      },
+      {
+        "choreIcon": "👶",
+        "choreId": 12,
+        "choreName": "Change Baby",
+        "hasIndicators": true,
+        "hasVolume": false,
+        "totalInRange": 0,
+        "totalThisMonth": 0,
+        "totalThisWeek": 0
+      },
+      {
+        "choreIcon": "🐕",
+        "choreId": 19,
+        "choreName": "Walk Dog",
+        "hasIndicators": false,
+        "hasVolume": false,
+        "totalInRange": 0,
+        "totalThisMonth": 0,
+        "totalThisWeek": 0
+      },
+      {
+        "choreIcon": "🧹",
+        "choreId": 17,
+        "choreName": "Vacuum",
+        "hasIndicators": false,
+        "hasVolume": false,
+        "totalInRange": 0,
+        "totalThisMonth": 0,
+        "totalThisWeek": 0
+      },
+      {
+        "choreIcon": "🛏️",
+        "choreId": 20,
+        "choreName": "Make Bed",
+        "hasIndicators": false,
+        "hasVolume": false,
+        "totalInRange": 0,
+        "totalThisMonth": 0,
+        "totalThisWeek": 0
+      },
+      {
+        "choreIcon": "🐱",
+        "choreId": 10,
+        "choreName": "Feed Cats",
+        "hasIndicators": false,
+        "hasVolume": false,
+        "totalInRange": 0,
+        "totalThisMonth": 0,
+        "totalThisWeek": 0
+      },
+      {
+        "choreIcon": "💊",
+        "choreId": 22,
+        "choreName": "Cat Meds",
+        "hasIndicators": false,
+        "hasVolume": false,
+        "totalInRange": 0,
+        "totalThisMonth": 0,
+        "totalThisWeek": 0
+      },
+      {
+        "choreIcon": "📖",
+        "choreId": 23,
+        "choreName": "Read Book",
+        "hasIndicators": false,
+        "hasVolume": false,
+        "totalInRange": 0,
+        "totalThisMonth": 0,
+        "totalThisWeek": 0
+      },
+      {
+        "choreIcon": "🎬",
+        "choreId": 25,
+        "choreName": "Watch Movie",
+        "hasIndicators": false,
+        "hasVolume": false,
+        "totalInRange": 0,
+        "totalThisMonth": 0,
+        "totalThisWeek": 0
+      },
+      {
+        "choreIcon": "💊",
+        "choreId": 24,
+        "choreName": "Baby Meds",
+        "hasIndicators": false,
+        "hasVolume": false,
+        "totalInRange": 0,
+        "totalThisMonth": 0,
+        "totalThisWeek": 0
+      }
+    ],
+    "end": "2026-01-02",
+    "start": "2026-01-02"
+  }
+}

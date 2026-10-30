@@ -1,0 +1,10 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/logs/latest-per-chore"
+  },
+  "status": 200,
+  "response": {
+    "latestLogs": {}
+  }
+}

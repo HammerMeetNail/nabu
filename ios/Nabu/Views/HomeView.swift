@@ -266,15 +266,7 @@ struct HomeView: View {
     private func consumePendingQuickLog() {
         guard let target = state.pendingQuickLog, !state.chores.isEmpty else { return }
         state.pendingQuickLog = nil
-        let chore: Chore?
-        switch target {
-        case .chore(let id):
-            chore = state.chores.first { $0.id == id }
-        case .predefined(let key):
-            chore = state.chores.first { $0.predefinedKey == key }
-                ?? state.chores.first { $0.name == key }
-        }
-        guard let chore else { return }
+        guard let chore = target.chore(in: state.chores, home: sortedChores()) else { return }
         editingLog = nil
         selectedChore = chore
     }

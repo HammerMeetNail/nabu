@@ -1,0 +1,18 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/api/stats/chores/11/summary?period=week"
+  },
+  "status": 200,
+  "response": {
+    "summary": {
+      "byMember": [],
+      "choreId": 11,
+      "count": 0,
+      "metricType": "amount",
+      "metricUnit": "mL",
+      "totalDuration": 0,
+      "totalML": 0
+    }
+  }
+}
