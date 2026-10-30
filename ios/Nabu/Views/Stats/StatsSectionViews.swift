@@ -530,6 +530,38 @@ struct StatsDatePicker: View {
     }
 }
 
+/// A filter shown as its chosen option and a chevron, as a menu-style picker
+/// is, whose label wraps and grows with the text: a menu-style picker stays
+/// one line high, which cut the top and bottom off a wrapped "All members" at
+/// accessibility sizes.
+struct StatsChoice: View {
+    let title: String
+    @Binding var selection: Int?
+    /// The options, in order; the first is the one for nothing chosen.
+    let options: [(id: Int?, name: String)]
+
+    private var chosen: String { options.first { $0.id == selection }?.name ?? options[0].name }
+
+    var body: some View {
+        Menu {
+            Picker(title, selection: $selection) {
+                ForEach(options.indices, id: \.self) { i in
+                    Text(options[i].name).tag(options[i].id)
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Text(chosen).multilineTextAlignment(.leading)
+                Image(systemName: "chevron.up.chevron.down").imageScale(.small)
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel(title)
+        .accessibilityValue(chosen)
+    }
+}
+
 // MARK: - Generalized per-chore analytics (chore:<id>)
 
 /// Member split plus a metric-appropriate chart for any chore that tracks a

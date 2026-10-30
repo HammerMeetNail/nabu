@@ -186,25 +186,15 @@ struct StatsView: View {
                     .font(.caption).foregroundColor(DesignColors.textSecondary)
             }
 
-            HStack(spacing: 8) {
-                Picker("Chore", selection: $model.bhChoreId) {
-                    Text("All chores").tag(nil as Int?)
-                    ForEach(state.chores) { c in
-                        Text(c.name).tag(c.id as Int?)
-                    }
-                }
-                .pickerStyle(.menu)
-                .onChange(of: model.bhChoreId) { Task { await model.loadBusyHours() } }
-
-                Picker("Member", selection: $model.bhUserId) {
-                    Text("All members").tag(nil as Int?)
-                    ForEach(state.members) { m in
-                        Text(m.displayName.isEmpty ? m.email : m.displayName).tag(m.userId as Int?)
-                    }
-                }
-                .pickerStyle(.menu)
-                .onChange(of: model.bhUserId) { Task { await model.loadBusyHours() } }
+            // Side by side where both choices fit whole, otherwise one under
+            // the other: at accessibility sizes side by side cut "All chores"
+            // and "All members" (PWA `.busy-hours-filters`).
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { busyHoursPickers }
+                VStack(alignment: .leading, spacing: 8) { busyHoursPickers }
             }
+            .onChange(of: model.bhChoreId) { Task { await model.loadBusyHours() } }
+            .onChange(of: model.bhUserId) { Task { await model.loadBusyHours() } }
 
             StatsDateRange(start: Binding(
                 get: { model.bhFilterStart.isEmpty ? model.busyHoursStart : model.bhFilterStart },
@@ -216,6 +206,17 @@ struct StatsView: View {
 
             BusyHoursChart(busyHours: model.busyHours)
         }
+    }
+
+    @ViewBuilder private var busyHoursPickers: some View {
+        StatsChoice(title: "Chore", selection: $model.bhChoreId,
+                    options: [(id: nil, name: "All chores")]
+                        + state.chores.map { (id: $0.id as Int?, name: $0.name) })
+            .accessibilityIdentifier("busy-hours-chore")
+        StatsChoice(title: "Member", selection: $model.bhUserId,
+                    options: [(id: nil, name: "All members")]
+                        + state.members.map { (id: $0.userId as Int?, name: $0.displayName.isEmpty ? $0.email : $0.displayName) })
+            .accessibilityIdentifier("busy-hours-member")
     }
 
     // MARK: - Leaderboard

@@ -2199,10 +2199,21 @@ details[open] .member-chevron {
 }
 
 /* Busy Hours */
+/* Each choice is as wide as its longest option, so whatever is chosen shows
+   whole, and the two go one under the other when they don't fit side by
+   side. Halving the row cut "All members" from 125% zoom, and both from
+   150%. */
 .busy-hours-filters {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-bottom: 4px;
+}
+
+.busy-hours-filters .busy-hours-filter {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
 }
 
 /* The dates go one under the other when they don't fit side by side at the
@@ -3365,6 +3376,59 @@ body.sheet-open .timer-chip { visibility: hidden; }
   width: 100%;
   min-width: 0;
   max-width: 100%;
+}
+
+/* Where the browser's date-and-time field can't show its whole value (from
+   118% zoom in Chromium, 170% in WebKit), the When row has a date field and
+   a time field instead (schedule.js `fitWhenField`): side by side when they
+   fit, otherwise one under the other. */
+.sheet-when-parts {
+  display: none;
+}
+
+.sheet-time-row--parts .sheet-time-input {
+  display: none;
+}
+
+.sheet-time-row--parts .sheet-when-parts {
+  display: flex;
+  flex: 1 1 240px;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.sheet-when-parts .text-input {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+
+/* At 200% zoom Chromium's date field, with its calendar button, needs 174 px
+   where the row has 163: its padding and the button's margin are trimmed,
+   and where focusing a field doesn't zoom the page (anywhere but iOS, whose
+   date fits at 16 px) its text is 14 px, as Stats' dates are, which makes it
+   144 px. */
+@media (max-width: 240px) {
+  .sheet-when-parts .text-input {
+    padding-inline: 8px;
+  }
+}
+
+/* Alone, so a browser without the pseudo-element keeps the rest. */
+@media (max-width: 240px) {
+  .sheet-when-parts .text-input::-webkit-calendar-picker-indicator {
+    margin: 0;
+    padding: 0;
+  }
+}
+
+@media (max-width: 240px) {
+  @supports not (-webkit-touch-callout: none) {
+    .sheet-when-parts .text-input {
+      font-size: 14px;
+    }
+  }
 }
 
 /* Follow-up scheduling inside log sheet. Each choice has room for its widest

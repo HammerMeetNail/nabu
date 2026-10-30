@@ -1940,6 +1940,40 @@ describe('Activity number selectors', () => {
   });
 });
 
+describe('Log sheet When field', () => {
+  it('has a date field and a time field holding its value', async () => {
+    const {renderLogSheet} = await import('../schedule.js');
+    const root = JSDOM.fragment(renderLogSheet({id: 1, name: 'Walk'}, null, '2026-09-10', [], 1, null,
+      {showWhen: true, slotHour: 7}));
+    assert.equal(root.querySelector('#log-when').value, '2026-09-10T07:00');
+    assert.equal(root.querySelector('#log-when-date').value, '2026-09-10');
+    assert.equal(root.querySelector('#log-when-time').value, '07:00');
+    // Only #log-when is named "When", whichever is shown.
+    assert.equal(root.querySelector('#log-when-date').getAttribute('aria-label'), 'Date');
+    assert.equal(root.querySelector('#log-when-time').getAttribute('aria-label'), 'Time');
+    assert.equal(root.querySelectorAll('[aria-labelledby], label[for="log-when-date"], label[for="log-when-time"]').length, 0);
+  });
+
+  it('sets the value a log saves from the date and time fields', async () => {
+    const {renderLogSheet, syncWhenParts} = await import('../schedule.js');
+    document.body.innerHTML = renderLogSheet({id: 1, name: 'Walk'}, {id: 9, completedAt: '2026-09-10T07:05:42'},
+      '2026-09-10', [], 1, null, {showWhen: true});
+    const when = document.querySelector('#log-when');
+    const date = document.querySelector('#log-when-date'), time = document.querySelector('#log-when-time');
+    assert.equal(time.value, '07:05');
+    date.value = '2026-09-09';
+    syncWhenParts(date);
+    time.value = '03:07';
+    syncWhenParts(time);
+    assert.equal(when.value, '2026-09-09T03:07');
+    assert.equal(when.dataset.originalValue, '2026-09-10T07:05', 'an edit still compares with the time it opened with');
+    time.value = '';
+    syncWhenParts(time);
+    assert.equal(when.value, '', 'a half-cleared time leaves no value, as #log-when cleared does');
+    document.body.innerHTML = '';
+  });
+});
+
 describe('Member access disable/enable', () => {
   // renderHouseholdView builds invite URLs from window.location.
   globalThis.window = dom.window;

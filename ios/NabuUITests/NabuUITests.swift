@@ -1561,6 +1561,51 @@ final class NabuDynamicTypeUITests: XCTestCase {
         add(shot)
     }
 
+    /// Busy Hours' chore and member choices, on screen, at a text size.
+    private func busyHoursChoices(textSize: String?) -> (XCUIApplication, XCUIElement, XCUIElement) {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["-disableAnimations", "-resetState", "-seedHomeForUITest", "-useMockAPI",
+                               "-reviewScenario", "baby-card", "-nabuBaseURL", "http://localhost:9998"]
+        if let textSize { app.launchArguments += ["-UIPreferredContentSizeCategoryName", textSize] }
+        app.launchForLocalTest()
+        XCTAssertTrue(app.tabBars.buttons["Stats"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Stats"].tap()
+        let chore = app.buttons["busy-hours-chore"], member = app.buttons["busy-hours-member"]
+        XCTAssertTrue(chore.waitForExistence(timeout: 8), "Busy Hours shows")
+        for _ in 0..<16 where !(member.isHittable && app.frame.contains(member.frame)) { app.swipeUp(velocity: .slow) }
+        XCTAssertTrue(member.isHittable, "the member choice is on screen")
+        let screen = app.windows.firstMatch.frame
+        for choice in [chore, member] {
+            XCTAssertGreaterThanOrEqual(choice.frame.minX, screen.minX - 1, "\(choice.identifier) starts on screen")
+            XCTAssertLessThanOrEqual(choice.frame.maxX, screen.maxX + 1, "\(choice.identifier) ends on screen")
+        }
+        return (app, chore, member)
+    }
+
+    /// At the largest text size Busy Hours' choices go one under the other:
+    /// side by side they cut "All chores" and "All members" (PWA `every
+    /// Stats card fits at 200% zoom`).
+    func testBusyHoursChoicesStackAtAccessibilityXXXL() {
+        let (app, chore, member) = busyHoursChoices(textSize: "UICTContentSizeCategoryAccessibilityXXXL")
+        XCTAssertGreaterThanOrEqual(member.frame.minY, chore.frame.maxY - 1, "the member choice is under the chore choice")
+        keep(app, "busy-hours-choices-ax-xxxl")
+    }
+
+    func testBusyHoursChoicesSideBySideAtDefaultTextSize() {
+        let (app, chore, member) = busyHoursChoices(textSize: nil)
+        XCTAssertLessThan(abs(member.frame.midY - chore.frame.midY), 4, "the choices share a row")
+        keep(app, "busy-hours-choices-default")
+        // Choosing from the menu shows the choice.
+        XCTAssertEqual(chore.value as? String, "All chores")
+        chore.tap()
+        let feedBaby = app.buttons["Feed Baby"].firstMatch
+        XCTAssertTrue(feedBaby.waitForExistence(timeout: 5), "the menu lists the chores")
+        feedBaby.tap()
+        expectation(for: NSPredicate(format: "value == %@", "Feed Baby"), evaluatedWith: chore)
+        waitForExpectations(timeout: 5)
+    }
+
     func testAccessibilityXXXLText() {
         everydayPath(textSize: "UICTContentSizeCategoryAccessibilityXXXL")
     }
@@ -1578,6 +1623,13 @@ final class NabuDynamicTypeUITests: XCTestCase {
         app.launchForLocalTest()
 
         open("Feed Baby", in: app)
+        // The When picker's date and time stay on screen, one under the
+        // other (the PWA's own fields for them, `fitWhenField`).
+        let when = app.datePickers["when-picker"]
+        XCTAssertTrue(when.waitForExistence(timeout: 3))
+        XCTAssertGreaterThanOrEqual(when.frame.minX, app.frame.minX - 1, "When starts on screen")
+        XCTAssertLessThanOrEqual(when.frame.maxX, app.frame.maxX + 1, "When ends on screen")
+        keep(app, "log-sheet-when-ax-xxxl")
         let amount = app.textFields["indicator-amount-input"]
         reveal(amount, in: app)
         XCTAssertGreaterThanOrEqual(amount.frame.minY, app.buttons["Formula"].frame.maxY, "the amount is under its type")

@@ -21,8 +21,8 @@ function overlaps(a, b) {
 }
 
 // What doesn't fit in the sheet: a label or field that leaves it or overlaps
-// another, a type's name split mid-word, or a follow-up choice too narrow for
-// its longest value.
+// another, a type's name split mid-word, a date or time narrower than its
+// value, or a follow-up choice too narrow for its longest value.
 function sheetProblems(sheet) {
   return sheet.evaluate(sheet => {
     const style = getComputedStyle(sheet);
@@ -54,6 +54,18 @@ function sheetProblems(sheet) {
         if (new Set([...range.getClientRects()].map(r => Math.round(r.top))).size > 1) problems.push(`${name(chip)} splits "${word[0]}"`);
       }
     }
+    // A date or time narrower than its value: a copy beside it, so it has the
+    // field's styles, at its natural width.
+    for (const field of sheet.querySelectorAll('input[type="date"], input[type="time"], input[type="datetime-local"]')) {
+      if (!field.getClientRects().length) continue;
+      const probe = field.cloneNode(false);
+      probe.removeAttribute('id');
+      probe.style.cssText = 'position:absolute;visibility:hidden;width:auto;min-width:0;max-width:none;flex:none';
+      field.after(probe);
+      const needs = probe.getBoundingClientRect().width;
+      probe.remove();
+      if (field.getBoundingClientRect().width < needs - 1) problems.push(`${name(field)} cuts its value`);
+    }
     const measure = document.createElement('canvas').getContext('2d');
     for (const select of sheet.querySelectorAll('.followup-select')) {
       const s = getComputedStyle(select);
@@ -67,10 +79,10 @@ function sheetProblems(sheet) {
 }
 
 // What doesn't fit in a Stats card: anything that leaves the card, a Baby
-// column or the explainer, text that runs past its own box, or a date field
+// column or the explainer, text that runs past its own box, a date field
 // narrower than its date (Chromium's, with its calendar button, is the
-// widest). Charts scale to their column; what scrolls sideways (the heatmap)
-// may be wider.
+// widest), or a choice narrower than what's chosen ("All members"). Charts
+// scale to their column; what scrolls sideways (the heatmap) may be wider.
 function cardProblems(card) {
   return card.evaluate(card => {
     const inner = box => {
@@ -108,6 +120,17 @@ function cardProblems(card) {
       const needs = probe.getBoundingClientRect().width;
       probe.remove();
       if (input.getBoundingClientRect().width < needs - 1) problems.push(`${input.getAttribute('aria-label') || `${input.dataset.filter} date`} cuts its date`);
+    }
+    for (const select of card.querySelectorAll('select')) {
+      if (!select.getClientRects().length) continue;
+      // Beside the choice, holding only the chosen option, which is all it shows.
+      const probe = select.cloneNode(false);
+      probe.append(select.selectedOptions[0].cloneNode(true));
+      probe.style.cssText = 'position:absolute;visibility:hidden;width:auto;min-width:0;max-width:none;flex:none';
+      select.after(probe);
+      const needs = probe.getBoundingClientRect().width;
+      probe.remove();
+      if (select.getBoundingClientRect().width < needs - 1) problems.push(`${select.dataset.filter || select.getAttribute('aria-label')} cuts "${select.selectedOptions[0].text}"`);
     }
     return [...new Set(problems)];
   });
@@ -275,4 +298,70 @@ test('a type with a long name keeps it whole, beside or over its amount', async 
   await sheet.getByRole('spinbutton', { name: '🥛 expressed milk amount' }).fill('60');
   await sheet.getByRole('button', { name: 'Log', exact: true }).click();
   await expect(sheet).toHaveCount(0);
+});
+
+test('the When field shows its whole date and time, and saves what is chosen there', async ({ page }) => {
+  const { chore, headers } = await fixture(page);
+  const local = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const yesterday = local(new Date(Date.now() - 86400000));
+  const logs = async () => (await (await page.request.get('/api/logs/history')).json()).logs.filter(log => log.choreId === chore.id);
+  const sheet = page.locator('.bottom-sheet');
+  const when = sheet.locator('#log-when'), date = sheet.locator('#log-when-date'), time = sheet.locator('#log-when-time');
+
+  await resize(page, 390, 844);
+  await page.locator(`[data-home-chore-id="${chore.id}"]`).click();
+  await expect(when).toBeVisible();
+  await expect(date).toBeHidden();
+  // 100%, 110%, 118%, 125%, 150%, 170% and 200% zoom on a 390 px phone.
+  for (const width of [390, 360, 330, 312, 260, 230, 195]) {
+    await resize(page, width, 844);
+    expect(await sheetProblems(sheet), `the sheet at ${width} px`).toEqual([]);
+  }
+  // Where the date and time don't fit in one field, each has its own, which
+  // sets the one a log saves.
+  await expect(when).toBeHidden();
+  const [today, now] = (await when.inputValue()).split('T');
+  await expect(date).toHaveValue(today);
+  await expect(time).toHaveValue(now);
+  await date.fill(yesterday);
+  await time.fill('03:07');
+  await expect(when).toHaveValue(`${yesterday}T03:07`);
+  await resize(page, 390, 844);
+  await expect(when).toBeVisible();
+  await expect(when).toHaveValue(`${yesterday}T03:07`);
+  await resize(page, 195, 844);
+  await expect(time).toHaveValue('03:07');
+  await sheet.locator('#log-volume').fill('15');
+  await sheet.locator('#log-note').fill('chosen at 200%');
+  await sheet.getByRole('button', { name: 'Log', exact: true }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect.poll(async () => (await logs()).length).toBe(1);
+  let [log] = await logs();
+  const saved = new Date(log.completedAt);
+  expect([local(saved), saved.getHours(), saved.getMinutes(), log.slotHour]).toEqual([yesterday, 3, 7, 3]);
+
+  // Editing keeps a time nobody changed, seconds and all, and saves one
+  // changed in the time field.
+  const at = new Date(Date.now() - 3 * 3600000);
+  at.setSeconds(42, 0);
+  const posted = await page.request.post('/api/logs', { headers, data: { choreId: chore.id, completedAt: at.toISOString(), date: local(at), hour: at.getHours(), note: 'edited at 200%' } });
+  expect(posted.ok()).toBe(true);
+  const id = (await posted.json()).log.id;
+  await page.goto('/activity');
+  await page.locator('.hist-row').filter({ hasText: 'edited at 200%' }).click();
+  await expect(time).toBeVisible();
+  await sheet.locator('#log-note').fill('edited at 200%, time kept');
+  await sheet.getByRole('button', { name: 'Update' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect.poll(async () => (await logs()).find(l => l.id === id)?.note).toBe('edited at 200%, time kept');
+  log = (await logs()).find(l => l.id === id);
+  expect(new Date(log.completedAt).getTime()).toBe(at.getTime());
+  await page.locator('.hist-row').filter({ hasText: 'time kept' }).click();
+  await time.fill('04:15');
+  await sheet.getByRole('button', { name: 'Update' }).click();
+  await expect(sheet).toHaveCount(0);
+  await expect.poll(async () => {
+    const changed = new Date((await logs()).find(l => l.id === id).completedAt);
+    return [local(changed), changed.getHours(), changed.getMinutes()];
+  }).toEqual([local(at), 4, 15]);
 });
