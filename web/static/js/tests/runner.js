@@ -2911,69 +2911,148 @@ describe("Action registry", () => {
 });
 
 // head-init.js sizes the app frame (--app-h) before first paint. It runs as a
-// classic script, so each case runs its source against a stub window.
+// classic script, so each case runs its source against a stub window whose
+// animation frames run when the test says.
 describe("head-init.js frame height", () => {
   const source = readFileSync(new URL("../head-init.js", import.meta.url), "utf8");
-  function launch({ standalone, remembered = false, inset = 0, innerHeight = 812 }) {
+  // An iPhone 17 Pro: 874pt tall, 812pt below an opaque status bar. Until iOS
+  // delivers the insets, they read 0 under either status bar.
+  function launch({ standalone, remembered = false, insets = [0, 0], innerHeight = 812, screen = { width: 402, height: 874 } }) {
     const stored = new Map(remembered ? [["nabu-translucent-status-bar", "1"]] : []);
-    const props = {}, viewportListeners = {};
-    let topInset = inset;
+    const props = {}, listeners = {}, viewportListeners = {}, docListeners = {};
+    let [top, bottom] = insets;
+    let frames = [], now = 0;
     const win = {
       innerHeight,
-      screen: { width: 402, height: 874 },
+      screen,
       matchMedia: (query) => ({ matches: query.includes("standalone") && standalone }),
       visualViewport: { scale: 1, addEventListener: (type, fn) => { viewportListeners[type] = fn; } },
-      addEventListener() {},
-      localStorage: { getItem: (key) => stored.get(key) ?? null, setItem: (key, value) => stored.set(key, value) },
-      getComputedStyle: () => ({ paddingTop: `${topInset}px` }),
+      addEventListener: (type, fn) => { listeners[type] = fn; },
+      localStorage: {
+        getItem: (key) => stored.get(key) ?? null,
+        setItem: (key, value) => stored.set(key, value),
+        removeItem: (key) => stored.delete(key),
+      },
+      getComputedStyle: () => ({ paddingTop: `${top}px`, paddingBottom: `${bottom}px` }),
     };
     const doc = {
+      visibilityState: "visible",
       documentElement: { style: { setProperty: (name, value) => { props[name] = value; } }, appendChild() {}, removeChild() {} },
       createElement: () => ({ style: {} }),
+      addEventListener: (type, fn) => { docListeners[type] = fn; },
     };
+    const requestFrame = (fn) => { frames.push(fn); };
     new Function("window", "navigator", "document", "requestAnimationFrame", "setTimeout", source)(
-      win, { standalone }, doc, () => {}, () => {});
-    return {
+      win, { standalone }, doc, requestFrame, () => {});
+    const app = {
       appH: () => props["--app-h"],
       remembered: () => stored.get("nabu-translucent-status-bar") === "1",
-      // An older install's geometry settles after load: the top inset appears
-      // and the viewport grows to the screen.
-      settle(nextInset, nextInnerHeight) {
-        topInset = nextInset;
+      // Runs animation frames 16ms apart for `ms` milliseconds.
+      frames(ms) {
+        for (const end = now + ms; now < end;) {
+          now += 16;
+          const due = frames;
+          frames = [];
+          for (const fn of due) fn(now);
+        }
+        return app;
+      },
+      // iOS delivers the insets on a frame of their own, with no event.
+      insetsArrive(nextTop, nextBottom) {
+        [top, bottom] = [nextTop, nextBottom];
+        return app.frames(16);
+      },
+      // The viewport changes size: iOS resizes it and fires resize.
+      resize(nextInnerHeight) {
         win.innerHeight = nextInnerHeight;
         viewportListeners.resize();
+        return app;
       },
+      // The app goes to the background and comes back.
+      resume(change) {
+        doc.visibilityState = "hidden";
+        docListeners.visibilitychange();
+        change();
+        doc.visibilityState = "visible";
+        docListeners.visibilitychange();
+        return app.frames(100);
+      },
+      setInsets(nextTop, nextBottom) { [top, bottom] = [nextTop, nextBottom]; },
+      setInnerHeight(next) { win.innerHeight = next; },
     };
+    return app;
   }
 
-  it("a Home Screen app under an opaque status bar is as tall as its viewport", () => {
+  it("a Home Screen app below an opaque status bar is as tall as its viewport", () => {
     const app = launch({ standalone: true });
+    assert.equal(app.appH(), "812px");
+    app.insetsArrive(0, 34).frames(2000);
     assert.equal(app.appH(), "812px");
     assert.equal(app.remembered(), false);
   });
 
-  it("an app added with a translucent status bar uses the screen height from first paint once it's known", () => {
-    // At cold open its inset and viewport still read as an opaque app's.
-    const app = launch({ standalone: true, remembered: true, inset: 0, innerHeight: 812 });
+  it("an app that last ran under a translucent status bar starts at the screen height", () => {
+    // At cold open its insets and viewport read as an opaque app's.
+    const app = launch({ standalone: true, remembered: true });
     assert.equal(app.appH(), "874px");
-  });
-
-  it("an app added with a translucent status bar is recognised by its top inset and remembered", () => {
-    const app = launch({ standalone: true, inset: 62, innerHeight: 874 });
+    app.insetsArrive(62, 34).resize(874).frames(2000);
     assert.equal(app.appH(), "874px");
     assert.equal(app.remembered(), true);
   });
 
-  it("an older install's first launch grows to the screen once its geometry settles", () => {
-    const app = launch({ standalone: true, inset: 0, innerHeight: 812 });
+  it("an app that last ran under a translucent status bar fits the viewport when iOS opens it below an opaque one", () => {
+    // The tab bar fell 62pt below the screen: iOS opened the app below an
+    // opaque status bar, and the remembered translucent bar kept the frame at
+    // the screen's 874pt in an 812pt viewport.
+    const app = launch({ standalone: true, remembered: true });
+    assert.equal(app.appH(), "874px", "first paint repeats the last launch");
+    app.insetsArrive(0, 34);
     assert.equal(app.appH(), "812px");
-    app.settle(62, 874);
+    assert.equal(app.remembered(), false, "the next launch starts below an opaque bar");
+    app.frames(2000);
+    assert.equal(app.appH(), "812px");
+  });
+
+  it("an app that last ran below an opaque status bar grows to the screen when iOS opens it under a translucent one", () => {
+    const app = launch({ standalone: true });
+    assert.equal(app.appH(), "812px");
+    // The insets arrive a frame before the viewport grows.
+    app.insetsArrive(62, 34);
+    assert.equal(app.appH(), "874px");
+    app.resize(874).frames(2000);
     assert.equal(app.appH(), "874px");
     assert.equal(app.remembered(), true);
+  });
+
+  it("keeps the remembered screen height while the insets are late", () => {
+    const app = launch({ standalone: true, remembered: true });
+    app.frames(600);
+    assert.equal(app.appH(), "874px");
+    app.insetsArrive(62, 34).frames(2000);
+    assert.equal(app.appH(), "874px");
+    assert.equal(app.remembered(), true);
+  });
+
+  it("with no inset after a second, an iPhone without a home indicator is below an opaque status bar", () => {
+    const app = launch({ standalone: true, remembered: true, innerHeight: 647, screen: { width: 375, height: 667 } });
+    assert.equal(app.appH(), "667px");
+    app.frames(1200);
+    assert.equal(app.appH(), "647px");
+    assert.equal(app.remembered(), false);
+  });
+
+  it("re-checks the status bar when the app comes back from the background", () => {
+    const app = launch({ standalone: true });
+    app.insetsArrive(62, 34).resize(874).frames(2000);
+    assert.equal(app.appH(), "874px");
+    app.resume(() => { app.setInsets(0, 34); app.setInnerHeight(812); });
+    assert.equal(app.appH(), "812px");
+    assert.equal(app.remembered(), false);
   });
 
   it("a browser tab is as tall as its viewport, whatever its insets", () => {
-    const app = launch({ standalone: false, inset: 47, innerHeight: 700 });
+    const app = launch({ standalone: false, insets: [47, 34], innerHeight: 700 });
+    app.frames(2000);
     assert.equal(app.appH(), "700px");
     assert.equal(app.remembered(), false);
   });

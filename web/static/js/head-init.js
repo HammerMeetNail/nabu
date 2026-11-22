@@ -9,21 +9,32 @@
 // one, over the top bar's logo and buttons. A Home Screen app therefore opens
 // below an opaque status bar, and its viewport is right from first paint.
 //
-// iOS fixes the status bar style when the app is added, so apps added while
-// the shell still asked for a translucent bar keep it. They run under the
-// status bar, fullscreen (viewport-fit=cover) and portrait-locked, so their
-// true height is the physical screen height. Their viewport geometry is stale
-// at cold open: innerHeight, 100dvh and the safe-area insets all read as if
-// the status bar were outside the page, until they settle. So such an app is
-// only recognised once a measurement sees its top safe-area inset, and it
-// remembers that: every later launch uses the screen height from first paint.
+// Apps added while the shell still asked for a translucent bar run under it,
+// fullscreen (viewport-fit=cover) and portrait-locked, so their true height is
+// the physical screen height. But iOS doesn't always open them that way: the
+// same app can open under a translucent status bar one time and below an
+// opaque one the next, where the screen height leaves the tab bar below the
+// screen by the status bar's height (62pt on an iPhone 17 Pro). So each
+// launch decides for itself.
+//
+// Nothing tells the two apart at first paint: innerHeight, 100dvh and every
+// safe-area inset read as they do below an opaque bar until iOS delivers the
+// insets, a few frames later. So the first paint uses the last launch's
+// answer, and the insets decide as soon as they arrive: a top inset means the
+// page is under a translucent status bar, a bottom inset alone that it's below
+// an opaque one. The answer is remembered for the next launch. A second of
+// frames with no inset at all (an opaque bar on an iPhone without a home
+// indicator) means opaque too.
 (function () {
   var docEl = document.documentElement;
   var standalone = navigator.standalone === true ||
     (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
   var TRANSLUCENT_KEY = 'nabu-translucent-status-bar';
+  // Whether the page runs under a translucent status bar: the last launch's
+  // answer until this launch's insets arrive.
   var translucent = false;
   try { translucent = window.localStorage.getItem(TRANSLUCENT_KEY) === '1'; } catch (e) {}
+  var insetsSeen = false;
   var lastH = 0;
 
   function zoomed() {
@@ -31,22 +42,37 @@
       Math.abs(window.visualViewport.scale - 1) > 0.001);
   }
 
-  // The top safe-area inset. Only a page under the status bar has one.
-  function topInset() {
+  // The top and bottom safe-area insets. Both read 0 until iOS delivers them.
+  function insets() {
     var probe = document.createElement('div');
-    probe.style.cssText = 'position:absolute;visibility:hidden;padding-top:env(safe-area-inset-top,0px)';
+    probe.style.cssText = 'position:absolute;visibility:hidden;' +
+      'padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)';
     docEl.appendChild(probe);
-    var inset = parseFloat(window.getComputedStyle(probe).paddingTop) || 0;
+    var style = window.getComputedStyle(probe);
+    var top = parseFloat(style.paddingTop) || 0;
+    var bottom = parseFloat(style.paddingBottom) || 0;
     docEl.removeChild(probe);
-    return inset;
+    return { top: top, bottom: bottom };
+  }
+
+  function remember(value) {
+    if (value === translucent) return;
+    translucent = value;
+    try {
+      if (value) window.localStorage.setItem(TRANSLUCENT_KEY, '1');
+      else window.localStorage.removeItem(TRANSLUCENT_KEY);
+    } catch (e) {}
   }
 
   function measure() {
-    if (standalone && !translucent && topInset() > 0) {
-      translucent = true;
-      try { window.localStorage.setItem(TRANSLUCENT_KEY, '1'); } catch (e) {}
+    if (standalone) {
+      var inset = insets();
+      if (inset.top > 0 || inset.bottom > 0) {
+        insetsSeen = true;
+        remember(inset.top > 0);
+      }
     }
-    if (translucent && window.screen) {
+    if (standalone && translucent && window.screen) {
       // Physical screen height is ground truth for a fullscreen app. iOS keeps
       // screen.width/height portrait-fixed while other platforms swap them,
       // so pick the orientation-appropriate dimension via min/max in case
@@ -72,21 +98,59 @@
     docEl.style.setProperty('--app-h', h + 'px');
   }
 
+  // In a Home Screen app, re-measure every frame for a second after anything
+  // that can move the insets: iOS delivers them on a frame of their own, with
+  // or without a resize event. If no inset has arrived by the end of that
+  // second, the app is below an opaque status bar.
+  var watching = false, restart = false, deadline = 0;
+  function watch() {
+    if (!standalone) return;
+    restart = true;
+    if (watching) return;
+    watching = true;
+    requestAnimationFrame(tick);
+  }
+  function tick(time) {
+    if (restart) {
+      deadline = time + 1000;
+      restart = false;
+    }
+    setAppH();
+    if (time < deadline) {
+      requestAnimationFrame(tick);
+      return;
+    }
+    watching = false;
+    if (!insetsSeen) {
+      remember(false);
+      setAppH();
+    }
+  }
+  function remeasure() {
+    setAppH();
+    watch();
+  }
+
   // Run synchronously before first paint.
   setAppH();
-  // The browser-mode URL bar, and an older install's geometry, settle after
-  // load; once the frame is right these re-runs change nothing.
+  watch();
+  // The browser-mode URL bar settles after load; once the frame is right
+  // these re-runs change nothing.
   requestAnimationFrame(setAppH);
   setTimeout(setAppH, 150);
   setTimeout(setAppH, 1000);
   window.addEventListener('load', setAppH);
-  window.addEventListener('pageshow', setAppH);
-  window.addEventListener('resize', setAppH);
+  window.addEventListener('pageshow', remeasure);
+  window.addEventListener('resize', remeasure);
   window.addEventListener('orientationchange', function () {
     // Screen/viewport values lag the event on iOS; re-measure after a beat.
-    setTimeout(setAppH, 50);
+    setTimeout(remeasure, 50);
   });
   if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', setAppH);
+    window.visualViewport.addEventListener('resize', remeasure);
   }
+  // Coming back from the background, iOS can have changed the status bar.
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') remeasure();
+  });
 }());

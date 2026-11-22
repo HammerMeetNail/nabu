@@ -52,8 +52,8 @@ html {
   font-size: 16px;
   -webkit-text-size-adjust: 100%;
   /* --app-h is set by head-init.js: the viewport's height, or the physical
-     screen height for a Home Screen app added with a translucent status bar,
-     whose viewport is stale at cold open. */
+     screen height while a Home Screen app runs under a translucent status
+     bar, whose viewport is stale at cold open. */
   height: var(--app-h, 100dvh);
 }
 
